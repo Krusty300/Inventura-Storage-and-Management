@@ -1,0 +1,80 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, screen } from "@testing-library/react";
+import { renderWithProviders } from "./testUtils";
+import api from "../api/client";
+
+vi.mock("../api/client", () => ({
+  default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
+}));
+
+import Reports from "../pages/Reports";
+
+const getMock = api.get as ReturnType<typeof vi.fn>;
+
+function mockReports() {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+    if (url === "/reports/inventory-valuation") return Promise.resolve({ data: { total_inventory_value: 1000, total_retail_value: 1500, potential_profit: 500, by_category: [], by_supplier: [] } });
+    if (url === "/reports/stock-movement-trends") return Promise.resolve({ data: { labels: [], total_in: 0, total_out: 0, net_movement: 0 } });
+    if (url === "/reports/category-breakdown") return Promise.resolve({ data: [{ id: 1, name: "Beverages", product_count: 3, total_stock: 10, total_cost_value: 50, total_retail_value: 80 }] });
+    if (url === "/reports/profit-analysis") return Promise.resolve({ data: { total_cost_value: 0, total_potential_revenue: 0, total_potential_profit: 0, products: [] } });
+    if (url === "/reports/order-summary") return Promise.resolve({ data: { total_orders: 0, pending: 0, completed: 0, total_order_value: 0, by_status: [], top_suppliers: [] } });
+    if (url === "/reports/sales-summary") return Promise.resolve({ data: { total_sales: 0, total_revenue: 0, total_tax: 0, total_refunds: 0, by_payment_method: [], top_products: [] } });
+    if (url === "/reports/top-customers") return Promise.resolve({ data: { items: [{ customer_id: 1, name: "Alice", phone: "555-0001", email: "alice@example.com", total_sales: 4, total_spent: 400, last_purchase_at: "2026-07-01T00:00:00" }], total: 1, days: null } });
+    if (url === "/reports/top-suppliers") return Promise.resolve({ data: { items: [{ supplier_id: 1, name: "Acme Supplies", contact_person: "Jane", email: "jane@acme.com", total_orders: 3, total_spent: 300, last_order_at: "2026-07-01T00:00:00" }], total: 1, days: null } });
+    return Promise.reject(new Error(`Unexpected call: ${url}`));
+  });
+}
+
+describe("Reports Page", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  it("renders valuation stat cards", async () => {
+    mockReports();
+    renderWithProviders(<Reports />);
+    expect(await screen.findByText("Inventory Value (Cost)")).toBeInTheDocument();
+    expect(screen.getByText("Retail Value")).toBeInTheDocument();
+    expect(screen.getByText("Potential Profit")).toBeInTheDocument();
+  });
+
+  it("switches tabs and renders category breakdown", async () => {
+    mockReports();
+    renderWithProviders(<Reports />);
+    fireEvent.click(await screen.findByRole("button", { name: "Categories" }));
+    expect(await screen.findByText("Beverages")).toBeInTheDocument();
+    expect(screen.getByText("10")).toBeInTheDocument();
+  });
+
+  it("shows a warning and disables export when the date range is invalid", async () => {
+    mockReports();
+    renderWithProviders(<Reports />);
+    const start = await screen.findByLabelText("Start date");
+    fireEvent.change(start, { target: { value: "2026-02-01" } });
+    fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-01-01" } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Start date must be before end date");
+    expect(screen.getByRole("button", { name: "Export sales CSV" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Export movements CSV" })).toBeDisabled();
+  });
+
+  it("renders the top customers tab with spending data", async () => {
+    mockReports();
+    renderWithProviders(<Reports />);
+    fireEvent.click(await screen.findByRole("button", { name: "Top Customers" }));
+    expect(await screen.findByText("555-0001")).toBeInTheDocument();
+    expect(screen.getAllByText("$400.00").length).toBeGreaterThan(0);
+    expect(screen.getByRole("combobox", { name: "Period" })).toBeInTheDocument();
+  });
+
+  it("renders the top suppliers tab with spending data", async () => {
+    mockReports();
+    renderWithProviders(<Reports />);
+    fireEvent.click(await screen.findByRole("button", { name: "Top Suppliers" }));
+    expect((await screen.findAllByText("Acme Supplies")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Jane")).toBeInTheDocument();
+    expect(screen.getAllByText("$300.00").length).toBeGreaterThan(0);
+    expect(screen.getByRole("combobox", { name: "Period" })).toBeInTheDocument();
+  });
+});

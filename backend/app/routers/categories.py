@@ -1,0 +1,78 @@
+from math import ceil
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session, joinedload
+from app.database import get_db
+from app.models.category import Category
+from app.schemas.category import CategoryCreate, CategoryOut, CategoryTree, CategoryUpdate
+from app.services.auth import get_current_user, require_permission
+from app.utils import get_or_404, log_activity, broadcast_change
+
+router = APIRouter(prefix="/api/categories", tags=["categories"], dependencies=[Depends(get_current_user)])
+
+
+@router.get("")
+def list_categories(
+    search: str = Query(""),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Category).options(joinedload(Category.subcategories))
+    if search:
+        q = q.filter(Category.name.ilike(f"%{search}%"))
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+    return {"items": [CategoryOut.model_validate(c) for c in items], "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.get("/tree", response_model=list[CategoryTree])
+def category_tree(db: Session = Depends(get_db)):
+    return db.query(Category).filter(Category.parent_id.is_(None)).options(joinedload(Category.subcategories)).all()
+
+
+@router.get("/{category_id}", response_model=CategoryOut)
+def get_category(category_id: int, db: Session = Depends(get_db)):
+    return get_or_404(Category, category_id, db)
+
+
+@router.post("", response_model=CategoryOut, status_code=201)
+def create_category(data: CategoryCreate, db: Session = Depends(get_db), user=Depends(require_permission("categories.create"))):
+    if db.query(Category).filter(Category.name == data.name).first():
+        raise HTTPException(status_code=400, detail="Category already exists")
+    cat = Category(**data.model_dump())
+    db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    log_activity(db, user.id, user.username, "create", "category", cat.id, f"Created category '{cat.name}'")
+    db.commit()
+    broadcast_change("category", "created")
+    return cat
+
+
+@router.put("/{category_id}", response_model=CategoryOut)
+def update_category(category_id: int, data: CategoryUpdate, db: Session = Depends(get_db), user=Depends(require_permission("categories.update"))):
+    cat = get_or_404(Category, category_id, db)
+    for k, v in data.model_dump(exclude_unset=True).items():
+        setattr(cat, k, v)
+    db.commit()
+    db.refresh(cat)
+    log_activity(db, user.id, user.username, "update", "category", cat.id, f"Updated category '{cat.name}'")
+    db.commit()
+    broadcast_change("category", "updated")
+    return cat
+
+
+@router.delete("/{category_id}")
+def delete_category(category_id: int, db: Session = Depends(get_db), user=Depends(require_permission("categories.delete"))):
+    cat = get_or_404(Category, category_id, db, options=[joinedload(Category.products), joinedload(Category.subcategories)])
+    if cat.products:
+        raise HTTPException(status_code=400, detail="Cannot delete category with existing products")
+    if cat.subcategories:
+        raise HTTPException(status_code=400, detail="Cannot delete category with subcategories")
+    name = cat.name
+    db.delete(cat)
+    db.commit()
+    log_activity(db, user.id, user.username, "delete", "category", category_id, f"Deleted category '{name}'")
+    db.commit()
+    broadcast_change("category", "deleted")

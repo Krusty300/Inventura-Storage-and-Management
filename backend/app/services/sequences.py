@@ -1,0 +1,21 @@
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+
+def next_document_number(db: Session, name: str, prefix: str, width: int = 4) -> str:
+    """Atomically allocate the next sequential document number.
+
+    Uses an upsert on a single counter row so concurrent calls never receive
+    the same number. If the surrounding transaction rolls back the allocated
+    number is skipped (gaps are acceptable).
+    """
+    row = db.execute(
+        text(
+            "INSERT INTO document_sequences (name, next_value) VALUES (:name, 1) "
+            "ON CONFLICT(name) DO UPDATE SET next_value = next_value + 1 "
+            "RETURNING next_value"
+        ),
+        {"name": name},
+    ).first()
+    num = row[0] if row else 1
+    return f"{prefix}{num:0{width}d}"
