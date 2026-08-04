@@ -58,6 +58,68 @@ def test_receive_order_adds_stock_and_logs_movement(auth_headers):
     assert any(m["movement_type"] == "in" and m["quantity_change"] == 10 for m in movements)
 
 
+def test_receive_serialized_order_rejected_cleanly(auth_headers):
+    prod = client.post("/api/products", json={
+        "sku": "ORD-SER", "name": "Serialized Item", "cost_price": 5.00, "is_serialized": True,
+    }, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "items": [{"product_id": prod["id"], "quantity": 3, "unit_price": 5.00}],
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"status": "received"}, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "serialized" in resp.json()["detail"].lower()
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "pending"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 0
+
+
+def test_receive_serialized_order_with_serials(auth_headers):
+    prod = client.post("/api/products", json={
+        "sku": "ORD-SER2", "name": "Serialized Receive", "cost_price": 5.00, "is_serialized": True,
+    }, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}],
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "serial_numbers": {prod["id"]: ["SER-A", "SER-B"]},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "received"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 2
+    serials = client.get(f"/api/serial-numbers?product_id={prod['id']}", headers=auth_headers).json()
+    assert len(serials["items"]) == 2
+
+
+def test_receive_serialized_order_wrong_serial_count_rejected(auth_headers):
+    prod = client.post("/api/products", json={
+        "sku": "ORD-SER3", "name": "Serialized Count", "cost_price": 5.00, "is_serialized": True,
+    }, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}],
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "serial_numbers": {prod["id"]: ["SER-C"]},
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "pending"
+
+
+def test_receive_serialized_order_duplicate_serial_rejected(auth_headers):
+    prod = client.post("/api/products", json={
+        "sku": "ORD-SER4", "name": "Serialized Dup", "cost_price": 5.00, "is_serialized": True,
+    }, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}],
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "serial_numbers": {prod["id"]: ["SER-D", "SER-D"]},
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "pending"
+
+
 def test_receive_twice_is_noop(auth_headers):
     prod = client.post("/api/products", json={"sku": "ORD-RCV2", "name": "Receive Item 2", "cost_price": 5.00}, headers=auth_headers).json()
     order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 10, "unit_price": 5.00}]}, headers=auth_headers).json()

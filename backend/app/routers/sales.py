@@ -132,11 +132,13 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
         product = products[item_data.product_id]
         db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item_data.quantity, unit_price=item_data.unit_price))
         allocation = inventory.allocate_lots(db, product_id=product.id, quantity=item_data.quantity)
-        for lot_id, take in allocation:
+        for lot_id, take, location_id, lpn_id in allocation:
             inventory.post_journal_entry(
                 db, product_id=product.id, user_id=user.id,
                 quantity_change=-take, movement_type="out",
                 lot_id=lot_id,
+                from_location_id=location_id,
+                lpn_id=lpn_id,
                 reference_type="sale", reference=sale.invoice_number,
                 notes=f"Sale to {data.customer_id and 'customer' or 'walk-in customer'}",
             )

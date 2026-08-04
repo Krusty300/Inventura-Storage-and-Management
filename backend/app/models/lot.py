@@ -24,6 +24,12 @@ class Lot(Base):
     stock_lines = relationship("StockLine", back_populates="lot")
     serial_numbers = relationship("SerialNumber", back_populates="lot")
     stock_movements = relationship("StockMovement", back_populates="lot")
+    parent_links = relationship(
+        "LotLink", foreign_keys="LotLink.child_lot_id", back_populates="child"
+    )
+    child_links = relationship(
+        "LotLink", foreign_keys="LotLink.parent_lot_id", back_populates="parent"
+    )
 
     @property
     def product_name(self) -> str:

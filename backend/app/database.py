@@ -51,6 +51,11 @@ def run_migrations():
         if "suppliers" in table_names
         else None
     )
+    shipment_cols = (
+        {c["name"] for c in insp.get_columns("shipments")}
+        if "shipments" in table_names
+        else None
+    )
     with engine.begin() as conn:
         if "parent_id" not in existing:
             conn.execute(text("ALTER TABLE products ADD COLUMN parent_id INTEGER"))
@@ -79,6 +84,8 @@ def run_migrations():
             conn.execute(text("ALTER TABLE serial_numbers ADD COLUMN lpn_id INTEGER"))
         if supplier_cols is not None and "is_active" not in supplier_cols:
             conn.execute(text("ALTER TABLE suppliers ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        if shipment_cols is not None and "sale_id" not in shipment_cols and "sales" in table_names:
+            conn.execute(text("ALTER TABLE shipments ADD COLUMN sale_id INTEGER REFERENCES sales(id)"))
         if "document_sequences" not in table_names:
             conn.execute(text(
                 "CREATE TABLE document_sequences "

@@ -1,0 +1,143 @@
+from datetime import datetime, timezone
+from math import ceil
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session, joinedload
+
+from app.database import get_db
+from app.models import Lot, Product, QualityCheck
+from app.schemas.quality_check import QC_RESULTS, QualityCheckCreate, QualityCheckOut, QualityCheckUpdate
+from app.services.auth import get_current_user, require_permission
+from app.services.sequences import next_document_number
+from app.utils import get_or_404, log_activity, broadcast_change
+
+router = APIRouter(prefix="/api/quality-checks", tags=["quality-checks"], dependencies=[Depends(get_current_user)])
+
+# Status transitions allowed from the LOT management screen. A QC failure
+# quarantines a lot; a manual release moves it back to sellable stock.
+ALLOWED_LOT_TRANSITIONS = {
+    "in_stock": {"quarantined", "expired"},
+    "quarantined": {"in_stock", "expired"},
+    "expired": set(),
+}
+
+
+def _load_qc(db: Session, qc_id: int) -> QualityCheck:
+    return get_or_404(QualityCheck, qc_id, db, options=[
+        joinedload(QualityCheck.product), joinedload(QualityCheck.lot),
+        joinedload(QualityCheck.work_order), joinedload(QualityCheck.checker),
+    ])
+
+
+def _quarantine_lot(db: Session, lot: Lot) -> None:
+    if lot.status == "quarantined":
+        return
+    if lot.status not in ALLOWED_LOT_TRANSITIONS.get("in_stock", set()) and lot.status != "in_stock":
+        raise HTTPException(status_code=400, detail=f"Cannot quarantine lot '{lot.lot_number}' in status '{lot.status}'")
+    lot.status = "quarantined"
+
+
+@router.get("")
+def list_quality_checks(
+    product_id: int | None = None,
+    result: str | None = None,
+    lot_id: int | None = None,
+    search: str = Query(""),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    q = db.query(QualityCheck).options(
+        joinedload(QualityCheck.product), joinedload(QualityCheck.lot),
+        joinedload(QualityCheck.work_order), joinedload(QualityCheck.checker),
+    )
+    if product_id:
+        q = q.filter(QualityCheck.product_id == product_id)
+    if result:
+        if result not in QC_RESULTS:
+            raise HTTPException(status_code=400, detail=f"result must be one of {QC_RESULTS}")
+        q = q.filter(QualityCheck.result == result)
+    if lot_id:
+        q = q.filter(QualityCheck.lot_id == lot_id)
+    if search:
+        like = f"%{search}%"
+        q = q.join(QualityCheck.product, isouter=True).filter(
+            QualityCheck.qc_number.ilike(like) | Product.name.ilike(like) | Product.sku.ilike(like)
+        )
+    total = q.count()
+    items = q.order_by(QualityCheck.created_at.desc()).offset(skip).limit(limit).all()
+    return {"items": [QualityCheckOut.model_validate(qc) for qc in items], "total": total,
+            "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.get("/{qc_id}", response_model=QualityCheckOut)
+def get_quality_check(qc_id: int, db: Session = Depends(get_db)):
+    return _load_qc(db, qc_id)
+
+
+@router.post("", response_model=QualityCheckOut, status_code=201)
+def create_quality_check(data: QualityCheckCreate, db: Session = Depends(get_db), user=Depends(require_permission("quality_checks.create"))):
+    get_or_404(Product, data.product_id, db)
+    if data.lot_id is not None:
+        lot = get_or_404(Lot, data.lot_id, db)
+        if lot.product_id != data.product_id:
+            raise HTTPException(status_code=400, detail="The selected lot does not belong to this product")
+    qc = QualityCheck(
+        qc_number=next_document_number(db, "quality_check", "QC-"),
+        product_id=data.product_id,
+        lot_id=data.lot_id,
+        work_order_id=data.work_order_id,
+        batch_number=data.batch_number,
+        result=data.result,
+        notes=data.notes,
+        checked_by=user.id,
+    )
+    db.add(qc)
+    db.flush()
+    if data.result == "fail" and data.lot_id is not None:
+        _quarantine_lot(db, qc.lot)
+    if data.result in ("pass", "fail"):
+        qc.checked_at = datetime.now(timezone.utc)
+    db.commit()
+    qc = _load_qc(db, qc.id)
+    action = "fail" if qc.result == "fail" else "complete"
+    log_activity(db, user.id, user.username, action, "quality_check", qc.id,
+                 f"Quality check '{qc.qc_number}' for '{qc.product_name}' -> {qc.result}"
+                 + (f" (lot '{qc.lot_number}' quarantined)" if qc.result == "fail" and qc.lot_id else ""))
+    db.commit()
+    broadcast_change("quality_check", "created")
+    if qc.result == "fail" and qc.lot_id:
+        broadcast_change("lot", "updated")
+    return qc
+
+
+@router.put("/{qc_id}", response_model=QualityCheckOut)
+def update_quality_check(qc_id: int, data: QualityCheckUpdate, db: Session = Depends(get_db), user=Depends(require_permission("quality_checks.update"))):
+    qc = _load_qc(db, qc_id)
+    updates = data.model_dump(exclude_unset=True)
+    old_result = qc.result
+    for k, v in updates.items():
+        setattr(qc, k, v)
+    if updates.get("result") in ("pass", "fail"):
+        qc.checked_at = datetime.now(timezone.utc)
+    if updates.get("result") == "fail" and qc.lot_id is not None:
+        _quarantine_lot(db, qc.lot)
+    db.commit()
+    qc = _load_qc(db, qc.id)
+    log_activity(db, user.id, user.username, "update", "quality_check", qc.id,
+                 f"Updated quality check '{qc.qc_number}' ({old_result} -> {qc.result})")
+    db.commit()
+    broadcast_change("quality_check", "updated")
+    if qc.result == "fail" and qc.lot_id:
+        broadcast_change("lot", "updated")
+    return qc
+
+
+@router.delete("/{qc_id}", status_code=204)
+def delete_quality_check(qc_id: int, db: Session = Depends(get_db), user=Depends(require_permission("quality_checks.delete"))):
+    qc = _load_qc(db, qc_id)
+    db.delete(qc)
+    db.commit()
+    log_activity(db, user.id, user.username, "delete", "quality_check", qc.id, f"Deleted quality check '{qc.qc_number}'")
+    db.commit()
+    broadcast_change("quality_check", "deleted")

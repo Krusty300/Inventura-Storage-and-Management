@@ -113,15 +113,35 @@ export default function CycleCounts() {
 function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [location_id, setLocationId] = useState("");
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState([{ product_id: "", expected_qty: "0" }]);
+  const [rows, setRows] = useState([{ product_id: "" }]);
   const [saving, setSaving] = useState(false);
+  const [expectedByProduct, setExpectedByProduct] = useState<Record<number, number>>({});
   const { addToast } = useToast();
-  const productList = useSelectableProducts();
+  const productList = useSelectableProducts().filter((p) => !p.is_serialized);
   const [locations, setLocations] = useState<Location[]>([]);
 
   useEffect(() => {
     api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
   }, []);
+
+  useEffect(() => {
+    if (!location_id) {
+      setExpectedByProduct({});
+      return;
+    }
+    api
+      .get(`/locations/${location_id}/detail`)
+      .then(({ data }) => {
+        const map: Record<number, number> = {};
+        for (const sl of data.stock_lines) {
+          map[sl.product_id] = (map[sl.product_id] || 0) + sl.quantity;
+        }
+        setExpectedByProduct(map);
+      })
+      .catch(() => setExpectedByProduct({}));
+  }, [location_id]);
+
+  const expectedQty = (productId: string) => (productId ? expectedByProduct[Number(productId)] ?? 0 : 0);
 
   const setRow = (idx: number, key: string, value: string) => {
     setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
@@ -129,10 +149,16 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const items = rows.filter((r) => r.product_id).map((r) => ({
-      product_id: Number(r.product_id),
-      expected_qty: parseInt(r.expected_qty) || 0,
-    }));
+    if (!location_id) {
+      addToast("Select a location", "error");
+      return;
+    }
+    const items = rows
+      .filter((r) => r.product_id)
+      .map((r) => ({
+        product_id: Number(r.product_id),
+        expected_qty: expectedQty(r.product_id),
+      }));
     if (items.length === 0) {
       addToast("Add at least one item", "error");
       return;
@@ -140,7 +166,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
     setSaving(true);
     try {
       const { data } = await api.post("/cycle-counts", {
-        location_id: location_id ? Number(location_id) : null,
+        location_id: Number(location_id),
         notes: notes.trim(),
         items,
       });
@@ -157,9 +183,9 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Location (optional)</label>
-            <select className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)}>
-              <option value="">All locations</option>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+            <select className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)} required>
+              <option value="">Select location...</option>
               {locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
             </select>
           </div>
@@ -172,7 +198,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         <div className="border border-gray-200 rounded-lg overflow-hidden">
           <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700">Items to Count</span>
-            <button type="button" onClick={() => setRows([...rows, { product_id: "", expected_qty: "0" }])} className="btn-secondary text-xs py-1 px-2">
+            <button type="button" onClick={() => setRows([...rows, { product_id: "" }])} className="btn-secondary text-xs py-1 px-2">
               <Plus size={14} className="inline mr-1" />Add Item
             </button>
           </div>
@@ -187,8 +213,8 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
                   </select>
                 </div>
                 <div className="col-span-3">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Expected Qty</label>
-                  <input type="number" min={0} className="input" value={row.expected_qty} onChange={(e) => setRow(idx, "expected_qty", e.target.value)} />
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Expected (system)</label>
+                  <input type="number" className="input bg-gray-100" value={expectedQty(row.product_id)} readOnly />
                 </div>
                 <div className="col-span-2">
                   <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove item">
@@ -199,10 +225,11 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
             ))}
           </div>
         </div>
+        <p className="text-xs text-gray-500">Expected quantity is read from system stock at the selected location. Count the actual on-hand and record only the counted quantity.</p>
 
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Creating..." : "Create Count"}</button>
+          <button type="submit" disabled={saving || !location_id} className="btn-primary">{saving ? "Creating..." : "Create Count"}</button>
         </div>
       </form>
     </Modal>

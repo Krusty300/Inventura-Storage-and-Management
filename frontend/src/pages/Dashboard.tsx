@@ -3,6 +3,14 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   AlertTriangle,
+  Package,
+  Factory,
+  PackagePlus,
+  Truck,
+  ShoppingCart,
+  ReceiptText,
+  ClipboardList,
+  ShieldCheck,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend } from "recharts";
 import api from "../api/client";
@@ -18,10 +26,12 @@ import type {
   OrderSummary,
   ProfitAnalysis,
   SalesSummary,
+  ManufacturingCostReport,
   PaginatedResponse,
 } from "../types";
 import { parseLocalDate } from "../utils/date";
 import { formatCurrency } from "../utils/currency";
+import { can } from "../utils/permissions";
 import { useSettings } from "../hooks/useSettings";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
@@ -43,6 +53,7 @@ export default function Dashboard() {
   const [orderSummary, setOrderSummary] = useState<OrderSummary | null>(null);
   const [profit, setProfit] = useState<ProfitAnalysis | null>(null);
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
+  const [costReport, setCostReport] = useState<ManufacturingCostReport | null>(null);
   const [trendDays, setTrendDays] = useState(30);
   const [topProductsDays, setTopProductsDays] = useState(30);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -73,7 +84,7 @@ export default function Dashboard() {
       setRefreshing(false);
       return;
     }
-    const [salesData, valData, excData, riskData, lpnData, recData, ordData, profData] = await Promise.all([
+    const [salesData, valData, excData, riskData, lpnData, recData, ordData, profData, costData] = await Promise.all([
       get<SalesStats>("/sales/stats"),
       get<InventoryValuation>("/reports/inventory-valuation"),
       get<ExceptionsReport>("/reports/exceptions"),
@@ -82,6 +93,7 @@ export default function Dashboard() {
       get<PaginatedResponse<Receipt>>("/receipts?limit=20"),
       get<OrderSummary>("/reports/order-summary"),
       get<ProfitAnalysis>("/reports/profit-analysis"),
+      get<ManufacturingCostReport>("/costing/report"),
     ]);
     setSalesStats(salesData);
     setValuation(valData);
@@ -91,6 +103,7 @@ export default function Dashboard() {
     setReceipts(recData);
     setOrderSummary(ordData);
     setProfit(profData);
+    setCostReport(costData);
     setRefreshing(false);
   }, [get, addToast]);
 
@@ -146,28 +159,40 @@ export default function Dashboard() {
 
   const pendingOrders = orderSummary?.by_status.find((s) => s.status === "pending")?.count ?? 0;
   const isWorker = user?.role !== "admin";
+  const greetingName = user?.username ? user.username.charAt(0).toUpperCase() + user.username.slice(1) : "There";
 
-  const opsCards = [
-    { label: "Low Stock Items", value: stats.low_stock_count, link: "/products?low_stock=1" },
-    { label: "Expiring Soon", value: stats.expiring_soon_count, link: "/products" },
-    { label: "Movements Today", value: stats.total_stock_movements_today, link: "/stock-movements" },
-    { label: "Pending Orders", value: pendingOrders, link: "/orders" },
-    { label: "Pending ASNs", value: exceptions?.summary?.pending_asns ?? 0, link: "/asns" },
-    { label: "Open Cycle Counts", value: exceptions?.summary?.open_cycle_counts ?? 0, link: "/cycle-counts" },
+  const quickActions = [
+    { label: "Record Receipt", permission: "receipts.create", path: "/receiving", icon: PackagePlus },
+    { label: "New ASN", permission: "asns.create", path: "/asns", icon: Truck },
+    { label: "New Order", permission: "orders.create", path: "/orders", icon: ShoppingCart },
+    { label: "New Sale", permission: "sales.create", path: "/sales", icon: ReceiptText },
+    { label: "Create Shipment", permission: "shipments.create", path: "/shipments", icon: Package },
+    { label: "Release Work Order", permission: "work_orders.release", path: "/work-orders", icon: Factory },
+    { label: "New Cycle Count", permission: "cycle_counts.create", path: "/cycle-counts", icon: ClipboardList },
+    { label: "New QC", permission: "quality_checks.create", path: "/quality-checks", icon: ShieldCheck },
   ];
 
-  const otherCards = [
-    { label: "Total Products", value: stats.total_products },
-    { label: "Categories", value: stats.total_categories },
-    { label: "Suppliers", value: stats.total_suppliers },
-    { label: "Orders", value: stats.total_orders, link: "/orders" },
+  const inventoryCards = [
+    { label: "Total Products", value: stats.total_products, link: "/products" },
     {
       label: "Inventory Value",
       value: formatCurrency(stats.total_inventory_value, currencySymbol, 0),
       link: "/reports",
     },
+    { label: "Low Stock Items", value: stats.low_stock_count, link: "/products?low_stock=1" },
+    { label: "Expiring Soon", value: stats.expiring_soon_count, link: "/products" },
+    { label: "Quarantined Units", value: stats.quarantined_units ?? 0, link: "/exceptions" },
+    { label: "Serial Numbers in Stock", value: stats.serial_numbers_in_stock ?? 0, link: "/serial-numbers" },
+    { label: "Movements Today", value: stats.total_stock_movements_today, link: "/stock-movements" },
     { label: "LPNs", value: lpns?.total ?? 0, link: "/lpns" },
     { label: "Receipts", value: receipts?.total ?? 0, link: "/receiving" },
+  ];
+
+  const fulfillmentCards = [
+    { label: "Open Shipments", value: stats.open_shipments ?? 0, link: "/shipments" },
+    { label: "Pending Orders", value: pendingOrders, link: "/orders" },
+    { label: "Pending ASNs", value: exceptions?.summary?.pending_asns ?? 0, link: "/asns" },
+    { label: "Open Cycle Counts", value: exceptions?.summary?.open_cycle_counts ?? 0, link: "/cycle-counts" },
     {
       label: "Total Revenue",
       value: formatCurrency(salesStats?.total_revenue || 0, currencySymbol, 0),
@@ -175,8 +200,23 @@ export default function Dashboard() {
     },
   ];
 
-  const cards = isWorker ? [...opsCards, ...otherCards] : [...otherCards, ...opsCards];
+  const manufacturingCards = [
+    { label: "Open Work Orders", value: stats.open_work_orders ?? 0, link: "/work-orders" },
+    { label: "Pending QC", value: stats.pending_quality_checks ?? 0, link: "/quality-checks" },
+  ];
 
+  const businessCards = [
+    { label: "Orders", value: stats.total_orders, link: "/orders" },
+    { label: "Categories", value: stats.total_categories },
+    { label: "Suppliers", value: stats.total_suppliers },
+  ];
+
+  const statSections = [
+    { title: "Inventory", cards: inventoryCards },
+    { title: "Fulfillment", cards: fulfillmentCards },
+    { title: "Manufacturing", cards: manufacturingCards },
+    { title: "Business", cards: businessCards },
+  ];
 
   const trendData = trends?.daily_trends?.slice(-14) || [];
   const riskSummary = stockoutRisk?.summary;
@@ -186,7 +226,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Inventura Storage - Dashboard</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-gray-600">
             <input
@@ -206,7 +246,23 @@ export default function Dashboard() {
         </div>
       </div>
 
-    
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {quickActions
+            .filter((a) => can(user?.role, a.permission))
+            .map((a) => (
+              <button
+                key={a.label}
+                onClick={() => navigate(a.path)}
+                className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors text-sm font-medium text-gray-700"
+              >
+                <a.icon size={18} className="text-indigo-600" />
+                {a.label}
+              </button>
+            ))}
+        </div>
+      </div>
 
       {riskSummary && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -231,18 +287,23 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map((card) => (
-          <div
-            key={card.label}
-            onClick={() => card.link && navigate(card.link)}
-            className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-          >
-            <p className="text-sm text-gray-500">{card.label}</p>
-            <p className="text-2xl font-bold mt-1">{card.value}</p>
+      {statSections.map((section) => (
+        <div key={section.title} className="space-y-3">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{section.title}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {section.cards.map((card) => (
+              <div
+                key={card.label}
+                onClick={() => card.link && navigate(card.link)}
+                className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+              >
+                <p className="text-sm text-gray-500">{card.label}</p>
+                <p className="text-2xl font-bold mt-1">{card.value}</p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card">
@@ -404,7 +465,11 @@ export default function Dashboard() {
                     <span className={`text-xs px-2 py-0.5 rounded-full ${c.status === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
                       {c.status}
                     </span>
-                    {c.total_variance > 0 && <span className="text-red-600 font-medium">{c.total_variance} variance</span>}
+                    {c.total_variance !== 0 && (
+                      <span className={`font-medium ${c.total_variance > 0 ? "text-red-600" : "text-orange-600"}`}>
+                        {c.total_variance > 0 ? "+" : ""}{c.total_variance} variance
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -569,6 +634,121 @@ export default function Dashboard() {
             </div>
           ) : (
             <p className="text-gray-500 text-sm py-16 text-center">No orders yet</p>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Shipments to Process</h2>
+            <button onClick={() => navigate("/shipments")} className="text-sm text-indigo-600 hover:underline">View all</button>
+          </div>
+          {stats.shipments_to_process.length > 0 ? (
+            <div className="space-y-3">
+              {stats.shipments_to_process.map((s) => (
+                <div key={s.id} className="flex items-center justify-between text-sm">
+                  <div>
+                    <span className="font-medium">{s.shipment_number}</span>
+                    {s.customer_name && <span className="text-gray-500 ml-2">{s.customer_name}</span>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-500">{s.total_picked}/{s.total_quantity} picked</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${s.status === "packed" ? "bg-emerald-100 text-emerald-700" : s.status === "picking" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
+                      {s.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm py-16 text-center">No shipments to process</p>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Open Work Orders</h2>
+            <button onClick={() => navigate("/work-orders")} className="text-sm text-indigo-600 hover:underline">View all</button>
+          </div>
+          {stats.work_orders_to_process.length > 0 ? (
+            <div className="space-y-3">
+              {stats.work_orders_to_process.map((w) => (
+                <div key={w.id} className="flex items-center justify-between text-sm">
+                  <div>
+                    <span className="font-medium">{w.wo_number}</span>
+                    <span className="text-gray-500 ml-2">{w.product_name}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-500">{w.quantity} units</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{w.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm py-16 text-center">No open work orders</p>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Pending Quality Checks</h2>
+            <button onClick={() => navigate("/quality-checks")} className="text-sm text-indigo-600 hover:underline">View all</button>
+          </div>
+          {stats.quality_checks_to_process.length > 0 ? (
+            <div className="space-y-3">
+              {stats.quality_checks_to_process.map((q) => (
+                <div key={q.id} className="flex items-center justify-between text-sm">
+                  <div>
+                    <span className="font-medium">{q.qc_number}</span>
+                    <span className="text-gray-500 ml-2">{q.product_name}</span>
+                  </div>
+                  <span className="text-amber-600 font-medium">{q.result}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm py-16 text-center">No pending quality checks</p>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Manufacturing Cost</h2>
+            <button onClick={() => navigate("/reports")} className="text-sm text-indigo-600 hover:underline">View all</button>
+          </div>
+          {costReport ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Material Cost</p>
+                  <p className="text-lg font-bold">{formatCurrency(costReport.total_material_cost, currencySymbol, 0)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Standard Cost</p>
+                  <p className="text-lg font-bold">{formatCurrency(costReport.total_standard_cost, currencySymbol, 0)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Variance</p>
+                  <p className={`text-lg font-bold ${costReport.total_variance > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    {formatCurrency(costReport.total_variance, currencySymbol, 0)}
+                  </p>
+                </div>
+              </div>
+              {costReport.items.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-gray-500">Latest Completed Orders</p>
+                  {costReport.items.slice(0, 3).map((row) => (
+                    <div key={row.wo_id} className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{row.wo_number}</span>
+                      <span className="text-gray-500 ml-2">{row.product_name}</span>
+                      <span className="text-gray-600 ml-auto">{formatCurrency(row.material_cost, currencySymbol)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm py-16 text-center">No costing data</p>
           )}
         </div>
       </div>

@@ -12,7 +12,7 @@ from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/locations", tags=["locations"], dependencies=[Depends(get_current_user)])
 
-LOCATION_TYPES = {"bin", "zone", "aisle", "shelf", "storage", "receiving"}
+LOCATION_TYPES = {"bin", "zone", "aisle", "shelf", "storage", "receiving", "wip", "quarantine"}
 
 
 def _validate_type(location_type: str):

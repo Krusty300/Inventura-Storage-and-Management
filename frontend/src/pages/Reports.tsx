@@ -3,16 +3,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, Legend,
 } from "recharts";
-import {
-  DollarSign, Package, TrendingUp, ShoppingCart,
-  ArrowUpRight, ArrowDownRight, Receipt
-} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import type {
   InventoryValuation, StockMovementTrends, CategoryBreakdownItem,
   ProfitAnalysis, OrderSummary, SalesSummary, InventoryAging, StockoutRisk,
-  TopCustomersReport, TopSuppliersReport,
+  TopCustomersReport, TopSuppliersReport, ManufacturingCostReport,
 } from "../types";
 import { useToast } from "../context/ToastContext";
 import { formatCurrency } from "../utils/currency";
@@ -31,6 +27,7 @@ const tabs = [
   { key: "stockout", label: "Stockout Risk" },
   { key: "customers", label: "Top Customers" },
   { key: "suppliers", label: "Top Suppliers" },
+  { key: "manufacturing-cost", label: "Manufacturing Cost" },
 ] as const;
 
 type Tab = (typeof tabs)[number]["key"];
@@ -129,6 +126,11 @@ export default function Reports() {
       if (topDays !== "all") params.days = String(topDays);
       return (await api.get("/reports/top-suppliers", { params })).data;
     },
+  });
+
+  const { data: mfgCost, isLoading: mfgCostLoading, isError: mfgCostError } = useQuery<ManufacturingCostReport>({
+    queryKey: ["costing", "report"],
+    queryFn: async () => (await api.get("/costing/report")).data,
   });
 
   const exportCsv = async (path: string, filename: string) => {
@@ -230,6 +232,59 @@ export default function Reports() {
       {activeTab === "suppliers" && (topSuppliers
         ? <SuppliersTab data={topSuppliers} symbol={currencySymbol} days={topDays} onDaysChange={setTopDays} />
         : <TabState isLoading={topSuppliersLoading} isError={topSuppliersError} />)}
+      {activeTab === "manufacturing-cost" && (mfgCost
+        ? <ManufacturingCostTab data={mfgCost} symbol={currencySymbol} />
+        : <TabState isLoading={mfgCostLoading} isError={mfgCostError} />)}
+    </div>
+  );
+}
+
+function ManufacturingCostTab({ data, symbol }: { data: ManufacturingCostReport; symbol: string }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="card"><p className="text-sm text-gray-500">Completed Orders</p><p className="text-2xl font-bold mt-1">{data.completed_orders}</p></div>
+        <div className="card"><p className="text-sm text-gray-500">Total Material Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_material_cost, symbol, 0)}</p></div>
+        <div className="card"><p className="text-sm text-gray-500">Standard Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_standard_cost, symbol, 0)}</p></div>
+        <div className="card">
+          <p className="text-sm text-gray-500">Cost Variance</p>
+          <p className={`text-2xl font-bold mt-1 ${data.total_variance >= 0 ? "text-green-600" : "text-red-600"}`}>{data.total_variance >= 0 ? "+" : ""}{formatCurrency(data.total_variance, symbol, 0)}</p>
+        </div>
+      </div>
+      <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left">
+                <th className="px-4 py-3 font-medium text-gray-600">WO #</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Product</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Qty</th>
+                <th className="px-4 py-3 font-medium text-gray-600">Completed</th>
+                <th className="px-4 py-3 font-medium text-gray-600 text-right">Material Cost</th>
+                <th className="px-4 py-3 font-medium text-gray-600 text-right">Std / Unit</th>
+                <th className="px-4 py-3 font-medium text-gray-600 text-right">Actual / Unit</th>
+                <th className="px-4 py-3 font-medium text-gray-600 text-right">Variance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.items.length === 0 ? (
+                <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">No completed work orders</td></tr>
+              ) : data.items.map((row) => (
+                <tr key={row.wo_id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium">{row.wo_number}</td>
+                  <td className="px-4 py-3 text-gray-500">{row.product_name}</td>
+                  <td className="px-4 py-3">{row.quantity}</td>
+                  <td className="px-4 py-3 text-gray-500">{row.completed_at ? new Date(row.completed_at).toLocaleDateString() : "—"}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(row.material_cost, symbol)}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(row.standard_unit_cost, symbol)}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(row.actual_unit_cost, symbol)}</td>
+                  <td className={`px-4 py-3 text-right font-medium ${row.variance >= 0 ? "text-green-600" : "text-red-600"}`}>{row.variance >= 0 ? "+" : ""}{formatCurrency(row.variance, symbol)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -361,9 +416,9 @@ function StockoutTab({ data, leadTime, onLeadTimeChange }: { data: StockoutRisk;
 
 function ValuationTab({ data, symbol }: { data: InventoryValuation; symbol: string }) {
   const cards = [
-    { label: "Inventory Value (Cost)", value: formatCurrency(data.total_inventory_value, symbol, 0), icon: DollarSign, color: "bg-indigo-500" },
-    { label: "Retail Value", value: formatCurrency(data.total_retail_value, symbol, 0), icon: Package, color: "bg-emerald-500" },
-    { label: "Potential Profit", value: formatCurrency(data.potential_profit, symbol, 0), icon: TrendingUp, color: "bg-green-500" },
+    { label: "Inventory Value (Cost)", value: formatCurrency(data.total_inventory_value, symbol, 0), },
+    { label: "Retail Value", value: formatCurrency(data.total_retail_value, symbol, 0) },
+    { label: "Potential Profit", value: formatCurrency(data.potential_profit, symbol, 0) },
   ];
 
   return (
@@ -375,9 +430,6 @@ function ValuationTab({ data, symbol }: { data: InventoryValuation; symbol: stri
               <div>
                 <p className="text-sm text-gray-500">{c.label}</p>
                 <p className="text-2xl font-bold mt-1">{c.value}</p>
-              </div>
-              <div className={`${c.color} p-3 rounded-lg`}>
-                <c.icon className="text-white" size={24} />
               </div>
             </div>
           </div>
@@ -428,19 +480,16 @@ function MovementsTab({ data, hasRange }: { data: StockMovementTrends; hasRange?
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card">
           <div className="flex items-center gap-3">
-            <div className="bg-green-500 p-3 rounded-lg"><ArrowUpRight className="text-white" size={24} /></div>
             <div><p className="text-sm text-gray-500">Stock In ({label})</p><p className="text-2xl font-bold mt-1">{data.total_in.toLocaleString()}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div className="bg-red-500 p-3 rounded-lg"><ArrowDownRight className="text-white" size={24} /></div>
             <div><p className="text-sm text-gray-500">Stock Out ({label})</p><p className="text-2xl font-bold mt-1">{data.total_out.toLocaleString()}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-lg ${data.net_movement >= 0 ? "bg-emerald-500" : "bg-orange-500"}`}><Package className="text-white" size={24} /></div>
             <div><p className="text-sm text-gray-500">Net Movement</p><p className={`text-2xl font-bold mt-1 ${data.net_movement >= 0 ? "text-emerald-600" : "text-orange-600"}`}>{data.net_movement >= 0 ? "+" : ""}{data.net_movement.toLocaleString()}</p></div>
           </div>
         </div>
@@ -523,19 +572,16 @@ function ProfitTab({ data, symbol }: { data: ProfitAnalysis; symbol: string }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card">
           <div className="flex items-center gap-3">
-            <div className="bg-red-500 p-3 rounded-lg"><DollarSign className="text-white" size={24} /></div>
             <div><p className="text-sm text-gray-500">Total Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_cost_value, symbol, 0)}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div className="bg-emerald-500 p-3 rounded-lg"><TrendingUp className="text-white" size={24} /></div>
             <div><p className="text-sm text-gray-500">Potential Revenue</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_potential_revenue, symbol, 0)}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div className="bg-green-500 p-3 rounded-lg"><Package className="text-white" size={24} /></div>
             <div><p className="text-sm text-gray-500">Potential Profit</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_potential_profit, symbol, 0)}</p></div>
           </div>
         </div>
@@ -582,10 +628,10 @@ function ProfitTab({ data, symbol }: { data: ProfitAnalysis; symbol: string }) {
 
 function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
   const cards = [
-    { label: "Completed Sales", value: data.total_sales.toString(), icon: ShoppingCart, color: "bg-indigo-500" },
-    { label: "Total Revenue", value: formatCurrency(data.total_revenue, symbol, 2), icon: DollarSign, color: "bg-emerald-500" },
-    { label: "Tax Collected", value: formatCurrency(data.total_tax, symbol, 2), icon: TrendingUp, color: "bg-amber-500" },
-    { label: "Refunds", value: data.total_refunds.toString(), icon: Receipt, color: "bg-red-500" },
+    { label: "Completed Sales", value: data.total_sales.toString(), },
+    { label: "Total Revenue", value: formatCurrency(data.total_revenue, symbol, 2), },
+    { label: "Tax Collected", value: formatCurrency(data.total_tax, symbol, 2),  },
+    { label: "Refunds", value: data.total_refunds.toString(), },
   ];
 
   return (
@@ -597,9 +643,6 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
               <div>
                 <p className="text-sm text-gray-500">{c.label}</p>
                 <p className="text-2xl font-bold mt-1">{c.value}</p>
-              </div>
-              <div className={`${c.color} p-3 rounded-lg`}>
-                <c.icon className="text-white" size={24} />
               </div>
             </div>
           </div>
@@ -659,13 +702,11 @@ function OrdersTab({ data, symbol }: { data: OrderSummary; symbol: string }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card">
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-500 p-3 rounded-lg"><ShoppingCart className="text-white" size={24} /></div>
             <div><p className="text-sm text-gray-500">Total Orders</p><p className="text-2xl font-bold mt-1">{data.total_orders}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div className="bg-emerald-500 p-3 rounded-lg"><DollarSign className="text-white" size={24} /></div>
             <div><p className="text-sm text-gray-500">Total Value</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_order_value, symbol, 0)}</p></div>
           </div>
         </div>

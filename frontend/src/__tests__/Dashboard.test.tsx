@@ -20,11 +20,19 @@ const stats = {
   expiring_soon_count: 2,
   total_inventory_value: 2500,
   total_stock_movements_today: 7,
+  open_shipments: 2,
+  open_work_orders: 1,
+  pending_quality_checks: 3,
+  quarantined_units: 4,
+  serial_numbers_in_stock: 5,
   recent_movements: [
     { id: 1, product_name: "Widget", quantity_change: -2, movement_type: "out", created_at: "2026-01-01T10:00:00" },
   ],
   low_stock_products: [{ id: 1, name: "Gadget", sku: "SKU-1", quantity: 2, reorder_level: 10 }],
   expiring_products: [],
+  shipments_to_process: [],
+  work_orders_to_process: [],
+  quality_checks_to_process: [],
 };
 
 const emptyTrends = { total_in: 0, total_out: 0, net_movement: 0, daily_trends: [] };
@@ -38,6 +46,7 @@ const emptyPage = { items: [], total: 0, page: 1, pages: 1 };
 const emptyOrderSummary = { total_orders: 0, total_order_value: 0, by_status: [], top_suppliers: [] };
 const emptyProfit = { total_cost_value: 0, total_potential_revenue: 0, total_potential_profit: 0, product_count: 0, products: [] };
 const emptySalesSummary = { total_sales: 0, total_refunds: 0, total_revenue: 0, total_tax: 0, by_payment_method: [], top_products: [] };
+const emptyCostReport = { items: [], total_material_cost: 0, total_standard_cost: 0, total_variance: 0, completed_orders: 0 };
 
 function mockDashboard(overrides: { stats?: Record<string, unknown>; exceptions?: Record<string, unknown>; lpns?: Record<string, unknown>; receipts?: Record<string, unknown>; salesSummary?: Record<string, unknown> } = {}) {
   const statsData = overrides.stats ? { ...stats, ...overrides.stats } : stats;
@@ -58,6 +67,7 @@ function mockDashboard(overrides: { stats?: Record<string, unknown>; exceptions?
     if (url === "/reports/order-summary") return Promise.resolve({ data: emptyOrderSummary });
     if (url === "/reports/category-breakdown") return Promise.resolve({ data: [] });
     if (url === "/reports/profit-analysis") return Promise.resolve({ data: emptyProfit });
+    if (url === "/costing/report") return Promise.resolve({ data: emptyCostReport });
     if (url.startsWith("/reports/sales-summary")) return Promise.resolve({ data: salesSummaryData });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
@@ -114,6 +124,22 @@ describe("Dashboard Page", () => {
     expect(await screen.findByText("No recent movements")).toBeInTheDocument();
     expect(screen.getByText("All products are well-stocked")).toBeInTheDocument();
     expect(screen.getByText("No sales recorded yet")).toBeInTheDocument();
+  });
+
+  it("renders fulfillment, manufacturing and quality panels from dashboard stats", async () => {
+    mockDashboard({
+      stats: {
+        shipments_to_process: [{ id: 1, shipment_number: "SHP-200", customer_name: "Acme", status: "packed", total_quantity: 10, total_picked: 10, total_amount: 150, created_at: "2026-01-01T00:00:00" }],
+        work_orders_to_process: [{ id: 1, wo_number: "WO-300", product_name: "Gadget", status: "released", quantity: 5, created_at: "2026-01-01T00:00:00" }],
+        quality_checks_to_process: [{ id: 1, qc_number: "QC-400", product_name: "Gadget", result: "pending", created_at: "2026-01-01T00:00:00" }],
+      },
+    });
+    renderWithProviders(<Dashboard />);
+    expect(await screen.findByText("Shipments to Process")).toBeInTheDocument();
+    expect(screen.getByText("SHP-200")).toBeInTheDocument();
+    expect(screen.getByText("WO-300")).toBeInTheDocument();
+    expect(screen.getByText("QC-400")).toBeInTheDocument();
+    expect(screen.getByText("Manufacturing Cost")).toBeInTheDocument();
   });
 
   it("shows all quick actions for admin", async () => {

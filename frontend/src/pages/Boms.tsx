@@ -1,0 +1,302 @@
+import { useState } from "react";
+import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import api from "../api/client";
+import type { BOM, PaginatedResponse, ProductCost } from "../types";
+import Modal from "../components/Modal";
+import Pagination from "../components/Pagination";
+import Skeleton from "../components/Skeleton";
+import EmptyState from "../components/EmptyState";
+import { useSelectableProducts } from "../hooks/useSelectableProducts";
+import { productLabel } from "../utils/variants";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+
+const PAGE_SIZE = 25;
+
+export default function Boms() {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<BOM | null>(null);
+  const [viewing, setViewing] = useState<BOM | null>(null);
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["boms", page, pageSize],
+    queryFn: async () => {
+      const { data } = await api.get("/boms", { params: { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() } });
+      return data as PaginatedResponse<BOM>;
+    },
+  });
+
+  const boms = data?.items || [];
+
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["boms"] });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Bills of Materials</h1>
+        {can("bom.create") && (
+          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
+            New BOM
+          </button>
+        )}
+      </div>
+
+      <div className="card overflow-hidden p-0">
+        <table className="w-full text-sm" role="grid" aria-label="BOMs table">
+          <thead>
+            <tr className="bg-gray-50 text-left">
+              <th className="px-4 py-3 font-medium text-gray-600">BOM</th>
+              <th className="px-4 py-3 font-medium text-gray-600">Output Product</th>
+              <th className="px-4 py-3 font-medium text-gray-600">Components</th>
+              <th className="px-4 py-3 font-medium text-gray-600">Total Cost</th>
+              <th className="px-4 py-3 font-medium text-gray-600">Status</th>
+              <th className="px-4 py-3 font-medium text-gray-600">Updated</th>
+              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {isLoading ? (
+              <Skeleton rows={5} cols={7} />
+            ) : boms.length === 0 ? (
+              <EmptyState title="No BOMs yet" message="Create a bill of materials to define how a product is manufactured." actionLabel="New BOM" onAction={() => { setEditing(null); setShowForm(true); }} />
+            ) : boms.map((b) => (
+              <tr key={b.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3 font-medium">{b.name || b.product_name}</td>
+                <td className="px-4 py-3 text-gray-500">{b.product_name}</td>
+                <td className="px-4 py-3">{b.item_count}</td>
+                <td className="px-4 py-3">{b.total_cost.toFixed(2)}</td>
+                <td className="px-4 py-3"><span className={`badge ${b.is_active ? "badge-success" : "badge-danger"}`}>{b.is_active ? "Active" : "Inactive"}</span></td>
+                <td className="px-4 py-3 text-gray-500">{new Date(b.updated_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-2">
+                    <button onClick={() => setViewing(b)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${b.name}`}><Eye size={16} /></button>
+                    {can("bom.update") && (
+                      <button onClick={() => { setEditing(b); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit ${b.name}`}><Pencil size={16} /></button>
+                    )}
+                    {can("bom.delete") && (
+                      <button onClick={() => deleteBom(b)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Delete ${b.name}`}><Trash2 size={16} /></button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
+
+      {showForm && (
+        <BomForm
+          bom={editing}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); setEditing(null); refresh(); }}
+        />
+      )}
+
+      {viewing && <BomDetail bom={viewing} onClose={() => setViewing(null)} />}
+    </div>
+  );
+
+  async function deleteBom(b: BOM) {
+    if (!confirm(`Delete BOM for '${b.product_name}'?`)) return;
+    try {
+      await api.delete(`/boms/${b.id}`);
+      refresh();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Error deleting BOM");
+    }
+  }
+}
+
+function useManufacturableProducts() {
+  const all = useSelectableProducts();
+  return all.filter((p) => !p.is_variant && !(p.variants && p.variants.length > 0));
+}
+
+function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => void; onSaved: () => void }) {
+  const products = useManufacturableProducts();
+  const [productId, setProductId] = useState(bom ? String(bom.product_id) : "");
+  const [name, setName] = useState(bom?.name ?? "");
+  const [description, setDescription] = useState(bom?.description ?? "");
+  const [isActive, setIsActive] = useState(bom?.is_active ?? true);
+  const [rows, setRows] = useState(
+    bom?.items.map((i) => ({ product_id: String(i.product_id), quantity: String(i.quantity) })) || [{ product_id: "", quantity: "1" }]
+  );
+  const [saving, setSaving] = useState(false);
+  const { addToast } = useToast();
+
+  const setRow = (idx: number, key: string, value: string) => {
+    setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productId) {
+      addToast("Select an output product", "error");
+      return;
+    }
+    const items = rows
+      .filter((r) => r.product_id)
+      .map((r) => ({ product_id: Number(r.product_id), quantity: parseInt(r.quantity) || 1 }));
+    if (items.length === 0) {
+      addToast("Add at least one component", "error");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = { product_id: Number(productId), name: name.trim(), description: description.trim(), is_active: isActive, items };
+      if (bom) {
+        await api.put(`/boms/${bom.id}`, payload);
+        addToast("BOM updated", "success");
+      } else {
+        const { data } = await api.post("/boms", payload);
+        addToast(`BOM for '${data.product_name}' created`, "success");
+      }
+      onSaved();
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Error saving BOM", "error");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={bom ? "Edit BOM" : "New BOM"} wide>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Output Product</label>
+            <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!bom} required>
+              <option value="">Select product...</option>
+              {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">BOM Name</label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Defaults to product name" />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </div>
+
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Components</span>
+            <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="btn-secondary text-xs py-1 px-2">
+              <Plus size={14} className="inline mr-1" />Add Component
+            </button>
+          </div>
+          <div className="divide-y divide-gray-100 max-h-[40vh] overflow-auto">
+            {rows.map((row, idx) => (
+              <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
+                <div className="col-span-8">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
+                  <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
+                    <option value="">Select...</option>
+                    {products.filter((p) => p.id !== Number(productId)).map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
+                  <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
+                </div>
+                <div className="col-span-2">
+                  <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove component">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-gray-500">Cycle checks are enforced server-side; each component may appear only once.</p>
+
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" className="rounded" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+          Active
+        </label>
+
+        <div className="flex justify-end gap-3 pt-4">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" disabled={saving || !productId} className="btn-primary">{saving ? "Saving..." : "Save BOM"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
+  const { data: cost } = useQuery({
+    queryKey: ["product-cost", bom.product_id],
+    queryFn: async () => {
+      const { data } = await api.get(`/costing/products/${bom.product_id}`);
+      return data as ProductCost;
+    },
+  });
+  const rolledUp = cost?.unit_cost;
+  const componentCost = (productId: number) => cost?.items.find((c) => c.product_id === productId)?.component_unit_cost;
+  return (
+    <Modal open onClose={onClose} title={bom.name || bom.product_name} wide>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-gray-500">Output Product</p>
+            <p className="font-medium">{bom.product_name}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Rolled-Up Unit Cost {rolledUp !== undefined && rolledUp !== bom.total_cost && (
+              <span className="text-gray-400 font-normal">(direct: {bom.total_cost.toFixed(2)})</span>
+            )}</p>
+            <p className="font-medium">{rolledUp !== undefined ? rolledUp.toFixed(2) : bom.total_cost.toFixed(2)}</p>
+          </div>
+          {bom.description && (
+            <div className="col-span-2">
+              <p className="text-gray-500">Description</p>
+              <p className="font-medium">{bom.description}</p>
+            </div>
+          )}
+        </div>
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left">
+                <th className="px-4 py-2 font-medium text-gray-600">Component</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Qty</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Unit Cost</th>
+                <th className="px-4 py-2 font-medium text-gray-600">Line Cost</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {bom.items.map((item) => {
+                const rolled = componentCost(item.product_id);
+                const unit = rolled !== undefined ? rolled : item.unit_cost;
+                return (
+                  <tr key={item.id}>
+                    <td className="px-4 py-2 font-medium">{item.product_name}</td>
+                    <td className="px-4 py-2">{item.quantity}</td>
+                    <td className="px-4 py-2">
+                      {unit.toFixed(2)}
+                      {rolled !== undefined && rolled !== item.unit_cost && <span className="text-gray-400 text-xs"> (direct {item.unit_cost.toFixed(2)})</span>}
+                    </td>
+                    <td className="px-4 py-2">{(item.quantity * unit).toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex justify-end pt-2">
+          <button onClick={onClose} className="btn-secondary">Close</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

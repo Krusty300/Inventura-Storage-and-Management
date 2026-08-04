@@ -43,6 +43,7 @@ class Product(Base):
     serial_numbers = relationship("SerialNumber", back_populates="product")
     variant_of = relationship("Product", remote_side=[id], back_populates="variants")
     variants = relationship("Product", back_populates="variant_of", cascade="all", order_by="Product.id")
+    boms = relationship("BOM", back_populates="product")
 
     @property
     def category_name(self) -> str:

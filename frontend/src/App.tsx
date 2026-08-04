@@ -27,6 +27,11 @@ const Receipts = lazy(() => import("./pages/Receipts"));
 const ASNs = lazy(() => import("./pages/ASNs"));
 const LPNs = lazy(() => import("./pages/LPNs"));
 const CycleCounts = lazy(() => import("./pages/CycleCounts"));
+const Boms = lazy(() => import("./pages/Boms"));
+const WorkOrders = lazy(() => import("./pages/WorkOrders"));
+const QualityChecks = lazy(() => import("./pages/QualityChecks"));
+const Planning = lazy(() => import("./pages/Planning"));
+const Shipments = lazy(() => import("./pages/Shipments"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 
 const queryClient = new QueryClient();
@@ -64,6 +69,11 @@ function AppRoutes() {
           <Route path="/asns" element={<ASNs />} />
           <Route path="/lpns" element={<LPNs />} />
           <Route path="/cycle-counts" element={<CycleCounts />} />
+          <Route path="/boms" element={<Boms />} />
+          <Route path="/work-orders" element={<WorkOrders />} />
+          <Route path="/planning" element={<Planning />} />
+          <Route path="/shipments" element={<Shipments />} />
+          <Route path="/quality-checks" element={<QualityChecks />} />
           <Route path="/exceptions" element={<Exceptions />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/sales" element={<Sales />} />

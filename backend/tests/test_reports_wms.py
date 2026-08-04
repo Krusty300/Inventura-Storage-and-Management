@@ -118,11 +118,13 @@ def test_stockout_risk(auth_headers):
 
 def test_exceptions_open_cycle_count_with_variance(auth_headers):
     prod = _make_product(auth_headers, "EX-CC")
+    loc = client.post("/api/locations", json={"name": "Ex Loc", "code": "EX-01"}, headers=auth_headers).json()
     assert client.post("/api/receipts", json={
-        "items": [{"product_id": prod["id"], "quantity": 10}],
+        "items": [{"product_id": prod["id"], "quantity": 10, "location_id": loc["id"]}],
     }, headers=auth_headers).status_code == 201
     cc = client.post("/api/cycle-counts", json={
-        "items": [{"product_id": prod["id"], "expected_qty": 10}],
+        "location_id": loc["id"],
+        "items": [{"product_id": prod["id"]}],
     }, headers=auth_headers).json()
 
     # Simulate a counted-but-unsubmitted variance on the open count
@@ -158,17 +160,34 @@ def test_pallet_label_pdf(auth_headers):
     assert resp.content[:4] == b"%PDF"
 
 
+def test_pending_count_without_variance_appears_in_open_counts(auth_headers):
+    """Open Cycle Counts must list scheduled (pending) counts even before any variance exists."""
+    prod = _make_product(auth_headers, "EX-PEND")
+    loc = client.post("/api/locations", json={"name": "Ex Loc P", "code": "EX-P"}, headers=auth_headers).json()
+    cc = client.post("/api/cycle-counts", json={
+        "location_id": loc["id"],
+        "items": [{"product_id": prod["id"]}],
+    }, headers=auth_headers).json()
+    assert cc["status"] == "pending"
+
+    data = client.get("/api/reports/exceptions", headers=auth_headers).json()
+    assert any(c["id"] == cc["id"] and c["total_variance"] == 0 for c in data["open_cycle_counts"])
+    assert data["summary"]["open_cycle_counts"] >= 1
+
+
 def test_partial_submit_flags_open_count_in_exceptions(auth_headers):
     p1 = _make_product(auth_headers, "EX-PARTIAL")
     p2 = _make_product(auth_headers, "EX-PARTIAL2")
+    loc = client.post("/api/locations", json={"name": "Ex Loc 2", "code": "EX-02"}, headers=auth_headers).json()
     for p in (p1, p2):
         assert client.post("/api/receipts", json={
-            "items": [{"product_id": p["id"], "quantity": 10}],
+            "items": [{"product_id": p["id"], "quantity": 10, "location_id": loc["id"]}],
         }, headers=auth_headers).status_code == 201
     cc = client.post("/api/cycle-counts", json={
+        "location_id": loc["id"],
         "items": [
-            {"product_id": p1["id"], "expected_qty": 10},
-            {"product_id": p2["id"], "expected_qty": 10},
+            {"product_id": p1["id"]},
+            {"product_id": p2["id"]},
         ],
     }, headers=auth_headers).json()
 

@@ -15,9 +15,14 @@ interface Props {
 
 export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [receiving, setReceiving] = useState(false);
+  const [serials, setSerials] = useState<Record<number, string>>({});
   const { addToast } = useToast();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+
+  const serializedItems = order.items.filter((i) => i.is_serialized);
+  const needsSerials = serializedItems.length > 0;
 
   const printPdf = () => {
     api.get(`/orders/${order.id}/pdf`, { responseType: "blob" }).then(({ data }) => {
@@ -33,8 +38,37 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
       await api.put(`/orders/${order.id}`, { status });
       addToast(`Order ${status === "received" ? "marked as received" : "cancelled"}`, "success");
       onUpdated();
-    } catch {
-      addToast("Failed to update order", "error");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to update order", "error");
+    }
+  };
+
+  const handleReceive = async () => {
+    setReceiving(false);
+    if (!needsSerials) {
+      await updateStatus("received");
+      return;
+    }
+    const payload: Record<number, string[]> = {};
+    let missing = false;
+    for (const item of serializedItems) {
+      const list = (serials[item.product_id] || "")
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (list.length !== item.quantity) missing = true;
+      payload[item.product_id] = list;
+    }
+    if (missing) {
+      addToast(`Enter exactly the ordered quantity of serial numbers for each serialized item`, "error");
+      return;
+    }
+    try {
+      await api.put(`/orders/${order.id}`, { status: "received", serial_numbers: payload });
+      addToast("Order marked as received", "success");
+      onUpdated();
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to receive order", "error");
     }
   };
 
@@ -78,7 +112,10 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
             <tbody className="divide-y divide-gray-100">
               {order.items.map((item) => (
                 <tr key={item.id}>
-                  <td className="px-3 py-2">{item.product_name}</td>
+                  <td className="px-3 py-2">
+                    {item.product_name}
+                    {item.is_serialized && <span className="ml-2 badge-info">serialized</span>}
+                  </td>
                   <td className="px-3 py-2 text-right">{item.quantity}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(item.unit_price, currencySymbol)}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(item.quantity * item.unit_price, currencySymbol)}</td>
@@ -101,13 +138,38 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
           </div>
         )}
 
+        {receiving && (
+          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+            <p className="text-sm font-medium text-gray-800">Enter serial numbers to receive</p>
+            {serializedItems.map((item) => (
+              <div key={item.id}>
+                <label className="block text-sm text-gray-600 mb-1">
+                  {item.product_name} — enter {item.quantity} serial number(s), one per line
+                </label>
+                <textarea
+                  className="input font-mono text-xs"
+                  rows={3}
+                  value={serials[item.product_id] || ""}
+                  onChange={(e) => setSerials({ ...serials, [item.product_id]: e.target.value })}
+                  placeholder={"SN-001\nSN-002"}
+                  aria-label={`Serial numbers for ${item.product_name}`}
+                />
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <button onClick={handleReceive} className="btn-primary text-sm px-3 py-1.5">Receive Order</button>
+              <button onClick={() => setReceiving(false)} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <button onClick={printPdf} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
             <Printer size={16} /> Print PDF
           </button>
-          {order.status === "pending" && !confirming && (
+          {order.status === "pending" && !confirming && !receiving && (
             <>
-              <button onClick={() => setConfirming("received")} className="btn-primary flex-1">Mark Received</button>
+              <button onClick={() => (needsSerials ? setReceiving(true) : setConfirming("received"))} className="btn-primary flex-1">Mark Received</button>
               <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1">Cancel Order</button>
             </>
           )}

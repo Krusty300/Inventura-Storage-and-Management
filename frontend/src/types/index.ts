@@ -127,6 +127,35 @@ export interface OrderItem {
   quantity: number;
   unit_price: number;
   product_name: string;
+  is_serialized: boolean;
+}
+
+export interface DashboardShipmentRow {
+  id: number;
+  shipment_number: string;
+  customer_name: string;
+  status: string;
+  total_quantity: number;
+  total_picked: number;
+  total_amount: number;
+  created_at: string;
+}
+
+export interface DashboardWorkOrderRow {
+  id: number;
+  wo_number: string;
+  product_name: string;
+  status: string;
+  quantity: number;
+  created_at: string;
+}
+
+export interface DashboardQualityCheckRow {
+  id: number;
+  qc_number: string;
+  product_name: string;
+  result: string;
+  created_at: string;
 }
 
 export interface DashboardStats {
@@ -138,6 +167,11 @@ export interface DashboardStats {
   expiring_soon_count: number;
   total_inventory_value: number;
   total_stock_movements_today: number;
+  open_shipments: number;
+  open_work_orders: number;
+  pending_quality_checks: number;
+  quarantined_units: number;
+  serial_numbers_in_stock: number;
   recent_movements: {
     id: number;
     product_name: string;
@@ -159,6 +193,9 @@ export interface DashboardStats {
     expiry_date: string;
     batch_number: string;
   }[];
+  shipments_to_process: DashboardShipmentRow[];
+  work_orders_to_process: DashboardWorkOrderRow[];
+  quality_checks_to_process: DashboardQualityCheckRow[];
 }
 
 export interface InventoryValuation {
@@ -542,4 +579,271 @@ export interface StockoutRiskItem {
 export interface StockoutRisk {
   items: StockoutRiskItem[];
   summary: { high: number; medium: number; low: number };
+}
+
+export interface BOMItem {
+  id: number;
+  bom_id: number;
+  product_id: number;
+  quantity: number;
+  position: number;
+  product_name: string;
+  unit_cost: number;
+}
+
+export interface BOM {
+  id: number;
+  product_id: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  product_name: string;
+  item_count: number;
+  total_cost: number;
+  items: BOMItem[];
+}
+
+export interface WorkOrderItem {
+  id: number;
+  work_order_id: number;
+  product_id: number;
+  quantity_required: number;
+  quantity_issued: number;
+  product_name: string;
+}
+
+export interface WorkOrder {
+  id: number;
+  wo_number: string;
+  product_id: number;
+  quantity: number;
+  bom_id: number | null;
+  wip_location_id: number | null;
+  status: string;
+  priority: string;
+  notes: string;
+  created_by: number;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  product_name: string;
+  username: string;
+  bom_name: string;
+  is_serialized: boolean;
+  total_required: number;
+  total_issued: number;
+  fully_issued: boolean;
+  items: WorkOrderItem[];
+}
+
+export interface QualityCheck {
+  id: number;
+  qc_number: string;
+  product_id: number;
+  lot_id: number | null;
+  work_order_id: number | null;
+  batch_number: string;
+  result: string;
+  notes: string;
+  checked_by: number;
+  checked_at: string | null;
+  created_at: string;
+  product_name: string;
+  lot_number: string;
+  wo_number: string;
+  checker_username: string;
+}
+
+export interface ProductTraceMovement {
+  id: number;
+  created_at: string;
+  movement_type: string;
+  quantity_change: number;
+  reference_type: string | null;
+  reference: string;
+  notes: string;
+  lot_number: string;
+  username: string;
+  from_location_name: string;
+  to_location_name: string;
+}
+
+export interface ProductTraceWorkOrder {
+  wo_number: string;
+  role: string;
+  status: string;
+  quantity: number;
+  created_at: string;
+}
+
+export interface ProductTrace {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  incoming: ProductTraceMovement[];
+  outgoing: ProductTraceMovement[];
+  work_orders: ProductTraceWorkOrder[];
+}
+
+export interface LotGenealogyEntry {
+  lot_id: number;
+  lot_number: string;
+  product_id: number;
+  product_name: string;
+  status: string;
+  quantity: number;
+  depth?: number;
+  work_order_id?: number | null;
+  wo_number?: string;
+}
+
+export interface LotGenealogy {
+  lot_id: number;
+  lot_number: string;
+  product_id: number;
+  product_name: string;
+  status: string;
+  on_hand: number;
+  serial_count: number;
+  parents: LotGenealogyEntry[];
+  children: LotGenealogyEntry[];
+  affected: LotGenealogyEntry[];
+}
+
+export interface MRPItem {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  level: number;
+  component_of: string;
+  bom_id: number | null;
+  has_bom: boolean;
+  gross_requirement: number;
+  on_hand: number;
+  scheduled_receipts: number;
+  available: number;
+  net_requirement: number;
+  action: "none" | "manufacture" | "purchase";
+  suggested_quantity: number;
+}
+
+export interface MRPPlan {
+  demand_product_id: number;
+  demand_product_name: string;
+  demand_quantity: number;
+  items: MRPItem[];
+}
+
+export interface ProductCostItem {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  quantity_per_unit: number;
+  component_unit_cost: number;
+  has_bom: boolean;
+  extended_cost: number;
+}
+
+export interface ProductCost {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  unit_cost: number;
+  direct_cost: number;
+  has_bom: boolean;
+  items: ProductCostItem[];
+}
+
+export interface WorkOrderCost {
+  wo_number: string;
+  product_id: number;
+  product_name: string;
+  status: string;
+  quantity: number;
+  material_cost: number;
+  standard_unit_cost: number;
+  actual_unit_cost: number;
+  variance: number;
+  rows: {
+    product_id: number;
+    product_name: string;
+    quantity_required: number;
+    quantity_issued: number;
+    unit_cost: number;
+    issued_cost: number;
+    required_cost: number;
+  }[];
+}
+
+export interface ManufacturingCostRow {
+  wo_id: number;
+  wo_number: string;
+  product_name: string;
+  quantity: number;
+  completed_at: string | null;
+  material_cost: number;
+  standard_cost: number;
+  actual_unit_cost: number;
+  standard_unit_cost: number;
+  variance: number;
+}
+
+export interface ManufacturingCostReport {
+  items: ManufacturingCostRow[];
+  total_material_cost: number;
+  total_standard_cost: number;
+  total_variance: number;
+  completed_orders: number;
+}
+
+export interface ShipmentItem {
+  id: number;
+  shipment_id: number;
+  product_id: number;
+  quantity_ordered: number;
+  quantity_picked: number;
+  quantity_packed: number;
+  quantity_shipped: number;
+  product_name: string;
+  is_serialized: boolean;
+}
+
+export interface Shipment {
+  id: number;
+  shipment_number: string;
+  customer_id: number | null;
+  status: string;
+  carrier: string;
+  tracking_number: string;
+  staging_location_id: number | null;
+  sale_id: number | null;
+  notes: string;
+  ship_date: string | null;
+  shipped_at: string | null;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  customer_name: string;
+  username: string;
+  invoice_number: string;
+  total_amount: number;
+  total_quantity: number;
+  total_picked: number;
+  items: ShipmentItem[];
+}
+
+export interface ShipmentStats {
+  counts: Record<string, number>;
+  open: number;
+}
+
+export interface WorkOrderGenealogy {
+  wo_number: string;
+  status: string;
+  component_lots: { lot_id: number; lot_number: string; product_id: number; product_name: string; quantity: number }[];
+  fg_lots: { lot_id: number; lot_number: string; product_id: number; product_name: string; quantity: number }[];
+  links: { parent_lot_id: number; parent_lot_number: string; child_lot_id: number; child_lot_number: string; quantity: number }[];
 }

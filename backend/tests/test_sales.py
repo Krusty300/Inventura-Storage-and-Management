@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.models import Lot, Product, StockMovement, User
+from app.models import Location, Lot, Product, StockMovement, User
 from app.services import inventory
 from tests.conftest import TestingSessionLocal, client
 
@@ -159,5 +159,41 @@ def test_checkout_allocates_soonest_expiry_lots_first(auth_headers):
         assert inventory.on_hand(db, product_id=prod["id"], lot_id=late_id) == 3
         assert inventory.on_hand(db, product_id=prod["id"], lot_id=soon_id) == 0
         assert db.get(Product, prod["id"]).quantity == 3
+    finally:
+        db.close()
+
+
+def test_sale_of_stock_located_in_a_bin_succeeds(auth_headers):
+    prod = client.post("/api/products", json={
+        "sku": "LOC-SALE", "name": "Located Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        loc = Location(name="Bin A", code="BIN-A")
+        db.add(loc)
+        db.commit()
+        db.refresh(loc)
+        inventory.post_journal_entry(
+            db, product_id=prod["id"], user_id=user.id,
+            quantity_change=10, movement_type=inventory.RECEIVE,
+            to_location_id=loc.id, reference="Inbound",
+        )
+        db.commit()
+        loc_id = loc.id
+    finally:
+        db.close()
+
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 3, "unit_price": 10.0}],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+
+    db = TestingSessionLocal()
+    try:
+        assert inventory.on_hand(db, product_id=prod["id"]) == 7
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_id) == 7
+        assert db.get(Product, prod["id"]).quantity == 7
     finally:
         db.close()

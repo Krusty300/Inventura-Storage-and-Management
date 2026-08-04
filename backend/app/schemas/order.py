@@ -21,6 +21,7 @@ class OrderUpdate(BaseModel):
     notes: Optional[str] = None
     supplier_id: Optional[int] = None
     items: Optional[list[OrderItemCreate]] = None
+    serial_numbers: Optional[dict[int, list[str]]] = None
 
 
 class OrderItemOut(BaseModel):
@@ -29,6 +30,7 @@ class OrderItemOut(BaseModel):
     quantity: int
     unit_price: float
     product_name: str = ""
+    is_serialized: bool = False
 
     class Config:
         from_attributes = True

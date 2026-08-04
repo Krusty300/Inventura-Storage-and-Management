@@ -374,7 +374,7 @@ def exception_dashboard(db: Session = Depends(get_db)):
         "location": c.location_name, "has_variance": c.has_variance,
         "total_expected": c.total_expected, "total_variance": c.total_variance,
         "created_at": c.created_at,
-    } for c in open_counts if c.has_variance]
+    } for c in open_counts]
 
     pending_asns = db.query(ASN).options(
         joinedload(ASN.items), joinedload(ASN.supplier)

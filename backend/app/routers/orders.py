@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.order import Order, OrderItem
 from app.models.product import Product
+from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
 from app.schemas.order import OrderCreate, OrderOut, OrderUpdate
 from app.services import inventory
@@ -219,22 +220,68 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
             raise HTTPException(status_code=400, detail=f"Cannot change order status from '{prev_status}' to '{data.status}'")
         o.status = data.status
 
+    received_now = data.status == "received" and prev_status != "received"
+    if received_now:
+        o = get_or_404(Order, order_id, db, options=[
+            joinedload(Order.items).joinedload(OrderItem.product),
+            joinedload(Order.supplier), joinedload(Order.user)
+        ])
+        serials_by_product = data.serial_numbers or {}
+        try:
+            for item in o.items:
+                product = item.product
+                if not product:
+                    continue
+                if product.is_serialized:
+                    serials = [s.strip() for s in serials_by_product.get(product.id, []) if s and s.strip()]
+                    if not serials:
+                        raise inventory.InventoryError(
+                            f"'{product.display_name}' is serialized - enter {item.quantity} serial number(s) to receive"
+                        )
+                    if len(serials) != item.quantity:
+                        raise inventory.InventoryError(
+                            f"'{product.display_name}' requires exactly {item.quantity} serial number(s), got {len(serials)}"
+                        )
+                    seen: set[str] = set()
+                    for sn in serials:
+                        if sn in seen:
+                            raise inventory.InventoryError(f"Duplicate serial number '{sn}' in this order")
+                        seen.add(sn)
+                        existing = db.query(SerialNumber).filter(
+                            SerialNumber.product_id == product.id, SerialNumber.serial_number == sn
+                        ).first()
+                        if existing:
+                            raise inventory.InventoryError(f"Serial number '{sn}' is already registered for '{product.display_name}'")
+                    for sn in serials:
+                        serial = SerialNumber(product_id=product.id, serial_number=sn)
+                        db.add(serial)
+                        db.flush()
+                        inventory.post_journal_entry(
+                            db, product_id=product.id, user_id=o.user_id,
+                            quantity_change=1, movement_type="in",
+                            serial_id=serial.id,
+                            reference_type="purchase_order",
+                            reference=f"Order {o.order_number}",
+                        )
+                else:
+                    if serials_by_product.get(product.id):
+                        raise inventory.InventoryError(
+                            f"'{product.display_name}' is not serialized - remove its serial numbers"
+                        )
+                    inventory.post_journal_entry(
+                        db, product_id=product.id, user_id=o.user_id,
+                        quantity_change=item.quantity, movement_type="in",
+                        reference_type="purchase_order",
+                        reference=f"Order {o.order_number}",
+                    )
+        except inventory.InventoryError as exc:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc))
+
     db.commit()
     db.refresh(o)
 
-    if data.status == "received" and prev_status != "received":
-        o = get_or_404(Order, order_id, db, options=[
-            joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
-        ])
-        for item in o.items:
-            product = item.product
-            if product:
-                inventory.post_journal_entry(
-                    db, product_id=product.id, user_id=o.user_id,
-                    quantity_change=item.quantity, movement_type="in",
-                    reference_type="purchase_order",
-                    reference=f"Order {o.order_number}",
-                )
+    if received_now:
         notify_admins(db, f"Order {o.order_number} received",
                       f"{len(o.items)} item(s) added to stock",
                       type="success", link="/orders")

@@ -19,8 +19,10 @@ from app.models.category import Category
 from app.models.location import Location
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
+from app.models.stock_line import StockLine
 from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
+from app.models.work_order import WorkOrder, WorkOrderItem
 from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
@@ -53,6 +55,20 @@ def validate_refs(db: Session, category_id: Optional[int], supplier_id: Optional
 def validate_location_ref(db: Session, location_id: Optional[int]) -> None:
     if location_id is not None and not db.query(Location).filter(Location.id == location_id).first():
         raise HTTPException(status_code=400, detail=f"Location {location_id} does not exist")
+
+
+def resolve_location(db: Session, location_id: Optional[int], location_text: Optional[str]) -> Optional[int]:
+    """Resolve the effective location id for a product: prefer an explicit id,
+    otherwise match the free-text location field against a location path."""
+    if location_id is not None:
+        return location_id
+    text = (location_text or "").strip()
+    if not text:
+        return None
+    for loc in db.query(Location).all():
+        if loc.path.lower() == text.lower():
+            return loc.id
+    return None
 
 
 @router.get("")
@@ -265,6 +281,7 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     if data.is_serialized and data.quantity > 0:
         raise HTTPException(status_code=400, detail="Serialized products cannot have an opening quantity - use receipts to receive stock")
     payload = data.model_dump()
+    payload["location_id"] = resolve_location(db, payload.get("location_id"), payload.get("location"))
     if parent is not None:
         if not (payload.get("name") or "").strip():
             payload["name"] = parent.name
@@ -280,20 +297,29 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
     p = Product(**payload)
     db.add(p)
     db.flush()
-    transfer_qty = inventory.on_hand(db, product_id=parent.id) if parent is not None else 0
-    if parent is not None and transfer_qty > 0:
-        inventory.post_journal_entry(
-            db, product_id=parent.id, user_id=user.id,
-            quantity_change=-transfer_qty, movement_type="out",
-            reference=f"Stock transfer to {p.sku}",
-            notes="Parent stock carried over to new variant",
+    transfer_qty = 0
+    if parent is not None:
+        parent_lines = (
+            db.query(StockLine)
+            .filter(StockLine.product_id == parent.id, StockLine.quantity > 0)
+            .order_by(StockLine.id)
+            .all()
         )
+        for line in parent_lines:
+            inventory.post_journal_entry(
+                db, product_id=parent.id, user_id=user.id,
+                quantity_change=-line.quantity, movement_type="out",
+                from_location_id=line.location_id, lot_id=line.lot_id, lpn_id=line.lpn_id,
+                reference=f"Stock transfer to {p.sku}",
+                notes="Parent stock carried over to new variant",
+            )
+            transfer_qty += line.quantity
     total_initial = data.quantity + max(transfer_qty, 0)
     if total_initial > 0:
         inventory.post_journal_entry(
             db, product_id=p.id, user_id=user.id,
             quantity_change=total_initial, movement_type="in",
-            to_location_id=data.location_id,
+            to_location_id=payload.get("location_id"),
             reference="Initial stock" + (" (incl. parent transfer)" if transfer_qty > 0 else ""),
             notes="Opening balance" + ("; stock carried over from parent" if transfer_qty > 0 else ""),
         )
@@ -314,6 +340,8 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     updates = data.model_dump(exclude_unset=True)
     validate_refs(db, updates.get("category_id"), updates.get("supplier_id"))
     validate_location_ref(db, updates.get("location_id"))
+    if "location" in updates or "location_id" in updates:
+        updates["location_id"] = resolve_location(db, updates.get("location_id"), updates.get("location"))
     if "is_serialized" in updates and updates["is_serialized"] != p.is_serialized:
         if p.is_serialized:
             has_serials = db.query(SerialNumber).filter(SerialNumber.product_id == p.id).first() is not None
@@ -347,6 +375,7 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
                 raise HTTPException(status_code=400, detail="Products with variants hold stock on their variants, not on the parent")
     old_quantity = p.quantity
     old_name = p.name
+    old_location_id = p.location_id
     for k, v in updates.items():
         setattr(p, k, v)
     if not p.is_variant:
@@ -369,6 +398,39 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
         except inventory.InventoryError as exc:
             db.rollback()
             raise HTTPException(status_code=400, detail=str(exc))
+    if p.location_id != old_location_id:
+        new_location_id = p.location_id
+        if p.is_serialized:
+            serials = db.query(SerialNumber).filter(
+                SerialNumber.product_id == p.id,
+                SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK,
+                SerialNumber.location_id == old_location_id,
+                SerialNumber.lpn_id.is_(None),
+            ).all()
+            for serial in serials:
+                inventory.transfer_stock(
+                    db, product_id=p.id, user_id=user.id, quantity=1,
+                    from_location_id=old_location_id, to_location_id=new_location_id,
+                    serial_id=serial.id, reference_type="location_change",
+                    reference="Product location changed",
+                    notes=f"Location changed from {old_location_id} to {new_location_id}",
+                )
+        else:
+            lines = db.query(StockLine).filter(
+                StockLine.product_id == p.id,
+                StockLine.quantity > 0,
+                StockLine.location_id == old_location_id,
+                StockLine.lpn_id.is_(None),
+            ).all()
+            for line in lines:
+                inventory.transfer_stock(
+                    db, product_id=p.id, user_id=user.id, quantity=line.quantity,
+                    from_location_id=old_location_id, to_location_id=new_location_id,
+                    lot_id=line.lot_id, lpn_id=line.lpn_id,
+                    reference_type="location_change",
+                    reference="Product location changed",
+                    notes=f"Location changed from {old_location_id} to {new_location_id}",
+                )
     db.commit()
     db.refresh(p)
     log_activity(db, user.id, user.username, "update", "product", p.id, f"Updated product '{p.display_name}'")
@@ -492,6 +554,74 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
     db.commit()
     broadcast_change("product", "created")
     return result
+
+
+@router.get("/{product_id}/trace")
+def product_trace(product_id: int, db: Session = Depends(get_db)):
+    """Forward + backward traceability for a product.
+
+    Forward: every journal entry for the product (receives, sales, transfers,
+    work-order issues, cycle-count adjustments). Backward: the work orders that
+    produced this product (its components came from their BOMs) and the work
+    orders that consumed it as a component. Journal entries link back to their
+    source documents via ``reference_type`` / ``reference``.
+    """
+    p = get_or_404(Product, product_id, db)
+    movements = (
+        db.query(StockMovement)
+        .options(
+            joinedload(StockMovement.user), joinedload(StockMovement.lot),
+            joinedload(StockMovement.from_location), joinedload(StockMovement.to_location),
+        )
+        .filter(StockMovement.product_id == product_id)
+        .order_by(StockMovement.created_at.asc())
+        .all()
+    )
+
+    incoming: list[dict] = []
+    outgoing: list[dict] = []
+    for m in movements:
+        entry = {
+            "id": m.id,
+            "created_at": m.created_at,
+            "movement_type": m.movement_type,
+            "quantity_change": m.quantity_change,
+            "reference_type": m.reference_type,
+            "reference": m.reference,
+            "notes": m.notes,
+            "lot_number": m.lot.lot_number if m.lot else "",
+            "username": m.username,
+            "from_location_name": m.from_location.path if m.from_location else "",
+            "to_location_name": m.to_location.path if m.to_location else "",
+        }
+        (incoming if m.quantity_change > 0 else outgoing).append(entry)
+
+    produced = db.query(WorkOrder).filter(WorkOrder.product_id == product_id).all()
+    consumed = (
+        db.query(WorkOrderItem)
+        .options(joinedload(WorkOrderItem.work_order))
+        .filter(WorkOrderItem.product_id == product_id)
+        .all()
+    )
+    work_orders = [
+        {"wo_number": w.wo_number, "role": "produced", "status": w.status,
+         "quantity": w.quantity, "created_at": w.created_at}
+        for w in produced
+    ] + [
+        {"wo_number": wi.work_order.wo_number, "role": "consumed", "status": wi.work_order.status,
+         "quantity": wi.quantity_required, "created_at": wi.work_order.created_at}
+        for wi in consumed
+    ]
+    work_orders.sort(key=lambda x: x["created_at"] or "")
+
+    return {
+        "product_id": p.id,
+        "product_name": p.display_name,
+        "sku": p.sku,
+        "incoming": incoming,
+        "outgoing": outgoing,
+        "work_orders": work_orders,
+    }
 
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}

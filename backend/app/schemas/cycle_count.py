@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 class CycleCountItemCreate(BaseModel):
     product_id: int
-    expected_qty: int = Field(ge=0)
+    expected_qty: int = Field(ge=0, default=0)
 
 
 class CycleCountCreate(BaseModel):

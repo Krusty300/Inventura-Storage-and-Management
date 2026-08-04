@@ -11,6 +11,12 @@ from app.models.stock_movement import StockMovement
 from app.models.category import Category
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.models.shipment import Shipment
+from app.models.work_order import WorkOrder
+from app.models.quality_check import QualityCheck
+from app.models.serial_number import SerialNumber
+from app.models.stock_line import StockLine
+from app.models.lot import Lot
 from app.schemas.dashboard import DashboardStats
 from app.services.auth import get_current_user
 from app.services.inventory import quarantined_qty_subquery
@@ -47,6 +53,26 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         StockMovement.created_at >= today_start
     ).scalar() or 0
 
+    open_shipments = db.query(func.count(Shipment.id)).filter(
+        Shipment.status.in_(["draft", "picking", "packed"])
+    ).scalar() or 0
+    open_work_orders = db.query(func.count(WorkOrder.id)).filter(
+        WorkOrder.status.in_(["planned", "released", "in_progress"])
+    ).scalar() or 0
+    pending_quality_checks = db.query(func.count(QualityCheck.id)).filter(
+        QualityCheck.result == "pending"
+    ).scalar() or 0
+    quarantined_units = (
+        db.query(func.coalesce(func.sum(StockLine.quantity), 0))
+        .join(Lot, StockLine.lot_id == Lot.id)
+        .filter(Lot.status == "quarantined")
+        .scalar()
+        or 0
+    )
+    serial_numbers_in_stock = db.query(func.count(SerialNumber.id)).filter(
+        SerialNumber.status == "in_stock"
+    ).scalar() or 0
+
     recent_movements = (
         db.query(StockMovement)
         .options(joinedload(StockMovement.product))
@@ -75,6 +101,31 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         .all()
     )
 
+    shipments_to_process = (
+        db.query(Shipment)
+        .options(joinedload(Shipment.customer), joinedload(Shipment.items))
+        .filter(Shipment.status.in_(["draft", "picking", "packed"]))
+        .order_by(Shipment.created_at.asc())
+        .limit(5)
+        .all()
+    )
+    work_orders_to_process = (
+        db.query(WorkOrder)
+        .options(joinedload(WorkOrder.product))
+        .filter(WorkOrder.status.in_(["planned", "released", "in_progress"]))
+        .order_by(WorkOrder.created_at.asc())
+        .limit(5)
+        .all()
+    )
+    quality_checks_to_process = (
+        db.query(QualityCheck)
+        .options(joinedload(QualityCheck.product))
+        .filter(QualityCheck.result == "pending")
+        .order_by(QualityCheck.created_at.asc())
+        .limit(5)
+        .all()
+    )
+
     return DashboardStats(
         total_products=total_products,
         total_categories=total_categories,
@@ -84,6 +135,11 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         expiring_soon_count=expiring_soon_count,
         total_inventory_value=total_value,
         total_stock_movements_today=movements_today,
+        open_shipments=open_shipments,
+        open_work_orders=open_work_orders,
+        pending_quality_checks=pending_quality_checks,
+        quarantined_units=quarantined_units,
+        serial_numbers_in_stock=serial_numbers_in_stock,
         recent_movements=[
             {
                 "id": m.id,
@@ -113,5 +169,39 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
                 "batch_number": p.batch_number,
             }
             for p in expiring_products
+        ],
+        shipments_to_process=[
+            {
+                "id": s.id,
+                "shipment_number": s.shipment_number,
+                "customer_name": s.customer_name,
+                "status": s.status,
+                "total_quantity": s.total_quantity,
+                "total_picked": s.total_picked,
+                "total_amount": s.total_amount,
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in shipments_to_process
+        ],
+        work_orders_to_process=[
+            {
+                "id": w.id,
+                "wo_number": w.wo_number,
+                "product_name": w.product_name,
+                "status": w.status,
+                "quantity": w.quantity,
+                "created_at": w.created_at.isoformat(),
+            }
+            for w in work_orders_to_process
+        ],
+        quality_checks_to_process=[
+            {
+                "id": q.id,
+                "qc_number": q.qc_number,
+                "product_name": q.product_name,
+                "result": q.result,
+                "created_at": q.created_at.isoformat(),
+            }
+            for q in quality_checks_to_process
         ],
     )

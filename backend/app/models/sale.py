@@ -24,6 +24,7 @@ class Sale(Base):
 
     customer = relationship("Customer", back_populates="sales")
     user = relationship("User", back_populates="sales")
+    shipment = relationship("Shipment", back_populates="sale", uselist=False)
     items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
 
     @property

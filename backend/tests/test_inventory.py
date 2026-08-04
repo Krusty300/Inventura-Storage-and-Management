@@ -256,7 +256,7 @@ class TestAllocation:
         db.commit()
 
         allocation = inventory.allocate_lots(db, product_id=product.id, quantity=6, location_id=loc_a.id)
-        assert allocation == [(lot_soon.id, 5), (lot_late.id, 1)]
+        assert allocation == [(lot_soon.id, 5, loc_a.id, None), (lot_late.id, 1, loc_a.id, None)]
 
     def test_fefo_places_no_expiry_last(self, db):
         user = _make_user(db)
@@ -274,7 +274,7 @@ class TestAllocation:
         db.commit()
 
         allocation = inventory.allocate_lots(db, product_id=product.id, quantity=5, location_id=loc_a.id)
-        assert allocation == [(lot_soon.id, 5)]
+        assert allocation == [(lot_soon.id, 5, loc_a.id, None)]
 
     def test_allocation_insufficient_raises(self, db):
         user = _make_user(db)

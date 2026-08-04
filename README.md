@@ -1,35 +1,43 @@
 # Inventory Management System
 
-A full-stack inventory management app with products (including product variants),
-sales, purchase orders, stock movements, customers, suppliers, notifications, and
-reports.
+A full-stack warehouse and inventory management application covering products (with variants), purchase orders, sales, stock movements, receipts, shipments, work orders, BOMs, costed manufacturing, serial/lot tracking, cycle counts, ASNs, LPNs, quality checks, MRP planning, reporting, and real-time WebSocket updates.
 
-- **Backend:** FastAPI + SQLAlchemy 2.0 + SQLite (`backend/`)
-- **Frontend:** React 19 + TypeScript + Vite + React Query + Tailwind (`frontend/`)
-- **Testing:** pytest (backend), Vitest + Testing Library (frontend)
+- **Backend:** Python 3.11+ / FastAPI / SQLAlchemy 2.0 / SQLite (`backend/`)
+- **Frontend:** React 19 / TypeScript / Vite 8 / Tailwind CSS 4 / React Query (`frontend/`)
+- **Tests:** pytest (377 backend), Vitest + Testing Library (123 frontend)
 
 ---
 
-## Prerequisites
+## Table of contents
 
-- Python 3.11+
-- Node.js 18+
-- npm
+- [Quick start](#quick-start)
+- [Manual setup](#manual-setup)
+- [Environment](#environment)
+- [Seeding demo data](#seeding-demo-data)
+- [Running tests](#running-tests)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Data model overview](#data-model-overview)
+- [API overview](#api-overview)
+- [Frontend pages](#frontend-pages)
+- [Roles and permissions](#roles-and-permissions)
+- [Design conventions](#design-conventions)
 
-## Quick start (Windows)
+---
 
-The included `start.ps1` boots both servers (and stops any leftover processes on
-the ports first):
+## Quick start
+
+The included `start.ps1` boots both servers (and kills any leftover processes on the ports first):
 
 ```powershell
 .\start.ps1
 ```
 
-| Service    | URL                                |
-| ---------- | ---------------------------------- |
-| Frontend   | http://localhost:5173              |
-| API        | http://localhost:8000/api          |
-| API docs   | http://localhost:8000/docs         |
+| Service  | URL                                |
+| -------- | ---------------------------------- |
+| Frontend | http://localhost:5173               |
+| API      | http://localhost:8000/api           |
+| API docs | http://localhost:8000/docs          |
 
 ## Manual setup
 
@@ -40,12 +48,12 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-Copy-Item .env.example .env   # then set a SECRET_KEY
+Copy-Item .env.example .env    # set a real SECRET_KEY
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-The database (`inventory.db`) is created automatically and any schema migrations
-run on startup via `run_migrations()` in `app/database.py`.
+The database (`inventory.db`) is created automatically on startup. Schema migrations
+run via `run_migrations()` in `app/database.py` (ALTERs for new columns, idempotent).
 
 ### Frontend
 
@@ -55,37 +63,47 @@ npm install
 npm run dev
 ```
 
-Vite proxies `/api`, `/uploads`, and `/ws` to `http://localhost:8000`, so no
-CORS configuration is needed in development.
+Vite proxies `/api`, `/uploads`, and `/ws` to `http://localhost:8000`, so no CORS
+configuration is needed in development.
 
-### Seeding demo data
+## Environment
+
+Backend config lives in `backend/.env` (loaded by `app/config.py` via pydantic-settings):
+
+```
+SECRET_KEY=change-this-to-a-secure-random-key
+DATABASE_URL=sqlite:///./inventory.db
+```
+
+| Variable      | Default                        | Description                       |
+| ------------- | ------------------------------ | --------------------------------- |
+| `SECRET_KEY`  | *(must be set)*                | JWT signing key; 32+ characters    |
+| `DATABASE_URL`| `sqlite:///./inventory.db`     | SQLAlchemy connection string       |
+
+The app refuses to start with the placeholder `SECRET_KEY`.
+
+## Seeding demo data
 
 ```powershell
 cd backend
 python seed.py
 ```
 
-This wipes and repopulates the DB with realistic demo data.
+Wipes and repopulates the database with realistic demo data: 4 users, products with
+variants and BOMs, 40+ stock lines across multiple locations and lots, ASNs with
+ASN items and receipts, purchase orders (including a received serialized order),
+sales, work orders (with component lot allocations and serialized manufacturing),
+shipments (with pick/pack/ship flow and a shipment-linked sale/invoice), and
+quality checks.
 
-| Username | Password   | Role   |
-| -------- | ---------- | ------ |
-| `admin`  | `admin123` | admin  |
-| `michael`| `worker123`| worker |
-| `sarah`  | `worker123`| worker |
+| Username  | Password    | Role   |
+| --------- | ----------- | ------ |
+| `admin`   | `admin123`  | admin  |
+| `michael` | `worker123` | worker |
+| `sarah`   | `worker123` | worker |
 
-> Note: new self-registered accounts are always created as `worker`; only an
-> existing admin can promote users.
-
-## Environment
-
-Backend config lives in `backend/.env` (see `backend/app/config.py`):
-
-```
-SECRET_KEY=change-this-to-a-secure-random-key-in-production
-DATABASE_URL=sqlite:///./inventory.db   # optional override
-```
-
-The app refuses to boot with the placeholder `SECRET_KEY` — set a real one.
+New self-registered accounts are always `worker`; only an existing admin can
+promote users.
 
 ## Running tests
 
@@ -95,44 +113,364 @@ python -m pytest -q
 
 # Frontend (from frontend/)
 npm test          # vitest run
-npx tsc --noEmit  # typecheck
+npx tsc --noEmit  # type-check
 ```
 
-## Product variants
+---
 
-A product can have variants. Variants are modeled as self-referencing product
-rows (`parent_id`):
+## Architecture
 
-- A **parent with active variants holds no stock** — all stock lives on the
-  variants, and the parent's `total_quantity` is the sum of its *active*
-  variants.
-- Creating the **first variant transfers the parent's existing stock** onto the
-  variant (and logs an "initial stock" movement).
-- Sales, purchase orders, and stock movements must reference a **specific
-  variant**, never a parent that has active variants.
-- Variants are defined by a free-form JSON `attributes` map (e.g.
-  `{"Color": "Red", "Size": "M"}`). Duplicate attribute combinations under the
-  same parent are rejected.
-- Deactivating every variant releases the parent (it becomes sellable/orderable
-  again) and excludes those variants from totals, low-stock, and reports.
-- CSV import supports `parent_sku` + `attributes` columns to create variants in
-  bulk.
+```
+inventory-app/
+  backend/
+    app/
+      main.py              # FastAPI app, lifespan, WebSocket, router registration
+      config.py            # pydantic-settings (SECRET_KEY, DATABASE_URL)
+      database.py          # SQLAlchemy engine, session, run_migrations(), Base
+      models/              # 26 SQLAlchemy 2.0 mapped tables
+      routers/             # 28 APIRouters under /api/*
+      schemas/             # Pydantic request/response models
+      services/
+        auth.py            # JWT creation, password hashing, get_current_user
+        inventory.py       # Single-writer inventory ledger (post_journal_entry, allocate_lots, transfer_stock)
+        permissions.py     # Code-driven RBAC (admin / worker)
+        costing.py         # Work-order cost rollup
+        notify.py          # Low-stock / expiry / QC notifications
+        sequences.py       # next_document_number() for RCP-, ORD-, INV-, etc.
+        order_service.py   # Purchase order receiving logic
+        pdf_helpers.py     # ReportLab invoice / label generation
+        password_policy.py # Enforced password complexity
+        ratelimit.py       # Login rate-limiting
+      ws_manager.py        # WebSocket broadcast manager
+    tests/                 # 35 test files, 377 tests
+    seed.py                # Wipes + repopulates demo data
+  frontend/
+    src/
+      pages/               # 25 page components (one per route)
+      components/          # 34 shared components
+      context/             # AuthContext, ToastContext
+      hooks/               # useSettings, useDebounce, useSelectableProducts
+      utils/               # permissions, currency, date, csv, download, variants
+      api/client.ts        # Axios instance with auth interceptor
+      types/index.ts       # Shared TypeScript interfaces
+    __tests__/             # 28 test files, 123 tests
+```
 
-## Purchase order statuses
+### Inventory ledger
 
-`pending` → `received` | `cancelled`. Only `pending` orders can have their items
-edited, and `received` orders cannot be deleted (stock was already added).
-Receiving an order adds the ordered quantities to stock and logs movements.
+All stock changes flow through a single writer: `inventory.post_journal_entry()`.
+This keeps `stock_lines` balances, `serial_number` statuses, and
+`product.quantity` (a parity cache) consistent. Callers: receipts, sales,
+transfers, shipment shipping, work-order backflushing, cycle-count adjustments,
+product create/update, and ASNs.
+
+### Auto-migration
+
+`run_migrations()` in `app/database.py` runs idempotent ALTER TABLE statements
+on startup for columns added after initial table creation (e.g. `shipments.sale_id`).
+The rest of the schema is managed by `Base.metadata.create_all()`.
+
+---
+
+## Features
+
+### Products & variants
+
+- Full product CRUD with SKU, barcode, category, supplier, cost/price, expiry,
+  reorder level, and location.
+- **Product variants:** self-referencing `parent_id` with a free-form JSON
+  `attributes` map (e.g. `{"Color": "Red", "Size": "M"}`).
+  - Parent with active variants holds no stock; `total_quantity` is the sum of
+    active variants.
+  - Creating the first variant carries over the parent's stock (across all its
+    stock lines, preserving lot/location/LPN identity).
+  - Duplicate attribute combinations under the same parent are rejected.
+  - Deactivating all variants releases the parent to sellable/orderable again.
+- **Serialized products:** individual serial-number tracking (in_stock / reserved /
+  sold / quarantined / scrapped). Serialized products cannot have opening quantity;
+  stock is received via receipts or ASN receiving.
+- CSV import/export (supports `parent_sku` + `attributes` for bulk variant creation).
+- Barcode labels (python-barcode) and barcode lookup.
+- Bulk edit modal, low-stock filter, search by name/SKU/barcode.
+
+### Inventory & stock
+
+- **Stock lines:** location-aware balance per product (with optional lot/LPN
+  identity). Quarantined lots are tracked and excluded from sellable on-hand.
+- **Stock movements:** full journal of every stock change with type, quantity,
+  from/to location, lot, serial, LPN, and reference.
+- **Transfers:** move stock between locations via matched TRANSFER_OUT /
+  TRANSFER_IN pairs.
+- **Cycle counts:** create counts per location, record actual quantities, post
+  variance adjustments (positive or negative), with audit trail.
+- **LPNs (License Plate Numbers):** group stock lines under a scannable label;
+  move LPNs between locations.
+- **Locations:** hierarchical warehouse structure (Zone / Aisle / Bin) with
+  stock/LPN summaries and search.
+
+### Lots & genealogy
+
+- **Lots:** batch tracking with lot number, status (in_stock / quarantined /
+  depleted), and expiry date.
+- **Lot links (genealogy):** parent-to-child lot relationships. When a work order
+  completes, component lots are linked to the finished-goods lot. Full genealogy
+  tree view available per work order. Recall mode traces all descendants of any
+  lot number.
+
+### Purchasing
+
+- **Purchase orders (ORD-xxxx):** line-item CRUD, status workflow
+  pending -> received / cancelled. Receiving adds stock and logs movements.
+  Serialized items require serial-number entry on receive.
+- **Auto-reorder:** scans all products below `reorder_level` and generates POs
+  to the default supplier.
+- **ASNs (Advanced Shipping Notices):** supplier shipment tracking with expected
+  arrival, carrier, and item-level quantities. Receiving an ASN creates a
+  receipt, adds stock, and logs movements.
+- PDF invoice generation for purchase orders.
+
+### Sales
+
+- **Sales (INV-xxxx):** create sales with line items, customer, payment method,
+  tax. Completing a sale decrements stock (FEFO allocation) and marks serials
+  as sold.
+- **Refunds:** restore stock and mark serials as in-stock again.
+- **Shipment linkage:** a sale can be linked to a shipment (`Shipment.sale_id`).
+  Create Invoice from the shipment detail creates a sale.
+- PDF invoice generation.
+
+### Manufacturing (Phase 3)
+
+- **BOMs (Bill of Materials):** define component requirements for finished
+  products. Variant products can have their own BOM.
+- **Work orders (WO-xxxx):** planned -> released -> in_progress -> completed.
+  Issue components (auto-backflush on complete), release, and complete flow.
+  Serialized manufacturing registers serial numbers on completion.
+- **Lot genealogy:** each completed work order links component lots to the
+  finished-goods lot via `LotLink`.
+- **Costing report:** per-work-order material cost, standard vs. actual unit
+  cost, and variance analysis.
+- **MRP Planning page:** shows product demand, supply, BOM readiness, work-order
+  status, and stock health in one view.
+
+### Quality control
+
+- **Quality checks (QC-xxxx):** create checks per product/lot/work order with
+  result (pending / pass / fail). Dashboard shows pending and failed QC count.
+- **Quarantine management:** quarantined lots are excluded from sellable
+  on-hand. Dashboard tracks quarantined units.
+
+### Shipments (Phase 3, M5)
+
+- **Shipments (SHP-xxxx):** draft -> picking -> packed -> shipped / cancelled.
+  Full pick/pack/ship workflow with per-item quantities.
+- **Pick flow:** view items, pick quantities up to ordered.
+- **Pack flow:** pack picked items.
+- **Ship flow:** confirm shipment, mark serials as sold, log movements.
+- **Cancel:** cancel draft/picking/packed shipments.
+- **Create Invoice:** link to a sale (or create one inline), generate invoice
+  number and PDF.
+
+### Dashboard
+
+- Sectioned stat cards: Inventory, Fulfillment, Manufacturing, Business.
+- Stockout risk indicators, movement trends, inventory value by category.
+- Panels: recent movements, low stock alerts, expiring products, recent sales,
+  pending ASNs, open cycle counts, shipments to process, open work orders,
+  pending quality checks, manufacturing cost summary.
+- Quick Actions (permission-gated): Record Receipt, New ASN, New Order,
+  New Sale, Create Shipment, Release Work Order, New Cycle Count, New QC.
+- Role-aware greeting, auto-refresh toggle, PDF export.
+
+### Reports
+
+- Inventory valuation (by category, by supplier).
+- Stock movement trends (7 / 30 / 90 day windows).
+- Sales summary, top products, top customers, top suppliers.
+- Profit analysis (cost vs. potential revenue).
+- Stockout risk, exceptions report (low stock, zero stock, quarantined lots,
+  open cycle counts, pending ASNs).
+- WMS stock reports (stock by location, by lot, serial status breakdown).
+
+### Notifications
+
+- Automatic low-stock and expiring-soon notifications generated on stock changes
+  and product updates.
+- Notification bell in the header with unread count.
+- Permission-gated viewing.
+
+### Activity log
+
+- Every create / update / delete is logged with user, entity, action, and detail.
+- Filterable by entity type and action. Paginated.
+
+### User management
+
+- Register, login (JWT, 8-hour expiry), role management.
+- Admin-only: promote/demote, deactivate, reset password, delete users.
+- Password policy enforcement (minimum length, complexity).
+
+### Settings
+
+- Store name, currency symbol, tax rate, low-stock threshold.
+- Admin-only store settings section.
+
+---
+
+## Data model overview
+
+26 SQLAlchemy 2.0 mapped tables in `backend/app/models/`:
+
+| Model                | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| Product              | SKUs, variants, serialization, cost/price, expiry |
+| StockLine            | Per-product balance at a location (lot/LPN aware) |
+| StockMovement        | Immutable journal of every stock change           |
+| SerialNumber         | Individual serialized unit tracking               |
+| Lot                  | Batch tracking (in_stock / quarantined / depleted)|
+| LotLink              | Parent-child lot genealogy relationships          |
+| Location             | Hierarchical warehouse zones/bins                |
+| LPN                  | License plate numbers grouping stock lines        |
+| Category / Supplier  | Product classification and sourcing               |
+| Customer             | Sales customers                                  |
+| Order / OrderItem    | Purchase order lines and receiving                |
+| Sale / SaleItem      | Sales invoice lines and refunds                   |
+| Receipt / ReceiptItem| Goods-received records (from POs or standalone)   |
+| ASN / ASNItem        | Advanced shipping notices from suppliers          |
+| Shipment / ShipmentItem | Outbound shipments with pick/pack/ship flow    |
+| WorkOrder / WorkOrderItem | Manufacturing orders with component issue    |
+| BOM / BOMItem        | Bill of materials and component definitions       |
+| QualityCheck         | QC inspections per product/lot/work order          |
+| CycleCount / CycleCountItem | Warehouse cycle count sessions and lines  |
+| User                 | Accounts with role (admin / worker)               |
+| Notification         | System-generated alerts (low stock, expiry, QC)   |
+| ActivityLog          | Audit trail for all mutations                     |
+| DocumentSequence     | Auto-incrementing document number generators      |
+| Settings             | Global store configuration                        |
+
+---
 
 ## API overview
 
-Routers live in `backend/app/routers/`:
+All endpoints are under `/api/`. 28 routers in `backend/app/routers/`:
 
-- `auth`, `users` — auth, user management, password change
-- `products` — CRUD, CSV import/export, barcode labels/lookup, low-stock filter
-- `sales` — CRUD + refunds (restores stock), PDF invoices
-- `orders` — purchase orders, auto-reorder, receiving, PDFs
-- `stock` — stock movements and adjustments
-- `customers`, `suppliers`, `categories`
-- `dashboard`, `reports` — stats, trends, valuation, profit analysis, CSV exports
-- `notifications`, `activity_log`, `settings`
+| Router           | Prefix             | Key endpoints                                        |
+| ---------------- | ------------------ | ---------------------------------------------------- |
+| `auth`           | `/api/auth`        | login, register                                      |
+| `users`          | `/api/users`       | CRUD, role change, password reset, deactivate         |
+| `products`       | `/api/products`    | CRUD, CSV import/export, barcode, low-stock filter    |
+| `categories`     | `/api/categories`  | CRUD                                                 |
+| `customers`      | `/api/customers`   | CRUD, CSV import                                     |
+| `suppliers`      | `/api/suppliers`   | CRUD, CSV import                                     |
+| `locations`      | `/api/locations`   | CRUD, tree, detail (stock + LPN summary)              |
+| `stock`          | `/api/stock`       | Stock movements and adjustments                       |
+| `stock-movements`| `/api/stock-movements` | Movement list with filters                        |
+| `receipts`       | `/api/receipts`    | Create receipts (standalone or from PO)               |
+| `orders`         | `/api/orders`      | Purchase orders, receive, auto-reorder, PDF           |
+| `sales`          | `/api/sales`       | Sales CRUD, stats, refund, PDF                        |
+| `shipments`      | `/api/shipments`   | Shipments CRUD, pick, pack, ship, cancel, create-sale |
+| `lots`           | `/api/lots`        | Lot list, update status, genealogy                    |
+| `serial-numbers` | `/api/serial-numbers` | Serial list, status, location history              |
+| `lpns`           | `/api/lpns`        | LPN CRUD, move between locations                      |
+| `asn`            | `/api/asns`        | ASN CRUD, receive (creates receipt + stock)           |
+| `cycle-counts`   | `/api/cycle-counts`| Cycle count sessions and line updates                 |
+| `bom`            | `/api/boms`        | BOM CRUD with component items                         |
+| `work-orders`    | `/api/work-orders` | WO CRUD, release, issue, complete (backflush/serials) |
+| `quality-checks` | `/api/quality-checks` | QC CRUD                                           |
+| `planning`       | `/api/planning`    | MRP planning data (demand, supply, readiness)         |
+| `costing`        | `/api/costing`     | Manufacturing cost report (per work order)            |
+| `dashboard`      | `/api/dashboard`   | Aggregated stats (cards + to-process lists)           |
+| `reports`        | `/api/reports`     | Valuation, trends, sales, profit, exceptions, PDF     |
+| `notifications`  | `/api/notifications` | User notifications, unread count                   |
+| `activity-log`   | `/api/activity-log`| Audit trail with entity/action filters                |
+| `settings`       | `/api/settings`    | Global store config                                   |
+| `labels`         | `/api/labels`      | Barcode and location label generation                 |
+
+### WebSocket
+
+`ws://localhost:8000/ws` broadcasts real-time change events (product, stock_movement,
+order, sale) to all connected clients.
+
+---
+
+## Frontend pages
+
+25 pages in `frontend/src/pages/`:
+
+| Page             | Route               | Description                                   |
+| ---------------- | ------------------- | --------------------------------------------- |
+| Dashboard        | `/`                 | Sectioned stats, panels, quick actions         |
+| Products         | `/products`         | List with variants, CSV import, low-stock     |
+| Categories       | `/categories`       | Category CRUD                                 |
+| Customers        | `/customers`        | Customer CRUD, CSV import                     |
+| Suppliers        | `/suppliers`        | Supplier CRUD, analytics                      |
+| Locations        | `/locations`        | Hierarchical tree with search, stock/LPN view |
+| Stock Movements  | `/stock-movements`  | Movement journal with filters                 |
+| Receipts         | `/receiving`        | Goods-received records                        |
+| ASNs             | `/asns`             | Advanced shipping notices and receiving       |
+| LPNs             | `/lpns`             | License plate numbers and moves               |
+| Cycle Counts     | `/cycle-counts`     | Count sessions and variance posting           |
+| Purchase Orders  | `/orders`           | Order list with auto-reorder                  |
+| Sales            | `/sales`            | Sales list, refund, PDF                       |
+| Shipments        | `/shipments`        | Pick / pack / ship workflow                   |
+| BOMs             | `/boms`             | Bill of materials management                  |
+| Work Orders      | `/work-orders`      | Manufacturing orders                          |
+| Quality Checks   | `/quality-checks`   | QC inspections                                |
+| Planning         | `/planning`         | MRP dashboard                                 |
+| Reports          | `/reports`          | Valuation, trends, profit, exceptions         |
+| Exceptions       | `/exceptions`       | Low stock, zero stock, quarantined, pending   |
+| Users            | `/users`            | User management (admin)                       |
+| Settings         | `/settings`         | Store configuration                           |
+| Activity Log     | `/activity-log`     | Audit trail                                   |
+| Login / Register | `/login`, `/register` | Authentication                             |
+
+34 shared components in `frontend/src/components/` including forms, detail views,
+modals, pagination, barcode scanner, location picker, CSV import, skeleton, and
+error boundary.
+
+---
+
+## Roles and permissions
+
+Two roles with code-driven fine-grained permissions (backend: `services/permissions.py`,
+frontend: `utils/permissions.ts`):
+
+| Capability                        | admin | worker |
+| --------------------------------- | :---: | :----: |
+| Full CRUD (products, orders, etc) | yes   | --     |
+| Product import / bulk edit        | yes   | --     |
+| Create purchase orders            | yes   | yes    |
+| Receive POs / ASNs                | yes   | --     |
+| Create sales                      | yes   | yes    |
+| Pick / ship shipments             | yes   | yes    |
+| Release / complete work orders    | yes   | yes    |
+| Create quality checks             | yes   | yes    |
+| View planning                     | yes   | yes    |
+| Manage users, locations, settings | yes   | --     |
+| Create cycle counts               | yes   | --     |
+| Manage BOMs, LPNs, receipts       | yes   | --     |
+
+Workers also cannot: create/create-shipment, create-ASN, delete shipments, or
+modify cycle counts.
+
+---
+
+## Design conventions
+
+- **Variant products** are the shippable/sellable unit. Creating a parent product
+  with active variants is rejected.
+- **Inventory changes** always flow through `post_journal_entry()` — the single
+  writer that keeps stock lines, serial statuses, and product.quantity consistent.
+- **Document numbers** (RCP-, ORD-, INV-, SHP-, WO-, QC-, CC-, ASN-) use
+  `next_document_number()` with an auto-incrementing `DocumentSequence` table.
+  Missing invoice numbers are acceptable (gaps documented).
+- **FEFO allocation** (First Expiry, First Out) for both lot and serial allocation.
+- **Shipment statuses:** `draft` / `picking` / `packed` / `shipped` / `cancelled`.
+- **Work order statuses:** `planned` / `released` / `in_progress` / `completed` /
+  `cancelled`.
+- **QC results:** `pending` / `pass` / `fail`.
+- **Lot statuses:** `in_stock` / `quarantined` / `depleted`.
+- **Serial statuses:** `in_stock` / `reserved` / `sold` / `quarantined` / `scrapped`.
+- **Movement types:** `receive`, `in`, `out`, `transfer_out`, `transfer_in`,
+  `sale`, `sale_return`, `issue`, `backflush`, `adjustment`, `count`, `ship`,
+  `return`.

@@ -20,6 +20,7 @@ ISSUE = "issue"
 BACKFLUSH = "backflush"
 ADJUSTMENT = "adjustment"
 COUNT = "count"
+SHIP = "ship"
 
 VALID_MOVEMENT_TYPES = {
     RECEIVE,
@@ -31,6 +32,7 @@ VALID_MOVEMENT_TYPES = {
     BACKFLUSH,
     ADJUSTMENT,
     COUNT,
+    SHIP,
     # Legacy types used by the existing API contract
     "in",
     "out",
@@ -146,10 +148,11 @@ def allocate_lots(
     product_id: int,
     quantity: int,
     location_id: int | None = None,
-) -> list[tuple[int | None, int]]:
+) -> list[tuple[int | None, int, int | None, int | None]]:
     """Allocate `quantity` from stock lines ordered by soonest expiry (FEFO).
-    Returns a list of (lot_id | None, qty) pairs. Raises InventoryError if
-    insufficient stock is available."""
+    Returns a list of (lot_id | None, qty, location_id | None, lpn_id | None)
+    tuples describing the exact stock lines to decrement. Raises InventoryError
+    if insufficient stock is available."""
     if quantity < 0:
         raise InventoryError("Allocation quantity must be non-negative")
     if quantity == 0:
@@ -160,27 +163,65 @@ def allocate_lots(
             StockLine.product_id == product_id,
             StockLine.quantity > 0,
             (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+            (StockLine.location_id.is_(None))
+            | (Location.location_type.is_(None))
+            | (Location.location_type != "wip"),
         )
         .outerjoin(Lot, StockLine.lot_id == Lot.id)
+        .outerjoin(Location, StockLine.location_id == Location.id)
         .order_by(Lot.expiry_date.asc().nulls_last(), StockLine.id.asc())
     )
     if location_id is not None:
         stmt = stmt.where(StockLine.location_id == location_id)
     lines = db.execute(stmt).scalars().all()
 
-    allocation: list[tuple[int | None, int]] = []
+    allocation: list[tuple[int | None, int, int | None, int | None]] = []
     needed = quantity
     for line in lines:
         if needed == 0:
             break
         take = min(line.quantity, needed)
-        allocation.append((line.lot_id, take))
+        allocation.append((line.lot_id, take, line.location_id, line.lpn_id))
         needed -= take
     if needed > 0:
         raise InventoryError(
             f"Insufficient stock: need {quantity}, on hand {quantity - needed}"
         )
     return allocation
+
+
+def allocate_serials(
+    db: Session,
+    *,
+    product_id: int,
+    quantity: int,
+    location_id: int | None = None,
+) -> list[SerialNumber]:
+    """Allocate `quantity` in-stock serial numbers for a serialized product,
+    ordered by soonest lot expiry (FEFO) then registration order. Raises
+    InventoryError if insufficient serials are available."""
+    if quantity < 0:
+        raise InventoryError("Allocation quantity must be non-negative")
+    if quantity == 0:
+        return []
+    stmt = (
+        select(SerialNumber)
+        .where(
+            SerialNumber.product_id == product_id,
+            SerialNumber.status == SERIAL_STATUS_IN_STOCK,
+            (SerialNumber.lot_id.is_(None)) | (Lot.status == "in_stock"),
+        )
+        .outerjoin(Lot, SerialNumber.lot_id == Lot.id)
+        .order_by(Lot.expiry_date.asc().nulls_last(), SerialNumber.id.asc())
+    )
+    if location_id is not None:
+        stmt = stmt.where(SerialNumber.location_id == location_id)
+    serials = db.execute(stmt).scalars().all()
+    if len(serials) < quantity:
+        raise InventoryError(
+            f"Insufficient stock: need {quantity}, on hand {len(serials)}"
+        )
+    return list(serials[:quantity])
 
 
 def _apply_to_line(db: Session, line: StockLine, delta: int) -> None:
@@ -244,7 +285,7 @@ def post_journal_entry(
             if to_location_id is not None:
                 serial.location_id = to_location_id
         else:
-            if movement_type == SALE:
+            if movement_type == SALE or movement_type == SHIP:
                 serial.status = SERIAL_STATUS_SOLD
                 serial.sold_at = datetime.utcnow()
             elif movement_type == TRANSFER_OUT or movement_type == TRANSFER_IN:
@@ -290,6 +331,62 @@ def post_journal_entry(
     db.flush()
     product.quantity = on_hand(db, product_id=product_id)
     return movement
+
+
+def count_adjustment(
+    db: Session,
+    *,
+    product_id: int,
+    user_id: int,
+    variance: int,
+    location_id: int,
+    reference: str = "",
+    notes: str = "",
+) -> list[StockMovement]:
+    """Post a cycle-count variance at a specific location.
+
+    Positive variance (more found than expected) is added to the first existing
+    stock line at the location so LPN/lot identity is preserved; if none exists a
+    new line is created. Negative variance (short) is reduced across the location's
+    stock lines so stock held inside an LPN or across multiple lots is handled.
+    """
+    lines = (
+        db.query(StockLine)
+        .filter(StockLine.product_id == product_id, StockLine.location_id == location_id)
+        .order_by(StockLine.id)
+        .all()
+    )
+    movements: list[StockMovement] = []
+    if variance > 0:
+        line = lines[0] if lines else None
+        movements.append(post_journal_entry(
+            db, product_id=product_id, user_id=user_id, quantity_change=variance,
+            movement_type=COUNT, to_location_id=location_id,
+            lot_id=line.lot_id if line else None,
+            lpn_id=line.lpn_id if line else None,
+            reference_type="cycle_count", reference=reference, notes=notes,
+        ))
+    else:
+        remaining = -variance
+        total = sum(l.quantity for l in lines)
+        if remaining > total:
+            raise InventoryError(f"Insufficient stock on hand: {total}")
+        for line in lines:
+            if remaining <= 0:
+                break
+            take = min(line.quantity, remaining)
+            if take <= 0:
+                continue
+            movements.append(post_journal_entry(
+                db, product_id=product_id, user_id=user_id, quantity_change=-take,
+                movement_type=COUNT, from_location_id=location_id,
+                lot_id=line.lot_id, lpn_id=line.lpn_id,
+                reference_type="cycle_count", reference=reference, notes=notes,
+            ))
+            remaining -= take
+        if remaining > 0:
+            raise InventoryError(f"Insufficient stock on hand: {total}")
+    return movements
 
 
 def transfer_stock(

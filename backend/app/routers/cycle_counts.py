@@ -53,8 +53,9 @@ def get_cycle_count(cc_id: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=CycleCountOut, status_code=201)
 def create_cycle_count(data: CycleCountCreate, db: Session = Depends(get_db), user=Depends(require_permission("cycle_counts.create"))):
-    if data.location_id is not None:
-        get_or_404(Location, data.location_id, db)
+    if data.location_id is None:
+        raise HTTPException(status_code=400, detail="A location is required for a cycle count")
+    get_or_404(Location, data.location_id, db)
     cc = CycleCount(
         cc_number=next_document_number(db, "cycle_count", "CC-"),
         location_id=data.location_id,
@@ -67,10 +68,13 @@ def create_cycle_count(data: CycleCountCreate, db: Session = Depends(get_db), us
         product = get_or_404(Product, item.product_id, db)
         if not product.is_active:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' is inactive")
+        if product.is_serialized:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' is serialized and cannot be cycle counted")
+        expected_qty = inventory.on_hand(db, product_id=item.product_id, location_id=data.location_id)
         db.add(CycleCountItem(
             cycle_count_id=cc.id,
             product_id=item.product_id,
-            expected_qty=item.expected_qty,
+            expected_qty=expected_qty,
         ))
     db.commit()
     cc = _load_cc(db, cc.id)
@@ -101,6 +105,8 @@ def update_cycle_count(cc_id: int, data: CycleCountUpdate, db: Session = Depends
 @router.post("/{cc_id}/submit", response_model=CycleCountOut)
 def submit_cycle_count(cc_id: int, data: CycleCountSubmit, db: Session = Depends(get_db), user=Depends(require_permission("cycle_counts.count"))):
     cc = _load_cc(db, cc_id)
+    if cc.location_id is None:
+        raise HTTPException(status_code=400, detail="This cycle count has no location and cannot be submitted")
     if cc.status == "completed":
         raise HTTPException(status_code=400, detail="Cycle count is already completed")
     if cc.status == "cancelled":
@@ -112,15 +118,17 @@ def submit_cycle_count(cc_id: int, data: CycleCountSubmit, db: Session = Depends
             item = by_product.get(line.product_id)
             if item is None:
                 raise HTTPException(status_code=400, detail=f"Product {line.product_id} is not on this cycle count")
+            prev_variance = item.variance
+            new_variance = line.counted_qty - item.expected_qty
+            delta = new_variance - prev_variance
             item.counted_qty = line.counted_qty
-            item.variance = line.counted_qty - item.expected_qty
-            item.status = "ok" if item.variance == 0 else "mismatch"
-            if item.variance != 0:
+            item.variance = new_variance
+            item.status = "ok" if new_variance == 0 else "mismatch"
+            if delta != 0:
                 product = get_or_404(Product, item.product_id, db)
-                inventory.post_journal_entry(
+                inventory.count_adjustment(
                     db, product_id=item.product_id, user_id=user.id,
-                    quantity_change=item.variance, movement_type=inventory.COUNT,
-                    to_location_id=cc.location_id,
+                    variance=delta, location_id=cc.location_id,
                     reference=f"Cycle count {cc.cc_number}",
                     notes=f"Counted {line.counted_qty}, expected {item.expected_qty}",
                 )

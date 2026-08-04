@@ -1,6 +1,8 @@
 import Modal from "./Modal";
 import { PackagePlus } from "lucide-react";
-import type { Product } from "../types";
+import { useQuery } from "@tanstack/react-query";
+import api from "../api/client";
+import type { Product, ProductTrace } from "../types";
 import { parseLocalDate } from "../utils/date";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
@@ -11,6 +13,18 @@ interface Props {
   onClose: () => void;
   onAddVariant?: (product: Product) => void;
 }
+
+const MOVEMENT_LABELS: Record<string, string> = {
+  receive: "Received",
+  issue: "Issued to WIP",
+  backflush: "Backflushed",
+  sale: "Sold",
+  sale_return: "Sale return",
+  transfer_in: "Transfer in",
+  transfer_out: "Transfer out",
+  adjustment: "Adjusted",
+  count: "Cycle count",
+};
 
 export default function ProductDetail({ product, onClose, onAddVariant }: Props) {
   const { data: settings } = useSettings();
@@ -140,6 +154,8 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           </div>
         )}
 
+        <TraceSection product={product} />
+
         {product.description && (
           <div>
             <span className="text-sm text-gray-500">Description:</span>
@@ -148,5 +164,125 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
         )}
       </div>
     </Modal>
+  );
+}
+
+function TraceSection({ product }: { product: Product }) {
+  const { data: trace, isLoading } = useQuery({
+    queryKey: ["trace", product.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/products/${product.id}/trace`);
+      return data as ProductTrace;
+    },
+    enabled: !product.is_variant,
+  });
+
+  if (product.is_variant) return null;
+
+  const movementRows = (m: ProductTrace["incoming"][number]) => (
+    <tr key={m.id}>
+      <td className="px-3 py-2">{new Date(m.created_at).toLocaleDateString()}</td>
+      <td className="px-3 py-2"><span className="badge badge-info">{MOVEMENT_LABELS[m.movement_type] || m.movement_type}</span></td>
+      <td className={`px-3 py-2 font-medium ${m.quantity_change > 0 ? "text-green-600" : "text-red-600"}`}>
+        {m.quantity_change > 0 ? "+" : ""}{m.quantity_change}
+      </td>
+      <td className="px-3 py-2 text-gray-500">{m.lot_number || "—"}</td>
+      <td className="px-3 py-2 text-gray-500">{m.reference ? `${m.reference_type || ""} ${m.reference}`.trim() : "—"}</td>
+      <td className="px-3 py-2 text-gray-500">{m.from_location_name ? `${m.from_location_name} → ` : ""}{m.to_location_name}</td>
+      <td className="px-3 py-2 text-gray-500">{m.username}</td>
+    </tr>
+  );
+
+  return (
+    <div>
+      <span className="text-sm text-gray-500">Traceability:</span>
+      {isLoading ? (
+        <div className="mt-2 text-sm text-gray-400">Loading trace...</div>
+      ) : !trace || (trace.incoming.length === 0 && trace.outgoing.length === 0 && trace.work_orders.length === 0) ? (
+        <p className="mt-2 text-sm text-gray-500">No movements or work orders recorded for this product yet.</p>
+      ) : (
+        <div className="mt-2 space-y-4">
+          {trace.work_orders.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Work Orders</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border rounded-lg">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2 font-medium text-gray-600">WO #</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Role</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Qty</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Status</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {trace.work_orders.map((w) => (
+                      <tr key={w.wo_number}>
+                        <td className="px-3 py-2 font-medium">{w.wo_number}</td>
+                        <td className="px-3 py-2">
+                          <span className={`badge ${w.role === "produced" ? "badge-success" : "badge-info"}`}>
+                            {w.role === "produced" ? "Produced" : "Consumed"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">{w.quantity}</td>
+                        <td className="px-3 py-2 capitalize">{w.status}</td>
+                        <td className="px-3 py-2 text-gray-500">{new Date(w.created_at).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {trace.incoming.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Inbound Movements</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border rounded-lg">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2 font-medium text-gray-600">Date</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Type</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Qty</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Lot</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Reference</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Route</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">User</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {trace.incoming.map(movementRows)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {trace.outgoing.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Outbound Movements</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border rounded-lg">
+                  <thead>
+                    <tr className="bg-gray-50 text-left">
+                      <th className="px-3 py-2 font-medium text-gray-600">Date</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Type</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Qty</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Lot</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Reference</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">Route</th>
+                      <th className="px-3 py-2 font-medium text-gray-600">User</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {trace.outgoing.map(movementRows)}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

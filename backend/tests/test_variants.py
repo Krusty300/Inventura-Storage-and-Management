@@ -1,4 +1,5 @@
-﻿from tests.conftest import client
+﻿from app.models import StockLine
+from tests.conftest import TestingSessionLocal, client
 
 
 def _make_parent(auth_headers, sku="VAR-PARENT", name="T-Shirt", category_id=None):
@@ -133,6 +134,35 @@ def test_first_variant_transfers_parent_stock(auth_headers):
     assert updated_parent["total_quantity"] == 20
     movements = client.get(f"/api/products/{var['id']}/movements", headers=auth_headers).json()
     assert any(m["movement_type"] == "in" and m["quantity_change"] == 20 for m in movements)
+
+
+def test_first_variant_transfers_parent_stock_from_located_line(auth_headers):
+    loc = client.post("/api/locations", json={
+        "name": "Bin A-01", "code": "A-01", "location_type": "bin",
+    }, headers=auth_headers).json()
+    parent = client.post("/api/products", json={
+        "sku": "TS-PARENT-LOC", "name": "Stocked Parent",
+        "unit_price": 20.00, "cost_price": 10.00, "quantity": 0,
+    }, headers=auth_headers).json()
+    resp = client.post("/api/receipts", json={
+        "items": [{"product_id": parent["id"], "quantity": 10, "unit_cost": 5.0, "location_id": loc["id"]}],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+
+    var = _make_variant(auth_headers, parent["id"], "TS-TRANSFER-LOC").json()
+    assert var["quantity"] == 10
+    updated_parent = client.get(f"/api/products/{parent['id']}", headers=auth_headers).json()
+    assert updated_parent["quantity"] == 0
+    assert updated_parent["total_quantity"] == 10
+
+    db = TestingSessionLocal()
+    try:
+        lines = db.query(StockLine).filter(StockLine.product_id == parent["id"]).all()
+        assert sum(l.quantity for l in lines) == 0
+    finally:
+        db.close()
+    movements = client.get(f"/api/products/{parent['id']}/movements", headers=auth_headers).json()
+    assert any(m["movement_type"] == "out" and m["quantity_change"] == -10 for m in movements)
 
 
 def test_inactive_variants_release_parent_and_exclude_totals(auth_headers):

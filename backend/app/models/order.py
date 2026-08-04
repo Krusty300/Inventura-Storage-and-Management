@@ -47,3 +47,7 @@ class OrderItem(Base):
     @property
     def product_name(self) -> str:
         return self.product.display_name if self.product else ""
+
+    @property
+    def is_serialized(self) -> bool:
+        return self.product.is_serialized if self.product else False
