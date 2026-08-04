@@ -62,7 +62,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
     <Modal open onClose={onClose} title={isEdit ? "Edit Stock Movement" : "Record Stock Movement"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Product *</label>
+          <label className="block text-sm font-medium text-ink mb-1">Product *</label>
           {!isEdit && <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />}
           <select className="select mt-2" value={productId} onChange={(e) => setProductId(e.target.value)} required>
             <option value="">Select product</option>
@@ -70,7 +70,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Movement Type</label>
+          <label className="block text-sm font-medium text-ink mb-1">Movement Type</label>
           <select className="select" value={movementType} onChange={(e) => setMovementType(e.target.value)}>
             <option value="in">Stock In</option>
             <option value="out">Stock Out</option>
@@ -79,7 +79,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+          <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
           <input
             type="number"
             className="input"
@@ -90,11 +90,11 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Reference (e.g. PO#)</label>
+          <label className="block text-sm font-medium text-ink mb-1">Reference (e.g. PO#)</label>
           <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="flex justify-end gap-3 pt-2">

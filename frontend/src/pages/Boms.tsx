@@ -38,7 +38,7 @@ export default function Boms() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Bills of Materials</h1>
+        <h1 className="text-2xl font-bold text-ink">Bills of Materials</h1>
         {can("bom.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
             New BOM
@@ -49,37 +49,37 @@ export default function Boms() {
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="BOMs table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">BOM</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Output Product</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Components</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Total Cost</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Updated</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3 font-medium text-muted">BOM</th>
+              <th className="px-4 py-3 font-medium text-muted">Output Product</th>
+              <th className="px-4 py-3 font-medium text-muted">Components</th>
+              <th className="px-4 py-3 font-medium text-muted">Total Cost</th>
+              <th className="px-4 py-3 font-medium text-muted">Status</th>
+              <th className="px-4 py-3 font-medium text-muted">Updated</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={7} />
             ) : boms.length === 0 ? (
               <EmptyState title="No BOMs yet" message="Create a bill of materials to define how a product is manufactured." actionLabel="New BOM" onAction={() => { setEditing(null); setShowForm(true); }} />
             ) : boms.map((b) => (
-              <tr key={b.id} className="hover:bg-gray-50">
+              <tr key={b.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{b.name || b.product_name}</td>
-                <td className="px-4 py-3 text-gray-500">{b.product_name}</td>
+                <td className="px-4 py-3 text-muted">{b.product_name}</td>
                 <td className="px-4 py-3">{b.item_count}</td>
                 <td className="px-4 py-3">{b.total_cost.toFixed(2)}</td>
                 <td className="px-4 py-3"><span className={`badge ${b.is_active ? "badge-success" : "badge-danger"}`}>{b.is_active ? "Active" : "Inactive"}</span></td>
-                <td className="px-4 py-3 text-gray-500">{new Date(b.updated_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{new Date(b.updated_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(b)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${b.name}`}><Eye size={16} /></button>
+                    <button onClick={() => setViewing(b)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${b.name}`}><Eye size={16} /></button>
                     {can("bom.update") && (
-                      <button onClick={() => { setEditing(b); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit ${b.name}`}><Pencil size={16} /></button>
+                      <button onClick={() => { setEditing(b); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${b.name}`}><Pencil size={16} /></button>
                     )}
                     {can("bom.delete") && (
-                      <button onClick={() => deleteBom(b)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Delete ${b.name}`}><Trash2 size={16} /></button>
+                      <button onClick={() => deleteBom(b)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${b.name}`}><Trash2 size={16} /></button>
                     )}
                   </div>
                 </td>
@@ -170,46 +170,46 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Output Product</label>
+            <label className="block text-sm font-medium text-ink mb-1">Output Product</label>
             <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!bom} required>
               <option value="">Select product...</option>
               {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">BOM Name</label>
+            <label className="block text-sm font-medium text-ink mb-1">BOM Name</label>
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Defaults to product name" />
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <label className="block text-sm font-medium text-ink mb-1">Description</label>
           <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Components</span>
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="bg-app px-4 py-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-ink">Components</span>
             <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="btn-secondary text-xs py-1 px-2">
               <Plus size={14} className="inline mr-1" />Add Component
             </button>
           </div>
-          <div className="divide-y divide-gray-100 max-h-[40vh] overflow-auto">
+          <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (
               <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-8">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Product</label>
                   <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                     <option value="">Select...</option>
                     {products.filter((p) => p.id !== Number(productId)).map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Qty</label>
                   <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
                 </div>
                 <div className="col-span-2">
-                  <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove component">
+                  <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove component">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -217,9 +217,9 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
             ))}
           </div>
         </div>
-        <p className="text-xs text-gray-500">Cycle checks are enforced server-side; each component may appear only once.</p>
+        <p className="text-xs text-muted">Cycle checks are enforced server-side; each component may appear only once.</p>
 
-        <label className="flex items-center gap-2 text-sm text-gray-700">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" className="rounded" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Active
         </label>
@@ -248,33 +248,33 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-gray-500">Output Product</p>
+            <p className="text-muted">Output Product</p>
             <p className="font-medium">{bom.product_name}</p>
           </div>
           <div>
-            <p className="text-gray-500">Rolled-Up Unit Cost {rolledUp !== undefined && rolledUp !== bom.total_cost && (
-              <span className="text-gray-400 font-normal">(direct: {bom.total_cost.toFixed(2)})</span>
+            <p className="text-muted">Rolled-Up Unit Cost {rolledUp !== undefined && rolledUp !== bom.total_cost && (
+              <span className="text-faint font-normal">(direct: {bom.total_cost.toFixed(2)})</span>
             )}</p>
             <p className="font-medium">{rolledUp !== undefined ? rolledUp.toFixed(2) : bom.total_cost.toFixed(2)}</p>
           </div>
           {bom.description && (
             <div className="col-span-2">
-              <p className="text-gray-500">Description</p>
+              <p className="text-muted">Description</p>
               <p className="font-medium">{bom.description}</p>
             </div>
           )}
         </div>
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-2 font-medium text-gray-600">Component</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Qty</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Unit Cost</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Line Cost</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-2 font-medium text-muted">Component</th>
+                <th className="px-4 py-2 font-medium text-muted">Qty</th>
+                <th className="px-4 py-2 font-medium text-muted">Unit Cost</th>
+                <th className="px-4 py-2 font-medium text-muted">Line Cost</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {bom.items.map((item) => {
                 const rolled = componentCost(item.product_id);
                 const unit = rolled !== undefined ? rolled : item.unit_cost;
@@ -284,7 +284,7 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
                     <td className="px-4 py-2">{item.quantity}</td>
                     <td className="px-4 py-2">
                       {unit.toFixed(2)}
-                      {rolled !== undefined && rolled !== item.unit_cost && <span className="text-gray-400 text-xs"> (direct {item.unit_cost.toFixed(2)})</span>}
+                      {rolled !== undefined && rolled !== item.unit_cost && <span className="text-faint text-xs"> (direct {item.unit_cost.toFixed(2)})</span>}
                     </td>
                     <td className="px-4 py-2">{(item.quantity * unit).toFixed(2)}</td>
                   </tr>

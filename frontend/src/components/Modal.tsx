@@ -37,12 +37,12 @@ export default function Modal({ open, onClose, title, children, wide }: Props) {
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className={`bg-white rounded-xl shadow-xl w-full max-h-[90vh] overflow-auto m-4 ${wide ? "max-w-2xl" : "max-w-lg"}`}
+        className={`bg-surface rounded-xl shadow-xl w-full max-h-[90vh] overflow-auto m-4 ${wide ? "max-w-2xl" : "max-w-lg"}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-6 border-b">
           <h2 className="text-lg font-bold">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close dialog">
+          <button onClick={onClose} className="text-faint hover:text-muted" aria-label="Close dialog">
             <X size={20} />
           </button>
         </div>

@@ -44,16 +44,16 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
       <div className="space-y-4">
         <div className="text-sm">
           <span className="font-medium">{product.display_name}</span>
-          <span className="text-gray-500 ml-2">({product.sku})</span>
+          <span className="text-muted ml-2">({product.sku})</span>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Current Quantity</label>
-            <div className="input bg-gray-50">{product.quantity}</div>
+            <label className="block text-sm font-medium text-ink mb-1">Current Quantity</label>
+            <div className="input bg-app">{product.quantity}</div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">New Quantity</label>
+            <label className="block text-sm font-medium text-ink mb-1">New Quantity</label>
             <input
               type="number"
               min={0}
@@ -66,13 +66,13 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
         </div>
 
         {qtyDelta !== 0 && !isNaN(qtyDelta) && (
-          <div className={`text-sm font-medium ${qtyDelta > 0 ? "text-green-600" : "text-red-600"}`}>
+          <div className={`text-sm font-medium ${qtyDelta > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
             Will {qtyDelta > 0 ? "add" : "remove"} {Math.abs(qtyDelta)} unit{Math.abs(qtyDelta) !== 1 ? "s" : ""}
           </div>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+          <label className="block text-sm font-medium text-ink mb-1">Reason</label>
           <select className="select" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
             {REASON_CODES.map((rc) => (
               <option key={rc} value={rc}>{rc.charAt(0).toUpperCase() + rc.slice(1)}</option>
@@ -81,11 +81,11 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes (optional)</label>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
-        {error && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
+        {error && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>

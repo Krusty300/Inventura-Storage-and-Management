@@ -33,22 +33,22 @@ export default function Login() {
       title="Sign in"
       subtitle="Welcome back! Please enter your details."
       footer={
-        <p className="text-sm text-gray-500 mt-6 text-center">
+        <p className="text-sm text-muted mt-6 text-center">
           Don't have an account?{" "}
-          <Link to="/register" className="text-indigo-600 hover:underline">
+          <Link to="/register" className="text-indigo-600 dark:text-indigo-400 hover:underline">
             Register
           </Link>
         </p>
       }
     >
       {error && (
-        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm mb-4" role="alert">
+        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm mb-4" role="alert">
           {error}
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="username" className="block text-sm font-medium text-ink mb-1">
             Username
           </label>
           <input
@@ -62,7 +62,7 @@ export default function Login() {
           />
         </div>
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="password" className="block text-sm font-medium text-ink mb-1">
             Password
           </label>
           <PasswordInput
@@ -73,12 +73,12 @@ export default function Login() {
           />
         </div>
         <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
             <input
               type="checkbox"
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-4 w-4 rounded border-border-strong text-indigo-600 dark:text-indigo-400 focus:ring-indigo-500"
             />
             Remember me
           </label>

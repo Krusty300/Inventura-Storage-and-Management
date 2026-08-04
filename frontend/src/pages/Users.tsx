@@ -91,7 +91,7 @@ export default function Users() {
     sortBy === col ? (sortDir === "asc" ? " ↑" : " ↓") : "";
 
   const sortableHeader = (label: string, col: string) => (
-    <th className="px-4 py-3 font-medium text-gray-600 cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort(col)} aria-label={`Sort by ${col}`}>
+    <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none hover:text-indigo-600 dark:text-indigo-400" onClick={() => toggleSort(col)} aria-label={`Sort by ${col}`}>
       {label}
       {sortIndicator(col)}
     </th>
@@ -126,7 +126,7 @@ export default function Users() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+        <h1 className="text-2xl font-bold text-ink">User Management</h1>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export users to CSV">
             <Download size={16} /> Export
@@ -148,16 +148,16 @@ export default function Users() {
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="Users table">
           <thead>
-            <tr className="bg-gray-50 text-left">
+            <tr className="bg-app text-left">
               {sortableHeader("Username", "username")}
               {sortableHeader("Email", "email")}
               {sortableHeader("Role", "role")}
               {sortableHeader("Last Login", "last_login_at")}
               {sortableHeader("Created", "created_at")}
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={6} />
             ) : isError ? (
@@ -170,14 +170,14 @@ export default function Users() {
                 onAction={can("users.create") ? () => setShowCreate(true) : undefined}
               />
             ) : users.map((u) => (
-              <tr key={u.id} className="hover:bg-gray-50">
+              <tr key={u.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">
                   <span className="inline-flex items-center gap-2">
                     {u.username}
                     {user && u.id === user.id && <span className="badge badge-success">You</span>}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-500">{u.email}</td>
+                <td className="px-4 py-3 text-muted">{u.email}</td>
                 <td className="px-4 py-3">
                   {editingId === u.id ? (
                     <select className="select text-sm py-1" value={editRole} onChange={(e) => setEditRole(e.target.value)} aria-label={`Edit role for ${u.username}`}>
@@ -186,13 +186,13 @@ export default function Users() {
                     </select>
                   ) : (
                     <span className="inline-flex items-center gap-1">
-                      {u.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : <ShieldOff size={14} className="text-gray-400" />}
+                      {u.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : <ShieldOff size={14} className="text-faint" />}
                       <span className={`badge ${u.role === "admin" ? "badge-info" : "badge-warning"}`}>{u.role}</span>
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-gray-500">{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : "Never"}</td>
-                <td className="px-4 py-3 text-gray-500">{new Date(u.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : "Never"}</td>
+                <td className="px-4 py-3 text-muted">{new Date(u.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   {editingId === u.id ? (
                     <div className="flex gap-2">
@@ -201,15 +201,15 @@ export default function Users() {
                     </div>
                   ) : (
                     <div className="flex gap-2 items-center">
-                      <button onClick={() => setViewing(u)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${u.username}`}><Eye size={16} /></button>
+                      <button onClick={() => setViewing(u)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${u.username}`}><Eye size={16} /></button>
                       {can("users.update") && (
-                        <button onClick={() => setResetting(u)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Reset password for ${u.username}`}><KeyRound size={16} /></button>
+                        <button onClick={() => setResetting(u)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Reset password for ${u.username}`}><KeyRound size={16} /></button>
                       )}
                       {can("users.delete") && (!user || u.id !== user.id) && (
-                        <button onClick={() => setDeleting(u)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Deactivate ${u.username}`}><Trash2 size={16} /></button>
+                        <button onClick={() => setDeleting(u)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Deactivate ${u.username}`}><Trash2 size={16} /></button>
                       )}
                       {can("users.update") && (!user || u.id !== user.id) && (
-                        <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-indigo-600 hover:text-indigo-800">Edit</button>
+                        <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400">Edit</button>
                       )}
                     </div>
                   )}
@@ -284,7 +284,7 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
 
   const field = (label: string, key: string, id: string, type = "text") => (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-sm font-medium text-ink mb-1">{label}</label>
       <input id={id} type={type} className="input" value={(form as any)[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
     </div>
   );
@@ -295,12 +295,12 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         {field("Username", "username", "create-username")}
         {field("Email", "email", "create-email", "email")}
         <div>
-          <label htmlFor="create-password" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+          <label htmlFor="create-password" className="block text-sm font-medium text-ink mb-1">Password</label>
           <input id="create-password" type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-          <p className="text-xs text-gray-500 mt-1">{PASSWORD_HINT}</p>
+          <p className="text-xs text-muted mt-1">{PASSWORD_HINT}</p>
         </div>
         <div>
-          <label htmlFor="create-role" className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+          <label htmlFor="create-role" className="block text-sm font-medium text-ink mb-1">Role</label>
           <select id="create-role" className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             <option value="worker">Worker</option>
             <option value="admin">Admin</option>
@@ -336,11 +336,11 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: User; onClose: (
   return (
     <Modal open onClose={onClose} title={`Reset Password — ${user.username}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-sm text-gray-600">Set a new password for <strong>{user.username}</strong>. The user will need to sign in with this new password.</p>
+        <p className="text-sm text-muted">Set a new password for <strong>{user.username}</strong>. The user will need to sign in with this new password.</p>
         <div>
-          <label htmlFor="reset-password" className="block text-sm font-medium text-gray-700 mb-1">New password</label>
+          <label htmlFor="reset-password" className="block text-sm font-medium text-ink mb-1">New password</label>
           <input id="reset-password" type="password" className="input" value={new_password} onChange={(e) => setNewPassword(e.target.value)} required />
-          <p className="text-xs text-gray-500 mt-1">{PASSWORD_HINT}</p>
+          <p className="text-xs text-muted mt-1">{PASSWORD_HINT}</p>
         </div>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

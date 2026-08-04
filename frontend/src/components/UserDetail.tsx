@@ -55,44 +55,44 @@ export default function UserDetail({ user, onClose }: Props) {
       <div className="space-y-4 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <span className="text-gray-500">Username:</span>
+            <span className="text-muted">Username:</span>
             <p className="font-medium">{user.username}</p>
           </div>
           <div>
-            <span className="text-gray-500">Email:</span>
+            <span className="text-muted">Email:</span>
             <p className="font-medium">{user.email}</p>
           </div>
           <div>
-            <span className="text-gray-500">Role:</span>
+            <span className="text-muted">Role:</span>
             <p className="font-medium flex items-center gap-1 mt-1">
-              {user.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : <ShieldOff size={14} className="text-gray-400" />}
+              {user.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : <ShieldOff size={14} className="text-faint" />}
               {user.role}
             </p>
           </div>
           <div>
-            <span className="text-gray-500">Created:</span>
+            <span className="text-muted">Created:</span>
             <p className="font-medium">{new Date(user.created_at).toLocaleDateString()}</p>
           </div>
           <div>
-            <span className="text-gray-500">Last Login:</span>
+            <span className="text-muted">Last Login:</span>
             <p className="font-medium">{user.last_login_at ? new Date(user.last_login_at).toLocaleString() : "Never"}</p>
           </div>
         </div>
 
-        <div className="pt-4 border-t border-gray-100">
-          <h3 className="text-base font-semibold text-gray-900 mb-3">Recent Activity</h3>
+        <div className="pt-4 border-t border-border">
+          <h3 className="text-base font-semibold text-ink mb-3">Recent Activity</h3>
           {isLoading ? (
-            <p className="text-gray-500 py-2">Loading activity...</p>
+            <p className="text-muted py-2">Loading activity...</p>
           ) : logs.length === 0 ? (
-            <p className="text-gray-500 py-2">No activity recorded for this user.</p>
+            <p className="text-muted py-2">No activity recorded for this user.</p>
           ) : (
-            <ul className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+            <ul className="divide-y divide-border max-h-72 overflow-y-auto">
               {logs.map((log) => (
                 <li key={log.id} className="py-2 flex items-start gap-2">
                   <span className={`badge shrink-0 ${actionColors[log.action] || "badge-info"}`}>{log.action}</span>
                   <div className="min-w-0">
-                    <p className="text-gray-800">{log.description}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-ink">{log.description}</p>
+                    <p className="text-xs text-muted">
                       by {log.username || `User #${log.user_id}`} · {new Date(log.created_at).toLocaleString()}
                     </p>
                   </div>

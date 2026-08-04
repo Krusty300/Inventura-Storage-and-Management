@@ -162,11 +162,11 @@ export default function Products() {
   const sortIndicator = (key: string) => sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "";
 
   const expiryBadge = (p: Product) => {
-    if (!p.expiry_date) return <span className="text-gray-400">—</span>;
+    if (!p.expiry_date) return <span className="text-faint">—</span>;
     const days = Math.ceil((parseLocalDate(p.expiry_date).getTime() - Date.now()) / 86400000);
     if (days < 0) return <span className="badge badge-danger">Expired</span>;
     if (days <= 30) return <span className="badge badge-warning">Expires {parseLocalDate(p.expiry_date).toLocaleDateString()}</span>;
-    return <span className="text-gray-500 text-xs">{parseLocalDate(p.expiry_date).toLocaleDateString()}</span>;
+    return <span className="text-muted text-xs">{parseLocalDate(p.expiry_date).toLocaleDateString()}</span>;
   };
 
   const allSelected = parents.length > 0 && parents.every((p) => selectedIds.has(p.id));
@@ -187,7 +187,7 @@ export default function Products() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Products</h1>
+        <h1 className="text-2xl font-bold text-ink">Products</h1>
         <div className="flex gap-2">
           <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import products from CSV">
             Import
@@ -247,12 +247,12 @@ export default function Products() {
       </div>
 
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 rounded-lg border border-indigo-200">
-          <span className="text-sm font-medium text-indigo-700">{selectedIds.size} selected</span>
+        <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-200 dark:border-indigo-500/30">
+          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-400">{selectedIds.size} selected</span>
           <button onClick={() => setShowBulkEdit(true)} className="btn-primary text-sm px-3 py-1.5">
             Bulk Edit
           </button>
-          <button onClick={() => setSelectedIds(new Set())} className="text-sm text-indigo-600 hover:text-indigo-800 underline">Clear</button>
+          <button onClick={() => setSelectedIds(new Set())} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 underline">Clear</button>
         </div>
       )}
 
@@ -260,25 +260,25 @@ export default function Products() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm" role="grid" aria-label="Products table">
             <thead>
-              <tr className="bg-gray-50 text-left">
+              <tr className="bg-app text-left">
                 <th className="px-4 py-3">
-                  <input type="checkbox" className="rounded border-gray-300" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all products" />
+                  <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all products" />
                 </th>
-                <th className="px-4 py-3 font-medium text-gray-600">Image</th>
-                <th className="px-4 py-3 font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort("sku")} aria-label="Sort by SKU">SKU{sortIndicator("sku")}</th>
-                <th className="px-4 py-3 font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort("name")} aria-label="Sort by name">Name{sortIndicator("name")}</th>
-                <th className="px-4 py-3 font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort("category_name")} aria-label="Sort by category">Category{sortIndicator("category_name")}</th>
-                <th className="px-4 py-3 font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort("unit_price")} aria-label="Sort by price">Price{sortIndicator("unit_price")}</th>
-                <th className="px-4 py-3 font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort("cost_price")} aria-label="Sort by cost">Cost{sortIndicator("cost_price")}</th>
-                <th className="px-4 py-3 font-medium text-gray-600 cursor-pointer select-none" onClick={() => toggleSort("quantity")} aria-label="Sort by quantity">Qty{sortIndicator("quantity")}</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Location</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Batch</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Expiry</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+                <th className="px-4 py-3 font-medium text-muted">Image</th>
+                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("sku")} aria-label="Sort by SKU">SKU{sortIndicator("sku")}</th>
+                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("name")} aria-label="Sort by name">Name{sortIndicator("name")}</th>
+                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("category_name")} aria-label="Sort by category">Category{sortIndicator("category_name")}</th>
+                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("unit_price")} aria-label="Sort by price">Price{sortIndicator("unit_price")}</th>
+                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("cost_price")} aria-label="Sort by cost">Cost{sortIndicator("cost_price")}</th>
+                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("quantity")} aria-label="Sort by quantity">Qty{sortIndicator("quantity")}</th>
+                <th className="px-4 py-3 font-medium text-muted">Location</th>
+                <th className="px-4 py-3 font-medium text-muted">Batch</th>
+                <th className="px-4 py-3 font-medium text-muted">Expiry</th>
+                <th className="px-4 py-3 font-medium text-muted">Status</th>
+                <th className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {isLoading ? (
                 <Skeleton rows={5} cols={13} />
               ) : rows.length === 0 ? (
@@ -289,15 +289,15 @@ export default function Products() {
                 const isGroup = r.kind === "parent" && hasVariants(p);
                 const isCollapsed = isGroup && collapsed.has(p.id);
                 return (
-                  <tr key={`${r.kind}-${p.id}`} className={r.kind === "variant" ? "bg-gray-50/60 hover:bg-gray-100" : "hover:bg-gray-50"}>
+                  <tr key={`${r.kind}-${p.id}`} className={r.kind === "variant" ? "bg-app/60 hover:bg-subtle" : "hover:bg-app"}>
                     <td className="px-4 py-3">
-                      <input type="checkbox" className="rounded border-gray-300" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} aria-label={`Select ${p.display_name}`} />
+                      <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} aria-label={`Select ${p.display_name}`} />
                     </td>
                     <td className="px-4 py-3">
                       {p.image_url ? (
                         <img src={p.image_url} alt="" className="w-10 h-10 rounded object-cover" />
                       ) : (
-                        <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400">N/A</div>
+                        <div className="w-10 h-10 rounded bg-subtle flex items-center justify-center text-xs text-faint">N/A</div>
                       )}
                     </td>
                     <td className="px-4 py-3 font-medium">{p.sku}</td>
@@ -306,35 +306,35 @@ export default function Products() {
                         {isGroup && (
                           <button
                             onClick={() => setCollapsed((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}
-                            className="p-0.5 text-gray-400 hover:text-indigo-600"
+                            className="p-0.5 text-faint hover:text-indigo-600 dark:text-indigo-400"
                             aria-label={isCollapsed ? "Expand variants" : "Collapse variants"}
                           >
                             {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                           </button>
                         )}
                         {r.kind === "variant" ? (
-                          <span className="text-gray-500">{p.display_name}</span>
+                          <span className="text-muted">{p.display_name}</span>
                         ) : (
                           <span className="font-medium">{p.name}</span>
                         )}
                         {isGroup && (
-                          <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200">{p.variants.filter((v) => v.is_active).length} variants</span>
+                          <span className="badge bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">{p.variants.filter((v) => v.is_active).length} variants</span>
                         )}
                         {qty <= p.reorder_level && !isGroup && (
                           <AlertTriangle size={14} className="text-red-500" aria-label="Low stock" />
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{p.category_name}</td>
+                    <td className="px-4 py-3 text-muted">{p.category_name}</td>
                     <td className="px-4 py-3">{formatCurrency(p.unit_price, currencySymbol)}</td>
                     <td className="px-4 py-3">{formatCurrency(p.cost_price, currencySymbol)}</td>
                     <td className="px-4 py-3">
-                      <span className={qty <= p.reorder_level && !isGroup ? "text-red-600 font-medium" : ""}>
+                      <span className={qty <= p.reorder_level && !isGroup ? "text-red-600 dark:text-red-400 font-medium" : ""}>
                         {qty}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{p.location}</td>
-                    <td className="px-4 py-3 text-gray-500">{p.batch_number || "—"}</td>
+                    <td className="px-4 py-3 text-muted">{p.location}</td>
+                    <td className="px-4 py-3 text-muted">{p.batch_number || "—"}</td>
                     <td className="px-4 py-3">{expiryBadge(p)}</td>
                     <td className="px-4 py-3">
                       {can("products.update") ? (
@@ -353,27 +353,27 @@ export default function Products() {
                     <td className="px-4 py-3">
                       <div className="flex gap-2 items-center">
                         {!p.is_variant && (
-                          <button onClick={() => { setVariantParent(p); setEditing(null); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" title={`Add variant to ${p.name}`} aria-label={`Add variant to ${p.name}`}>
+                          <button onClick={() => { setVariantParent(p); setEditing(null); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`Add variant to ${p.name}`} aria-label={`Add variant to ${p.name}`}>
                             <PackagePlus size={16} />
                           </button>
                         )}
-                        <button onClick={() => setViewing(p)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${p.display_name}`}>
+                        <button onClick={() => setViewing(p)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${p.display_name}`}>
                           <Eye size={16} />
                         </button>
                         {!isGroup && (
-                          <button onClick={() => setAdjusting(p)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Adjust stock for ${p.display_name}`}>
+                          <button onClick={() => setAdjusting(p)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Adjust stock for ${p.display_name}`}>
                             <ClipboardList size={16} />
                           </button>
                         )}
                         {!isGroup && (
-                          <button onClick={() => setMovementProduct(p)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View movement history for ${p.display_name}`}>
+                          <button onClick={() => setMovementProduct(p)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View movement history for ${p.display_name}`}>
                             <History size={16} />
                           </button>
                         )}
-                        <button onClick={() => { setEditing(p); setVariantParent(null); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit ${p.display_name}`}>
+                        <button onClick={() => { setEditing(p); setVariantParent(null); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${p.display_name}`}>
                           <Pencil size={16} />
                         </button>
-                        <button onClick={() => setDeleting(p)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Delete ${p.display_name}`}>
+                        <button onClick={() => setDeleting(p)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${p.display_name}`}>
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -443,26 +443,26 @@ export default function Products() {
       />
 
       <Modal open={!!movementProduct} onClose={() => setMovementProduct(null)} title={`Movements: ${movementProduct?.display_name || ""}`} wide>
-        {movements && movements.length === 0 && <p className="text-gray-500 text-sm">No movements recorded for this product.</p>}
+        {movements && movements.length === 0 && <p className="text-muted text-sm">No movements recorded for this product.</p>}
         {movements && movements.length > 0 && (
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-3 py-2 font-medium text-gray-600">Date</th>
-                <th className="px-3 py-2 font-medium text-gray-600">Type</th>
-                <th className="px-3 py-2 font-medium text-gray-600">Qty</th>
-                <th className="px-3 py-2 font-medium text-gray-600">Ref</th>
-                <th className="px-3 py-2 font-medium text-gray-600">User</th>
+              <tr className="bg-app text-left">
+                <th className="px-3 py-2 font-medium text-muted">Date</th>
+                <th className="px-3 py-2 font-medium text-muted">Type</th>
+                <th className="px-3 py-2 font-medium text-muted">Qty</th>
+                <th className="px-3 py-2 font-medium text-muted">Ref</th>
+                <th className="px-3 py-2 font-medium text-muted">User</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {movements.map((m) => (
                 <tr key={m.id}>
-                  <td className="px-3 py-2 text-gray-500">{new Date(m.created_at).toLocaleDateString()}</td>
+                  <td className="px-3 py-2 text-muted">{new Date(m.created_at).toLocaleDateString()}</td>
                   <td className="px-3 py-2"><span className={`badge ${m.movement_type === "in" ? "badge-success" : "badge-danger"}`}>{m.movement_type}</span></td>
-                  <td className="px-3 py-2"><span className={m.quantity_change > 0 ? "text-green-600" : "text-red-600"}>{m.quantity_change > 0 ? "+" : ""}{m.quantity_change}</span></td>
-                  <td className="px-3 py-2 text-gray-500">{m.reference}</td>
-                  <td className="px-3 py-2 text-gray-500">{m.username}</td>
+                  <td className="px-3 py-2"><span className={m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{m.quantity_change > 0 ? "+" : ""}{m.quantity_change}</span></td>
+                  <td className="px-3 py-2 text-muted">{m.reference}</td>
+                  <td className="px-3 py-2 text-muted">{m.username}</td>
                 </tr>
               ))}
             </tbody>

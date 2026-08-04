@@ -81,35 +81,35 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-gray-500">Supplier:</span>
+            <span className="text-muted">Supplier:</span>
             <p className="font-medium">{order.supplier_name || "—"}</p>
           </div>
           <div>
-            <span className="text-gray-500">Status:</span>
+            <span className="text-muted">Status:</span>
             <p className="font-medium capitalize">{order.status}</p>
           </div>
           <div>
-            <span className="text-gray-500">Date:</span>
+            <span className="text-muted">Date:</span>
             <p className="font-medium">{new Date(order.created_at).toLocaleDateString()}</p>
           </div>
           <div>
-            <span className="text-gray-500">Created by:</span>
+            <span className="text-muted">Created by:</span>
             <p className="font-medium">{order.username}</p>
           </div>
         </div>
 
         <div>
-          <h3 className="text-sm font-medium text-gray-700 mb-2">Items</h3>
+          <h3 className="text-sm font-medium text-ink mb-2">Items</h3>
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50">
-                <th className="px-3 py-2 text-left text-gray-600">Product</th>
-                <th className="px-3 py-2 text-right text-gray-600">Qty</th>
-                <th className="px-3 py-2 text-right text-gray-600">Price</th>
-                <th className="px-3 py-2 text-right text-gray-600">Total</th>
+              <tr className="bg-app">
+                <th className="px-3 py-2 text-left text-muted">Product</th>
+                <th className="px-3 py-2 text-right text-muted">Qty</th>
+                <th className="px-3 py-2 text-right text-muted">Price</th>
+                <th className="px-3 py-2 text-right text-muted">Total</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {order.items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-3 py-2">
@@ -133,17 +133,17 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
 
         {order.notes && (
           <div>
-            <span className="text-sm text-gray-500">Notes:</span>
+            <span className="text-sm text-muted">Notes:</span>
             <p className="text-sm mt-1">{order.notes}</p>
           </div>
         )}
 
         {receiving && (
-          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-            <p className="text-sm font-medium text-gray-800">Enter serial numbers to receive</p>
+          <div className="bg-app rounded-lg p-4 space-y-3">
+            <p className="text-sm font-medium text-ink">Enter serial numbers to receive</p>
             {serializedItems.map((item) => (
               <div key={item.id}>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label className="block text-sm text-muted mb-1">
                   {item.product_name} — enter {item.quantity} serial number(s), one per line
                 </label>
                 <textarea
@@ -176,8 +176,8 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
         </div>
 
         {confirming && (
-          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-            <p className="text-sm font-medium text-gray-800">{confirmLabel}</p>
+          <div className="bg-app rounded-lg p-4 space-y-3">
+            <p className="text-sm font-medium text-ink">{confirmLabel}</p>
             <div className="flex gap-2">
               <button onClick={() => updateStatus(confirming)} className="btn-primary text-sm px-3 py-1.5">Yes, proceed</button>
               <button onClick={() => setConfirming(null)} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>

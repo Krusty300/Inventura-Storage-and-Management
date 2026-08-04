@@ -43,7 +43,7 @@ export default function LocationPicker({ value, onChange, placeholder = "Select 
           </option>
         ))}
       </datalist>
-      {isLoading && <p className="text-xs text-gray-400 mt-1">Loading locations...</p>}
+      {isLoading && <p className="text-xs text-faint mt-1">Loading locations...</p>}
     </div>
   );
 }

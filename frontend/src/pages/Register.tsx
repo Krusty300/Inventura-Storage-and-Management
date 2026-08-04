@@ -40,22 +40,22 @@ export default function Register() {
       title="Create account"
       subtitle="Get started with your inventory workspace."
       footer={
-        <p className="text-sm text-gray-500 mt-6 text-center">
+        <p className="text-sm text-muted mt-6 text-center">
           Already have an account?{" "}
-          <Link to="/login" className="text-indigo-600 hover:underline">
+          <Link to="/login" className="text-indigo-600 dark:text-indigo-400 hover:underline">
             Sign in
           </Link>
         </p>
       }
     >
       {error && (
-        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm mb-4" role="alert">
+        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm mb-4" role="alert">
           {error}
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="username" className="block text-sm font-medium text-ink mb-1">
             Username
           </label>
           <input
@@ -69,7 +69,7 @@ export default function Register() {
           />
         </div>
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="email" className="block text-sm font-medium text-ink mb-1">
             Email
           </label>
           <input
@@ -83,7 +83,7 @@ export default function Register() {
           />
         </div>
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="password" className="block text-sm font-medium text-ink mb-1">
             Password
           </label>
           <PasswordInput
@@ -95,7 +95,7 @@ export default function Register() {
           />
         </div>
         <div>
-          <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="confirmPassword" className="block text-sm font-medium text-ink mb-1">
             Confirm Password
           </label>
           <PasswordInput
@@ -105,7 +105,7 @@ export default function Register() {
             autoComplete="new-password"
             minLength={6}
           />
-          {confirmError && <p className="mt-1 text-sm text-red-600">{confirmError}</p>}
+          {confirmError && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{confirmError}</p>}
         </div>
         <button type="submit" className="btn-primary w-full" disabled={submitting}>
           {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Register"}

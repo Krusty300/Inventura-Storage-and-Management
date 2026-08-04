@@ -7,10 +7,13 @@ import CustomerDetail from "../components/CustomerDetail";
 import CustomerForm from "../components/CustomerForm";
 import CustomerImportModal from "../components/CustomerImportModal";
 import ConfirmDialog from "../components/ConfirmDialog";
+import BulkActionBar from "../components/BulkActionBar";
+import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import Pagination from "../components/Pagination";
 import { useDebounce } from "../hooks/useDebounce";
+import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
@@ -29,6 +32,7 @@ export default function Customers() {
   const [editing, setEditing] = useState<Customer | null>(null);
   const [deleting, setDeleting] = useState<Customer | null>(null);
   const [viewing, setViewing] = useState<Customer | null>(null);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const { can } = useAuth();
@@ -65,6 +69,33 @@ export default function Customers() {
   });
 
   const customers = data?.items || [];
+  const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(customers);
+
+  const bulkFields: BulkFieldConfig[] = [
+    { name: "phone", label: "Phone", type: "text" },
+    { name: "email", label: "Email", type: "text" },
+    { name: "address", label: "Address", type: "text" },
+    {
+      name: "customer_type",
+      label: "Type",
+      type: "select",
+      options: [
+        { value: "frequent", label: "Frequent" },
+        { value: "walk-in", label: "Walk-in" },
+      ],
+    },
+    { name: "notes", label: "Notes", type: "text" },
+    {
+      name: "is_active",
+      label: "Status",
+      type: "select",
+      options: [
+        { value: "true", label: "Active" },
+        { value: "false", label: "Inactive" },
+      ],
+      valueType: "boolean",
+    },
+  ];
 
   const handleExport = () => {
     exportCSV(
@@ -78,7 +109,7 @@ export default function Customers() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800">Customers</h1>
+        <h1 className="text-2xl font-bold text-ink">Customers</h1>
         <div className="flex gap-2">
           {can("customers.import") && (
             <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import customers from CSV">
@@ -114,7 +145,7 @@ export default function Customers() {
           <option value="frequent">Frequent</option>
           <option value="walk-in">Walk-in</option>
         </select>
-        <label className="flex items-center gap-2 text-sm text-gray-600">
+        <label className="flex items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
             className="accent-indigo-600"
@@ -125,58 +156,66 @@ export default function Customers() {
         </label>
       </div>
 
-      {isError && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">Failed to load customers: {(error as any)?.message}</div>}
+      <BulkActionBar count={selectedIds.size} canEdit={can("customers.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+
+      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load customers: {(error as any)?.message}</div>}
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm" role="grid" aria-label="Customers table">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium text-gray-600">Name</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Phone</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Email</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Type</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Orders</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Total Spent</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Last Purchase</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-3">
+                  <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all customers" />
+                </th>
+                <th className="px-4 py-3 font-medium text-muted">Name</th>
+                <th className="px-4 py-3 font-medium text-muted">Phone</th>
+                <th className="px-4 py-3 font-medium text-muted">Email</th>
+                <th className="px-4 py-3 font-medium text-muted">Type</th>
+                <th className="px-4 py-3 font-medium text-muted">Orders</th>
+                <th className="px-4 py-3 font-medium text-muted">Total Spent</th>
+                <th className="px-4 py-3 font-medium text-muted">Last Purchase</th>
+                <th className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {isLoading ? (
-                <Skeleton rows={5} cols={8} />
+                <Skeleton rows={5} cols={9} />
               ) : customers.length === 0 ? (
                 <EmptyState title="No customers found" message="Add your first customer to get started." actionLabel="Add Customer" onAction={() => { setEditing(null); setShowForm(true); }} />
               ) : customers.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50">
+                <tr key={c.id} className="hover:bg-app">
+                  <td className="px-4 py-3">
+                    <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} />
+                  </td>
                   <td className="px-4 py-3 font-medium">
                     {c.name}
                     {!c.is_active && <span className="badge badge-warning ml-2">Inactive</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{c.phone}</td>
-                  <td className="px-4 py-3 text-gray-500">{c.email}</td>
+                  <td className="px-4 py-3 text-muted">{c.phone}</td>
+                  <td className="px-4 py-3 text-muted">{c.email}</td>
                   <td className="px-4 py-3">
                     <span className={`badge ${c.customer_type === "frequent" ? "badge-success" : "badge-info"}`}>
                       {c.customer_type}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{c.total_sales ?? 0}</td>
-                  <td className="px-4 py-3 text-gray-500">{formatCurrency(c.total_spent ?? 0)}</td>
-                  <td className="px-4 py-3 text-gray-500">
+                  <td className="px-4 py-3 text-muted">{c.total_sales ?? 0}</td>
+                  <td className="px-4 py-3 text-muted">{formatCurrency(c.total_spent ?? 0)}</td>
+                  <td className="px-4 py-3 text-muted">
                     {c.last_purchase_at ? new Date(c.last_purchase_at).toLocaleDateString() : "Never"}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
-                      <button onClick={() => setViewing(c)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${c.name}`}><Eye size={16} /></button>
+                      <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${c.name}`}><Eye size={16} /></button>
                       {!c.is_active && can("customers.update") && (
-                        <button onClick={() => restoreMutation.mutate(c.id)} className="p-1 text-gray-400 hover:text-green-600" aria-label={`Restore ${c.name}`}>
+                        <button onClick={() => restoreMutation.mutate(c.id)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Restore ${c.name}`}>
                           <RefreshCw size={16} />
                         </button>
                       )}
-                      <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit ${c.name}`}>
+                      <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${c.name}`}>
                         <Pencil size={16} />
                       </button>
-                      <button onClick={() => setDeleting(c)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Delete ${c.name}`}>
+                      <button onClick={() => setDeleting(c)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${c.name}`}>
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -206,6 +245,22 @@ export default function Customers() {
       )}
 
       {viewing && <CustomerDetail customer={viewing} onClose={() => setViewing(null)} />}
+
+      {showBulkEdit && (
+        <EntityBulkEditModal
+          ids={[...selectedIds]}
+          entityLabel="Customer"
+          endpoint="/customers/bulk-edit"
+          fields={bulkFields}
+          onClose={() => setShowBulkEdit(false)}
+          onSaved={() => {
+            setShowBulkEdit(false);
+            clearSelection();
+            queryClient.invalidateQueries({ queryKey: ["customers"] });
+            addToast("Customers updated", "success");
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleting}

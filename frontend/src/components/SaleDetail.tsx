@@ -32,26 +32,26 @@ export default function SaleDetail({ sale, onClose }: Props) {
       <div className="space-y-4 text-sm">
         <div className="flex justify-between">
           <div className="space-y-1">
-            <p className="text-gray-500">Customer: <span className="font-medium text-gray-900">{sale.customer_name}</span></p>
-            <p className="text-gray-500">Date: <span className="font-medium text-gray-900">{new Date(sale.created_at).toLocaleString()}</span></p>
-            <p className="text-gray-500">Cashier: <span className="font-medium text-gray-900">{sale.username}</span></p>
+            <p className="text-muted">Customer: <span className="font-medium text-ink">{sale.customer_name}</span></p>
+            <p className="text-muted">Date: <span className="font-medium text-ink">{new Date(sale.created_at).toLocaleString()}</span></p>
+            <p className="text-muted">Cashier: <span className="font-medium text-ink">{sale.username}</span></p>
           </div>
           <div className="space-y-1 text-right">
             <span className={`badge ${statusColors[sale.status] || "badge-info"}`}>{sale.status}</span>
-            <p className="text-gray-500">Payment: <span className="font-medium text-gray-900 capitalize">{sale.payment_method}</span></p>
+            <p className="text-muted">Payment: <span className="font-medium text-ink capitalize">{sale.payment_method}</span></p>
           </div>
         </div>
 
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-3 py-2 font-medium text-gray-600">Item</th>
-              <th className="px-3 py-2 font-medium text-gray-600">Qty</th>
-              <th className="px-3 py-2 font-medium text-gray-600">Price</th>
-              <th className="px-3 py-2 font-medium text-gray-600 text-right">Amount</th>
+            <tr className="bg-app text-left">
+              <th className="px-3 py-2 font-medium text-muted">Item</th>
+              <th className="px-3 py-2 font-medium text-muted">Qty</th>
+              <th className="px-3 py-2 font-medium text-muted">Price</th>
+              <th className="px-3 py-2 font-medium text-muted text-right">Amount</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {sale.items.map((item) => (
               <tr key={item.id}>
                 <td className="px-3 py-2">{item.product_name}</td>
@@ -65,13 +65,13 @@ export default function SaleDetail({ sale, onClose }: Props) {
 
         <div className="flex justify-end">
           <div className="w-56 space-y-1">
-            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{formatCurrency(sale.subtotal, currencySymbol)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>{formatCurrency(sale.tax_amount, currencySymbol)}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>{formatCurrency(sale.subtotal, currencySymbol)}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Tax</span><span>{formatCurrency(sale.tax_amount, currencySymbol)}</span></div>
             <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(sale.total_amount, currencySymbol)}</span></div>
           </div>
         </div>
 
-        {sale.notes && <p className="text-gray-500">Notes: {sale.notes}</p>}
+        {sale.notes && <p className="text-muted">Notes: {sale.notes}</p>}
 
         <div className="flex justify-end pt-2">
           <button onClick={printInvoice} className="btn-secondary">

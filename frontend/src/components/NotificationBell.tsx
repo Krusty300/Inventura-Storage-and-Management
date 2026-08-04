@@ -81,7 +81,7 @@ export default function NotificationBell() {
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative p-2 text-gray-600 hover:text-indigo-600 rounded-full"
+        className="relative p-2 text-muted hover:text-indigo-600 dark:text-indigo-400 rounded-full"
         aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`}
       >
         <Bell size={20} />
@@ -93,18 +93,18 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 w-80 max-h-96 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-800">Notifications</h3>
+        <div className="absolute right-0 top-11 w-80 max-h-96 overflow-auto bg-surface border border-border rounded-lg shadow-lg z-50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-ink">Notifications</h3>
             {unread > 0 && (
-              <button onClick={() => setConfirming(true)} className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+              <button onClick={() => setConfirming(true)} className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
                 <CheckCheck size={14} /> Mark all read
               </button>
             )}
           </div>
           {confirming && (
-            <div className="px-4 py-3 border-b border-gray-100 bg-amber-50" role="alertdialog">
-              <p className="text-sm text-gray-700 mb-2">Mark all notifications as read?</p>
+            <div className="px-4 py-3 border-b border-border bg-amber-50 dark:bg-amber-500/10" role="alertdialog">
+              <p className="text-sm text-ink mb-2">Mark all notifications as read?</p>
               <div className="flex gap-2 justify-end">
                 <button
                   onClick={() => setConfirming(false)}
@@ -122,25 +122,25 @@ export default function NotificationBell() {
             </div>
           )}
           {items.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-gray-500 text-center">No notifications</p>
+            <p className="px-4 py-8 text-sm text-muted text-center">No notifications</p>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-border">
               {items.map((n) => {
                 const Icon = typeIcon[n.type] || Info;
                 return (
                   <button
                     key={n.id}
                     onClick={() => openNotification(n)}
-                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 flex gap-3 ${n.is_read ? "opacity-70" : ""}`}
+                    className={`w-full text-left px-4 py-3 hover:bg-app flex gap-3 ${n.is_read ? "opacity-70" : ""}`}
                   >
                     <Icon
                       size={16}
                       className={n.type === "warning" ? "text-amber-500 mt-0.5" : "text-emerald-500 mt-0.5"}
                     />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{n.title}</p>
-                      {n.message && <p className="text-xs text-gray-500 truncate">{n.message}</p>}
-                      <p className="text-[10px] text-gray-400 mt-0.5">
+                      <p className="text-sm font-medium text-ink truncate">{n.title}</p>
+                      {n.message && <p className="text-xs text-muted truncate">{n.message}</p>}
+                      <p className="text-[10px] text-faint mt-0.5">
                         {new Date(n.created_at).toLocaleString()}
                       </p>
                     </div>

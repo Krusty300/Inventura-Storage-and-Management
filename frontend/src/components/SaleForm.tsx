@@ -87,14 +87,14 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+            <label className="block text-sm font-medium text-ink mb-1">Customer</label>
             <select className="select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
               <option value="">Select a customer (walk-in)</option>
               {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+            <label className="block text-sm font-medium text-ink mb-1">Payment Method</label>
             <select className="select" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
               <option value="cash">Cash</option>
               <option value="card">Card</option>
@@ -105,7 +105,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium text-gray-700">Items</label>
+            <label className="text-sm font-medium text-ink">Items</label>
             <div className="flex gap-2">
               <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.unit_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan to add item..." />
               <button type="button" onClick={addItem} className="btn-secondary text-xs py-1 px-2">
@@ -131,7 +131,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price} onChange={(e) => updateItem(idx, "unit_price", e.target.value)} step="0.01" required />
                 </div>
                 {items.length > 1 && (
-                  <button type="button" onClick={() => removeItem(idx)} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove item">
+                  <button type="button" onClick={() => removeItem(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
                     <Trash2 size={16} />
                   </button>
                 )}
@@ -142,14 +142,14 @@ export default function SaleForm({ onClose, onSaved }: Props) {
 
         <div className="flex justify-end">
           <div className="w-64 space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{formatCurrency(subtotal, currency)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Tax ({settings?.tax_rate ?? 0}%)</span><span>{formatCurrency(tax, currency)}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>{formatCurrency(subtotal, currency)}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Tax ({settings?.tax_rate ?? 0}%)</span><span>{formatCurrency(tax, currency)}</span></div>
             <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(total, currency)}</span></div>
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 

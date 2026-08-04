@@ -39,7 +39,7 @@ export default function CycleCounts() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Cycle Counts</h1>
+        <h1 className="text-2xl font-bold text-ink">Cycle Counts</h1>
         {can("cycle_counts.create") && (
           <button onClick={() => setShowForm(true)} className="btn-primary">
             New Count
@@ -50,38 +50,38 @@ export default function CycleCounts() {
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="Cycle counts table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">Count #</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Location</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Expected</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Variance</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Date</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3 font-medium text-muted">Count #</th>
+              <th className="px-4 py-3 font-medium text-muted">Location</th>
+              <th className="px-4 py-3 font-medium text-muted">Status</th>
+              <th className="px-4 py-3 font-medium text-muted">Expected</th>
+              <th className="px-4 py-3 font-medium text-muted">Variance</th>
+              <th className="px-4 py-3 font-medium text-muted">Date</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={7} />
             ) : counts.length === 0 ? (
               <EmptyState title="No cycle counts yet" message="Create a cycle count to verify on-hand stock against the system." actionLabel="New Count" onAction={() => setShowForm(true)} />
             ) : counts.map((c) => (
-              <tr key={c.id} className="hover:bg-gray-50">
+              <tr key={c.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{c.cc_number}</td>
-                <td className="px-4 py-3 text-gray-500">{c.location_name || "All"}</td>
+                <td className="px-4 py-3 text-muted">{c.location_name || "All"}</td>
                 <td className="px-4 py-3"><span className={`badge ${statusBadge(c.status)}`}>{c.status}</span></td>
                 <td className="px-4 py-3">{c.total_expected}</td>
                 <td className="px-4 py-3">
-                  <span className={c.total_variance !== 0 ? "text-orange-600 font-medium" : "text-gray-500"}>
+                  <span className={c.total_variance !== 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-muted"}>
                     {c.total_variance > 0 ? "+" : ""}{c.total_variance}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-500">{new Date(c.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{new Date(c.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(c)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${c.cc_number}`}><Eye size={16} /></button>
+                    <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${c.cc_number}`}><Eye size={16} /></button>
                     {c.status !== "completed" && c.status !== "cancelled" && can("cycle_counts.count") && (
-                      <button onClick={() => setCounting(c)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Count ${c.cc_number}`}><ClipboardCheck size={16} /></button>
+                      <button onClick={() => setCounting(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Count ${c.cc_number}`}><ClipboardCheck size={16} /></button>
                     )}
                   </div>
                 </td>
@@ -183,41 +183,41 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+            <label className="block text-sm font-medium text-ink mb-1">Location</label>
             <select className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)} required>
               <option value="">Select location...</option>
               {locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
             <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Items to Count</span>
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="bg-app px-4 py-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-ink">Items to Count</span>
             <button type="button" onClick={() => setRows([...rows, { product_id: "" }])} className="btn-secondary text-xs py-1 px-2">
               <Plus size={14} className="inline mr-1" />Add Item
             </button>
           </div>
-          <div className="divide-y divide-gray-100 max-h-[40vh] overflow-auto">
+          <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (
               <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-7">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Product</label>
                   <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                     <option value="">Select...</option>
                     {productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
                   </select>
                 </div>
                 <div className="col-span-3">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Expected (system)</label>
-                  <input type="number" className="input bg-gray-100" value={expectedQty(row.product_id)} readOnly />
+                  <label className="block text-xs font-medium text-muted mb-1">Expected (system)</label>
+                  <input type="number" className="input bg-subtle" value={expectedQty(row.product_id)} readOnly />
                 </div>
                 <div className="col-span-2">
-                  <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove item">
+                  <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -225,7 +225,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
             ))}
           </div>
         </div>
-        <p className="text-xs text-gray-500">Expected quantity is read from system stock at the selected location. Count the actual on-hand and record only the counted quantity.</p>
+        <p className="text-xs text-muted">Expected quantity is read from system stock at the selected location. Count the actual on-hand and record only the counted quantity.</p>
 
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
@@ -242,37 +242,37 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
-            <p className="text-gray-500">Location</p>
+            <p className="text-muted">Location</p>
             <p className="font-medium">{count.location_name || "All locations"}</p>
           </div>
           <div>
-            <p className="text-gray-500">Status</p>
+            <p className="text-muted">Status</p>
             <p className="font-medium capitalize">{count.status}</p>
           </div>
           <div>
-            <p className="text-gray-500">Completed</p>
+            <p className="text-muted">Completed</p>
             <p className="font-medium">{count.completed_at ? new Date(count.completed_at).toLocaleDateString() : "—"}</p>
           </div>
         </div>
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-2 font-medium text-gray-600">Product</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Expected</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Counted</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Variance</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Status</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-2 font-medium text-muted">Product</th>
+                <th className="px-4 py-2 font-medium text-muted">Expected</th>
+                <th className="px-4 py-2 font-medium text-muted">Counted</th>
+                <th className="px-4 py-2 font-medium text-muted">Variance</th>
+                <th className="px-4 py-2 font-medium text-muted">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {count.items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-2 font-medium">{item.product_name}</td>
                   <td className="px-4 py-2">{item.expected_qty}</td>
                   <td className="px-4 py-2">{item.counted_qty ?? "—"}</td>
                   <td className="px-4 py-2">
-                    <span className={item.variance !== 0 ? "text-orange-600 font-medium" : "text-gray-500"}>
+                    <span className={item.variance !== 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-muted"}>
                       {item.variance !== 0 && item.variance > 0 ? "+" : ""}{item.variance}
                     </span>
                   </td>
@@ -321,7 +321,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
   return (
     <Modal open onClose={onClose} title={`Count ${count.cc_number}`} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg max-h-[50vh] overflow-auto">
+        <div className="divide-y divide-border border border-border rounded-lg max-h-[50vh] overflow-auto">
           {count.items.map((item, idx) => {
             const row = rows[idx];
             const variance = (parseInt(row?.counted_qty) || 0) - item.expected_qty;
@@ -330,7 +330,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
                 <div className="col-span-5">
                   <p className="text-sm font-medium">{item.product_name}</p>
                 </div>
-                <div className="col-span-2 text-sm text-gray-500">
+                <div className="col-span-2 text-sm text-muted">
                   Expected: {item.expected_qty}
                 </div>
                 <div className="col-span-3">
@@ -345,7 +345,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
                 </div>
                 <div className="col-span-2 text-sm">
                   {variance !== 0 && (
-                    <span className={variance > 0 ? "text-orange-600 font-medium" : "text-red-600 font-medium"}>
+                    <span className={variance > 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
                       {variance > 0 ? "+" : ""}{variance}
                     </span>
                   )}
@@ -354,7 +354,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
             );
           })}
         </div>
-        <p className="text-xs text-gray-500">Variance is posted to inventory as a COUNT adjustment when submitted.</p>
+        <p className="text-xs text-muted">Variance is posted to inventory as a COUNT adjustment when submitted.</p>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Submitting..." : "Submit Count"}</button>

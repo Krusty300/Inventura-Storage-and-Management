@@ -45,11 +45,11 @@ export default function CategoryForm({ category, onClose, onSaved }: Props) {
     <Modal open onClose={onClose} title={category ? "Edit Category" : "Add Category"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+          <label className="block text-sm font-medium text-ink mb-1">Name *</label>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+          <label className="block text-sm font-medium text-ink mb-1">Description</label>
           <textarea className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
         <div className="flex justify-end gap-3 pt-2">

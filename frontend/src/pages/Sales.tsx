@@ -6,10 +6,13 @@ import type { PaginatedResponse, Sale } from "../types";
 import SaleForm from "../components/SaleForm";
 import SaleDetail from "../components/SaleDetail";
 import ConfirmDialog from "../components/ConfirmDialog";
+import BulkActionBar from "../components/BulkActionBar";
+import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
+import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
 import { exportCSV } from "../utils/csv";
 import { formatCurrency } from "../utils/currency";
@@ -25,6 +28,7 @@ export default function Sales() {
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState<Sale | null>(null);
   const [refunding, setRefunding] = useState<Sale | null>(null);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const { can } = useAuth();
@@ -52,6 +56,11 @@ export default function Sales() {
   });
 
   const sales = data?.items || [];
+  const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(sales);
+
+  const bulkFields: BulkFieldConfig[] = [
+    { name: "notes", label: "Notes", type: "text" },
+  ];
 
   const handleExport = () => {
     exportCSV(
@@ -73,7 +82,7 @@ export default function Sales() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Sales</h1>
+        <h1 className="text-2xl font-bold text-ink">Sales</h1>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export sales to CSV">Export</button>
           <button onClick={() => setShowForm(true)} className="btn-primary">New Sale</button>
@@ -86,44 +95,52 @@ export default function Sales() {
         </div>
       </div>
 
+      <BulkActionBar count={selectedIds.size} canEdit={can("sales.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="Sales table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">Invoice #</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Customer</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Date</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Payment</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Total</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3">
+                <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all sales" />
+              </th>
+              <th className="px-4 py-3 font-medium text-muted">Invoice #</th>
+              <th className="px-4 py-3 font-medium text-muted">Customer</th>
+              <th className="px-4 py-3 font-medium text-muted">Date</th>
+              <th className="px-4 py-3 font-medium text-muted">Status</th>
+              <th className="px-4 py-3 font-medium text-muted">Payment</th>
+              <th className="px-4 py-3 font-medium text-muted">Total</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={7} />
+              <Skeleton rows={5} cols={8} />
             ) : sales.length === 0 ? (
               <EmptyState title="No sales yet" message="Record your first sale to start tracking revenue." actionLabel="New Sale" onAction={() => setShowForm(true)} />
             ) : sales.map((s) => (
-              <tr key={s.id} className="hover:bg-gray-50">
+              <tr key={s.id} className="hover:bg-app">
+                <td className="px-4 py-3">
+                  <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(s.id)} onChange={() => toggleSelect(s.id)} aria-label={`Select invoice ${s.invoice_number}`} />
+                </td>
                 <td className="px-4 py-3 font-medium">{s.invoice_number}</td>
-                <td className="px-4 py-3 text-gray-500">{s.customer_name}</td>
-                <td className="px-4 py-3 text-gray-500">{new Date(s.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{s.customer_name}</td>
+                <td className="px-4 py-3 text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <span className={`badge ${s.status === "completed" ? "badge-success" : "badge-danger"}`}>{s.status}</span>
                 </td>
-                <td className="px-4 py-3 text-gray-500 capitalize">{s.payment_method}</td>
+                <td className="px-4 py-3 text-muted capitalize">{s.payment_method}</td>
                 <td className="px-4 py-3">{formatCurrency(s.total_amount, currencySymbol)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(s)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View invoice ${s.invoice_number}`}>
+                    <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View invoice ${s.invoice_number}`}>
                       <Eye size={16} />
                     </button>
-                    <button onClick={() => printPdf(s.id)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Download invoice ${s.invoice_number}`}>
+                    <button onClick={() => printPdf(s.id)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Download invoice ${s.invoice_number}`}>
                       <FileText size={16} />
                     </button>
                     {s.status === "completed" && can("sales.refund") && (
-                      <button onClick={() => setRefunding(s)} className="p-1 text-gray-400 hover:text-orange-600" aria-label={`Refund ${s.invoice_number}`}>
+                      <button onClick={() => setRefunding(s)} className="p-1 text-faint hover:text-orange-600 dark:text-orange-400" aria-label={`Refund ${s.invoice_number}`}>
                         <RotateCcw size={16} />
                       </button>
                     )}
@@ -145,6 +162,22 @@ export default function Sales() {
       )}
 
       {viewing && <SaleDetail sale={viewing} onClose={() => setViewing(null)} />}
+
+      {showBulkEdit && (
+        <EntityBulkEditModal
+          ids={[...selectedIds]}
+          entityLabel="Sale"
+          endpoint="/sales/bulk-edit"
+          fields={bulkFields}
+          onClose={() => setShowBulkEdit(false)}
+          onSaved={() => {
+            setShowBulkEdit(false);
+            clearSelection();
+            queryClient.invalidateQueries({ queryKey: ["sales"] });
+            addToast("Sales updated", "success");
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={!!refunding}

@@ -30,7 +30,7 @@ export default function Pagination({ page, totalPages, onPageChange, pageSize, o
   return (
     <div className="flex items-center justify-center gap-2 pt-4 pb-2 flex-wrap">
       {onPageSizeChange && (
-        <label className="flex items-center gap-2 text-sm text-gray-600 mr-4">
+        <label className="flex items-center gap-2 text-sm text-muted mr-4">
           Per page
           <select
             className="select py-1"
@@ -49,7 +49,7 @@ export default function Pagination({ page, totalPages, onPageChange, pageSize, o
           </button>
           {pages.map((p, i) =>
             p === "..." ? (
-              <span key={`e${i}`} className="px-1 text-gray-400">…</span>
+              <span key={`e${i}`} className="px-1 text-faint">…</span>
             ) : (
               <button key={p} className={`pagination-btn ${p === page ? "active" : ""}`} onClick={() => onPageChange(p)}>
                 {p}

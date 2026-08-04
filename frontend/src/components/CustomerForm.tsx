@@ -44,32 +44,32 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
     <Modal open onClose={onClose} title={isEdit ? "Edit Customer" : "New Customer"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+          <label className="block text-sm font-medium text-ink mb-1">Name *</label>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <label className="block text-sm font-medium text-ink mb-1">Phone</label>
             <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-ink mb-1">Email</label>
             <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+          <label className="block text-sm font-medium text-ink mb-1">Address</label>
           <textarea className="input" rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Customer Type</label>
+          <label className="block text-sm font-medium text-ink mb-1">Customer Type</label>
           <select className="select" value={customerType} onChange={(e) => setCustomerType(e.target.value)}>
             <option value="frequent">Frequent</option>
             <option value="walk-in">Walk-in</option>
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="flex justify-end gap-3 pt-2">

@@ -47,20 +47,20 @@ export default function CustomerImportModal({ onClose, onImported }: Props) {
         {!result ? (
           <>
             <div
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-indigo-400"
+              className="border-2 border-dashed border-border-strong rounded-lg p-8 text-center cursor-pointer hover:border-indigo-400"
               onClick={() => inputRef.current?.click()}
             >
               {file ? (
-                <div className="flex items-center justify-center gap-2 text-indigo-600">
+                <div className="flex items-center justify-center gap-2 text-indigo-600 dark:text-indigo-400">
                   <FileText size={24} />
                   <span className="font-medium">{file.name}</span>
                 </div>
               ) : (
-                <div className="text-gray-500">
+                <div className="text-muted">
                   <Upload size={32} className="mx-auto mb-2" />
                   <p>Click to select a CSV file</p>
                   <p className="text-xs mt-1">Headers: name, phone, email, address, customer_type, notes</p>
-                  <p className="text-xs mt-1 text-gray-400">customer_type is either "frequent" or "walk-in". Rows matching an existing name, phone, or email are skipped.</p>
+                  <p className="text-xs mt-1 text-faint">customer_type is either "frequent" or "walk-in". Rows matching an existing name, phone, or email are skipped.</p>
                 </div>
               )}
             </div>
@@ -75,14 +75,14 @@ export default function CustomerImportModal({ onClose, onImported }: Props) {
         ) : (
           <>
             <div className="flex gap-4">
-              <div className="flex items-center gap-2 text-green-600"><CheckCircle size={20} /><span className="font-medium">{result.created} created</span></div>
+              <div className="flex items-center gap-2 text-green-600 dark:text-green-400"><CheckCircle size={20} /><span className="font-medium">{result.created} created</span></div>
               {result.skipped > 0 && <div className="flex items-center gap-2 text-yellow-600"><AlertTriangle size={20} /><span className="font-medium">{result.skipped} skipped (duplicates)</span></div>}
             </div>
             {result.errors.length > 0 && (
               <div>
-                <div className="flex items-center gap-2 text-red-600 mb-2"><XCircle size={20} /><span className="font-medium">{result.errors.length} errors</span></div>
+                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-2"><XCircle size={20} /><span className="font-medium">{result.errors.length} errors</span></div>
                 <div className="max-h-40 overflow-y-auto space-y-1">
-                  {result.errors.map((e, i) => <p key={i} className="text-sm text-red-600">{e}</p>)}
+                  {result.errors.map((e, i) => <p key={i} className="text-sm text-red-600 dark:text-red-400">{e}</p>)}
                 </div>
               </div>
             )}

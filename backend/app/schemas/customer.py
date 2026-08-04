@@ -42,6 +42,21 @@ class CustomerUpdate(BaseModel):
         return _clean_email(v)
 
 
+class CustomerBulkEdit(BaseModel):
+    ids: list[int]
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    customer_type: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v):
+        return _clean_email(v)
+
+
 class CustomerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

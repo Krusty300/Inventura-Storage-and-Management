@@ -133,7 +133,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
 
   const field = (label: string, key: string, type = "text", required = false) => (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-ink mb-1">{label}</label>
       <input
         type={type}
         className="input"
@@ -147,12 +147,12 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const inheritedInfo = (
     <div className="grid grid-cols-2 gap-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-        <div className="input bg-gray-50">{product?.category_name || parent?.category_name || "—"}</div>
+        <label className="block text-sm font-medium text-ink mb-1">Category</label>
+        <div className="input bg-app">{product?.category_name || parent?.category_name || "—"}</div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
-        <div className="input bg-gray-50">{product?.supplier_name || parent?.supplier_name || "—"}</div>
+        <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
+        <div className="input bg-app">{product?.supplier_name || parent?.supplier_name || "—"}</div>
       </div>
     </div>
   );
@@ -173,7 +173,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
 
         {!isVariantMode && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <label className="block text-sm font-medium text-ink mb-1">Description</label>
             <textarea className="input" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
         )}
@@ -181,14 +181,14 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         {!isVariantMode && (
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <label className="block text-sm font-medium text-ink mb-1">Category</label>
               <select className="select" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
                 <option value="">None</option>
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+              <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
               <select className="select" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
                 <option value="">None</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -200,18 +200,18 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         {isVariantMode && (
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-gray-700">Attributes</label>
+              <label className="block text-sm font-medium text-ink">Attributes</label>
               <button type="button" onClick={() => setAttributes([...attributes, { key: "", value: "" }])} className="btn-secondary text-xs py-1 px-2">
                 <Plus size={14} className="inline mr-1" />Add Attribute
               </button>
             </div>
-            {attributes.length === 0 && <p className="text-xs text-gray-400 mb-1">No attributes yet. Add things like Color, Size, or Flavor.</p>}
+            {attributes.length === 0 && <p className="text-xs text-faint mb-1">No attributes yet. Add things like Color, Size, or Flavor.</p>}
             <div className="space-y-2">
               {attributes.map((a, idx) => (
                 <div key={idx} className="flex gap-2 items-center">
                   <input className="input text-sm flex-1" placeholder="Attribute (e.g. Color)" value={a.key} onChange={(e) => setAttr(idx, "key", e.target.value)} />
                   <input className="input text-sm flex-1" placeholder="Value (e.g. Red)" value={a.value} onChange={(e) => setAttr(idx, "value", e.target.value)} />
-                  <button type="button" onClick={() => setAttributes(attributes.filter((_, i) => i !== idx))} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove attribute">
+                  <button type="button" onClick={() => setAttributes(attributes.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove attribute">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -225,12 +225,12 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
           {field("Cost Price", "cost_price", "number")}
           {isParentWithVariants ? (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
-              <div className="input bg-gray-50">{product?.total_quantity ?? product?.quantity ?? 0}</div>
+              <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
+              <div className="input bg-app">{product?.total_quantity ?? product?.quantity ?? 0}</div>
             </div>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+              <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
               <input
                 type="number"
                 className="input"
@@ -244,20 +244,20 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         </div>
 
         {!isVariantMode && form.is_serialized && (
-          <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-lg px-3 py-2">
             Serialized products track stock per serial number. Quantity must be 0 — stock is added by recording receipts with serial numbers.
           </p>
         )}
 
         {isParentWithVariants && (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2">
             Stock is held on this product's variants. Adjust quantities on individual variants.
           </p>
         )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+            <label className="block text-sm font-medium text-ink mb-1">Location</label>
             <LocationPicker value={form.location} onChange={(v) => setForm({ ...form, location: v })} placeholder="e.g. A-01-B" />
           </div>
           {field("Barcode", "barcode")}
@@ -269,7 +269,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         <div className="grid grid-cols-2 gap-4">
           {!isVariantMode && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Serialized (tracked per unit)</label>
+              <label className="block text-sm font-medium text-ink mb-1">Serialized (tracked per unit)</label>
               <select
                 className="select"
                 value={form.is_serialized ? "1" : "0"}
@@ -282,7 +282,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <label className="block text-sm font-medium text-ink mb-1">Status</label>
             <select className="select" value={form.is_active ? "1" : "0"} onChange={(e) => setForm({ ...form, is_active: e.target.value === "1" })}>
               <option value="1">Active</option>
               <option value="0">Inactive</option>
@@ -290,7 +290,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Image</label>
+          <label className="block text-sm font-medium text-ink mb-1">Image</label>
           <div className="flex items-center gap-4">
             {imagePreview && <img src={imagePreview} alt="" className="w-16 h-16 rounded object-cover border" />}
             <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="text-sm" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setImageFile(f); setImagePreview(URL.createObjectURL(f)); } }} />

@@ -42,7 +42,7 @@ function TabState({ isLoading, isError }: { isLoading: boolean; isError: boolean
   }
   if (isError) {
     return (
-      <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
+      <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
         Failed to load report data.
       </div>
     );
@@ -147,7 +147,7 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
+        <h1 className="text-2xl font-bold text-ink">Reports & Analytics</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <input
             type="date"
@@ -156,7 +156,7 @@ export default function Reports() {
             onChange={(e) => setStartDate(e.target.value)}
             aria-label="Start date"
           />
-          <span className="text-gray-400 text-sm">to</span>
+          <span className="text-faint text-sm">to</span>
           <input
             type="date"
             className="input text-sm py-1.5"
@@ -167,7 +167,7 @@ export default function Reports() {
           {(startDate || endDate) && (
             <button
               onClick={() => { setStartDate(""); setEndDate(""); }}
-              className="text-sm text-indigo-600 hover:text-indigo-800 underline"
+              className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 underline"
               aria-label="Clear date range"
             >
               Clear
@@ -183,18 +183,18 @@ export default function Reports() {
       </div>
 
       {dateInvalid && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm" role="alert">
+        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 px-4 py-3 rounded-lg text-sm" role="alert">
           Start date must be before end date. Adjust the range to load report data.
         </div>
       )}
 
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
+      <div className="flex gap-1 bg-subtle p-1 rounded-lg w-fit flex-wrap">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-              activeTab === t.key ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
+              activeTab === t.key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink"
             }`}
           >
             {t.label}
@@ -243,42 +243,42 @@ function ManufacturingCostTab({ data, symbol }: { data: ManufacturingCostReport;
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card"><p className="text-sm text-gray-500">Completed Orders</p><p className="text-2xl font-bold mt-1">{data.completed_orders}</p></div>
-        <div className="card"><p className="text-sm text-gray-500">Total Material Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_material_cost, symbol, 0)}</p></div>
-        <div className="card"><p className="text-sm text-gray-500">Standard Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_standard_cost, symbol, 0)}</p></div>
+        <div className="card"><p className="text-sm text-muted">Completed Orders</p><p className="text-2xl font-bold mt-1">{data.completed_orders}</p></div>
+        <div className="card"><p className="text-sm text-muted">Total Material Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_material_cost, symbol, 0)}</p></div>
+        <div className="card"><p className="text-sm text-muted">Standard Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_standard_cost, symbol, 0)}</p></div>
         <div className="card">
-          <p className="text-sm text-gray-500">Cost Variance</p>
-          <p className={`text-2xl font-bold mt-1 ${data.total_variance >= 0 ? "text-green-600" : "text-red-600"}`}>{data.total_variance >= 0 ? "+" : ""}{formatCurrency(data.total_variance, symbol, 0)}</p>
+          <p className="text-sm text-muted">Cost Variance</p>
+          <p className={`text-2xl font-bold mt-1 ${data.total_variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>{data.total_variance >= 0 ? "+" : ""}{formatCurrency(data.total_variance, symbol, 0)}</p>
         </div>
       </div>
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium text-gray-600">WO #</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Product</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Qty</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Completed</th>
-                <th className="px-4 py-3 font-medium text-gray-600 text-right">Material Cost</th>
-                <th className="px-4 py-3 font-medium text-gray-600 text-right">Std / Unit</th>
-                <th className="px-4 py-3 font-medium text-gray-600 text-right">Actual / Unit</th>
-                <th className="px-4 py-3 font-medium text-gray-600 text-right">Variance</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-3 font-medium text-muted">WO #</th>
+                <th className="px-4 py-3 font-medium text-muted">Product</th>
+                <th className="px-4 py-3 font-medium text-muted">Qty</th>
+                <th className="px-4 py-3 font-medium text-muted">Completed</th>
+                <th className="px-4 py-3 font-medium text-muted text-right">Material Cost</th>
+                <th className="px-4 py-3 font-medium text-muted text-right">Std / Unit</th>
+                <th className="px-4 py-3 font-medium text-muted text-right">Actual / Unit</th>
+                <th className="px-4 py-3 font-medium text-muted text-right">Variance</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">No completed work orders</td></tr>
+                <tr><td colSpan={8} className="px-4 py-6 text-center text-muted">No completed work orders</td></tr>
               ) : data.items.map((row) => (
-                <tr key={row.wo_id} className="hover:bg-gray-50">
+                <tr key={row.wo_id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">{row.wo_number}</td>
-                  <td className="px-4 py-3 text-gray-500">{row.product_name}</td>
+                  <td className="px-4 py-3 text-muted">{row.product_name}</td>
                   <td className="px-4 py-3">{row.quantity}</td>
-                  <td className="px-4 py-3 text-gray-500">{row.completed_at ? new Date(row.completed_at).toLocaleDateString() : "—"}</td>
+                  <td className="px-4 py-3 text-muted">{row.completed_at ? new Date(row.completed_at).toLocaleDateString() : "—"}</td>
                   <td className="px-4 py-3 text-right">{formatCurrency(row.material_cost, symbol)}</td>
                   <td className="px-4 py-3 text-right">{formatCurrency(row.standard_unit_cost, symbol)}</td>
                   <td className="px-4 py-3 text-right">{formatCurrency(row.actual_unit_cost, symbol)}</td>
-                  <td className={`px-4 py-3 text-right font-medium ${row.variance >= 0 ? "text-green-600" : "text-red-600"}`}>{row.variance >= 0 ? "+" : ""}{formatCurrency(row.variance, symbol)}</td>
+                  <td className={`px-4 py-3 text-right font-medium ${row.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>{row.variance >= 0 ? "+" : ""}{formatCurrency(row.variance, symbol)}</td>
                 </tr>
               ))}
             </tbody>
@@ -306,9 +306,9 @@ function AgingTab({ data }: { data: InventoryAging }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {buckets.map((b) => (
           <div key={b.label} className="card">
-            <p className="text-sm text-gray-500">{b.label}</p>
+            <p className="text-sm text-muted">{b.label}</p>
             <p className="text-2xl font-bold mt-1">{b.count}</p>
-            <p className="text-xs text-gray-400">{b.quantity} units</p>
+            <p className="text-xs text-faint">{b.quantity} units</p>
           </div>
         ))}
       </div>
@@ -317,37 +317,37 @@ function AgingTab({ data }: { data: InventoryAging }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium text-gray-600">Lot</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Product</th>
-                <th className="px-4 py-3 font-medium text-gray-600">On Hand</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Age (days)</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Last Movement</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Avg Daily Demand</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Days of Stock</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-3 font-medium text-muted">Lot</th>
+                <th className="px-4 py-3 font-medium text-muted">Product</th>
+                <th className="px-4 py-3 font-medium text-muted">On Hand</th>
+                <th className="px-4 py-3 font-medium text-muted">Age (days)</th>
+                <th className="px-4 py-3 font-medium text-muted">Last Movement</th>
+                <th className="px-4 py-3 font-medium text-muted">Avg Daily Demand</th>
+                <th className="px-4 py-3 font-medium text-muted">Days of Stock</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500">No lot-level stock</td></tr>
+                <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">No lot-level stock</td></tr>
               ) : data.items.map((row) => {
                 const pct = maxAge > 0 ? (row.age_days / maxAge) * 100 : 0;
                 const color = row.age_days >= 180 ? "bg-red-500" : row.age_days >= 90 ? "bg-amber-500" : row.age_days >= 30 ? "bg-yellow-400" : "bg-green-500";
                 return (
-                  <tr key={row.lot_id} className="hover:bg-gray-50">
+                  <tr key={row.lot_id} className="hover:bg-app">
                     <td className="px-4 py-3 font-medium">{row.lot_number}</td>
-                    <td className="px-4 py-3 text-gray-500">{row.product_name}</td>
+                    <td className="px-4 py-3 text-muted">{row.product_name}</td>
                     <td className="px-4 py-3">{row.on_hand}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="w-24 h-2 bg-subtle rounded-full overflow-hidden">
                           <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                         </div>
                         <span className="text-xs">{row.age_days}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{row.last_movement_at ? new Date(row.last_movement_at).toLocaleDateString() : "Never"}</td>
-                    <td className="px-4 py-3 text-gray-500">{row.avg_daily_demand.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-muted">{row.last_movement_at ? new Date(row.last_movement_at).toLocaleDateString() : "Never"}</td>
+                    <td className="px-4 py-3 text-muted">{row.avg_daily_demand.toFixed(2)}</td>
                     <td className="px-4 py-3">{row.days_of_stock != null ? row.days_of_stock.toFixed(1) : "—"}</td>
                   </tr>
                 );
@@ -367,12 +367,12 @@ function StockoutTab({ data, leadTime, onLeadTimeChange }: { data: StockoutRisk;
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="card"><p className="text-sm text-gray-500">High Risk</p><p className="text-2xl font-bold mt-1 text-red-600">{data.summary.high}</p></div>
-          <div className="card"><p className="text-sm text-gray-500">Medium Risk</p><p className="text-2xl font-bold mt-1 text-amber-600">{data.summary.medium}</p></div>
-          <div className="card"><p className="text-sm text-gray-500">Low Risk</p><p className="text-2xl font-bold mt-1 text-green-600">{data.summary.low}</p></div>
+          <div className="card"><p className="text-sm text-muted">High Risk</p><p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{data.summary.high}</p></div>
+          <div className="card"><p className="text-sm text-muted">Medium Risk</p><p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">{data.summary.medium}</p></div>
+          <div className="card"><p className="text-sm text-muted">Low Risk</p><p className="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{data.summary.low}</p></div>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600" htmlFor="lead-time">Lead time (days)</label>
+          <label className="text-sm text-muted" htmlFor="lead-time">Lead time (days)</label>
           <select id="lead-time" className="select w-24" value={leadTime} onChange={(e) => onLeadTimeChange(Number(e.target.value))}>
             {[3, 5, 7, 10, 14, 21, 30].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -382,25 +382,25 @@ function StockoutTab({ data, leadTime, onLeadTimeChange }: { data: StockoutRisk;
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium text-gray-600">Product</th>
-                <th className="px-4 py-3 font-medium text-gray-600">SKU</th>
-                <th className="px-4 py-3 font-medium text-gray-600">On Hand</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Avg Daily Demand</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Days of Supply</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Suggested Reorder</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Risk</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-3 font-medium text-muted">Product</th>
+                <th className="px-4 py-3 font-medium text-muted">SKU</th>
+                <th className="px-4 py-3 font-medium text-muted">On Hand</th>
+                <th className="px-4 py-3 font-medium text-muted">Avg Daily Demand</th>
+                <th className="px-4 py-3 font-medium text-muted">Days of Supply</th>
+                <th className="px-4 py-3 font-medium text-muted">Suggested Reorder</th>
+                <th className="px-4 py-3 font-medium text-muted">Risk</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500">No products</td></tr>
+                <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">No products</td></tr>
               ) : data.items.map((p) => (
-                <tr key={p.product_id} className="hover:bg-gray-50">
+                <tr key={p.product_id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">{p.product_name}</td>
-                  <td className="px-4 py-3 text-gray-500">{p.sku}</td>
+                  <td className="px-4 py-3 text-muted">{p.sku}</td>
                   <td className="px-4 py-3">{p.on_hand}</td>
-                  <td className="px-4 py-3 text-gray-500">{p.avg_daily_demand.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-muted">{p.avg_daily_demand.toFixed(2)}</td>
                   <td className="px-4 py-3">{p.days_of_supply != null ? p.days_of_supply.toFixed(1) : "—"}</td>
                   <td className="px-4 py-3">{p.suggested_reorder}</td>
                   <td className="px-4 py-3"><span className={`badge ${badge(p.risk_level)}`}>{p.risk_level}</span></td>
@@ -428,7 +428,7 @@ function ValuationTab({ data, symbol }: { data: InventoryValuation; symbol: stri
           <div key={c.label} className="card">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">{c.label}</p>
+                <p className="text-sm text-muted">{c.label}</p>
                 <p className="text-2xl font-bold mt-1">{c.value}</p>
               </div>
             </div>
@@ -439,7 +439,7 @@ function ValuationTab({ data, symbol }: { data: InventoryValuation; symbol: stri
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Value by Category</h3>
           {data.by_category.length === 0 ? (
-            <p className="text-gray-500 text-sm">No data</p>
+            <p className="text-muted text-sm">No data</p>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={data.by_category}>
@@ -455,7 +455,7 @@ function ValuationTab({ data, symbol }: { data: InventoryValuation; symbol: stri
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Value by Supplier</h3>
           {data.by_supplier.length === 0 ? (
-            <p className="text-gray-500 text-sm">No data</p>
+            <p className="text-muted text-sm">No data</p>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={data.by_supplier}>
@@ -480,24 +480,24 @@ function MovementsTab({ data, hasRange }: { data: StockMovementTrends; hasRange?
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card">
           <div className="flex items-center gap-3">
-            <div><p className="text-sm text-gray-500">Stock In ({label})</p><p className="text-2xl font-bold mt-1">{data.total_in.toLocaleString()}</p></div>
+            <div><p className="text-sm text-muted">Stock In ({label})</p><p className="text-2xl font-bold mt-1">{data.total_in.toLocaleString()}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div><p className="text-sm text-gray-500">Stock Out ({label})</p><p className="text-2xl font-bold mt-1">{data.total_out.toLocaleString()}</p></div>
+            <div><p className="text-sm text-muted">Stock Out ({label})</p><p className="text-2xl font-bold mt-1">{data.total_out.toLocaleString()}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div><p className="text-sm text-gray-500">Net Movement</p><p className={`text-2xl font-bold mt-1 ${data.net_movement >= 0 ? "text-emerald-600" : "text-orange-600"}`}>{data.net_movement >= 0 ? "+" : ""}{data.net_movement.toLocaleString()}</p></div>
+            <div><p className="text-sm text-muted">Net Movement</p><p className={`text-2xl font-bold mt-1 ${data.net_movement >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}>{data.net_movement >= 0 ? "+" : ""}{data.net_movement.toLocaleString()}</p></div>
           </div>
         </div>
       </div>
       <div className="card">
         <h3 className="text-lg font-semibold mb-4">Daily Stock Movement Trends</h3>
         {data.daily_trends.length === 0 ? (
-          <p className="text-gray-500 text-sm">No movements in the selected period</p>
+          <p className="text-muted text-sm">No movements in the selected period</p>
         ) : (
           <ResponsiveContainer width="100%" height={350}>
             <LineChart data={data.daily_trends}>
@@ -522,7 +522,7 @@ function CategoriesTab({ data, symbol }: { data: CategoryBreakdownItem[]; symbol
       <div className="card">
         <h3 className="text-lg font-semibold mb-4">Products by Category</h3>
         {data.length === 0 ? (
-          <p className="text-gray-500 text-sm">No categories</p>
+          <p className="text-muted text-sm">No categories</p>
         ) : (
           <>
             <ResponsiveContainer width="100%" height={300}>
@@ -538,17 +538,17 @@ function CategoriesTab({ data, symbol }: { data: CategoryBreakdownItem[]; symbol
             <div className="overflow-x-auto mt-6">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-4 py-3 font-medium text-gray-600">Category</th>
-                    <th className="px-4 py-3 font-medium text-gray-600">Products</th>
-                    <th className="px-4 py-3 font-medium text-gray-600">Total Stock</th>
-                    <th className="px-4 py-3 font-medium text-gray-600">Cost Value</th>
-                    <th className="px-4 py-3 font-medium text-gray-600">Retail Value</th>
+                  <tr className="bg-app text-left">
+                    <th className="px-4 py-3 font-medium text-muted">Category</th>
+                    <th className="px-4 py-3 font-medium text-muted">Products</th>
+                    <th className="px-4 py-3 font-medium text-muted">Total Stock</th>
+                    <th className="px-4 py-3 font-medium text-muted">Cost Value</th>
+                    <th className="px-4 py-3 font-medium text-muted">Retail Value</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-border">
                   {data.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50">
+                    <tr key={r.id} className="hover:bg-app">
                       <td className="px-4 py-3 font-medium">{r.name}</td>
                       <td className="px-4 py-3">{r.product_count}</td>
                       <td className="px-4 py-3">{r.total_stock}</td>
@@ -572,17 +572,17 @@ function ProfitTab({ data, symbol }: { data: ProfitAnalysis; symbol: string }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card">
           <div className="flex items-center gap-3">
-            <div><p className="text-sm text-gray-500">Total Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_cost_value, symbol, 0)}</p></div>
+            <div><p className="text-sm text-muted">Total Cost</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_cost_value, symbol, 0)}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div><p className="text-sm text-gray-500">Potential Revenue</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_potential_revenue, symbol, 0)}</p></div>
+            <div><p className="text-sm text-muted">Potential Revenue</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_potential_revenue, symbol, 0)}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div><p className="text-sm text-gray-500">Potential Profit</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_potential_profit, symbol, 0)}</p></div>
+            <div><p className="text-sm text-muted">Potential Profit</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_potential_profit, symbol, 0)}</p></div>
           </div>
         </div>
       </div>
@@ -590,30 +590,30 @@ function ProfitTab({ data, symbol }: { data: ProfitAnalysis; symbol: string }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium text-gray-600">Product</th>
-                <th className="px-4 py-3 font-medium text-gray-600">SKU</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Qty</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Unit Cost</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Unit Price</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Margin</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Total Profit</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-3 font-medium text-muted">Product</th>
+                <th className="px-4 py-3 font-medium text-muted">SKU</th>
+                <th className="px-4 py-3 font-medium text-muted">Qty</th>
+                <th className="px-4 py-3 font-medium text-muted">Unit Cost</th>
+                <th className="px-4 py-3 font-medium text-muted">Unit Price</th>
+                <th className="px-4 py-3 font-medium text-muted">Margin</th>
+                <th className="px-4 py-3 font-medium text-muted">Total Profit</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {data.products.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50">
+                <tr key={p.id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">{p.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{p.sku}</td>
+                  <td className="px-4 py-3 text-muted">{p.sku}</td>
                   <td className="px-4 py-3">{p.quantity}</td>
                   <td className="px-4 py-3">{formatCurrency(p.unit_cost, symbol)}</td>
                   <td className="px-4 py-3">{formatCurrency(p.unit_price, symbol)}</td>
                   <td className="px-4 py-3">
-                    <span className={p.margin_percentage >= 0 ? "text-green-600" : "text-red-600"}>
+                    <span className={p.margin_percentage >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                       {p.margin_percentage >= 0 ? "+" : ""}{p.margin_percentage}%
                     </span>
                   </td>
-                  <td className={`px-4 py-3 font-medium ${p.total_profit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  <td className={`px-4 py-3 font-medium ${p.total_profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                     {formatCurrency(p.total_profit, symbol)}
                   </td>
                 </tr>
@@ -641,7 +641,7 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
           <div key={c.label} className="card">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">{c.label}</p>
+                <p className="text-sm text-muted">{c.label}</p>
                 <p className="text-2xl font-bold mt-1">{c.value}</p>
               </div>
             </div>
@@ -652,7 +652,7 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Sales by Payment Method</h3>
           {data.by_payment_method.length === 0 ? (
-            <p className="text-gray-500 text-sm">No sales in period</p>
+            <p className="text-muted text-sm">No sales in period</p>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -671,17 +671,17 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 text-left">
-                  <th className="px-4 py-3 font-medium text-gray-600">Product</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Units Sold</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Revenue</th>
+                <tr className="bg-app text-left">
+                  <th className="px-4 py-3 font-medium text-muted">Product</th>
+                  <th className="px-4 py-3 font-medium text-muted">Units Sold</th>
+                  <th className="px-4 py-3 font-medium text-muted">Revenue</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border">
                 {data.top_products.length === 0 ? (
-                  <tr><td colSpan={3} className="px-4 py-6 text-center text-gray-500">No sales data</td></tr>
+                  <tr><td colSpan={3} className="px-4 py-6 text-center text-muted">No sales data</td></tr>
                 ) : data.top_products.map((p) => (
-                  <tr key={p.name} className="hover:bg-gray-50">
+                  <tr key={p.name} className="hover:bg-app">
                     <td className="px-4 py-3 font-medium">{p.name}</td>
                     <td className="px-4 py-3">{p.quantity_sold}</td>
                     <td className="px-4 py-3">{formatCurrency(p.revenue, symbol)}</td>
@@ -702,12 +702,12 @@ function OrdersTab({ data, symbol }: { data: OrderSummary; symbol: string }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card">
           <div className="flex items-center gap-3">
-            <div><p className="text-sm text-gray-500">Total Orders</p><p className="text-2xl font-bold mt-1">{data.total_orders}</p></div>
+            <div><p className="text-sm text-muted">Total Orders</p><p className="text-2xl font-bold mt-1">{data.total_orders}</p></div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-center gap-3">
-            <div><p className="text-sm text-gray-500">Total Value</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_order_value, symbol, 0)}</p></div>
+            <div><p className="text-sm text-muted">Total Value</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.total_order_value, symbol, 0)}</p></div>
           </div>
         </div>
       </div>
@@ -715,7 +715,7 @@ function OrdersTab({ data, symbol }: { data: OrderSummary; symbol: string }) {
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Orders by Status</h3>
           {data.by_status.length === 0 ? (
-            <p className="text-gray-500 text-sm">No orders</p>
+            <p className="text-muted text-sm">No orders</p>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -732,7 +732,7 @@ function OrdersTab({ data, symbol }: { data: OrderSummary; symbol: string }) {
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Top Suppliers by Value</h3>
           {data.top_suppliers.length === 0 ? (
-            <p className="text-gray-500 text-sm">No suppliers</p>
+            <p className="text-muted text-sm">No suppliers</p>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={data.top_suppliers} layout="vertical">
@@ -761,12 +761,12 @@ function CustomersTab({ data, symbol, days, onDaysChange }: {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="card"><p className="text-sm text-gray-500">Top Customers</p><p className="text-2xl font-bold mt-1">{data.total}</p></div>
-          <div className="card"><p className="text-sm text-gray-500">Top Spender</p><p className="text-2xl font-bold mt-1">{data.items[0]?.name || "—"}</p></div>
-          <div className="card"><p className="text-sm text-gray-500">Top Customer Value</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.items[0]?.total_spent ?? 0, symbol)}</p></div>
+          <div className="card"><p className="text-sm text-muted">Top Customers</p><p className="text-2xl font-bold mt-1">{data.total}</p></div>
+          <div className="card"><p className="text-sm text-muted">Top Spender</p><p className="text-2xl font-bold mt-1">{data.items[0]?.name || "—"}</p></div>
+          <div className="card"><p className="text-sm text-muted">Top Customer Value</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.items[0]?.total_spent ?? 0, symbol)}</p></div>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600" htmlFor="top-days">Period</label>
+          <label className="text-sm text-muted" htmlFor="top-days">Period</label>
           <select id="top-days" className="select w-32" value={days} onChange={(e) => onDaysChange(e.target.value === "all" ? "all" : Number(e.target.value))}>
             <option value="all">All time</option>
             <option value="7">Last 7 days</option>
@@ -780,33 +780,33 @@ function CustomersTab({ data, symbol, days, onDaysChange }: {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium text-gray-600">#</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Customer</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Phone</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Orders</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Total Spent</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Last Purchase</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-3 font-medium text-muted">#</th>
+                <th className="px-4 py-3 font-medium text-muted">Customer</th>
+                <th className="px-4 py-3 font-medium text-muted">Phone</th>
+                <th className="px-4 py-3 font-medium text-muted">Orders</th>
+                <th className="px-4 py-3 font-medium text-muted">Total Spent</th>
+                <th className="px-4 py-3 font-medium text-muted">Last Purchase</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">No customer sales data</td></tr>
+                <tr><td colSpan={6} className="px-4 py-6 text-center text-muted">No customer sales data</td></tr>
               ) : data.items.map((c, i) => (
-                <tr key={c.customer_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-400">{i + 1}</td>
+                <tr key={c.customer_id} className="hover:bg-app">
+                  <td className="px-4 py-3 font-medium text-faint">{i + 1}</td>
                   <td className="px-4 py-3 font-medium">{c.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{c.phone}</td>
+                  <td className="px-4 py-3 text-muted">{c.phone}</td>
                   <td className="px-4 py-3">{c.total_sales}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="w-24 h-2 bg-subtle rounded-full overflow-hidden">
                         <div className="h-full rounded-full bg-indigo-500" style={{ width: `${maxSpent > 0 ? Math.min((c.total_spent / maxSpent) * 100, 100) : 0}%` }} />
                       </div>
                       <span>{formatCurrency(c.total_spent, symbol)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{c.last_purchase_at ? new Date(c.last_purchase_at).toLocaleDateString() : "Never"}</td>
+                  <td className="px-4 py-3 text-muted">{c.last_purchase_at ? new Date(c.last_purchase_at).toLocaleDateString() : "Never"}</td>
                 </tr>
               ))}
             </tbody>
@@ -828,12 +828,12 @@ function SuppliersTab({ data, symbol, days, onDaysChange }: {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="card"><p className="text-sm text-gray-500">Top Suppliers</p><p className="text-2xl font-bold mt-1">{data.total}</p></div>
-          <div className="card"><p className="text-sm text-gray-500">Top Supplier</p><p className="text-2xl font-bold mt-1">{data.items[0]?.name || "—"}</p></div>
-          <div className="card"><p className="text-sm text-gray-500">Top Supplier Value</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.items[0]?.total_spent ?? 0, symbol)}</p></div>
+          <div className="card"><p className="text-sm text-muted">Top Suppliers</p><p className="text-2xl font-bold mt-1">{data.total}</p></div>
+          <div className="card"><p className="text-sm text-muted">Top Supplier</p><p className="text-2xl font-bold mt-1">{data.items[0]?.name || "—"}</p></div>
+          <div className="card"><p className="text-sm text-muted">Top Supplier Value</p><p className="text-2xl font-bold mt-1">{formatCurrency(data.items[0]?.total_spent ?? 0, symbol)}</p></div>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600" htmlFor="top-sup-days">Period</label>
+          <label className="text-sm text-muted" htmlFor="top-sup-days">Period</label>
           <select id="top-sup-days" className="select w-32" value={days} onChange={(e) => onDaysChange(e.target.value === "all" ? "all" : Number(e.target.value))}>
             <option value="all">All time</option>
             <option value="7">Last 7 days</option>
@@ -847,33 +847,33 @@ function SuppliersTab({ data, symbol, days, onDaysChange }: {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium text-gray-600">#</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Supplier</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Contact</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Orders</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Total Spent</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Last Order</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-3 font-medium text-muted">#</th>
+                <th className="px-4 py-3 font-medium text-muted">Supplier</th>
+                <th className="px-4 py-3 font-medium text-muted">Contact</th>
+                <th className="px-4 py-3 font-medium text-muted">Orders</th>
+                <th className="px-4 py-3 font-medium text-muted">Total Spent</th>
+                <th className="px-4 py-3 font-medium text-muted">Last Order</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">No supplier order data</td></tr>
+                <tr><td colSpan={6} className="px-4 py-6 text-center text-muted">No supplier order data</td></tr>
               ) : data.items.map((s, i) => (
-                <tr key={s.supplier_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-400">{i + 1}</td>
+                <tr key={s.supplier_id} className="hover:bg-app">
+                  <td className="px-4 py-3 font-medium text-faint">{i + 1}</td>
                   <td className="px-4 py-3 font-medium">{s.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{s.contact_person}</td>
+                  <td className="px-4 py-3 text-muted">{s.contact_person}</td>
                   <td className="px-4 py-3">{s.total_orders}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="w-24 h-2 bg-subtle rounded-full overflow-hidden">
                         <div className="h-full rounded-full bg-indigo-500" style={{ width: `${maxSpent > 0 ? Math.min((s.total_spent / maxSpent) * 100, 100) : 0}%` }} />
                       </div>
                       <span>{formatCurrency(s.total_spent, symbol)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{s.last_order_at ? new Date(s.last_order_at).toLocaleDateString() : "Never"}</td>
+                  <td className="px-4 py-3 text-muted">{s.last_order_at ? new Date(s.last_order_at).toLocaleDateString() : "Never"}</td>
                 </tr>
               ))}
             </tbody>

@@ -16,6 +16,12 @@ class CategoryUpdate(BaseModel):
     parent_id: Optional[int] = None
 
 
+class CategoryBulkEdit(BaseModel):
+    ids: list[int]
+    description: Optional[str] = None
+    parent_id: Optional[int] = None
+
+
 class CategoryOut(BaseModel):
     id: int
     name: str

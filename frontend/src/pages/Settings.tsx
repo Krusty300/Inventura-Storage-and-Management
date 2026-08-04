@@ -21,7 +21,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-        active ? "bg-indigo-50 text-indigo-700 border border-indigo-200" : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+        active ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30" : "text-muted hover:bg-subtle hover:text-ink"
       }`}
     >
       {children}
@@ -102,13 +102,13 @@ export default function Settings() {
     setPwSaving(false);
   };
 
-  if (loading) return <div className="text-gray-500 py-8">Loading settings...</div>;
+  if (loading) return <div className="text-muted py-8">Loading settings...</div>;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+      <h1 className="text-2xl font-bold text-ink">Settings</h1>
 
-      <div className="flex flex-wrap gap-1 border-b border-gray-200 pb-2">
+      <div className="flex flex-wrap gap-1 border-b border-border pb-2">
         {TABS.filter((t) => !t.adminOnly || can("settings.update")).map((t) => (
           <TabButton key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
             <t.icon size={15} /> {t.label}
@@ -124,7 +124,7 @@ export default function Settings() {
             <Field label="Currency Symbol" value={form.currency_symbol} onChange={(v) => set("currency_symbol", v)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+            <label className="block text-sm font-medium text-ink mb-1">Address</label>
             <textarea className="input" rows={2} value={form.address || ""} onChange={(e) => set("address", e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -151,7 +151,7 @@ export default function Settings() {
       {tab === "documents" && can("settings.update") && (
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Document Numbering</h2>
-          <p className="text-sm text-gray-500">Configure prefixes for auto-generated document numbers.</p>
+          <p className="text-sm text-muted">Configure prefixes for auto-generated document numbers.</p>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Shipment Prefix" value={form.shipment_prefix} onChange={(v) => set("shipment_prefix", v)} description="e.g. SHP → SHP-0001" />
             <Field label="Work Order Prefix" value={form.work_order_prefix} onChange={(v) => set("work_order_prefix", v)} description="e.g. WO → WO-0001" />
@@ -184,7 +184,7 @@ export default function Settings() {
             <Field label="Default Reorder Level" value={form.default_reorder_level} onChange={(v) => set("default_reorder_level", v)} type="number" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Default Costing Method</label>
+            <label className="block text-sm font-medium text-ink mb-1">Default Costing Method</label>
             <select className="select" value={form.default_costing_method} onChange={(e) => set("default_costing_method", e.target.value)}>
               <option value="weighted_average">Weighted Average</option>
               <option value="fifo">FIFO (First In, First Out)</option>
@@ -192,7 +192,7 @@ export default function Settings() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Fiscal Year Start Month</label>
+            <label className="block text-sm font-medium text-ink mb-1">Fiscal Year Start Month</label>
             <select className="select" value={form.fiscal_year_start_month} onChange={(e) => set("fiscal_year_start_month", e.target.value)}>
               {Array.from({ length: 12 }, (_, i) => (
                 <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleString("default", { month: "long" })}</option>
@@ -209,7 +209,7 @@ export default function Settings() {
           <div className="grid grid-cols-2 gap-4">
             <Field label="Default Items Per Page" value={form.default_items_per_page} onChange={(v) => set("default_items_per_page", v)} type="number" />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date Format</label>
+              <label className="block text-sm font-medium text-ink mb-1">Date Format</label>
               <select className="select" value={form.date_format} onChange={(e) => set("date_format", e.target.value)}>
                 <option value="YYYY-MM-DD">YYYY-MM-DD</option>
                 <option value="MM/DD/YYYY">MM/DD/YYYY</option>
@@ -225,16 +225,16 @@ export default function Settings() {
       {tab === "password" && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <KeyRound size={18} className="text-gray-400" />
+            <KeyRound size={18} className="text-faint" />
             Change Password
           </h2>
           <form onSubmit={handlePassword} className="space-y-4 max-w-md">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
+              <label className="block text-sm font-medium text-ink mb-1">Current Password</label>
               <input type="password" className="input" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+              <label className="block text-sm font-medium text-ink mb-1">New Password</label>
               <input type="password" className="input" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={6} />
             </div>
             <div className="flex justify-end">
@@ -254,9 +254,9 @@ function Field({ label, value, onChange, type = "text", description }: {
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-ink mb-1">{label}</label>
       <input type={type} className="input" value={value || ""} onChange={(e) => onChange(e.target.value)} />
-      {description && <p className="text-xs text-gray-400 mt-1">{description}</p>}
+      {description && <p className="text-xs text-faint mt-1">{description}</p>}
     </div>
   );
 }
@@ -265,16 +265,16 @@ function Toggle({ label, checked, onChange, description }: {
   label: string; checked: boolean; onChange: (v: boolean) => void; description?: string;
 }) {
   return (
-    <label className="flex items-center justify-between gap-4 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer">
+    <label className="flex items-center justify-between gap-4 p-3 rounded-lg border border-border hover:bg-app cursor-pointer">
       <div>
-        <span className="text-sm font-medium text-gray-700">{label}</span>
-        {description && <p className="text-xs text-gray-400 mt-0.5">{description}</p>}
+        <span className="text-sm font-medium text-ink">{label}</span>
+        {description && <p className="text-xs text-faint mt-0.5">{description}</p>}
       </div>
       <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-          checked ? "bg-indigo-600" : "bg-gray-200"
+          checked ? "bg-indigo-600" : "bg-subtle-strong"
         }`}>
-        <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition-transform ${
+        <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-surface shadow ring-0 transition-transform ${
           checked ? "translate-x-5" : "translate-x-0"
         }`} />
       </button>

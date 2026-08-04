@@ -14,7 +14,7 @@ export default function ConfirmDialog({ open, title, message, confirmLabel = "De
   return (
     <Modal open={open} onClose={onCancel} title={title}>
       <div className="space-y-4">
-        <p className="text-sm text-gray-600">{message}</p>
+        <p className="text-sm text-muted">{message}</p>
         <div className="flex gap-2 justify-end">
           <button onClick={onCancel} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>
           <button onClick={onConfirm} className={`text-sm px-3 py-1.5 ${confirmClass}`}>{confirmLabel}</button>

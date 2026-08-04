@@ -110,37 +110,37 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+            <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
             <select className="select" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
               <option value="">None</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Reference</label>
+            <label className="block text-sm font-medium text-ink mb-1">Reference</label>
             <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. PO-1001" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
             <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Items</span>
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="bg-app px-4 py-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-ink">Items</span>
             <button type="button" onClick={() => setRows([...rows, { ...EMPTY_ROW }])} className="btn-secondary text-xs py-1 px-2">
               <Plus size={14} className="inline mr-1" />Add Item
             </button>
           </div>
-          <div className="divide-y divide-gray-100 max-h-[50vh] overflow-auto">
+          <div className="divide-y divide-border max-h-[50vh] overflow-auto">
             {rows.map((row, idx) => {
               const product = selectedProduct(row);
               return (
                 <div key={idx} className="p-4 space-y-3">
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-5">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
+                      <label className="block text-xs font-medium text-muted mb-1">Product</label>
                       <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                         <option value="">Select...</option>
                         {productList.map((p) => (
@@ -149,35 +149,35 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
                       </select>
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
+                      <label className="block text-xs font-medium text-muted mb-1">Qty</label>
                       <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Unit Cost</label>
+                      <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
                       <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => setRow(idx, "unit_cost", e.target.value)} />
                     </div>
                     <div className="col-span-3 flex gap-2">
                       <input className="input" placeholder="Lot #" value={row.lot_number} onChange={(e) => setRow(idx, "lot_number", e.target.value)} aria-label="Lot number" />
-                      <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove item">
+                      <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
                         <Trash2 size={16} />
                       </button>
                     </div>
                     <div className="col-span-5">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Expiry</label>
+                      <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
                       <input type="date" className="input" value={row.expiry_date} onChange={(e) => setRow(idx, "expiry_date", e.target.value)} />
                     </div>
                     <div className="col-span-4">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">Location</label>
+                      <label className="block text-xs font-medium text-muted mb-1">Location</label>
                       <LocationPicker value={row.location} onChange={(v) => setRow(idx, "location", v)} />
                     </div>
                     <div className="col-span-3">
-                      <label className="block text-xs font-medium text-gray-500 mb-1">LPN (pallet)</label>
+                      <label className="block text-xs font-medium text-muted mb-1">LPN (pallet)</label>
                       <input className="input" placeholder="e.g. LPN-1001" value={row.lpn_number} onChange={(e) => setRow(idx, "lpn_number", e.target.value)} />
                     </div>
                   </div>
                   {product?.is_serialized && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                      <label className="block text-xs font-medium text-muted mb-1">
                         Serial numbers (one per line, must match quantity)
                       </label>
                       <textarea

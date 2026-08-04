@@ -17,6 +17,11 @@ class SaleCreate(BaseModel):
     notes: str = ""
 
 
+class SaleBulkEdit(BaseModel):
+    ids: list[int]
+    notes: Optional[str] = None
+
+
 class SaleItemOut(BaseModel):
     id: int
     product_id: int

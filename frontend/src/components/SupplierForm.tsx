@@ -39,7 +39,7 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
 
   const field = (label: string, key: string) => (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-ink mb-1">{label}</label>
       <input className="input" value={(form as any)[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required={key === "name"} />
     </div>
   );
@@ -54,11 +54,11 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
         </div>
         {field("Email", "email")}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+          <label className="block text-sm font-medium text-ink mb-1">Address</label>
           <textarea className="input" rows={2} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
         </div>
         <div className="flex justify-end gap-3 pt-2">

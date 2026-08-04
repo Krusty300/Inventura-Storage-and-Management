@@ -24,6 +24,12 @@ class OrderUpdate(BaseModel):
     serial_numbers: Optional[dict[int, list[str]]] = None
 
 
+class OrderBulkEdit(BaseModel):
+    ids: list[int]
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class OrderItemOut(BaseModel):
     id: int
     product_id: int

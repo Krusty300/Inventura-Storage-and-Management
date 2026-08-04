@@ -80,7 +80,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
     <Modal open onClose={onClose} title={isEdit ? "Edit Purchase Order" : "New Purchase Order"} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+          <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
           <select className="select" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
             <option value="">Select supplier</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -89,7 +89,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium text-gray-700">Order Items</label>
+            <label className="text-sm font-medium text-ink">Order Items</label>
             <div className="flex gap-2">
               <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.cost_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan to add item..." />
               <button type="button" onClick={addItem} className="btn-secondary text-xs py-1 px-2">
@@ -122,7 +122,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
                     onChange={(e) => updateItem(idx, "unit_price", e.target.value)} step="0.01" required />
                 </div>
                 {items.length > 1 && (
-                  <button type="button" onClick={() => removeItem(idx)} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove item">
+                  <button type="button" onClick={() => removeItem(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
                     <Trash2 size={16} />
                   </button>
                 )}
@@ -132,7 +132,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 

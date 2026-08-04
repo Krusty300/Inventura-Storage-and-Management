@@ -59,7 +59,7 @@ export default function WorkOrders() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Work Orders</h1>
+        <h1 className="text-2xl font-bold text-ink">Work Orders</h1>
         {can("work_orders.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
             New Work Order
@@ -70,52 +70,52 @@ export default function WorkOrders() {
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="Work orders table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">WO #</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Product</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Qty</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Priority</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Issued</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Created</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3 font-medium text-muted">WO #</th>
+              <th className="px-4 py-3 font-medium text-muted">Product</th>
+              <th className="px-4 py-3 font-medium text-muted">Qty</th>
+              <th className="px-4 py-3 font-medium text-muted">Priority</th>
+              <th className="px-4 py-3 font-medium text-muted">Issued</th>
+              <th className="px-4 py-3 font-medium text-muted">Status</th>
+              <th className="px-4 py-3 font-medium text-muted">Created</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={8} />
             ) : wos.length === 0 ? (
               <EmptyState title="No work orders yet" message="Plan a work order to build a product from a BOM or component list." actionLabel="New Work Order" onAction={() => { setEditing(null); setShowForm(true); }} />
             ) : wos.map((w) => (
-              <tr key={w.id} className="hover:bg-gray-50">
+              <tr key={w.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{w.wo_number}</td>
-                <td className="px-4 py-3 text-gray-500">{w.product_name}</td>
+                <td className="px-4 py-3 text-muted">{w.product_name}</td>
                 <td className="px-4 py-3">{w.quantity}</td>
                 <td className="px-4 py-3"><span className={`badge ${priorityBadge(w.priority)}`}>{w.priority}</span></td>
                 <td className="px-4 py-3">
-                  <span className={!w.fully_issued && w.status !== "planned" ? "text-orange-600" : ""}>
+                  <span className={!w.fully_issued && w.status !== "planned" ? "text-orange-600 dark:text-orange-400" : ""}>
                     {w.total_issued}/{w.total_required}
                   </span>
                 </td>
                 <td className="px-4 py-3"><span className={`badge ${statusBadge(w.status)}`}>{w.status}</span></td>
-                <td className="px-4 py-3 text-gray-500">{new Date(w.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{new Date(w.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
-                    <button onClick={() => setViewing(w)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${w.wo_number}`}><Eye size={16} /></button>
+                    <button onClick={() => setViewing(w)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${w.wo_number}`}><Eye size={16} /></button>
                     {w.status === "planned" && can("work_orders.update") && (
                       <>
-                        <button onClick={() => { setEditing(w); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit ${w.wo_number}`}><Pencil size={16} /></button>
-                        <button onClick={() => run(() => api.post(`/work-orders/${w.id}/cancel`), `${w.wo_number} cancelled`)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Cancel ${w.wo_number}`}><XCircle size={16} /></button>
+                        <button onClick={() => { setEditing(w); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${w.wo_number}`}><Pencil size={16} /></button>
+                        <button onClick={() => run(() => api.post(`/work-orders/${w.id}/cancel`), `${w.wo_number} cancelled`)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${w.wo_number}`}><XCircle size={16} /></button>
                       </>
                     )}
                     {w.status === "planned" && can("work_orders.release") && (
-                      <button onClick={() => run(() => api.post(`/work-orders/${w.id}/release`), `${w.wo_number} released`)} className="p-1 text-gray-400 hover:text-green-600" aria-label={`Release ${w.wo_number}`}><Rocket size={16} /></button>
+                      <button onClick={() => run(() => api.post(`/work-orders/${w.id}/release`), `${w.wo_number} released`)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Release ${w.wo_number}`}><Rocket size={16} /></button>
                     )}
                     {w.status === "released" && can("work_orders.release") && (
-                      <button onClick={() => run(() => api.post(`/work-orders/${w.id}/start`), `${w.wo_number} started`)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Start ${w.wo_number}`}><Play size={16} /></button>
+                      <button onClick={() => run(() => api.post(`/work-orders/${w.id}/start`), `${w.wo_number} started`)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Start ${w.wo_number}`}><Play size={16} /></button>
                     )}
                     {(w.status === "released" || w.status === "in_progress") && can("work_orders.complete") && (
-                      <button onClick={() => setCompleting(w)} className="p-1 text-gray-400 hover:text-green-600" aria-label={`Complete ${w.wo_number}`}><CheckCircle size={16} /></button>
+                      <button onClick={() => setCompleting(w)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Complete ${w.wo_number}`}><CheckCircle size={16} /></button>
                     )}
                   </div>
                 </td>
@@ -233,18 +233,18 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Output Product</label>
+            <label className="block text-sm font-medium text-ink mb-1">Output Product</label>
             <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!wo} required>
               <option value="">Select product...</option>
               {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+            <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
             <input type="number" min={1} className="input" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <label className="block text-sm font-medium text-ink mb-1">Priority</label>
             <select className="select" value={priority} onChange={(e) => setPriority(e.target.value)}>
               <option value="low">Low</option>
               <option value="normal">Normal</option>
@@ -266,39 +266,39 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
 
         {mode === "bom" ? (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Bill of Materials</label>
+            <label className="block text-sm font-medium text-ink mb-1">Bill of Materials</label>
             <select className="select" value={bomId} onChange={(e) => setBomId(e.target.value)} required>
               <option value="">Select BOM...</option>
               {boms.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.item_count} components, {b.total_cost.toFixed(2)})</option>)}
             </select>
             {boms.length === 0 && productId && (
-              <p className="text-xs text-orange-600 mt-1">No BOMs found for this product. Create one on the BOMs page or use manual components.</p>
+              <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">No BOMs found for this product. Create one on the BOMs page or use manual components.</p>
             )}
           </div>
         ) : (
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Components</span>
+          <div className="border border-border rounded-lg overflow-hidden">
+            <div className="bg-app px-4 py-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-ink">Components</span>
               <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="btn-secondary text-xs py-1 px-2">
                 <Plus size={14} className="inline mr-1" />Add Component
               </button>
             </div>
-            <div className="divide-y divide-gray-100 max-h-[40vh] overflow-auto">
+            <div className="divide-y divide-border max-h-[40vh] overflow-auto">
               {rows.map((row, idx) => (
                 <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-8">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
+                    <label className="block text-xs font-medium text-muted mb-1">Product</label>
                     <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                       <option value="">Select...</option>
                       {products.filter((p) => p.id !== Number(productId)).map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
                     </select>
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Qty</label>
+                    <label className="block text-xs font-medium text-muted mb-1">Qty</label>
                     <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
                   </div>
                   <div className="col-span-2">
-                    <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-gray-400 hover:text-red-600" aria-label="Remove component">
+                    <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove component">
                       <XCircle size={16} />
                     </button>
                   </div>
@@ -309,7 +309,7 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
@@ -335,47 +335,47 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
-            <p className="text-gray-500">Product</p>
+            <p className="text-muted">Product</p>
             <p className="font-medium">{wo.product_name}</p>
           </div>
           <div>
-            <p className="text-gray-500">Status</p>
+            <p className="text-muted">Status</p>
             <p className="font-medium capitalize">{wo.status}</p>
           </div>
           <div>
-            <p className="text-gray-500">Created By</p>
+            <p className="text-muted">Created By</p>
             <p className="font-medium">{wo.username}</p>
           </div>
           <div>
-            <p className="text-gray-500">Quantity</p>
+            <p className="text-muted">Quantity</p>
             <p className="font-medium">{wo.quantity}</p>
           </div>
           <div>
-            <p className="text-gray-500">BOM</p>
+            <p className="text-muted">BOM</p>
             <p className="font-medium">{wo.bom_name || "Manual components"}</p>
           </div>
           <div>
-            <p className="text-gray-500">Started</p>
+            <p className="text-muted">Started</p>
             <p className="font-medium">{wo.started_at ? new Date(wo.started_at).toLocaleDateString() : "—"}</p>
           </div>
           {wo.notes && (
             <div className="col-span-3">
-              <p className="text-gray-500">Notes</p>
+              <p className="text-muted">Notes</p>
               <p className="font-medium">{wo.notes}</p>
             </div>
           )}
         </div>
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-2 font-medium text-gray-600">Component</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Required</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Issued</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Remaining</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-2 font-medium text-muted">Component</th>
+                <th className="px-4 py-2 font-medium text-muted">Required</th>
+                <th className="px-4 py-2 font-medium text-muted">Issued</th>
+                <th className="px-4 py-2 font-medium text-muted">Remaining</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {wo.items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-2 font-medium">{item.product_name}</td>
@@ -407,24 +407,24 @@ function CostSection({ woId }: { woId: number }) {
   });
   if (isLoading || !cost) return null;
   return (
-    <div className="space-y-3 border-t border-gray-100 pt-3">
-      <h4 className="text-sm font-semibold text-gray-700">Manufacturing Cost</h4>
+    <div className="space-y-3 border-t border-border pt-3">
+      <h4 className="text-sm font-semibold text-ink">Manufacturing Cost</h4>
       <div className="grid grid-cols-4 gap-3 text-sm">
-        <div className="rounded-lg bg-gray-50 p-3">
-          <p className="text-gray-500">Material Cost</p>
+        <div className="rounded-lg bg-app p-3">
+          <p className="text-muted">Material Cost</p>
           <p className="font-semibold">{cost.material_cost.toFixed(2)}</p>
         </div>
-        <div className="rounded-lg bg-gray-50 p-3">
-          <p className="text-gray-500">Std / Unit</p>
+        <div className="rounded-lg bg-app p-3">
+          <p className="text-muted">Std / Unit</p>
           <p className="font-semibold">{cost.standard_unit_cost.toFixed(2)}</p>
         </div>
-        <div className="rounded-lg bg-gray-50 p-3">
-          <p className="text-gray-500">Actual / Unit</p>
+        <div className="rounded-lg bg-app p-3">
+          <p className="text-muted">Actual / Unit</p>
           <p className="font-semibold">{cost.actual_unit_cost.toFixed(2)}</p>
         </div>
-        <div className="rounded-lg bg-gray-50 p-3">
-          <p className="text-gray-500">Variance</p>
-          <p className={`font-semibold ${cost.variance >= 0 ? "text-green-600" : "text-red-600"}`}>{cost.variance >= 0 ? "+" : ""}{cost.variance.toFixed(2)}</p>
+        <div className="rounded-lg bg-app p-3">
+          <p className="text-muted">Variance</p>
+          <p className={`font-semibold ${cost.variance >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>{cost.variance >= 0 ? "+" : ""}{cost.variance.toFixed(2)}</p>
         </div>
       </div>
     </div>
@@ -434,38 +434,38 @@ function CostSection({ woId }: { woId: number }) {
 function GenealogySection({ genealogy, woNumber }: { genealogy: WorkOrderGenealogy | undefined; woNumber: string }) {
   if (!genealogy || (genealogy.component_lots.length === 0 && genealogy.fg_lots.length === 0)) {
     return (
-      <div className="text-sm text-gray-400">
+      <div className="text-sm text-faint">
         Lot genealogy unavailable — complete this work order with an FG lot number to record traceability links.
       </div>
     );
   }
   return (
     <div className="space-y-3">
-      <h4 className="text-sm font-semibold text-gray-700">Lot Genealogy</h4>
+      <h4 className="text-sm font-semibold text-ink">Lot Genealogy</h4>
       {genealogy.fg_lots.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {genealogy.fg_lots.map((l) => (
-            <span key={l.lot_id} className="badge badge-success border border-green-200">
+            <span key={l.lot_id} className="badge badge-success border border-green-200 dark:border-green-500/30">
               FG: {l.lot_number} ({l.product_name} × {l.quantity})
             </span>
           ))}
         </div>
       )}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <div className="border border-border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-2 font-medium text-gray-600">Consumed Lot</th>
-              <th className="px-4 py-2 font-medium text-gray-600">Product</th>
-              <th className="px-4 py-2 font-medium text-gray-600">Qty</th>
-              <th className="px-4 py-2 font-medium text-gray-600">Produced Lot</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-2 font-medium text-muted">Consumed Lot</th>
+              <th className="px-4 py-2 font-medium text-muted">Product</th>
+              <th className="px-4 py-2 font-medium text-muted">Qty</th>
+              <th className="px-4 py-2 font-medium text-muted">Produced Lot</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {genealogy.links.map((link, i) => (
               <tr key={i}>
                 <td className="px-4 py-2 font-medium">{link.parent_lot_number}</td>
-                <td className="px-4 py-2 text-gray-500">{genealogy.component_lots.find((c) => c.lot_id === link.parent_lot_id)?.product_name || "—"}</td>
+                <td className="px-4 py-2 text-muted">{genealogy.component_lots.find((c) => c.lot_id === link.parent_lot_id)?.product_name || "—"}</td>
                 <td className="px-4 py-2">{link.quantity}</td>
                 <td className="px-4 py-2">{link.child_lot_number}</td>
               </tr>
@@ -474,9 +474,9 @@ function GenealogySection({ genealogy, woNumber }: { genealogy: WorkOrderGenealo
         </table>
       </div>
       {genealogy.links.length === 0 && (
-        <p className="text-sm text-gray-500">Completed with FG lot {genealogy.fg_lots[0]?.lot_number} but no component lots were consumed (manual issue without lot assignment).</p>
+        <p className="text-sm text-muted">Completed with FG lot {genealogy.fg_lots[0]?.lot_number} but no component lots were consumed (manual issue without lot assignment).</p>
       )}
-      <p className="text-xs text-gray-400">Shows which source lots were consumed by {woNumber} to produce the finished-good lot.</p>
+      <p className="text-xs text-faint">Shows which source lots were consumed by {woNumber} to produce the finished-good lot.</p>
     </div>
   );
 }
@@ -533,11 +533,11 @@ function CompleteModal({ wo, onClose, onSaved }: { wo: WorkOrder; onClose: () =>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Received Qty</label>
+            <label className="block text-sm font-medium text-ink mb-1">Received Qty</label>
             <input type="number" min={1} className="input" value={receivedQty} onChange={(e) => setReceivedQty(e.target.value)} disabled={wo.is_serialized} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Receive Location</label>
+            <label className="block text-sm font-medium text-ink mb-1">Receive Location</label>
             <select className="select" value={receiveLocationId} onChange={(e) => setReceiveLocationId(e.target.value)} required>
               <option value="">Select location...</option>
               {locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
@@ -546,22 +546,22 @@ function CompleteModal({ wo, onClose, onSaved }: { wo: WorkOrder; onClose: () =>
         </div>
         {wo.is_serialized ? (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Serial Numbers ({wo.quantity} required, one per line)</label>
+            <label className="block text-sm font-medium text-ink mb-1">Serial Numbers ({wo.quantity} required, one per line)</label>
             <textarea className="input" rows={Math.max(3, wo.quantity)} value={serials} onChange={(e) => setSerials(e.target.value)} placeholder={"SN-0001\nSN-0002"} />
           </div>
         ) : (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">FG Lot Number (optional)</label>
+            <label className="block text-sm font-medium text-ink mb-1">FG Lot Number (optional)</label>
             <input className="input" value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} placeholder="e.g. FG-0001" />
           </div>
         )}
         {needsBackflush && (
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" className="rounded" checked={backflush} onChange={(e) => setBackflush(e.target.checked)} />
             Backflush remaining components ({wo.total_required - wo.total_issued} units still needed)
           </label>
         )}
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-muted">
           {wo.is_serialized
             ? "Each serial number registers one finished unit, enabling serial-level traceability back to consumed lots."
             : "Receiving creates a finished-good stock entry; a supplied lot number enables lot traceability."}

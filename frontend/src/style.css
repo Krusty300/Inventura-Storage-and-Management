@@ -1,5 +1,56 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Bricolage Grotesque", "Mona Sans", "Inter", system-ui, -apple-system, sans-serif;
+
+  --color-app: var(--t-app);
+  --color-surface: var(--t-surface);
+  --color-subtle: var(--t-subtle);
+  --color-subtle-strong: var(--t-subtle-strong);
+  --color-sidebar: var(--t-sidebar);
+  --color-border: var(--t-border);
+  --color-border-strong: var(--t-border-strong);
+  --color-ink: var(--t-ink);
+  --color-muted: var(--t-muted);
+  --color-faint: var(--t-faint);
+}
+
+:root {
+  --t-app: #f9fafb;
+  --t-surface: #ffffff;
+  --t-subtle: #f3f4f6;
+  --t-subtle-strong: #e5e7eb;
+  --t-sidebar: #111827;
+  --t-border: #f3f4f6;
+  --t-border-strong: #d1d5db;
+  --t-ink: #111827;
+  --t-muted: #4b5563;
+  --t-faint: #9ca3af;
+}
+
+.dark {
+  color-scheme: dark;
+  --t-app: #0f172a;
+  --t-surface: #1e293b;
+  --t-subtle: #283549;
+  --t-subtle-strong: #334155;
+  --t-sidebar: #0b1120;
+  --t-border: #2b3a52;
+  --t-border-strong: #475569;
+  --t-ink: #f1f5f9;
+  --t-muted: #94a3b8;
+  --t-faint: #64748b;
+}
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/fonts/Bricolage-Grotesque.var.woff2") format("woff2-variations");
+  font-weight: 200 900;
+  font-display: swap;
+}
+
 @font-face {
   font-family: "Mona Sans";
   src: url("/fonts/Mona-Sans.var.woff2") format("woff2-variations");
@@ -10,7 +61,7 @@
 
 body {
   margin: 0;
-  font-family: "Mona Sans", "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
 }
 
 .sidebar-link {
@@ -49,10 +100,11 @@ body {
 }
 
 .card {
-  background: white;
+  background: var(--t-surface);
   border-radius: 0.75rem;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--t-border);
   padding: 1.5rem;
+  color: var(--t-ink);
 }
 
 .btn {
@@ -74,13 +126,13 @@ body {
   cursor: default;
 }
 .btn-primary {
-  background: white;
-  color: rgb(0, 0, 0);
+  background: var(--t-surface);
+  color: var(--t-ink);
 }
 
 .btn-secondary {
-  background: white;
-  color: black;
+  background: var(--t-surface);
+  color: var(--t-ink);
 }
 
 .btn-danger {
@@ -94,10 +146,12 @@ body {
 .input {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--t-border-strong);
   border-radius: 0.5rem;
   font-size: 0.875rem;
   box-sizing: border-box;
+  background: var(--t-surface);
+  color: var(--t-ink);
 }
 .input:focus {
   outline: none;
@@ -111,6 +165,8 @@ body {
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   padding-right: 2rem;
+  background-color: var(--t-surface);
+  color: var(--t-ink);
 }
 
 .badge {
@@ -137,6 +193,22 @@ body {
   background: #dbeafe;
   color: #1e40af;
 }
+.dark .badge-success {
+  background: rgb(16 185 129 / 0.15);
+  color: #6ee7b7;
+}
+.dark .badge-warning {
+  background: rgb(245 158 11 / 0.15);
+  color: #fcd34d;
+}
+.dark .badge-danger {
+  background: rgb(239 68 68 / 0.15);
+  color: #fca5a5;
+}
+.dark .badge-info {
+  background: rgb(59 130 246 / 0.15);
+  color: #93c5fd;
+}
 
 @keyframes slide-up {
   from { transform: translateY(100%); opacity: 0; }
@@ -148,15 +220,15 @@ body {
 
 .pagination-btn {
   padding: 0.375rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--t-border-strong);
   border-radius: 0.375rem;
   font-size: 0.875rem;
-  background: white;
-  color: #374151;
+  background: var(--t-surface);
+  color: var(--t-muted);
   cursor: pointer;
 }
 .pagination-btn:hover:not(:disabled) {
-  background: #f3f4f6;
+  background: var(--t-subtle);
 }
 .pagination-btn:disabled {
   opacity: 0.4;

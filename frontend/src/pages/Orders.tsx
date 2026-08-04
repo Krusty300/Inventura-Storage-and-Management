@@ -6,14 +6,18 @@ import type { Order, PaginatedResponse } from "../types";
 import OrderForm from "../components/OrderForm";
 import OrderDetail from "../components/OrderDetail";
 import ConfirmDialog from "../components/ConfirmDialog";
+import BulkActionBar from "../components/BulkActionBar";
+import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
+import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
 import { exportCSV } from "../utils/csv";
 import { formatCurrency } from "../utils/currency";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 
 const statusColors: Record<string, string> = {
   pending: "badge-warning",
@@ -32,8 +36,10 @@ export default function Orders() {
   const [viewing, setViewing] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState<Order | null>(null);
   const [confirmAutoReorder, setConfirmAutoReorder] = useState(false);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const { can } = useAuth();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const debouncedSearch = useDebounce(search, 300);
@@ -71,6 +77,17 @@ export default function Orders() {
   });
 
   const orders = data?.items || [];
+  const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(orders);
+
+  const bulkFields: BulkFieldConfig[] = [
+    {
+      name: "status",
+      label: "Status",
+      type: "select",
+      options: [{ value: "cancelled", label: "Cancelled" }],
+    },
+    { name: "notes", label: "Notes", type: "text" },
+  ];
 
   const handleExport = () => {
     exportCSV(
@@ -95,7 +112,7 @@ export default function Orders() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Orders / Purchase Orders</h1>
+        <h1 className="text-2xl font-bold text-ink">Orders / Purchase Orders</h1>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export orders to CSV">
             Export
@@ -109,7 +126,7 @@ export default function Orders() {
         </div>
       </div>
 
-      {isError && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">Failed to load orders: {(error as any)?.message}</div>}
+      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load orders: {(error as any)?.message}</div>}
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">
@@ -117,28 +134,36 @@ export default function Orders() {
         </div>
       </div>
 
+      <BulkActionBar count={selectedIds.size} canEdit={can("orders.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="Orders table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">Order #</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Supplier</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Date</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Total</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3">
+                <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all orders" />
+              </th>
+              <th className="px-4 py-3 font-medium text-muted">Order #</th>
+              <th className="px-4 py-3 font-medium text-muted">Supplier</th>
+              <th className="px-4 py-3 font-medium text-muted">Date</th>
+              <th className="px-4 py-3 font-medium text-muted">Status</th>
+              <th className="px-4 py-3 font-medium text-muted">Total</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={6} />
+              <Skeleton rows={5} cols={7} />
             ) : orders.length === 0 ? (
               <EmptyState title="No orders" message="Create a purchase order to start tracking deliveries." actionLabel="New Order" onAction={() => setShowForm(true)} />
             ) : orders.map((o) => (
-              <tr key={o.id} className="hover:bg-gray-50">
+              <tr key={o.id} className="hover:bg-app">
+                <td className="px-4 py-3">
+                  <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(o.id)} onChange={() => toggleSelect(o.id)} aria-label={`Select order ${o.order_number}`} />
+                </td>
                 <td className="px-4 py-3 font-medium">{o.order_number}</td>
-                <td className="px-4 py-3 text-gray-500">{o.supplier_name || "—"}</td>
-                <td className="px-4 py-3 text-gray-500">
+                <td className="px-4 py-3 text-muted">{o.supplier_name || "—"}</td>
+                <td className="px-4 py-3 text-muted">
                   {new Date(o.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3">
@@ -148,17 +173,17 @@ export default function Orders() {
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     {o.status === "pending" && (
-                      <button onClick={() => setEditing(o)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit order ${o.order_number}`}>
+                      <button onClick={() => setEditing(o)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit order ${o.order_number}`}>
                         <Pencil size={16} />
                       </button>
                     )}
-                    <button onClick={() => setViewing(o)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View order ${o.order_number}`}>
+                    <button onClick={() => setViewing(o)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View order ${o.order_number}`}>
                       <Eye size={16} />
                     </button>
-                    <button onClick={() => printPdf(o)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Print order ${o.order_number}`}>
+                    <button onClick={() => printPdf(o)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print order ${o.order_number}`}>
                       <Printer size={16} />
                     </button>
-                    <button onClick={() => setDeleting(o)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Delete order ${o.order_number}`}>
+                    <button onClick={() => setDeleting(o)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete order ${o.order_number}`}>
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -184,6 +209,22 @@ export default function Orders() {
           order={viewing}
           onClose={() => setViewing(null)}
           onUpdated={() => { setViewing(null); queryClient.invalidateQueries({ queryKey: ["orders"] }); }}
+        />
+      )}
+
+      {showBulkEdit && (
+        <EntityBulkEditModal
+          ids={[...selectedIds]}
+          entityLabel="Order"
+          endpoint="/orders/bulk-edit"
+          fields={bulkFields}
+          onClose={() => setShowBulkEdit(false)}
+          onSaved={() => {
+            setShowBulkEdit(false);
+            clearSelection();
+            queryClient.invalidateQueries({ queryKey: ["orders"] });
+            addToast("Orders updated", "success");
+          }}
         />
       )}
 

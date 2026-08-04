@@ -49,10 +49,10 @@ export default function BulkEditModal({ ids, onClose, onSaved }: Props) {
   return (
     <Modal open onClose={onClose} title={`Edit ${ids.length} Product(s)`}>
       <div className="space-y-4">
-        <p className="text-sm text-gray-500">Only fields you change will be updated.</p>
+        <p className="text-sm text-muted">Only fields you change will be updated.</p>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+          <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
           <select className="select" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
             <option value="">— No change —</option>
             {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -60,7 +60,7 @@ export default function BulkEditModal({ ids, onClose, onSaved }: Props) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <label className="block text-sm font-medium text-ink mb-1">Category</label>
           <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
             <option value="">— No change —</option>
             {(categories || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -68,11 +68,11 @@ export default function BulkEditModal({ ids, onClose, onSaved }: Props) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Reorder Level</label>
+          <label className="block text-sm font-medium text-ink mb-1">Reorder Level</label>
           <input type="number" min={0} className="input" placeholder="— No change —" value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} />
         </div>
 
-        {error && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
+        {error && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>

@@ -63,10 +63,10 @@ export default function ActivityLog() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Activity Log</h1>
+        <h1 className="text-2xl font-bold text-ink">Activity Log</h1>
       </div>
 
-      {isError && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">Failed to load activity log.</div>}
+      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load activity log.</div>}
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
@@ -88,30 +88,30 @@ export default function ActivityLog() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm" role="grid" aria-label="Activity log table">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-3 font-medium text-gray-600">Date</th>
-                <th className="px-4 py-3 font-medium text-gray-600">User</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Action</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Entity</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Description</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-3 font-medium text-muted">Date</th>
+                <th className="px-4 py-3 font-medium text-muted">User</th>
+                <th className="px-4 py-3 font-medium text-muted">Action</th>
+                <th className="px-4 py-3 font-medium text-muted">Entity</th>
+                <th className="px-4 py-3 font-medium text-muted">Description</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {isLoading ? (
                 <Skeleton rows={5} cols={5} />
               ) : logs.length === 0 ? (
                 <EmptyState title="No activity recorded" message="Actions performed in the system will appear here." />
               ) : logs.map((log) => (
-                <tr key={log.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                <tr key={log.id} className="hover:bg-app">
+                  <td className="px-4 py-3 text-muted whitespace-nowrap">
                     {new Date(log.created_at).toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{log.username || `User #${log.user_id}`}</td>
+                  <td className="px-4 py-3 text-muted">{log.username || `User #${log.user_id}`}</td>
                   <td className="px-4 py-3">
                     <span className={actionColors[log.action] || "badge-info"}>{log.action}</span>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{entityLabels[log.entity_type] || log.entity_type}</td>
-                  <td className="px-4 py-3 text-gray-700">{log.description}</td>
+                  <td className="px-4 py-3 text-muted">{entityLabels[log.entity_type] || log.entity_type}</td>
+                  <td className="px-4 py-3 text-ink">{log.description}</td>
                 </tr>
               ))}
             </tbody>

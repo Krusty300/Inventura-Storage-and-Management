@@ -25,8 +25,12 @@ import {
   FlaskConical,
   Sparkles,
   PackageOpen,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useTheme, type ThemeMode } from "../context/ThemeContext";
 import NotificationBell from "./NotificationBell";
 
 const MIN_SIDEBAR_WIDTH = 208;
@@ -69,7 +73,14 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user, can } = useAuth();
+  const { theme, setTheme } = useTheme();
   const visibleNavItems = navItems.filter((item) => can(item.perm));
+
+  const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [
+    { mode: "light", icon: Sun, label: "Light mode" },
+    { mode: "system", icon: Monitor, label: "Follow system" },
+    { mode: "dark", icon: Moon, label: "Dark mode" },
+  ];
 
   const handleLogout = () => {
     logout();
@@ -99,10 +110,10 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-app overflow-hidden">
       <aside
         style={{ width: sidebarWidth }}
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-gray-900 max-w-[85vw] transform transition-transform lg:translate-x-0 lg:static lg:inset-auto lg:max-w-none ${
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar max-w-[85vw] transform transition-transform lg:translate-x-0 lg:static lg:inset-auto lg:max-w-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -124,8 +135,8 @@ export default function Layout() {
         </nav>
         <div className="shrink-0 border-t border-gray-800 p-4">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-400 truncate">{user?.username}</div>
-            <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-white">
+            <div className="text-sm text-faint truncate">{user?.username}</div>
+            <button onClick={handleLogout} className="p-2 text-faint hover:text-white">
               <LogOut size={18} />
             </button>
           </div>
@@ -147,14 +158,35 @@ export default function Layout() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-          <button onClick={() => setSidebarOpen(true)} className="text-gray-600 lg:hidden">
+        <header className="bg-surface border-b border-border px-6 py-3 flex items-center justify-between">
+          <button onClick={() => setSidebarOpen(true)} className="text-muted lg:hidden">
             <Menu size={24} />
           </button>
-          <div className="hidden lg:block text-lg font-semibold text-gray-800">Inventura Storage</div>
-          <div className="flex items-center gap-2">
+          <div className="hidden lg:block text-lg font-semibold text-ink">Inventura Storage</div>
+          <div className="flex items-center gap-3">
+            <div
+              role="group"
+              aria-label="Color theme"
+              className="flex items-center rounded-lg border border-border bg-subtle p-0.5"
+            >
+              {themeOptions.map(({ mode, icon: Icon, label }) => (
+                <button
+                  key={mode}
+                  title={label}
+                  aria-label={label}
+                  onClick={() => setTheme(mode)}
+                  className={`p-1.5 rounded-md transition-colors ${
+                    theme === mode
+                      ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm"
+                      : "text-faint hover:text-ink"
+                  }`}
+                >
+                  <Icon size={16} />
+                </button>
+              ))}
+            </div>
             <NotificationBell />
-            <span className="text-sm text-gray-500 hidden sm:block">{user?.username}</span>
+            <span className="text-sm text-muted hidden sm:block">{user?.username}</span>
           </div>
         </header>
         <main className="flex-1 overflow-auto p-6">

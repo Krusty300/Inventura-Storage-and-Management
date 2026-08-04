@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, PackageCheck, Receipt, X, XCircle } from "lucide-react";
+import { Box, PackageCheck, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, PaginatedResponse, Shipment, ShipmentStats } from "../types";
@@ -57,17 +57,17 @@ export default function Shipments() {
 
   const statCards = stats
     ? [
-        { label: "Open", value: stats.open, color: "text-indigo-600" },
-        { label: "Picking", value: stats.counts.picking ?? 0, color: "text-amber-600" },
+        { label: "Open", value: stats.open, color: "text-indigo-600 dark:text-indigo-400" },
+        { label: "Picking", value: stats.counts.picking ?? 0, color: "text-amber-600 dark:text-amber-400" },
         { label: "Packed", value: stats.counts.packed ?? 0, color: "text-sky-600" },
-        { label: "Shipped", value: stats.counts.shipped ?? 0, color: "text-green-600" },
+        { label: "Shipped", value: stats.counts.shipped ?? 0, color: "text-green-600 dark:text-green-400" },
       ]
     : [];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">Shipments</h1>
+        <h1 className="text-2xl font-bold text-ink">Shipments</h1>
         {can("shipments.create") && (
           <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-2">
             New Shipment
@@ -79,7 +79,7 @@ export default function Shipments() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {statCards.map((c) => (
             <div key={c.label} className="card">
-              <p className="text-sm text-gray-500">{c.label}</p>
+              <p className="text-sm text-muted">{c.label}</p>
               <p className={`text-2xl font-bold mt-1 ${c.color}`}>{c.value}</p>
             </div>
           ))}
@@ -95,29 +95,29 @@ export default function Shipments() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 text-left">
-                  <th className="px-4 py-3 font-medium text-gray-600">Shipment</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Customer</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Items</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Qty</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Invoice</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Carrier / Tracking</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Created</th>
-                  <th className="px-4 py-3 font-medium text-gray-600" />
+                <tr className="bg-app text-left">
+                  <th className="px-4 py-3 font-medium text-muted">Shipment</th>
+                  <th className="px-4 py-3 font-medium text-muted">Customer</th>
+                  <th className="px-4 py-3 font-medium text-muted">Status</th>
+                  <th className="px-4 py-3 font-medium text-muted">Items</th>
+                  <th className="px-4 py-3 font-medium text-muted">Qty</th>
+                  <th className="px-4 py-3 font-medium text-muted">Invoice</th>
+                  <th className="px-4 py-3 font-medium text-muted">Carrier / Tracking</th>
+                  <th className="px-4 py-3 font-medium text-muted">Created</th>
+                  <th className="px-4 py-3 font-medium text-muted" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border">
                 {shipments.map((s) => (
-                  <tr key={s.id} className="hover:bg-gray-50">
+                  <tr key={s.id} className="hover:bg-app">
                     <td className="px-4 py-3 font-medium">{s.shipment_number}</td>
-                    <td className="px-4 py-3 text-gray-500">{s.customer_name || "—"}</td>
+                    <td className="px-4 py-3 text-muted">{s.customer_name || "—"}</td>
                     <td className="px-4 py-3"><span className={`badge ${statusBadge(s.status)} capitalize`}>{s.status}</span></td>
                     <td className="px-4 py-3">{s.items.length}</td>
                     <td className="px-4 py-3">{s.total_quantity}</td>
-                    <td className="px-4 py-3 text-gray-500">{s.invoice_number || "—"}</td>
-                    <td className="px-4 py-3 text-gray-500">{s.carrier || "—"}{s.tracking_number ? ` / ${s.tracking_number}` : ""}</td>
-                    <td className="px-4 py-3 text-gray-500">{new Date(s.created_at).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-muted">{s.invoice_number || "—"}</td>
+                    <td className="px-4 py-3 text-muted">{s.carrier || "—"}{s.tracking_number ? ` / ${s.tracking_number}` : ""}</td>
+                    <td className="px-4 py-3 text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         <button onClick={() => setViewing(s)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
@@ -129,7 +129,7 @@ export default function Shipments() {
                           </button>
                         )}
                         {(s.status === "draft" || s.status === "cancelled") && can("shipments.delete") && (
-                          <button onClick={() => setDeleting(s)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1 hover:border-red-300 hover:text-red-600" aria-label={`Delete ${s.shipment_number}`}>
+                          <button onClick={() => setDeleting(s)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1 hover:border-red-300 dark:border-red-500/40 hover:text-red-600 dark:text-red-400" aria-label={`Delete ${s.shipment_number}`}>
                             Delete
                           </button>
                         )}
@@ -225,15 +225,15 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Carrier</label>
+            <label className="block text-sm font-medium text-ink mb-1">Carrier</label>
             <input className="input" value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="UPS" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tracking Number</label>
+            <label className="block text-sm font-medium text-ink mb-1">Tracking Number</label>
             <input className="input" value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} placeholder="1Z..." />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+            <label className="block text-sm font-medium text-ink mb-1">Customer</label>
             <select className="select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
               <option value="">No customer</option>
               {customers.map((c) => (
@@ -250,7 +250,7 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
                 return (
                   <div key={idx} className="flex items-end gap-3">
                     <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
+                      <label className="block text-sm font-medium text-ink mb-1">Product</label>
                       <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                         <option value="">Select product...</option>
                         {products.sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
@@ -259,24 +259,24 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
                       </select>
                     </div>
                     <div className="w-28">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                      <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
                       <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
                     </div>
-                    <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-gray-400 hover:text-red-600 mb-1" aria-label="Remove line">
+                    <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400 mb-1" aria-label="Remove line">
                       <XCircle size={16} />
                     </button>
                   </div>
                 );
               })}
             </div>
-            <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="text-sm text-indigo-600 hover:text-indigo-800">
-              + Add line
+            <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400">
+              Add line
             </button>
           </>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
@@ -342,28 +342,28 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
     <Modal open onClose={onClose} title={shipment.shipment_number} wide>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
-          <div><p className="text-gray-500">Status</p><p className="font-medium capitalize">{shipment.status}</p></div>
-          <div><p className="text-gray-500">Customer</p><p className="font-medium">{shipment.customer_name || "—"}</p></div>
-          <div><p className="text-gray-500">Carrier</p><p className="font-medium">{shipment.carrier || "—"}</p></div>
-          <div><p className="text-gray-500">Tracking</p><p className="font-medium">{shipment.tracking_number || "—"}</p></div>
-          <div><p className="text-gray-500">Invoice</p><p className="font-medium">{shipment.invoice_number || "—"}</p></div>
-          <div><p className="text-gray-500">Amount</p><p className="font-medium">{shipment.total_amount ? `$${shipment.total_amount.toFixed(2)}` : "—"}</p></div>
-          <div><p className="text-gray-500">Created By</p><p className="font-medium">{shipment.username}</p></div>
-          <div><p className="text-gray-500">Created</p><p className="font-medium">{new Date(shipment.created_at).toLocaleDateString()}</p></div>
+          <div><p className="text-muted">Status</p><p className="font-medium capitalize">{shipment.status}</p></div>
+          <div><p className="text-muted">Customer</p><p className="font-medium">{shipment.customer_name || "—"}</p></div>
+          <div><p className="text-muted">Carrier</p><p className="font-medium">{shipment.carrier || "—"}</p></div>
+          <div><p className="text-muted">Tracking</p><p className="font-medium">{shipment.tracking_number || "—"}</p></div>
+          <div><p className="text-muted">Invoice</p><p className="font-medium">{shipment.invoice_number || "—"}</p></div>
+          <div><p className="text-muted">Amount</p><p className="font-medium">{shipment.total_amount ? `$${shipment.total_amount.toFixed(2)}` : "—"}</p></div>
+          <div><p className="text-muted">Created By</p><p className="font-medium">{shipment.username}</p></div>
+          <div><p className="text-muted">Created</p><p className="font-medium">{new Date(shipment.created_at).toLocaleDateString()}</p></div>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-2 font-medium text-gray-600">Product</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Ordered</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Picked</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Packed</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Shipped</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-2 font-medium text-muted">Product</th>
+                <th className="px-4 py-2 font-medium text-muted">Ordered</th>
+                <th className="px-4 py-2 font-medium text-muted">Picked</th>
+                <th className="px-4 py-2 font-medium text-muted">Packed</th>
+                <th className="px-4 py-2 font-medium text-muted">Shipped</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {shipment.items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-2 font-medium">{item.product_name}{item.is_serialized && <span className="ml-2 badge-info">serialized</span>}</td>
@@ -382,11 +382,11 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             {(canShip) && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Carrier</label>
+                  <label className="block text-sm font-medium text-ink mb-1">Carrier</label>
                   <input className="input" value={carrier} onChange={(e) => setCarrier(e.target.value)} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tracking</label>
+                  <label className="block text-sm font-medium text-ink mb-1">Tracking</label>
                   <input className="input" value={tracking} onChange={(e) => setTracking(e.target.value)} />
                 </div>
               </>
@@ -413,14 +413,14 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
         {canCreateSale && (
           <div className="flex justify-end">
             <button onClick={createSale} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
-              <Receipt size={14} /> Create Invoice
+              Create Invoice
             </button>
           </div>
         )}
         {shipment.status !== "shipped" && shipment.status !== "cancelled" && canCancel && (
           <div className="flex justify-end">
-            <button onClick={() => run("cancel", `/shipments/${shipment.id}/cancel`, "Cancelled")} disabled={busy !== null} className="text-sm text-red-600 hover:text-red-800 inline-flex items-center gap-1">
-              <X size={14} /> Cancel shipment
+            <button onClick={() => run("cancel", `/shipments/${shipment.id}/cancel`, "Cancelled")} disabled={busy !== null} className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400 inline-flex items-center gap-1">
+              Cancel shipment
             </button>
           </div>
         )}

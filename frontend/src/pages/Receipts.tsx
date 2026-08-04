@@ -50,7 +50,7 @@ export default function Receipts() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Receiving</h1>
+        <h1 className="text-2xl font-bold text-ink">Receiving</h1>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export receipts to CSV">Export</button>
           {can("receipts.create") && (
@@ -70,29 +70,29 @@ export default function Receipts() {
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="Receipts table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">Receipt #</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Supplier</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Date</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Qty</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Total Cost</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3 font-medium text-muted">Receipt #</th>
+              <th className="px-4 py-3 font-medium text-muted">Supplier</th>
+              <th className="px-4 py-3 font-medium text-muted">Date</th>
+              <th className="px-4 py-3 font-medium text-muted">Qty</th>
+              <th className="px-4 py-3 font-medium text-muted">Total Cost</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={6} />
             ) : receipts.length === 0 ? (
               <EmptyState title="No receipts yet" message="Record receiving to bring stock into inventory." actionLabel="Record Receipt" onAction={() => setShowForm(true)} />
             ) : receipts.map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50">
+              <tr key={r.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{r.receipt_number}</td>
-                <td className="px-4 py-3 text-gray-500">{r.supplier_name || "—"}</td>
-                <td className="px-4 py-3 text-gray-500">{new Date(r.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{r.supplier_name || "—"}</td>
+                <td className="px-4 py-3 text-muted">{new Date(r.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">{r.total_quantity}</td>
                 <td className="px-4 py-3">{r.total_cost.toFixed(2)}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setViewing(r)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View receipt ${r.receipt_number}`}>
+                  <button onClick={() => setViewing(r)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View receipt ${r.receipt_number}`}>
                     <Eye size={16} />
                   </button>
                 </td>

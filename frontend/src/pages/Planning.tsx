@@ -43,14 +43,14 @@ export default function Planning() {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">MRP Planning</h1>
-          <p className="text-sm text-gray-500">Explode the BOM and net demand against stock and open work orders.</p>
+          <h1 className="text-2xl font-bold text-ink">MRP Planning</h1>
+          <p className="text-sm text-muted">Explode the BOM and net demand against stock and open work orders.</p>
         </div>
       </div>
 
       <form onSubmit={handleRun} className="card p-4 flex flex-wrap items-end gap-4">
         <div className="min-w-65 flex-1">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Demand Product</label>
+          <label className="block text-sm font-medium text-ink mb-1">Demand Product</label>
           <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)}>
             <option value="">Select product...</option>
             {products.filter((p) => !p.is_variant).sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
@@ -59,7 +59,7 @@ export default function Planning() {
           </select>
         </div>
         <div className="w-32">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+          <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
           <input type="number" min={1} className="input" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
         </div>
         <button type="submit" disabled={!productId} className="btn-primary inline-flex items-center gap-2">
@@ -73,14 +73,14 @@ export default function Planning() {
       )}
       {!isLoading && ran && data && data.items.length > 0 && (
         <div className="card overflow-hidden p-0">
-          <div className="px-4 py-3 bg-gray-50 border-b text-sm text-gray-700">
+          <div className="px-4 py-3 bg-app border-b text-sm text-ink">
             Demand: <span className="font-medium">{data.demand_quantity} × {data.demand_product_name}</span>
-            <span className="ml-3 text-gray-400">Shortages: <span className="font-medium text-gray-700">{data.items.filter((i) => i.net_requirement > 0).length}</span></span>
+            <span className="ml-3 text-faint">Shortages: <span className="font-medium text-ink">{data.items.filter((i) => i.net_requirement > 0).length}</span></span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-600 border-b bg-gray-50">
+                <tr className="text-left text-muted border-b bg-app">
                   <th className="px-3 py-2 font-medium">Level</th>
                   <th className="px-3 py-2 font-medium">Product</th>
                   <th className="px-3 py-2 font-medium">Component Of</th>
@@ -92,16 +92,16 @@ export default function Planning() {
                   <th className="px-3 py-2 font-medium text-right">Suggested</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border">
                 {data.items.map((item) => (
-                  <tr key={`${item.product_id}-${item.level}`} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 text-gray-500">{item.level}</td>
+                  <tr key={`${item.product_id}-${item.level}`} className="hover:bg-app">
+                    <td className="px-3 py-2 text-muted">{item.level}</td>
                     <td className="px-3 py-2 font-medium">{item.product_name}</td>
-                    <td className="px-3 py-2 text-gray-500">{item.level === 1 ? "—" : item.component_of}</td>
+                    <td className="px-3 py-2 text-muted">{item.level === 1 ? "—" : item.component_of}</td>
                     <td className="px-3 py-2 text-right">{item.gross_requirement}</td>
                     <td className="px-3 py-2 text-right">{item.on_hand}</td>
                     <td className="px-3 py-2 text-right">{item.scheduled_receipts}</td>
-                    <td className={`px-3 py-2 text-right font-medium ${item.net_requirement > 0 ? "text-red-600" : "text-gray-400"}`}>{item.net_requirement}</td>
+                    <td className={`px-3 py-2 text-right font-medium ${item.net_requirement > 0 ? "text-red-600 dark:text-red-400" : "text-faint"}`}>{item.net_requirement}</td>
                     <td className="px-3 py-2">
                       <span className={`badge ${actionBadge(item.action)} capitalize`}>{item.action === "none" ? "covered" : item.action}</span>
                     </td>
@@ -109,9 +109,9 @@ export default function Planning() {
                       {item.action === "manufacture" && can("work_orders.create") ? (
                         <CreateWoButton item={item} />
                       ) : item.action === "purchase" ? (
-                        <span className="inline-flex items-center gap-1 text-gray-500"><ShoppingCart size={14} /> purchase</span>
+                        <span className="inline-flex items-center gap-1 text-muted"><ShoppingCart size={14} /> purchase</span>
                       ) : (
-                        <span className="text-gray-400">0</span>
+                        <span className="text-faint">0</span>
                       )}
                     </td>
                   </tr>

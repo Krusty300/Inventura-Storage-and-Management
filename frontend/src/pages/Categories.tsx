@@ -6,11 +6,15 @@ import type { Category, PaginatedResponse } from "../types";
 import CategoryDetail from "../components/CategoryDetail";
 import CategoryForm from "../components/CategoryForm";
 import ConfirmDialog from "../components/ConfirmDialog";
+import BulkActionBar from "../components/BulkActionBar";
+import EntityBulkEditModal, { type BulkFieldConfig, type BulkFieldOption } from "../components/EntityBulkEditModal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
+import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 
 const PAGE_SIZE = 25;
@@ -23,9 +27,19 @@ export default function Categories() {
   const [editing, setEditing] = useState<Category | null>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [viewing, setViewing] = useState<Category | null>(null);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const { can } = useAuth();
   const debouncedSearch = useDebounce(search, 300);
+
+  const { data: allCategories } = useQuery({
+    queryKey: ["categories", "all"],
+    queryFn: async () => {
+      const { data } = await api.get("/categories", { params: { limit: 1000 } });
+      return (data as PaginatedResponse<Category>).items;
+    },
+  });
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["categories", debouncedSearch, page, pageSize],
@@ -49,6 +63,19 @@ export default function Categories() {
   });
 
   const categories = data?.items || [];
+  const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(categories);
+
+  const parentOptions: BulkFieldOption[] = [
+    { value: "__none__", label: "No parent (top-level)" },
+    ...(allCategories || [])
+      .filter((c) => !selectedIds.has(c.id))
+      .map((c) => ({ value: String(c.id), label: c.name })),
+  ];
+
+  const bulkFields: BulkFieldConfig[] = [
+    { name: "description", label: "Description", type: "text" },
+    { name: "parent_id", label: "Parent", type: "select", options: parentOptions, clearValue: "__none__", valueType: "number" },
+  ];
 
   const handleExport = () => {
     exportCSV(
@@ -62,7 +89,7 @@ export default function Categories() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Categories</h1>
+        <h1 className="text-2xl font-bold text-ink">Categories</h1>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export categories to CSV">
             Export
@@ -73,7 +100,7 @@ export default function Categories() {
         </div>
       </div>
 
-      {isError && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">Failed to load categories: {(error as any)?.message}</div>}
+      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load categories: {(error as any)?.message}</div>}
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">
@@ -81,29 +108,37 @@ export default function Categories() {
         </div>
       </div>
 
+      <BulkActionBar count={selectedIds.size} canEdit={can("categories.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="Categories table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">Name</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Description</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3">
+                <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all categories" />
+              </th>
+              <th className="px-4 py-3 font-medium text-muted">Name</th>
+              <th className="px-4 py-3 font-medium text-muted">Description</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={3} />
+              <Skeleton rows={5} cols={4} />
             ) : categories.length === 0 ? (
               <EmptyState title="No categories" message="Create your first category to organize products." actionLabel="Add Category" onAction={() => { setEditing(null); setShowForm(true); }} />
             ) : categories.map((c) => (
-              <tr key={c.id} className="hover:bg-gray-50">
+              <tr key={c.id} className="hover:bg-app">
+                <td className="px-4 py-3">
+                  <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} />
+                </td>
                 <td className="px-4 py-3 font-medium">{c.name}</td>
-                <td className="px-4 py-3 text-gray-500">{c.description}</td>
+                <td className="px-4 py-3 text-muted">{c.description}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(c)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${c.name}`}><Eye size={16} /></button>
-                    <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit ${c.name}`}><Pencil size={16} /></button>
-                    <button onClick={() => setDeleting(c)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Delete ${c.name}`}><Trash2 size={16} /></button>
+                    <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${c.name}`}><Eye size={16} /></button>
+                    <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${c.name}`}><Pencil size={16} /></button>
+                    <button onClick={() => setDeleting(c)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${c.name}`}><Trash2 size={16} /></button>
                   </div>
                 </td>
               </tr>
@@ -123,6 +158,22 @@ export default function Categories() {
       )}
 
       {viewing && <CategoryDetail category={viewing} onClose={() => setViewing(null)} />}
+
+      {showBulkEdit && (
+        <EntityBulkEditModal
+          ids={[...selectedIds]}
+          entityLabel="Category"
+          endpoint="/categories/bulk-edit"
+          fields={bulkFields}
+          onClose={() => setShowBulkEdit(false)}
+          onSaved={() => {
+            setShowBulkEdit(false);
+            clearSelection();
+            queryClient.invalidateQueries({ queryKey: ["categories"] });
+            addToast("Categories updated", "success");
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleting}

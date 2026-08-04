@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models.customer import Customer
 from app.models.sale import Sale
 from app.schemas.customer import (
-    CustomerCreate, CustomerImportResult, CustomerListItem, CustomerOut,
+    CustomerBulkEdit, CustomerCreate, CustomerImportResult, CustomerListItem, CustomerOut,
     CustomerStats, CustomerUpdate,
 )
 from app.services.auth import get_current_user, require_permission
@@ -84,6 +84,36 @@ def list_customers(
     rows = q.order_by(Customer.name).offset(skip).limit(limit).all()
     items = [_serialize_with_stats(c, ts, tp, lp) for c, ts, tp, lp in rows]
     return {"items": items, "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.patch("/bulk-edit")
+def bulk_edit_customers(data: CustomerBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("customers.bulk"))):
+    customers = db.query(Customer).filter(Customer.id.in_(data.ids)).all()
+    if not customers:
+        raise HTTPException(status_code=404, detail="No customers found")
+    updates = data.model_dump(exclude_unset=True)
+    updates.pop("ids", None)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "customer_type" in updates and updates["customer_type"] not in ("frequent", "walk-in"):
+        raise HTTPException(status_code=400, detail="Invalid customer type")
+    if "email" in updates and updates["email"].strip():
+        dup = db.query(Customer).filter(
+            Customer.is_active == True,  # noqa: E712
+            Customer.email == updates["email"].strip(),
+            Customer.id.notin_(data.ids),
+        ).first()
+        if dup:
+            raise HTTPException(status_code=400, detail="Duplicate customer: another customer already uses the same email")
+    for c in customers:
+        for k, v in updates.items():
+            setattr(c, k, v)
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "customer", None,
+                 f"Bulk-edited {len(customers)} customer(s): {', '.join(f'{k}={v}' for k, v in updates.items())}")
+    db.commit()
+    broadcast_change("customer", "updated")
+    return {"updated": len(customers), "fields": list(updates.keys())}
 
 
 @router.post("/import", response_model=CustomerImportResult)

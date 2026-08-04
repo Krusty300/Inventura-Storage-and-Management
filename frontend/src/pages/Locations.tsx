@@ -136,38 +136,38 @@ export default function Locations() {
     return (
       <div key={node.id}>
         <div
-          className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 border-b border-gray-100"
+          className="flex items-center gap-2 px-3 py-2 hover:bg-app border-b border-border"
           style={{ paddingLeft: `${depth * 24 + 12}px` }}
         >
           <button
             onClick={() => toggle(node.id)}
             disabled={!hasChildren}
-            className="text-gray-400 disabled:opacity-30"
+            className="text-faint disabled:opacity-30"
             aria-label={isOpen ? "Collapse" : "Expand"}
           >
             {hasChildren ? (isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />) : <span className="inline-block w-4" />}
           </button>
-          <MapPin size={16} className={node.is_active ? "text-indigo-500" : "text-gray-300"} />
-          <span className="font-medium text-gray-800">{node.path}</span>
-          <span className="text-xs text-gray-400 capitalize">{node.location_type}</span>
-          {!node.is_active && <span className="text-xs text-gray-400">(inactive)</span>}
-          <span className="ml-auto flex items-center gap-3 text-xs text-gray-500" aria-label={`${node.path} stats`}>
+          <MapPin size={16} className={node.is_active ? "text-indigo-500" : "text-faint"} />
+          <span className="font-medium text-ink">{node.path}</span>
+          <span className="text-xs text-faint capitalize">{node.location_type}</span>
+          {!node.is_active && <span className="text-xs text-faint">(inactive)</span>}
+          <span className="ml-auto flex items-center gap-3 text-xs text-muted" aria-label={`${node.path} stats`}>
             <span className="flex items-center gap-1"><Package size={12} />{node.stock_line_count} lines</span>
             <span>{node.total_quantity} units</span>
             <span>{formatCurrency(node.stock_value, currencySymbol)}</span>
             <span>{node.lpn_count} LPNs</span>
           </span>
           <div className="flex gap-1">
-            <button onClick={() => setViewing(node)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${node.path}`}>
+            <button onClick={() => setViewing(node)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${node.path}`}>
               <Eye size={14} />
             </button>
             {canEdit && (
-              <button onClick={() => { setEditing(node); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit ${node.path}`}>
+              <button onClick={() => { setEditing(node); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${node.path}`}>
                 <Pencil size={14} />
               </button>
             )}
             {canDelete && (
-              <button onClick={() => setDeleting(node)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Delete ${node.path}`}>
+              <button onClick={() => setDeleting(node)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${node.path}`}>
                 <Trash2 size={14} />
               </button>
             )}
@@ -190,7 +190,7 @@ export default function Locations() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Locations</h1>
+        <h1 className="text-2xl font-bold text-ink">Locations</h1>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export locations to CSV">
             Export
@@ -206,7 +206,7 @@ export default function Locations() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         {summaryCards.map((card) => (
           <div key={card.label} className="card">
-            <p className="text-sm text-gray-500">{card.label}</p>
+            <p className="text-sm text-muted">{card.label}</p>
             <p className="text-2xl font-bold mt-1">{card.value}</p>
           </div>
         ))}
@@ -241,7 +241,7 @@ export default function Locations() {
         />
       ) : (
         <div className="card overflow-hidden p-0">
-          <div className="px-4 py-3 bg-gray-50 border-b text-sm text-gray-600">Warehouse tree</div>
+          <div className="px-4 py-3 bg-app border-b text-sm text-muted">Warehouse tree</div>
           {visibleTree.map((node) => renderNode(node, 0, isSearching))}
         </div>
       )}
@@ -317,16 +317,16 @@ function LocationFormModal({ location, locations, onClose, onSaved }: {
     <Modal open onClose={onClose} title={location ? "Edit Location" : "Add Location"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+          <label className="block text-sm font-medium text-ink mb-1">Name *</label>
           <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Aisle A, Bin A-01" required />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
+            <label className="block text-sm font-medium text-ink mb-1">Code</label>
             <input className="input" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. A-01" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <label className="block text-sm font-medium text-ink mb-1">Type</label>
             <select className="select" value={form.location_type} onChange={(e) => setForm({ ...form, location_type: e.target.value })}>
               <option value="bin">Bin</option>
               <option value="zone">Zone</option>
@@ -338,16 +338,16 @@ function LocationFormModal({ location, locations, onClose, onSaved }: {
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Parent</label>
+          <label className="block text-sm font-medium text-ink mb-1">Parent</label>
           <select className="select" value={form.parent_id} onChange={(e) => setForm({ ...form, parent_id: e.target.value })}>
             <option value="">(Root)</option>
             {parents.map((p) => <option key={p.id} value={p.id}>{p.path}</option>)}
           </select>
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
-            className="rounded border-gray-300"
+            className="rounded border-border-strong"
             checked={form.is_active}
             onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
           />

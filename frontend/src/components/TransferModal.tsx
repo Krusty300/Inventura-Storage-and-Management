@@ -84,28 +84,28 @@ export default function TransferModal({ onClose, onSaved }: Props) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Product *</label>
+            <label className="block text-sm font-medium text-ink mb-1">Product *</label>
             <select className="select" value={product_id} onChange={(e) => { setProductId(e.target.value); setLotId(""); }}>
               <option value="">Select...</option>
               {(productList || []).map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+            <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
             <input type="number" min={1} className="input" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">From Location *</label>
+            <label className="block text-sm font-medium text-ink mb-1">From Location *</label>
             <select className="select" value={from_location_id} onChange={(e) => setFromLocationId(e.target.value)}>
               <option value="">Select...</option>
               {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">To Location *</label>
+            <label className="block text-sm font-medium text-ink mb-1">To Location *</label>
             <select className="select" value={to_location_id} onChange={(e) => setToLocationId(e.target.value)}>
               <option value="">Select...</option>
               {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
@@ -115,19 +115,19 @@ export default function TransferModal({ onClose, onSaved }: Props) {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Lot (optional)</label>
+            <label className="block text-sm font-medium text-ink mb-1">Lot (optional)</label>
             <select className="select" value={lot_id} onChange={(e) => setLotId(e.target.value)}>
               <option value="">Any lot</option>
               {(lots || []).filter((l) => l.on_hand > 0).map((l) => <option key={l.id} value={l.id}>{l.lot_number}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
             <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>
 
-        <p className="text-xs text-gray-500 flex items-center gap-1">
+        <p className="text-xs text-muted flex items-center gap-1">
           <ArrowLeftRight size={14} className="text-indigo-500" />
           A single reference is used for both the outbound and inbound movement.
         </p>

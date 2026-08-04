@@ -8,7 +8,7 @@ from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
-from app.schemas.order import OrderCreate, OrderOut, OrderUpdate
+from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_admins
@@ -84,6 +84,36 @@ def list_orders(
     total = q.count()
     items = q.order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [OrderOut.model_validate(o) for o in items], "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.patch("/bulk-edit")
+def bulk_edit_orders(data: OrderBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("orders.bulk"))):
+    orders = db.query(Order).filter(Order.id.in_(data.ids)).all()
+    if not orders:
+        raise HTTPException(status_code=404, detail="No orders found")
+    updates = data.model_dump(exclude_unset=True)
+    updates.pop("ids", None)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    status = updates.get("status")
+    if status is not None:
+        if status not in ORDER_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid order status '{status}'")
+        if status == "received":
+            raise HTTPException(status_code=400, detail="Cannot bulk-change orders to 'received'; receive each order individually to handle serial numbers")
+    if status is not None:
+        for o in orders:
+            if status != o.status and status not in ORDER_TRANSITIONS.get(o.status, ()):
+                raise HTTPException(status_code=400, detail=f"Cannot change order status from '{o.status}' to '{status}'")
+    for o in orders:
+        for k, v in updates.items():
+            setattr(o, k, v)
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "order", None,
+                 f"Bulk-edited {len(orders)} order(s): {', '.join(f'{k}={v}' for k, v in updates.items())}")
+    db.commit()
+    broadcast_change("order", "updated")
+    return {"updated": len(orders), "fields": list(updates.keys())}
 
 
 @router.get("/{order_id}", response_model=OrderOut)

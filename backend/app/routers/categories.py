@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.category import Category
-from app.schemas.category import CategoryCreate, CategoryOut, CategoryTree, CategoryUpdate
+from app.schemas.category import CategoryBulkEdit, CategoryCreate, CategoryOut, CategoryTree, CategoryUpdate
 from app.services.auth import get_current_user, require_permission
 from app.utils import get_or_404, log_activity, broadcast_change
 
@@ -29,6 +29,41 @@ def list_categories(
 @router.get("/tree", response_model=list[CategoryTree])
 def category_tree(db: Session = Depends(get_db)):
     return db.query(Category).filter(Category.parent_id.is_(None)).options(joinedload(Category.subcategories)).all()
+
+
+@router.patch("/bulk-edit")
+def bulk_edit_categories(data: CategoryBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("categories.bulk"))):
+    cats = db.query(Category).filter(Category.id.in_(data.ids)).all()
+    if not cats:
+        raise HTTPException(status_code=404, detail="No categories found")
+    updates = {}
+    if data.description is not None:
+        updates["description"] = data.description
+    if "parent_id" in data.model_fields_set:
+        updates["parent_id"] = data.parent_id
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    new_parent = updates.get("parent_id")
+    if new_parent is not None:
+        if new_parent in data.ids:
+            raise HTTPException(status_code=400, detail="A category cannot be its own parent")
+        if not db.query(Category.id).filter(Category.id == new_parent).first():
+            raise HTTPException(status_code=404, detail="Parent category not found")
+        cur = new_parent
+        while cur is not None:
+            if cur in data.ids:
+                raise HTTPException(status_code=400, detail="Parent chain would create a cycle with the selected categories")
+            row = db.query(Category.parent_id).filter(Category.id == cur).first()
+            cur = row[0] if row else None
+    for c in cats:
+        for k, v in updates.items():
+            setattr(c, k, v)
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "category", None,
+                 f"Bulk-edited {len(cats)} category/categories: {', '.join(f'{k}={v}' for k, v in updates.items())}")
+    db.commit()
+    broadcast_change("category", "updated")
+    return {"updated": len(cats), "fields": list(updates.keys())}
 
 
 @router.get("/{category_id}", response_model=CategoryOut)

@@ -37,7 +37,7 @@ export default function BarcodeScanner({ onProductFound, placeholder = "Scan bar
   return (
     <div className="flex items-center gap-1">
       <div className="relative">
-        <Barcode size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Barcode size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
         <input
           ref={inputRef}
           className="input pl-8 py-1.5 text-sm w-48"
@@ -49,7 +49,7 @@ export default function BarcodeScanner({ onProductFound, placeholder = "Scan bar
           aria-label="Barcode scanner"
         />
       </div>
-      {loading && <Loader2 size={16} className="animate-spin text-gray-400" />}
+      {loading && <Loader2 size={16} className="animate-spin text-faint" />}
     </div>
   );
 }

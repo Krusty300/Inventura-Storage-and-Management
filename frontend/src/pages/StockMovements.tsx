@@ -66,7 +66,7 @@ export default function StockMovements() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Stock Movements</h1>
+        <h1 className="text-2xl font-bold text-ink">Stock Movements</h1>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export movements to CSV">
             Export
@@ -84,7 +84,7 @@ export default function StockMovements() {
         </div>
       </div>
 
-      {isError && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">Failed to load movements: {(error as any)?.message}</div>}
+      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load movements: {(error as any)?.message}</div>}
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">
@@ -95,25 +95,25 @@ export default function StockMovements() {
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="Stock movements table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">Date</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Product</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Type</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Qty Change</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Reference</th>
-              <th className="px-4 py-3 font-medium text-gray-600">User</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Notes</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3 font-medium text-muted">Date</th>
+              <th className="px-4 py-3 font-medium text-muted">Product</th>
+              <th className="px-4 py-3 font-medium text-muted">Type</th>
+              <th className="px-4 py-3 font-medium text-muted">Qty Change</th>
+              <th className="px-4 py-3 font-medium text-muted">Reference</th>
+              <th className="px-4 py-3 font-medium text-muted">User</th>
+              <th className="px-4 py-3 font-medium text-muted">Notes</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={8} />
             ) : movements.length === 0 ? (
               <EmptyState title="No movements recorded" message="Record a stock movement to start tracking inventory changes." actionLabel="Record Movement" onAction={() => setShowForm(true)} />
             ) : movements.map((m) => (
-              <tr key={m.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-gray-500">
+              <tr key={m.id} className="hover:bg-app">
+                <td className="px-4 py-3 text-muted">
                   {new Date(m.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3 font-medium">{m.product_name}</td>
@@ -129,25 +129,25 @@ export default function StockMovements() {
                     ) : (
                       <ArrowDownRight size={16} className="text-red-500" />
                     )}
-                    <span className={m.quantity_change > 0 ? "text-green-600" : "text-red-600"}>
+                    <span className={m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                       {m.quantity_change > 0 ? "+" : ""}
                       {m.quantity_change}
                     </span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-500">{m.reference}</td>
-                <td className="px-4 py-3 text-gray-500">{m.username}</td>
-                <td className="px-4 py-3 text-gray-500 max-w-50 truncate">{m.notes}</td>
+                <td className="px-4 py-3 text-muted">{m.reference}</td>
+                <td className="px-4 py-3 text-muted">{m.username}</td>
+                <td className="px-4 py-3 text-muted max-w-50 truncate">{m.notes}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     {can("stock.update") && (
-                      <button onClick={() => { setEditing(m); setShowForm(true); }} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`Edit movement ${m.id}`}>
+                      <button onClick={() => { setEditing(m); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit movement ${m.id}`}>
                         <Pencil size={16} />
                       </button>
                     )}
-                    <button onClick={() => setViewing(m)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View movement ${m.id}`}><Eye size={16} /></button>
+                    <button onClick={() => setViewing(m)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View movement ${m.id}`}><Eye size={16} /></button>
                     {can("stock.delete") && (
-                      <button onClick={() => setDeleting(m)} className="p-1 text-gray-400 hover:text-red-600" aria-label={`Delete movement ${m.id}`}>
+                      <button onClick={() => setDeleting(m)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete movement ${m.id}`}>
                         <Trash2 size={16} />
                       </button>
                     )}

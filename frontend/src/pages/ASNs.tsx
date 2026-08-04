@@ -45,7 +45,7 @@ export default function ASNs() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">ASNs</h1>
+        <h1 className="text-2xl font-bold text-ink">ASNs</h1>
         {can("asns.create") && (
           <button onClick={() => setShowForm(true)} className="btn-primary">
             <PackagePlus size={16} className="inline mr-1" />New ASN
@@ -62,32 +62,32 @@ export default function ASNs() {
       <div className="card overflow-hidden p-0">
         <table className="w-full text-sm" role="grid" aria-label="ASNs table">
           <thead>
-            <tr className="bg-gray-50 text-left">
-              <th className="px-4 py-3 font-medium text-gray-600">ASN #</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Supplier</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Expected Arrival</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Progress</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3 font-medium text-muted">ASN #</th>
+              <th className="px-4 py-3 font-medium text-muted">Supplier</th>
+              <th className="px-4 py-3 font-medium text-muted">Expected Arrival</th>
+              <th className="px-4 py-3 font-medium text-muted">Status</th>
+              <th className="px-4 py-3 font-medium text-muted">Progress</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={6} />
             ) : asns.length === 0 ? (
               <EmptyState title="No ASNs yet" message="Create an advance shipping notice for incoming supplier shipments." actionLabel="New ASN" onAction={() => setShowForm(true)} />
             ) : asns.map((a) => (
-              <tr key={a.id} className="hover:bg-gray-50">
+              <tr key={a.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{a.asn_number}</td>
-                <td className="px-4 py-3 text-gray-500">{a.supplier_name || "—"}</td>
-                <td className="px-4 py-3 text-gray-500">{a.expected_arrival ? new Date(a.expected_arrival).toLocaleDateString() : "—"}</td>
+                <td className="px-4 py-3 text-muted">{a.supplier_name || "—"}</td>
+                <td className="px-4 py-3 text-muted">{a.expected_arrival ? new Date(a.expected_arrival).toLocaleDateString() : "—"}</td>
                 <td className="px-4 py-3"><span className={`badge ${statusBadge(a.status)}`}>{a.status}</span></td>
-                <td className="px-4 py-3 text-gray-500">{a.total_received}/{a.total_expected}</td>
+                <td className="px-4 py-3 text-muted">{a.total_received}/{a.total_expected}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(a)} className="p-1 text-gray-400 hover:text-indigo-600" aria-label={`View ${a.asn_number}`}><Eye size={16} /></button>
+                    <button onClick={() => setViewing(a)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${a.asn_number}`}><Eye size={16} /></button>
                     {a.status === "pending" && can("asns.receive") && (
-                      <button onClick={() => setReceiving(a)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">Receive</button>
+                      <button onClick={() => setReceiving(a)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 font-medium">Receive</button>
                     )}
                   </div>
                 </td>
@@ -167,49 +167,49 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+            <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
             <select className="select" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
               <option value="">None</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Expected Arrival</label>
+            <label className="block text-sm font-medium text-ink mb-1">Expected Arrival</label>
             <input type="date" className="input" value={expected_arrival} onChange={(e) => setExpectedArrival(e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
             <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Expected Items</span>
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="bg-app px-4 py-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-ink">Expected Items</span>
             <button type="button" onClick={() => setRows([...rows, { product_id: "", expected_qty: "1", unit_cost: "0", location: "" }])} className="btn-secondary text-xs py-1 px-2">
               <Plus size={14} className="inline mr-1" />Add Item
             </button>
           </div>
-          <div className="divide-y divide-gray-100 max-h-[40vh] overflow-auto">
+          <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (
               <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-5">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Product</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Product</label>
                   <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                     <option value="">Select...</option>
                     {productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Expected Qty</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Expected Qty</label>
                   <input type="number" min={1} className="input" value={row.expected_qty} onChange={(e) => setRow(idx, "expected_qty", e.target.value)} />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Unit Cost</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
                   <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => setRow(idx, "unit_cost", e.target.value)} />
                 </div>
                 <div className="col-span-3">
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Location</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Location</label>
                   <LocationPicker value={row.location} onChange={(v) => setRow(idx, "location", v)} />
                 </div>
               </div>
@@ -232,31 +232,31 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
-            <p className="text-gray-500">Supplier</p>
+            <p className="text-muted">Supplier</p>
             <p className="font-medium">{asn.supplier_name || "—"}</p>
           </div>
           <div>
-            <p className="text-gray-500">Expected Arrival</p>
+            <p className="text-muted">Expected Arrival</p>
             <p className="font-medium">{asn.expected_arrival ? new Date(asn.expected_arrival).toLocaleDateString() : "—"}</p>
           </div>
           <div>
-            <p className="text-gray-500">Status</p>
+            <p className="text-muted">Status</p>
             <p className="font-medium capitalize">{asn.status}</p>
           </div>
         </div>
-        {asn.notes && <p className="text-sm text-gray-600">{asn.notes}</p>}
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        {asn.notes && <p className="text-sm text-muted">{asn.notes}</p>}
+        <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 text-left">
-                <th className="px-4 py-2 font-medium text-gray-600">Product</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Expected</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Received</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Unit Cost</th>
-                <th className="px-4 py-2 font-medium text-gray-600">Status</th>
+              <tr className="bg-app text-left">
+                <th className="px-4 py-2 font-medium text-muted">Product</th>
+                <th className="px-4 py-2 font-medium text-muted">Expected</th>
+                <th className="px-4 py-2 font-medium text-muted">Received</th>
+                <th className="px-4 py-2 font-medium text-muted">Unit Cost</th>
+                <th className="px-4 py-2 font-medium text-muted">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {asn.items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-2 font-medium">{item.product_name}</td>
@@ -342,7 +342,7 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
   return (
     <Modal open onClose={onClose} title={`Receive ${asn.asn_number}`} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="divide-y divide-gray-100 max-h-[50vh] overflow-auto border border-gray-200 rounded-lg">
+        <div className="divide-y divide-border max-h-[50vh] overflow-auto border border-border rounded-lg">
           {rows.map((row, idx) => {
             const product = productList.find((p) => p.id === row.product_id);
             return (
@@ -350,25 +350,25 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
                 <p className="text-sm font-medium">{row.product_name}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Qty Received</label>
+                    <label className="block text-xs font-medium text-muted mb-1">Qty Received</label>
                     <input type="number" min={1} className="input" value={row.received_qty} onChange={(e) => setRow(idx, "received_qty", e.target.value)} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Lot #</label>
+                    <label className="block text-xs font-medium text-muted mb-1">Lot #</label>
                     <input className="input" value={row.lot_number} onChange={(e) => setRow(idx, "lot_number", e.target.value)} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Expiry</label>
+                    <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
                     <input type="date" className="input" value={row.expiry_date} onChange={(e) => setRow(idx, "expiry_date", e.target.value)} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Location</label>
+                    <label className="block text-xs font-medium text-muted mb-1">Location</label>
                     <LocationPicker value={row.location} onChange={(v) => setRow(idx, "location", v)} />
                   </div>
                 </div>
                 {product?.is_serialized && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Serial numbers (one per line)</label>
+                    <label className="block text-xs font-medium text-muted mb-1">Serial numbers (one per line)</label>
                     <textarea className="input font-mono text-xs" rows={2} value={row.serial_numbers} onChange={(e) => setRow(idx, "serial_numbers", e.target.value)} placeholder={"SN-001\nSN-002"} />
                   </div>
                 )}
@@ -377,7 +377,7 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
           })}
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         <div className="flex justify-end gap-3 pt-4">

@@ -10,7 +10,7 @@ from app.models.order import Order
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.schemas.supplier import (
-    SupplierCreate, SupplierImportResult, SupplierListItem, SupplierOut,
+    SupplierBulkEdit, SupplierCreate, SupplierImportResult, SupplierListItem, SupplierOut,
     SupplierStats, SupplierUpdate,
 )
 from app.services.auth import get_current_user, require_permission
@@ -95,6 +95,34 @@ def list_suppliers(
     rows = q.order_by(Supplier.name).offset(skip).limit(limit).all()
     items = [_serialize_with_stats(s, to, ts, lo, pc) for s, to, ts, lo, pc in rows]
     return {"items": items, "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.patch("/bulk-edit")
+def bulk_edit_suppliers(data: SupplierBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("suppliers.bulk"))):
+    suppliers = db.query(Supplier).filter(Supplier.id.in_(data.ids)).all()
+    if not suppliers:
+        raise HTTPException(status_code=404, detail="No suppliers found")
+    updates = data.model_dump(exclude_unset=True)
+    updates.pop("ids", None)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "email" in updates and updates["email"].strip():
+        dup = db.query(Supplier).filter(
+            Supplier.is_active == True,  # noqa: E712
+            Supplier.email == updates["email"].strip(),
+            Supplier.id.notin_(data.ids),
+        ).first()
+        if dup:
+            raise HTTPException(status_code=400, detail="Duplicate supplier: another supplier already uses the same email")
+    for s in suppliers:
+        for k, v in updates.items():
+            setattr(s, k, v)
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "supplier", None,
+                 f"Bulk-edited {len(suppliers)} supplier(s): {', '.join(f'{k}={v}' for k, v in updates.items())}")
+    db.commit()
+    broadcast_change("supplier", "updated")
+    return {"updated": len(suppliers), "fields": list(updates.keys())}
 
 
 @router.post("/import", response_model=SupplierImportResult)

@@ -42,6 +42,21 @@ class SupplierUpdate(BaseModel):
         return _clean_email(v)
 
 
+class SupplierBulkEdit(BaseModel):
+    ids: list[int]
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v):
+        return _clean_email(v)
+
+
 class SupplierOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

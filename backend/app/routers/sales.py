@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.product import Product
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
-from app.schemas.sale import SaleCreate, SaleOut
+from app.schemas.sale import SaleBulkEdit, SaleCreate, SaleOut
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_admins, notify_low_stock
@@ -56,6 +56,26 @@ def list_sales(
     total = q.count()
     items = q.order_by(Sale.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [SaleOut.model_validate(s) for s in items], "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.patch("/bulk-edit")
+def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("sales.bulk"))):
+    sales = db.query(Sale).filter(Sale.id.in_(data.ids)).all()
+    if not sales:
+        raise HTTPException(status_code=404, detail="No sales found")
+    updates = data.model_dump(exclude_unset=True)
+    updates.pop("ids", None)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    for s in sales:
+        for k, v in updates.items():
+            setattr(s, k, v)
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "sale", None,
+                 f"Bulk-edited {len(sales)} sale(s): {', '.join(f'{k}={v}' for k, v in updates.items())}")
+    db.commit()
+    broadcast_change("sale", "updated")
+    return {"updated": len(sales), "fields": list(updates.keys())}
 
 
 @router.get("/stats")

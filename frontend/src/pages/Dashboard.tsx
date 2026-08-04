@@ -143,7 +143,7 @@ export default function Dashboard() {
   if (error && !stats) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>
+        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>
         <button onClick={fetchStats} className="btn-primary text-sm">Retry</button>
       </div>
     );
@@ -226,14 +226,14 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
+        <h1 className="text-2xl font-bold text-ink">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-600">
+          <label className="flex items-center gap-2 text-sm text-muted">
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="rounded border-gray-300"
+              className="rounded border-border-strong"
             />
             Auto-refresh (60s)
           </label>
@@ -255,9 +255,9 @@ export default function Dashboard() {
               <button
                 key={a.label}
                 onClick={() => navigate(a.path)}
-                className="flex items-center gap-2 px-4 py-3 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors text-sm font-medium text-gray-700"
+                className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border hover:border-indigo-300 hover:bg-indigo-50 dark:bg-indigo-500/10 transition-colors text-sm font-medium text-ink"
               >
-                <a.icon size={18} className="text-indigo-600" />
+                <a.icon size={18} className="text-indigo-600 dark:text-indigo-400" />
                 {a.label}
               </button>
             ))}
@@ -269,27 +269,27 @@ export default function Dashboard() {
           <button onClick={() => navigate("/reports")} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-red-500 text-left">
             <div className="flex items-center gap-2">
               <AlertTriangle className="text-red-500" size={16} />
-              <p className="text-sm text-gray-500">High Stockout Risk</p>
+              <p className="text-sm text-muted">High Stockout Risk</p>
             </div>
-            <p className="text-2xl font-bold mt-1 text-red-600">{riskSummary.high}</p>
+            <p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{riskSummary.high}</p>
           </button>
           <button onClick={() => navigate("/reports")} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-amber-400 text-left">
             <div className="flex items-center gap-2">
               <AlertTriangle className="text-amber-500" size={16} />
-              <p className="text-sm text-gray-500">Medium Stockout Risk</p>
+              <p className="text-sm text-muted">Medium Stockout Risk</p>
             </div>
-            <p className="text-2xl font-bold mt-1 text-amber-600">{riskSummary.medium}</p>
+            <p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">{riskSummary.medium}</p>
           </button>
           <button onClick={() => navigate("/reports")} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-emerald-400 text-left">
-            <p className="text-sm text-gray-500">Low Stockout Risk</p>
-            <p className="text-2xl font-bold mt-1 text-emerald-600">{riskSummary.low}</p>
+            <p className="text-sm text-muted">Low Stockout Risk</p>
+            <p className="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">{riskSummary.low}</p>
           </button>
         </div>
       )}
 
       {statSections.map((section) => (
         <div key={section.title} className="space-y-3">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{section.title}</h2>
+          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">{section.title}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {section.cards.map((card) => (
               <div
@@ -297,7 +297,7 @@ export default function Dashboard() {
                 onClick={() => card.link && navigate(card.link)}
                 className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
               >
-                <p className="text-sm text-gray-500">{card.label}</p>
+                <p className="text-sm text-muted">{card.label}</p>
                 <p className="text-2xl font-bold mt-1">{card.value}</p>
               </div>
             ))}
@@ -309,12 +309,12 @@ export default function Dashboard() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Stock Movement Trends ({trendDays} days)</h2>
-            <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <div className="flex rounded-lg border border-border overflow-hidden">
               {TREND_OPTIONS.map((d) => (
                 <button
                   key={d}
                   onClick={() => setTrendDays(d)}
-                  className={`px-3 py-1 text-xs font-medium ${trendDays === d ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                  className={`px-3 py-1 text-xs font-medium ${trendDays === d ? "bg-indigo-600 text-white" : "text-muted hover:bg-app"}`}
                 >
                   {d}d
                 </button>
@@ -333,7 +333,7 @@ export default function Dashboard() {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No stock movements in this period</p>
+            <p className="text-muted text-sm py-16 text-center">No stock movements in this period</p>
           )}
         </div>
 
@@ -350,19 +350,19 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No category valuation data</p>
+            <p className="text-muted text-sm py-16 text-center">No category valuation data</p>
           )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Top Products</h2>
-            <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <div className="flex rounded-lg border border-border overflow-hidden">
               {TREND_OPTIONS.map((d) => (
                 <button
                   key={d}
                   onClick={() => setTopProductsDays(d)}
-                  className={`px-3 py-1 text-xs font-medium ${topProductsDays === d ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                  className={`px-3 py-1 text-xs font-medium ${topProductsDays === d ? "bg-indigo-600 text-white" : "text-muted hover:bg-app"}`}
                 >
                   {d}d
                 </button>
@@ -375,14 +375,14 @@ export default function Dashboard() {
                 <div key={p.name} className="flex items-center justify-between text-sm">
                   <span className="font-medium">{p.name}</span>
                   <div className="flex items-center gap-4">
-                    <span className="text-gray-500">{p.quantity_sold} sold</span>
-                    <span className="text-emerald-600 font-medium">{formatCurrency(p.revenue, currencySymbol)}</span>
+                    <span className="text-muted">{p.quantity_sold} sold</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">{formatCurrency(p.revenue, currencySymbol)}</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No sales in this period</p>
+            <p className="text-muted text-sm py-16 text-center">No sales in this period</p>
           )}
         </div>
 
@@ -392,39 +392,39 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">Total Cost</p>
+                  <p className="text-sm text-muted">Total Cost</p>
                   <p className="text-lg font-bold">{formatCurrency(profit.total_cost_value, currencySymbol, 0)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Potential Revenue</p>
+                  <p className="text-sm text-muted">Potential Revenue</p>
                   <p className="text-lg font-bold">{formatCurrency(profit.total_potential_revenue, currencySymbol, 0)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Potential Profit</p>
-                  <p className="text-lg font-bold text-emerald-600">{formatCurrency(profit.total_potential_profit, currencySymbol, 0)}</p>
+                  <p className="text-sm text-muted">Potential Profit</p>
+                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(profit.total_potential_profit, currencySymbol, 0)}</p>
                 </div>
               </div>
               {topProfitProducts.length > 0 && (
                 <div className="space-y-3">
-                  <p className="text-sm font-semibold text-gray-500">Top Margin Products</p>
+                  <p className="text-sm font-semibold text-muted">Top Margin Products</p>
                   {topProfitProducts.map((p) => (
                     <div key={p.id} className="flex items-center justify-between text-sm">
                       <span className="font-medium">{p.name}</span>
-                      <span className="text-emerald-600 font-medium">{formatCurrency(p.total_profit, currencySymbol)}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">{formatCurrency(p.total_profit, currencySymbol)}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No profit data</p>
+            <p className="text-muted text-sm py-16 text-center">No profit data</p>
           )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Pending ASNs</h2>
-            <button onClick={() => navigate("/asns")} className="text-sm text-indigo-600 hover:underline">View all</button>
+            <button onClick={() => navigate("/asns")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {exceptions?.pending_asns?.length ? (
             <div className="space-y-3">
@@ -432,26 +432,26 @@ export default function Dashboard() {
                 <div key={a.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{a.asn_number}</span>
-                    <span className="text-gray-500 ml-2">{a.supplier}</span>
+                    <span className="text-muted ml-2">{a.supplier}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     {a.expected_arrival && (
-                      <span className="text-gray-500">{parseLocalDate(a.expected_arrival).toLocaleDateString()}</span>
+                      <span className="text-muted">{parseLocalDate(a.expected_arrival).toLocaleDateString()}</span>
                     )}
-                    <span className="text-amber-600 font-medium">{a.items_pending} pending</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">{a.items_pending} pending</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No pending ASNs</p>
+            <p className="text-muted text-sm py-16 text-center">No pending ASNs</p>
           )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Open Cycle Counts</h2>
-            <button onClick={() => navigate("/cycle-counts")} className="text-sm text-indigo-600 hover:underline">View all</button>
+            <button onClick={() => navigate("/cycle-counts")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {exceptions?.open_cycle_counts?.length ? (
             <div className="space-y-3">
@@ -459,14 +459,14 @@ export default function Dashboard() {
                 <div key={c.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{c.cc_number}</span>
-                    <span className="text-gray-500 ml-2">{c.location}</span>
+                    <span className="text-muted ml-2">{c.location}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${c.status === "in_progress" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${c.status === "in_progress" ? "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-subtle text-muted"}`}>
                       {c.status}
                     </span>
                     {c.total_variance !== 0 && (
-                      <span className={`font-medium ${c.total_variance > 0 ? "text-red-600" : "text-orange-600"}`}>
+                      <span className={`font-medium ${c.total_variance > 0 ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}>
                         {c.total_variance > 0 ? "+" : ""}{c.total_variance} variance
                       </span>
                     )}
@@ -475,7 +475,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No open cycle counts</p>
+            <p className="text-muted text-sm py-16 text-center">No open cycle counts</p>
           )}
         </div>
 
@@ -483,7 +483,7 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold mb-4">Recent Stock Movements</h2>
           <div className="space-y-3">
             {stats.recent_movements.length === 0 && (
-              <p className="text-gray-500 text-sm">No recent movements</p>
+              <p className="text-muted text-sm">No recent movements</p>
             )}
             {stats.recent_movements.map((m) => (
               <div key={m.id} className="flex items-center justify-between text-sm">
@@ -495,7 +495,7 @@ export default function Dashboard() {
                   )}
                   <span className="font-medium">{m.product_name}</span>
                 </div>
-                <span className={m.quantity_change > 0 ? "text-green-600" : "text-red-600"}>
+                <span className={m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                   {m.quantity_change > 0 ? "+" : ""}
                   {m.quantity_change}
                 </span>
@@ -508,15 +508,15 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold mb-4">Recent Sales</h2>
           <div className="space-y-3">
             {!salesStats || salesStats.recent_sales.length === 0 ? (
-              <p className="text-gray-500 text-sm">No sales recorded yet</p>
+              <p className="text-muted text-sm">No sales recorded yet</p>
             ) : (
               salesStats.recent_sales.map((s) => (
                 <div key={s.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{s.invoice_number}</span>
-                    <span className="text-gray-500 ml-2">{s.customer_name}</span>
+                    <span className="text-muted ml-2">{s.customer_name}</span>
                   </div>
-                  <span className="text-emerald-600 font-medium">{formatCurrency(s.total_amount, currencySymbol)}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">{formatCurrency(s.total_amount, currencySymbol)}</span>
                 </div>
               ))
             )}
@@ -527,17 +527,17 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold mb-4">Low Stock Alerts</h2>
           <div className="space-y-3">
             {stats.low_stock_products.length === 0 && (
-              <p className="text-gray-500 text-sm">All products are well-stocked</p>
+              <p className="text-muted text-sm">All products are well-stocked</p>
             )}
             {stats.low_stock_products.map((p) => (
               <div key={p.id} className="flex items-center justify-between text-sm">
                 <div>
                   <span className="font-medium">{p.name}</span>
-                  <span className="text-gray-500 ml-2">({p.sku})</span>
+                  <span className="text-muted ml-2">({p.sku})</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-red-600 font-medium">{p.quantity}</span>
-                  <span className="text-gray-400">/ {p.reorder_level}</span>
+                  <span className="text-red-600 dark:text-red-400 font-medium">{p.quantity}</span>
+                  <span className="text-faint">/ {p.reorder_level}</span>
                 </div>
               </div>
             ))}
@@ -548,15 +548,15 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold mb-4">Expiring Soon</h2>
           <div className="space-y-3">
             {stats.expiring_products.length === 0 && (
-              <p className="text-gray-500 text-sm">No products expiring in the next 30 days</p>
+              <p className="text-muted text-sm">No products expiring in the next 30 days</p>
             )}
             {stats.expiring_products.map((p) => (
               <div key={p.id} className="flex items-center justify-between text-sm">
                 <div>
                   <span className="font-medium">{p.name}</span>
-                  {p.batch_number && <span className="text-gray-500 ml-2">({p.batch_number})</span>}
+                  {p.batch_number && <span className="text-muted ml-2">({p.batch_number})</span>}
                 </div>
-                <span className={p.expiry_date < new Date().toISOString().slice(0, 10) ? "text-red-600 font-medium" : "text-amber-600 font-medium"}>
+                <span className={p.expiry_date < new Date().toISOString().slice(0, 10) ? "text-red-600 dark:text-red-400 font-medium" : "text-amber-600 dark:text-amber-400 font-medium"}>
                   {parseLocalDate(p.expiry_date).toLocaleDateString()}
                 </span>
               </div>
@@ -567,7 +567,7 @@ export default function Dashboard() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Recent Receipts</h2>
-            <button onClick={() => navigate("/receiving")} className="text-sm text-indigo-600 hover:underline">View all</button>
+            <button onClick={() => navigate("/receiving")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {receipts?.items?.length ? (
             <div className="space-y-3">
@@ -575,24 +575,24 @@ export default function Dashboard() {
                 <div key={r.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{r.receipt_number}</span>
-                    <span className="text-gray-500 ml-2">{r.supplier_name || "—"}</span>
+                    <span className="text-muted ml-2">{r.supplier_name || "—"}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-500">{r.total_quantity} units</span>
-                    <span className="text-gray-400">{parseLocalDate(r.created_at).toLocaleDateString()}</span>
+                    <span className="text-muted">{r.total_quantity} units</span>
+                    <span className="text-faint">{parseLocalDate(r.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No receipts recorded yet</p>
+            <p className="text-muted text-sm py-16 text-center">No receipts recorded yet</p>
           )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Recent LPNs</h2>
-            <button onClick={() => navigate("/lpns")} className="text-sm text-indigo-600 hover:underline">View all</button>
+            <button onClick={() => navigate("/lpns")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {lpns?.items?.length ? (
             <div className="space-y-3">
@@ -600,11 +600,11 @@ export default function Dashboard() {
                 <div key={l.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{l.lpn_number}</span>
-                    <span className="text-gray-500 ml-2">{l.location_name || "Unlocated"}</span>
+                    <span className="text-muted ml-2">{l.location_name || "Unlocated"}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-500">{l.total_quantity} units</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${l.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
+                    <span className="text-muted">{l.total_quantity} units</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${l.status === "active" ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-subtle text-muted"}`}>
                       {l.status}
                     </span>
                   </div>
@@ -612,7 +612,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No LPNs yet</p>
+            <p className="text-muted text-sm py-16 text-center">No LPNs yet</p>
           )}
         </div>
 
@@ -624,23 +624,23 @@ export default function Dashboard() {
                 <div key={s.status} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className="capitalize font-medium">{s.status}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${s.status === "pending" ? "bg-amber-100 text-amber-700" : s.status === "received" ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${s.status === "pending" ? "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" : s.status === "received" ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-subtle text-muted"}`}>
                       {s.count}
                     </span>
                   </div>
-                  <span className="text-gray-600 font-medium">{formatCurrency(s.total_value, currencySymbol)}</span>
+                  <span className="text-muted font-medium">{formatCurrency(s.total_value, currencySymbol)}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No orders yet</p>
+            <p className="text-muted text-sm py-16 text-center">No orders yet</p>
           )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Shipments to Process</h2>
-            <button onClick={() => navigate("/shipments")} className="text-sm text-indigo-600 hover:underline">View all</button>
+            <button onClick={() => navigate("/shipments")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {stats.shipments_to_process.length > 0 ? (
             <div className="space-y-3">
@@ -648,11 +648,11 @@ export default function Dashboard() {
                 <div key={s.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{s.shipment_number}</span>
-                    {s.customer_name && <span className="text-gray-500 ml-2">{s.customer_name}</span>}
+                    {s.customer_name && <span className="text-muted ml-2">{s.customer_name}</span>}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-500">{s.total_picked}/{s.total_quantity} picked</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${s.status === "packed" ? "bg-emerald-100 text-emerald-700" : s.status === "picking" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
+                    <span className="text-muted">{s.total_picked}/{s.total_quantity} picked</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${s.status === "packed" ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : s.status === "picking" ? "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-subtle text-muted"}`}>
                       {s.status}
                     </span>
                   </div>
@@ -660,14 +660,14 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No shipments to process</p>
+            <p className="text-muted text-sm py-16 text-center">No shipments to process</p>
           )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Open Work Orders</h2>
-            <button onClick={() => navigate("/work-orders")} className="text-sm text-indigo-600 hover:underline">View all</button>
+            <button onClick={() => navigate("/work-orders")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {stats.work_orders_to_process.length > 0 ? (
             <div className="space-y-3">
@@ -675,24 +675,24 @@ export default function Dashboard() {
                 <div key={w.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{w.wo_number}</span>
-                    <span className="text-gray-500 ml-2">{w.product_name}</span>
+                    <span className="text-muted ml-2">{w.product_name}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-500">{w.quantity} units</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{w.status}</span>
+                    <span className="text-muted">{w.quantity} units</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">{w.status}</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No open work orders</p>
+            <p className="text-muted text-sm py-16 text-center">No open work orders</p>
           )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Pending Quality Checks</h2>
-            <button onClick={() => navigate("/quality-checks")} className="text-sm text-indigo-600 hover:underline">View all</button>
+            <button onClick={() => navigate("/quality-checks")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {stats.quality_checks_to_process.length > 0 ? (
             <div className="space-y-3">
@@ -700,55 +700,55 @@ export default function Dashboard() {
                 <div key={q.id} className="flex items-center justify-between text-sm">
                   <div>
                     <span className="font-medium">{q.qc_number}</span>
-                    <span className="text-gray-500 ml-2">{q.product_name}</span>
+                    <span className="text-muted ml-2">{q.product_name}</span>
                   </div>
-                  <span className="text-amber-600 font-medium">{q.result}</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-medium">{q.result}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No pending quality checks</p>
+            <p className="text-muted text-sm py-16 text-center">No pending quality checks</p>
           )}
         </div>
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Manufacturing Cost</h2>
-            <button onClick={() => navigate("/reports")} className="text-sm text-indigo-600 hover:underline">View all</button>
+            <button onClick={() => navigate("/reports")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {costReport ? (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">Material Cost</p>
+                  <p className="text-sm text-muted">Material Cost</p>
                   <p className="text-lg font-bold">{formatCurrency(costReport.total_material_cost, currencySymbol, 0)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Standard Cost</p>
+                  <p className="text-sm text-muted">Standard Cost</p>
                   <p className="text-lg font-bold">{formatCurrency(costReport.total_standard_cost, currencySymbol, 0)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Variance</p>
-                  <p className={`text-lg font-bold ${costReport.total_variance > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                  <p className="text-sm text-muted">Variance</p>
+                  <p className={`text-lg font-bold ${costReport.total_variance > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                     {formatCurrency(costReport.total_variance, currencySymbol, 0)}
                   </p>
                 </div>
               </div>
               {costReport.items.length > 0 && (
                 <div className="space-y-3">
-                  <p className="text-sm font-semibold text-gray-500">Latest Completed Orders</p>
+                  <p className="text-sm font-semibold text-muted">Latest Completed Orders</p>
                   {costReport.items.slice(0, 3).map((row) => (
                     <div key={row.wo_id} className="flex items-center justify-between text-sm">
                       <span className="font-medium">{row.wo_number}</span>
-                      <span className="text-gray-500 ml-2">{row.product_name}</span>
-                      <span className="text-gray-600 ml-auto">{formatCurrency(row.material_cost, currencySymbol)}</span>
+                      <span className="text-muted ml-2">{row.product_name}</span>
+                      <span className="text-muted ml-auto">{formatCurrency(row.material_cost, currencySymbol)}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm py-16 text-center">No costing data</p>
+            <p className="text-muted text-sm py-16 text-center">No costing data</p>
           )}
         </div>
       </div>
