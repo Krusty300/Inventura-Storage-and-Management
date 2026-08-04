@@ -3,6 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import api from "../api/client";
 import type { Category, Location, Product, Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
+import { useSettings } from "../hooks/useSettings";
 import Modal from "./Modal";
 import LocationPicker from "./LocationPicker";
 import { hasVariants } from "../utils/variants";
@@ -24,7 +25,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const isParentWithVariants = !!product && !product.is_variant && hasVariants(product);
   const [form, setForm] = useState({
     sku: "", name: "", description: "", category_id: "", supplier_id: "",
-    unit_price: "0", cost_price: "0", quantity: "0", reorder_level: "10",
+    unit_price: "0", cost_price: "0", quantity: "0", reorder_level: "",
     location: "", barcode: "", batch_number: "", expiry_date: "", is_active: true,
     is_serialized: false,
   });
@@ -36,6 +37,13 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const [locations, setLocations] = useState<Location[]>([]);
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+  const { data: settings } = useSettings();
+
+  useEffect(() => {
+    if (!product && settings?.default_reorder_level != null && form.reorder_level === "") {
+      setForm((f) => ({ ...f, reorder_level: String(settings.default_reorder_level) }));
+    }
+  }, [product, settings, form.reorder_level]);
 
   useEffect(() => {
     api.get("/categories").then(({ data }) => setCategories(data.items));
@@ -76,7 +84,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
       unit_price: parseFloat(form.unit_price) || 0,
       cost_price: parseFloat(form.cost_price) || 0,
       quantity: parseInt(form.quantity) || 0,
-      reorder_level: parseInt(form.reorder_level) || 10,
+      reorder_level: form.reorder_level === "" ? undefined : parseInt(form.reorder_level) || 10,
       expiry_date: form.expiry_date || null,
     };
     if (isVariantMode) {
@@ -90,7 +98,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         unit_price: parseFloat(form.unit_price) || 0,
         cost_price: parseFloat(form.cost_price) || 0,
         quantity: parseInt(form.quantity) || 0,
-        reorder_level: parseInt(form.reorder_level) || 10,
+        reorder_level: form.reorder_level === "" ? undefined : parseInt(form.reorder_level) || 10,
         location: form.location, barcode: form.barcode,
         batch_number: form.batch_number || "",
         expiry_date: form.expiry_date || null,

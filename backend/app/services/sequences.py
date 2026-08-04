@@ -2,6 +2,22 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 
+def _get_prefix(db: Session, name: str, default: str) -> str:
+    """Read document prefix from settings, falling back to default."""
+    from app.models.settings import Settings
+    s = db.query(Settings).first()
+    if not s:
+        return default
+    prefix_map = {
+        "shipment": s.shipment_prefix,
+        "work_order": s.work_order_prefix,
+        "sale": s.sale_prefix,
+        "invoice": s.invoice_prefix,
+        "purchase_order": s.po_prefix,
+    }
+    return prefix_map.get(name, default)
+
+
 def next_document_number(db: Session, name: str, prefix: str, width: int = 4) -> str:
     """Atomically allocate the next sequential document number.
 
@@ -9,6 +25,7 @@ def next_document_number(db: Session, name: str, prefix: str, width: int = 4) ->
     the same number. If the surrounding transaction rolls back the allocated
     number is skipped (gaps are acceptable).
     """
+    prefix = _get_prefix(db, name, prefix)
     row = db.execute(
         text(
             "INSERT INTO document_sequences (name, next_value) VALUES (:name, 1) "

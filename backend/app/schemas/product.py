@@ -15,7 +15,7 @@ class ProductCreate(BaseModel):
     unit_price: float = 0.0
     cost_price: float = 0.0
     quantity: int = 0
-    reorder_level: int = 10
+    reorder_level: Optional[int] = None
     location_id: Optional[int] = None
     location: str = ""
     barcode: str = ""

@@ -19,6 +19,32 @@ class SettingsUpdate(BaseModel):
     currency_symbol: Optional[str] = None
     tax_rate: Optional[float] = None
     default_reorder_level: Optional[int] = None
+    expiry_warning_days: Optional[int] = None
+    low_stock_alerts: Optional[bool] = None
+    expiry_alerts: Optional[bool] = None
+    shipment_prefix: Optional[str] = None
+    work_order_prefix: Optional[str] = None
+    sale_prefix: Optional[str] = None
+    invoice_prefix: Optional[str] = None
+    po_prefix: Optional[str] = None
+    require_qc_before_ship: Optional[bool] = None
+    auto_allocate_stock: Optional[bool] = None
+    enforce_fefo: Optional[bool] = None
+    default_costing_method: Optional[str] = None
+    fiscal_year_start_month: Optional[int] = None
+    default_items_per_page: Optional[int] = None
+    date_format: Optional[str] = None
+
+
+SETTING_FIELDS = [
+    "id", "store_name", "address", "phone", "email", "currency_symbol",
+    "tax_rate", "default_reorder_level",
+    "expiry_warning_days", "low_stock_alerts", "expiry_alerts",
+    "shipment_prefix", "work_order_prefix", "sale_prefix", "invoice_prefix", "po_prefix",
+    "require_qc_before_ship", "auto_allocate_stock", "enforce_fefo",
+    "default_costing_method", "fiscal_year_start_month",
+    "default_items_per_page", "date_format",
+]
 
 
 def get_or_create_settings(db: Session) -> Settings:
@@ -31,14 +57,13 @@ def get_or_create_settings(db: Session) -> Settings:
     return s
 
 
+def _serialize(s: Settings) -> dict:
+    return {f: getattr(s, f) for f in SETTING_FIELDS}
+
+
 @router.get("")
 def get_settings(db: Session = Depends(get_db)):
-    s = get_or_create_settings(db)
-    return {
-        "id": s.id, "store_name": s.store_name, "address": s.address, "phone": s.phone,
-        "email": s.email, "currency_symbol": s.currency_symbol, "tax_rate": s.tax_rate,
-        "default_reorder_level": s.default_reorder_level,
-    }
+    return _serialize(get_or_create_settings(db))
 
 
 @router.put("")
@@ -48,8 +73,4 @@ def update_settings(data: SettingsUpdate, db: Session = Depends(get_db), user=De
         setattr(s, k, v)
     db.commit()
     db.refresh(s)
-    return {
-        "id": s.id, "store_name": s.store_name, "address": s.address, "phone": s.phone,
-        "email": s.email, "currency_symbol": s.currency_symbol, "tax_rate": s.tax_rate,
-        "default_reorder_level": s.default_reorder_level,
-    }
+    return _serialize(s)

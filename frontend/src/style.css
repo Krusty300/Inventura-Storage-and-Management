@@ -101,8 +101,8 @@ body {
 }
 .input:focus {
   outline: none;
-  ring: 2px solid #4f46e5;
-  border-color: transparent;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgb(124 58 237 / 0.2);
 }
 
 .select {

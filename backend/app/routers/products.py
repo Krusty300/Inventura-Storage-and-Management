@@ -19,6 +19,7 @@ from app.models.category import Category
 from app.models.location import Location
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
+from app.models.settings import Settings
 from app.models.stock_line import StockLine
 from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
@@ -43,6 +44,24 @@ UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 router = APIRouter(prefix="/api/products", tags=["products"], dependencies=[Depends(get_current_user)])
+
+
+def _effective_location(product: Product) -> str:
+    """Return the location path derived from actual stock lines, falling back to the stored text."""
+    stock_lines = product.stock_lines
+    if not stock_lines:
+        return ""
+    from collections import Counter
+    loc_qty: Counter = Counter()
+    for sl in stock_lines:
+        if sl.location_id:
+            loc_qty[sl.location_id] += sl.quantity
+    if loc_qty:
+        best_loc_id = loc_qty.most_common(1)[0][0]
+        loc = next((sl.location for sl in stock_lines if sl.location_id == best_loc_id and sl.location), None)
+        if loc:
+            return loc.path
+    return ""
 
 
 def validate_refs(db: Session, category_id: Optional[int], supplier_id: Optional[int]) -> None:
@@ -82,9 +101,9 @@ def list_products(
     include_variants: bool = False,
     db: Session = Depends(get_db),
 ):
-    options = [joinedload(Product.category), joinedload(Product.supplier)]
+    options = [joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.stock_lines).joinedload(StockLine.location)]
     if include_variants:
-        options.append(joinedload(Product.variants))
+        options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location))
     q = db.query(Product).options(*options).filter(Product.parent_id.is_(None))
     if active_only:
         q = q.filter(Product.is_active == True)
@@ -138,7 +157,15 @@ def list_products(
         col = getattr(Product, sort_by, Product.name)
         q = q.order_by(col.asc() if sort_dir == "asc" else col.desc())
     items = q.offset(skip).limit(limit).all()
-    return {"items": [ProductOut.model_validate(p) for p in items], "total": total, "page": (skip // limit) + 1 if limit else 1, "pages": max(ceil(total / limit), 1) if limit else 1}
+    results = []
+    for p in items:
+        out = ProductOut.model_validate(p)
+        out.location = _effective_location(p)
+        if include_variants and p.variants and out.variants:
+            for v_orm, v_out in zip(p.variants, out.variants):
+                v_out.location = _effective_location(v_orm)
+        results.append(out)
+    return {"items": results, "total": total, "page": (skip // limit) + 1 if limit else 1, "pages": max(ceil(total / limit), 1) if limit else 1}
 
 
 class BulkEditRequest(BaseModel):
@@ -250,19 +277,34 @@ def barcode_labels(ids: str = "", db: Session = Depends(get_db)):
 
 @router.get("/{product_id}", response_model=ProductOut)
 def get_product(product_id: int, db: Session = Depends(get_db)):
-    return get_or_404(Product, product_id, db, options=[
-        joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.variants)
+    p = get_or_404(Product, product_id, db, options=[
+        joinedload(Product.category), joinedload(Product.supplier),
+        joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
+        joinedload(Product.stock_lines).joinedload(StockLine.location),
     ])
+    out = ProductOut.model_validate(p)
+    out.location = _effective_location(p)
+    if p.variants and out.variants:
+        for v_orm, v_out in zip(p.variants, out.variants):
+            v_out.location = _effective_location(v_orm)
+    return out
 
 
 @router.get("/barcode/{barcode}", response_model=ProductOut)
 def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
     p = db.query(Product).options(
-        joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.variants)
+        joinedload(Product.category), joinedload(Product.supplier),
+        joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
+        joinedload(Product.stock_lines).joinedload(StockLine.location),
     ).filter(Product.barcode == barcode, Product.is_active == True).first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
-    return p
+    out = ProductOut.model_validate(p)
+    out.location = _effective_location(p)
+    if p.variants and out.variants:
+        for v_orm, v_out in zip(p.variants, out.variants):
+            v_out.location = _effective_location(v_orm)
+    return out
 
 
 @router.post("", response_model=ProductOut, status_code=201)
@@ -282,6 +324,9 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
         raise HTTPException(status_code=400, detail="Serialized products cannot have an opening quantity - use receipts to receive stock")
     payload = data.model_dump()
     payload["location_id"] = resolve_location(db, payload.get("location_id"), payload.get("location"))
+    if payload.get("reorder_level") is None:
+        s = db.query(Settings).first()
+        payload["reorder_level"] = s.default_reorder_level if s else 10
     if parent is not None:
         if not (payload.get("name") or "").strip():
             payload["name"] = parent.name
@@ -478,6 +523,8 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
     content = file.file.read().decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(content))
     result = CsvImportResult()
+    _settings_row = db.query(Settings).first()
+    default_reorder = _settings_row.default_reorder_level if _settings_row else 10
     for row_idx, row in enumerate(reader, start=2):
         sku = (row.get("sku") or "").strip()
         name = (row.get("name") or "").strip()
@@ -524,7 +571,7 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
                 unit_price=float(row.get("unit_price") or 0),
                 cost_price=float(row.get("cost_price") or 0),
                 quantity=qty,
-                reorder_level=int(row.get("reorder_level") or 10),
+                reorder_level=int(row.get("reorder_level") or default_reorder),
                 location=(row.get("location") or "").strip(),
                 barcode=(row.get("barcode") or "").strip(),
                 is_serialized=is_serialized,

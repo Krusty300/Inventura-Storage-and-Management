@@ -1,11 +1,22 @@
-from datetime import date, timedelta
+from datetime import date
 
 from sqlalchemy.orm import Session
 
 from app.models.notification import Notification
 from app.models.product import Product
+from app.models.settings import Settings
 from app.models.user import User
 from app.utils import broadcast_change
+
+
+def _get_settings(db: Session) -> Settings:
+    s = db.query(Settings).first()
+    if not s:
+        s = Settings(store_name="My Store", currency_symbol="$")
+        db.add(s)
+        db.commit()
+        db.refresh(s)
+    return s
 
 
 def create_notification(db: Session, user_id: int, title: str, message: str = "", type: str = "info", link: str = "") -> Notification:
@@ -24,6 +35,9 @@ def notify_admins(db: Session, title: str, message: str = "", type: str = "info"
 
 
 def notify_low_stock(db: Session, product: Product) -> list[Notification]:
+    s = _get_settings(db)
+    if not s.low_stock_alerts:
+        return []
     if product.quantity > product.reorder_level:
         return []
     title = f"Low stock: {product.display_name}"
@@ -46,6 +60,9 @@ def notify_low_stock(db: Session, product: Product) -> list[Notification]:
 
 
 def notify_expiring(db: Session, product: Product) -> list[Notification]:
+    s = _get_settings(db)
+    if not s.expiry_alerts:
+        return []
     if not product.expiry_date:
         return []
     today = date.today()
@@ -58,7 +75,7 @@ def notify_expiring(db: Session, product: Product) -> list[Notification]:
             type="warning",
             link="/products",
         )
-    if days_left <= 30:
+    if days_left <= s.expiry_warning_days:
         return notify_admins(
             db,
             f"Expiring soon: {product.display_name}",

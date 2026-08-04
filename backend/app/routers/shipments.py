@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Customer, Location, Product, Sale, SaleItem, Shipment, ShipmentItem
+from app.models.settings import Settings
 from app.schemas.sale import SaleOut
 from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentUpdate
 from app.services import inventory
@@ -230,6 +231,16 @@ def ship_shipment(
     shipment = _load_shipment(db, shipment_id)
     if shipment.status not in SHIPPABLE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Only {'/'.join(SHIPPABLE_STATUSES)} shipments can be shipped")
+    s = db.query(Settings).first()
+    if s and s.require_qc_before_ship:
+        from app.models.quality_check import QualityCheck
+        qc_pending = db.query(QualityCheck).filter(
+            QualityCheck.reference_type == "shipment",
+            QualityCheck.reference_id == shipment_id,
+            QualityCheck.result == "pending",
+        ).first()
+        if qc_pending:
+            raise HTTPException(status_code=400, detail="Quality check is pending for this shipment. Complete QC before shipping.")
     staging = shipment.staging_location_id
     if staging is None:
         raise HTTPException(status_code=400, detail="Nothing has been picked for this shipment")

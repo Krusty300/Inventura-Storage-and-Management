@@ -31,3 +31,4 @@ class Token(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+    remember: bool = False

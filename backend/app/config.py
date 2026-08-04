@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     secret_key: str = "change-this-to-a-secure-random-key"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
+    remember_token_expire_minutes: int = 43200
 
     @field_validator("secret_key")
     @classmethod

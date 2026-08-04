@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import Register from "../pages/Register";
@@ -40,5 +40,15 @@ describe("Register Page", () => {
   it("renders sign in link", () => {
     renderRegister();
     expect(screen.getByText(/already have an account/i)).toBeInTheDocument();
+  });
+
+  it("shows inline error when passwords do not match", async () => {
+    renderRegister();
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "newuser" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret1" } });
+    fireEvent.change(screen.getByLabelText("Confirm Password"), { target: { value: "secret2" } });
+    fireEvent.click(screen.getByRole("button", { name: /register/i }));
+    expect(await screen.findByText("Passwords do not match")).toBeInTheDocument();
   });
 });

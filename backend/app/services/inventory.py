@@ -149,7 +149,8 @@ def allocate_lots(
     quantity: int,
     location_id: int | None = None,
 ) -> list[tuple[int | None, int, int | None, int | None]]:
-    """Allocate `quantity` from stock lines ordered by soonest expiry (FEFO).
+    """Allocate `quantity` from stock lines. When enforce_fefo is enabled (default),
+    ordered by soonest expiry (FEFO). Otherwise FIFO by stock line id.
     Returns a list of (lot_id | None, qty, location_id | None, lpn_id | None)
     tuples describing the exact stock lines to decrement. Raises InventoryError
     if insufficient stock is available."""
@@ -157,6 +158,10 @@ def allocate_lots(
         raise InventoryError("Allocation quantity must be non-negative")
     if quantity == 0:
         return []
+    from app.models.settings import Settings
+    s = db.query(Settings).first()
+    use_fefo = s.enforce_fefo if s else True
+    order = [Lot.expiry_date.asc().nulls_last(), StockLine.id.asc()] if use_fefo else [StockLine.id.asc()]
     stmt = (
         select(StockLine)
         .where(
@@ -169,7 +174,7 @@ def allocate_lots(
         )
         .outerjoin(Lot, StockLine.lot_id == Lot.id)
         .outerjoin(Location, StockLine.location_id == Location.id)
-        .order_by(Lot.expiry_date.asc().nulls_last(), StockLine.id.asc())
+        .order_by(*order)
     )
     if location_id is not None:
         stmt = stmt.where(StockLine.location_id == location_id)
@@ -198,12 +203,17 @@ def allocate_serials(
     location_id: int | None = None,
 ) -> list[SerialNumber]:
     """Allocate `quantity` in-stock serial numbers for a serialized product,
-    ordered by soonest lot expiry (FEFO) then registration order. Raises
-    InventoryError if insufficient serials are available."""
+    ordered by soonest lot expiry (FEFO) then registration order when enforce_fefo
+    is enabled, otherwise FIFO by id. Raises InventoryError if insufficient serials
+    are available."""
     if quantity < 0:
         raise InventoryError("Allocation quantity must be non-negative")
     if quantity == 0:
         return []
+    from app.models.settings import Settings
+    s = db.query(Settings).first()
+    use_fefo = s.enforce_fefo if s else True
+    order = [Lot.expiry_date.asc().nulls_last(), SerialNumber.id.asc()] if use_fefo else [SerialNumber.id.asc()]
     stmt = (
         select(SerialNumber)
         .where(
@@ -212,7 +222,7 @@ def allocate_serials(
             (SerialNumber.lot_id.is_(None)) | (Lot.status == "in_stock"),
         )
         .outerjoin(Lot, SerialNumber.lot_id == Lot.id)
-        .order_by(Lot.expiry_date.asc().nulls_last(), SerialNumber.id.asc())
+        .order_by(*order)
     )
     if location_id is not None:
         stmt = stmt.where(SerialNumber.location_id == location_id)

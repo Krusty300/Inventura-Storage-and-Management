@@ -56,6 +56,11 @@ def run_migrations():
         if "shipments" in table_names
         else None
     )
+    settings_cols = (
+        {c["name"] for c in insp.get_columns("settings")}
+        if "settings" in table_names
+        else None
+    )
     with engine.begin() as conn:
         if "parent_id" not in existing:
             conn.execute(text("ALTER TABLE products ADD COLUMN parent_id INTEGER"))
@@ -118,6 +123,27 @@ def run_migrations():
                     text("INSERT OR IGNORE INTO document_sequences (name, next_value) VALUES (:n, :v)"),
                     {"n": seq_name, "v": max_num},
                 )
+
+        if settings_cols is not None:
+            for col, ddl in (
+                ("expiry_warning_days", "INTEGER DEFAULT 30"),
+                ("low_stock_alerts", "BOOLEAN DEFAULT 1"),
+                ("expiry_alerts", "BOOLEAN DEFAULT 1"),
+                ("shipment_prefix", "VARCHAR(20) DEFAULT 'SHP'"),
+                ("work_order_prefix", "VARCHAR(20) DEFAULT 'WO'"),
+                ("sale_prefix", "VARCHAR(20) DEFAULT 'SALE'"),
+                ("invoice_prefix", "VARCHAR(20) DEFAULT 'INV'"),
+                ("po_prefix", "VARCHAR(20) DEFAULT 'PO'"),
+                ("require_qc_before_ship", "BOOLEAN DEFAULT 0"),
+                ("auto_allocate_stock", "BOOLEAN DEFAULT 0"),
+                ("enforce_fefo", "BOOLEAN DEFAULT 1"),
+                ("default_costing_method", "VARCHAR(30) DEFAULT 'weighted_average'"),
+                ("fiscal_year_start_month", "INTEGER DEFAULT 1"),
+                ("default_items_per_page", "INTEGER DEFAULT 50"),
+                ("date_format", "VARCHAR(20) DEFAULT 'YYYY-MM-DD'"),
+            ):
+                if col not in settings_cols:
+                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {col} {ddl}"))
 
 
 def get_db():

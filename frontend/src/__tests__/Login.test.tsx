@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import Login from "../pages/Login";
@@ -43,5 +43,18 @@ describe("Login Page", () => {
   it("renders register link", () => {
     renderLogin();
     expect(screen.getByText(/don't have an account/i)).toBeInTheDocument();
+  });
+
+  it("toggles password visibility", () => {
+    renderLogin();
+    const toggle = screen.getByRole("button", { name: /show password/i });
+    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
+    fireEvent.click(toggle);
+    expect(screen.getByLabelText("Password")).toHaveAttribute("type", "text");
+  });
+
+  it("renders remember me checkbox", () => {
+    renderLogin();
+    expect(screen.getByRole("checkbox", { name: /remember me/i })).toBeInTheDocument();
   });
 });

@@ -364,6 +364,21 @@ export interface Settings {
   currency_symbol: string;
   tax_rate: number;
   default_reorder_level: number;
+  expiry_warning_days: number;
+  low_stock_alerts: boolean;
+  expiry_alerts: boolean;
+  shipment_prefix: string;
+  work_order_prefix: string;
+  sale_prefix: string;
+  invoice_prefix: string;
+  po_prefix: string;
+  require_qc_before_ship: boolean;
+  auto_allocate_stock: boolean;
+  enforce_fefo: boolean;
+  default_costing_method: string;
+  fiscal_year_start_month: number;
+  default_items_per_page: number;
+  date_format: string;
 }
 
 export interface SaleItem {

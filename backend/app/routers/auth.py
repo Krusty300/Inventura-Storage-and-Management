@@ -9,6 +9,7 @@ from app.schemas.user import LoginRequest, Token, UserCreate, UserOut
 from app.services.auth import create_access_token, get_current_user, hash_password, verify_password
 from app.services.password_policy import validate_password
 from app.services import ratelimit
+from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -31,7 +32,10 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user.last_login_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
-    token = create_access_token({"sub": str(user.id)})
+    token = create_access_token(
+        {"sub": str(user.id)},
+        expires_minutes=settings.remember_token_expire_minutes if req.remember else None,
+    )
     return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))
 
 
