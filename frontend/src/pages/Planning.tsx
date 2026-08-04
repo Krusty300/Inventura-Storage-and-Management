@@ -49,7 +49,7 @@ export default function Planning() {
       </div>
 
       <form onSubmit={handleRun} className="card p-4 flex flex-wrap items-end gap-4">
-        <div className="min-w-[260px] flex-1">
+        <div className="min-w-65 flex-1">
           <label className="block text-sm font-medium text-gray-700 mb-1">Demand Product</label>
           <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)}>
             <option value="">Select product...</option>
