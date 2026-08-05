@@ -28,6 +28,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  CircleUser,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemeMode } from "../context/ThemeContext";
@@ -61,6 +62,7 @@ const navItems = [
   { to: "/reports", icon: BarChart3, label: "Reports", perm: "reports.view" },
   { to: "/activity-log", icon: History, label: "Activity", perm: "activity.view" },
   { to: "/settings", icon: SettingsIcon, label: "Settings", perm: "settings.view" },
+  { to: "/profile", icon: CircleUser, label: "Profile", perm: "profile.view" },
 ];
 
 export default function Layout() {
@@ -134,9 +136,22 @@ export default function Layout() {
           })}
         </nav>
         <div className="shrink-0 border-t border-border p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted truncate">{user?.username}</div>
-            <button onClick={handleLogout} className="p-2 text-faint hover:text-ink" title="Log out">
+          <div className="flex items-center justify-between gap-2">
+            <Link to="/profile" className="flex items-center gap-2 min-w-0">
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt={user.username}
+                  className="h-7 w-7 rounded-full object-cover border border-border shrink-0" />
+              ) : (
+                <span
+                  className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400
+                    flex items-center justify-center text-xs font-semibold shrink-0"
+                >
+                  {user?.username.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className="text-sm text-muted truncate hover:text-ink">{user?.username}</span>
+            </Link>
+            <button onClick={handleLogout} className="p-2 text-faint hover:text-ink shrink-0" title="Log out">
               <LogOut size={18} />
             </button>
           </div>
@@ -186,7 +201,20 @@ export default function Layout() {
               ))}
             </div>
             <NotificationBell />
-            <span className="text-sm text-muted hidden sm:block">{user?.username}</span>
+            <Link to="/profile" className="hidden sm:flex items-center gap-2 text-sm text-muted hover:text-ink">
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt={user.username}
+                  className="h-7 w-7 rounded-full object-cover border border-border" />
+              ) : (
+                <span
+                  className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400
+                    flex items-center justify-center text-xs font-semibold"
+                >
+                  {user?.username.charAt(0).toUpperCase()}
+                </span>
+              )}
+              {user?.username}
+            </Link>
           </div>
         </header>
         <main className="flex-1 overflow-auto p-6">

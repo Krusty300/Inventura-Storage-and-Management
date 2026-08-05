@@ -89,6 +89,7 @@ const ALL_PERMISSIONS = [
   "shipments.ship",
   "shipments.cancel",
   "shipments.delete",
+  "profile.view",
 ];
 
 const WORKER_PERMISSIONS = [
@@ -130,6 +131,7 @@ const WORKER_PERMISSIONS = [
   "shipments.create",
   "shipments.pick",
   "shipments.ship",
+  "profile.view",
 ];
 
 const ROLE_PERMISSIONS: Record<string, ReadonlySet<string>> = {

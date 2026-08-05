@@ -7,6 +7,9 @@ interface User {
   username: string;
   email: string;
   role: string;
+  avatar_url?: string;
+  last_login_at?: string | null;
+  created_at?: string;
 }
 
 interface AuthContextType {
@@ -15,6 +18,7 @@ interface AuthContextType {
   login: (username: string, password: string, remember?: boolean) => Promise<void>;
   register: (username: string, email: string, password: string, role?: string) => Promise<void>;
   logout: () => void;
+  updateUser: (updates: Partial<User>) => void;
   loading: boolean;
   can: (permission: string) => boolean;
 }
@@ -64,16 +68,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    api.post("/auth/logout").catch(() => {});
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setToken(null);
     setUser(null);
   };
 
+  const updateUser = (updates: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...updates };
+      localStorage.setItem("user", JSON.stringify(next));
+      return next;
+    });
+  };
+
   const can = (permission: string) => canHelper(user?.role, permission);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, loading, can }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, updateUser, loading, can }}>
       {children}
     </AuthContext.Provider>
   );

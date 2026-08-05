@@ -15,6 +15,7 @@ from app.models.quality_check import QualityCheck
 from app.models.receipt import Receipt, ReceiptItem
 from app.models.sale import Sale, SaleItem
 from app.models.serial_number import SerialNumber
+from app.models.session import UserSession
 from app.models.settings import Settings
 from app.models.shipment import Shipment, ShipmentItem
 from app.models.stock_line import StockLine
@@ -54,6 +55,7 @@ __all__ = [
     "StockMovement",
     "Supplier",
     "User",
+    "UserSession",
     "WorkOrder",
     "WorkOrderItem",
 ]

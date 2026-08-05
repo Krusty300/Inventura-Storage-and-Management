@@ -65,6 +65,37 @@ def test_change_password(auth_headers):
     assert login.status_code == 200
 
 
+def test_update_own_profile(auth_headers):
+    me = client.get("/api/auth/me", headers=auth_headers)
+    assert me.status_code == 200
+    uid = me.json()["id"]
+
+    resp = client.put("/api/auth/me", json={"email": "ownprofile@example.com"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["email"] == "ownprofile@example.com"
+
+    resp = client.put("/api/auth/me", json={"username": "ownprofile"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["username"] == "ownprofile"
+
+    # conflict with another user is rejected
+    other = client.post("/api/users", json={
+        "username": "conflictuser", "email": "conflict@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers)
+    assert other.status_code == 201
+    assert client.put("/api/auth/me", json={"email": "conflict@example.com"}, headers=auth_headers).status_code == 400
+    assert client.put("/api/auth/me", json={"username": "conflictuser"}, headers=auth_headers).status_code == 400
+
+    # empty update rejected
+    assert client.put("/api/auth/me", json={}, headers=auth_headers).status_code == 400
+    assert client.put("/api/auth/me", json={"username": "  "}, headers=auth_headers).status_code == 400
+
+    # still works after rename (token survives, based on id)
+    token = client.post("/api/auth/login", json={"username": "ownprofile", "password": "testpass123"}).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/auth/me", headers=headers).json()["id"] == uid
+
+
 def test_admin_actions_logged_to_activity(auth_headers):
     created = client.post("/api/users", json={
         "username": "managed", "email": "managed@example.com", "password": "testpass123", "role": "worker",

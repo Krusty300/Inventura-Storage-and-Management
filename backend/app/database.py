@@ -85,6 +85,8 @@ def run_migrations():
             conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
         if users_cols is not None and "last_login_at" not in users_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN last_login_at DATETIME"))
+        if users_cols is not None and "avatar_url" not in users_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500) DEFAULT ''"))
         if serial_cols is not None and "lpn_id" not in serial_cols:
             conn.execute(text("ALTER TABLE serial_numbers ADD COLUMN lpn_id INTEGER"))
         if supplier_cols is not None and "is_active" not in supplier_cols:
@@ -96,6 +98,19 @@ def run_migrations():
                 "CREATE TABLE document_sequences "
                 "(name VARCHAR(50) PRIMARY KEY, next_value INTEGER NOT NULL DEFAULT 1)"
             ))
+        if "user_sessions" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE user_sessions ("
+                "id INTEGER PRIMARY KEY, "
+                "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                "jti VARCHAR(64) NOT NULL UNIQUE, "
+                "ip_address VARCHAR(64) DEFAULT '', "
+                "user_agent VARCHAR(255) DEFAULT '', "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "last_seen_at DATETIME, "
+                "revoked_at DATETIME)"
+            ))
+            conn.execute(text("CREATE INDEX ix_user_sessions_user_id ON user_sessions(user_id)"))
         if movement_cols is not None:
             for col, ddl in (
                 ("from_location_id", "INTEGER"),

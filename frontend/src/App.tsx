@@ -34,6 +34,7 @@ const QualityChecks = lazy(() => import("./pages/QualityChecks"));
 const Planning = lazy(() => import("./pages/Planning"));
 const Shipments = lazy(() => import("./pages/Shipments"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
+const Profile = lazy(() => import("./pages/Profile"));
 
 const queryClient = new QueryClient();
 
@@ -82,6 +83,7 @@ function AppRoutes() {
           <Route path="/reports" element={<Reports />} />
           <Route path="/activity-log" element={<ActivityLog />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
