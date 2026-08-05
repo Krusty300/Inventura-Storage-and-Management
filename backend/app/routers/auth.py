@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -81,7 +81,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         ratelimit.record_failure(req.username, ip)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     ratelimit.clear_failures(req.username, ip)
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = datetime.now(timezone.utc)
     jti = _create_session(db, user, request)
     db.commit()
     db.refresh(user)
@@ -107,7 +107,7 @@ def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
         email=req.email,
         password_hash=hash_password(req.password),
         role="admin",
-        last_login_at=datetime.utcnow(),
+        last_login_at=datetime.now(timezone.utc),
     )
     db.add(user)
     db.flush()
@@ -220,7 +220,7 @@ def revoke_all_other_sessions(
     current_user: User = Depends(get_current_user),
 ):
     current_jti = _current_jti(credentials)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     count = db.query(UserSession).filter(
         UserSession.user_id == current_user.id,
         UserSession.jti != current_jti,
@@ -245,7 +245,7 @@ def revoke_session(
         raise HTTPException(status_code=404, detail="Session not found")
     if session.jti == _current_jti(credentials):
         raise HTTPException(status_code=400, detail="You cannot revoke the current session here (use Sign Out)")
-    session.revoked_at = datetime.utcnow()
+    session.revoked_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True}
 
@@ -258,7 +258,7 @@ def logout(
 ):
     jti = _current_jti(credentials)
     if jti:
-        db.query(UserSession).filter(UserSession.jti == jti, UserSession.revoked_at.is_(None)).update({"revoked_at": datetime.utcnow()})
+        db.query(UserSession).filter(UserSession.jti == jti, UserSession.revoked_at.is_(None)).update({"revoked_at": datetime.now(timezone.utc)})
         db.commit()
     return {"ok": True}
 
@@ -314,7 +314,7 @@ def export_my_data(db: Session = Depends(get_db), current_user: User = Depends(g
         for w in db.query(WorkOrder).filter(WorkOrder.created_by == uid).all()
     ]
     return {
-        "exported_at": datetime.utcnow(),
+        "exported_at": datetime.now(timezone.utc),
         "profile": UserOut.model_validate(current_user),
         "activity_logs": activity,
         "notifications": notifications,

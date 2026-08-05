@@ -55,7 +55,7 @@ def get_current_user(
             raise HTTPException(status_code=401, detail="Session has been revoked. Please log in again.")
         if session.user_id != user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if session.last_seen_at is None or (now - session.last_seen_at).total_seconds() > LAST_SEEN_REFRESH_SECONDS:
             session.last_seen_at = now
             db.commit()

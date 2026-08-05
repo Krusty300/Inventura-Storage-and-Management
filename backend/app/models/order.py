@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import UTCDateTime
 
 
 class Order(Base):
@@ -16,8 +17,8 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String(30), default="pending")
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     notes: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
     supplier = relationship("Supplier", back_populates="orders")
     user = relationship("User", back_populates="orders")

@@ -31,8 +31,6 @@ def _find_duplicate(db: Session, name: str, email: str, exclude_id: int | None =
     if exclude_id:
         q = q.filter(Supplier.id != exclude_id)
     return q.first()
-
-
 def _stats_query(db: Session):
     return (
         db.query(
@@ -206,8 +204,9 @@ def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=SupplierOut, status_code=201)
 def create_supplier(data: SupplierCreate, db: Session = Depends(get_db), user=Depends(require_permission("suppliers.create"))):
-    if _find_duplicate(db, data.name, data.email):
-        raise HTTPException(status_code=400, detail="Duplicate supplier: a supplier with the same name or email already exists")
+    dup = _find_duplicate(db, data.name, data.email)
+    if dup:
+        raise HTTPException(status_code=400, detail=f"Duplicate supplier: '{dup.name}' already uses the same name or email")
     s = Supplier(**data.model_dump())
     db.add(s)
     db.commit()
@@ -222,13 +221,14 @@ def create_supplier(data: SupplierCreate, db: Session = Depends(get_db), user=De
 def update_supplier(supplier_id: int, data: SupplierUpdate, db: Session = Depends(get_db), user=Depends(require_permission("suppliers.update"))):
     s = get_or_404(Supplier, supplier_id, db)
     updates = data.model_dump(exclude_unset=True)
-    if _find_duplicate(
+    dup = _find_duplicate(
         db,
         updates.get("name", s.name),
         updates.get("email", s.email),
         exclude_id=s.id,
-    ):
-        raise HTTPException(status_code=400, detail="Duplicate supplier: another supplier already uses the same name or email")
+    )
+    if dup:
+        raise HTTPException(status_code=400, detail=f"Duplicate supplier: '{dup.name}' already uses the same name or email")
     for k, v in updates.items():
         setattr(s, k, v)
     db.commit()

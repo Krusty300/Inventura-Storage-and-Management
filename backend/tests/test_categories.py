@@ -52,6 +52,13 @@ def test_delete_category_with_products(auth_headers):
     assert resp.status_code == 400
 
 
+def test_category_list_accepts_large_limit(auth_headers):
+    client.post("/api/categories", json={"name": "Big List"}, headers=auth_headers)
+    resp = client.get("/api/categories", params={"limit": 1000}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert any(c["name"] == "Big List" for c in resp.json()["items"])
+
+
 def test_category_tree(auth_headers):
     parent = client.post("/api/categories", json={"name": "Parent"}, headers=auth_headers).json()
     client.post("/api/categories", json={"name": "Child", "parent_id": parent["id"]}, headers=auth_headers)

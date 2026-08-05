@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/categories", tags=["categories"], dependencies=[
 def list_categories(
     search: str = Query(""),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=5000),
     db: Session = Depends(get_db),
 ):
     q = db.query(Category).options(joinedload(Category.subcategories))

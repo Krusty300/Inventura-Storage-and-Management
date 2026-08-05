@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import UTCDateTime
 
 
 class SerialNumber(Base):
@@ -19,8 +20,8 @@ class SerialNumber(Base):
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True, index=True)
     lpn_id: Mapped[int | None] = mapped_column(ForeignKey("lpns.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(20), default="in_stock")
-    sold_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    sold_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     product = relationship("Product", back_populates="serial_numbers")
     lot = relationship("Lot", back_populates="serial_numbers")

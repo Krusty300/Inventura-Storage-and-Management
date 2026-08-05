@@ -1,9 +1,10 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Date, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import UTCDateTime
 
 
 class ASN(Base):
@@ -16,8 +17,8 @@ class ASN(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     expected_arrival: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    received_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
+    received_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     supplier = relationship("Supplier", back_populates="asns")
     user = relationship("User")

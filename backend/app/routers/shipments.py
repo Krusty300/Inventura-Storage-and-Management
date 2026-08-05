@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -306,8 +306,8 @@ def ship_shipment(
     if tracking_number:
         shipment.tracking_number = tracking_number
     shipment.status = "shipped"
-    shipment.ship_date = datetime.utcnow()
-    shipment.shipped_at = datetime.utcnow()
+    shipment.ship_date = datetime.now(timezone.utc)
+    shipment.shipped_at = datetime.now(timezone.utc)
     db.commit()
     shipment = _load_shipment(db, shipment.id)
     log_activity(db, user.id, user.username, "ship", "shipment", shipment.id,

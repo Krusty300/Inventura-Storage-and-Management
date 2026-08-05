@@ -283,13 +283,14 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                         if existing:
                             raise inventory.InventoryError(f"Serial number '{sn}' is already registered for '{product.display_name}'")
                     for sn in serials:
-                        serial = SerialNumber(product_id=product.id, serial_number=sn)
+                        serial = SerialNumber(product_id=product.id, serial_number=sn, location_id=product.location_id)
                         db.add(serial)
                         db.flush()
                         inventory.post_journal_entry(
                             db, product_id=product.id, user_id=o.user_id,
                             quantity_change=1, movement_type="in",
                             serial_id=serial.id,
+                            to_location_id=product.location_id,
                             reference_type="purchase_order",
                             reference=f"Order {o.order_number}",
                         )
@@ -301,6 +302,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                     inventory.post_journal_entry(
                         db, product_id=product.id, user_id=o.user_id,
                         quantity_change=item.quantity, movement_type="in",
+                        to_location_id=product.location_id,
                         reference_type="purchase_order",
                         reference=f"Order {o.order_number}",
                     )

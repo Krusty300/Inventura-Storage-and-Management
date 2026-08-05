@@ -195,7 +195,11 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
               <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-5">
                   <label className="block text-xs font-medium text-muted mb-1">Product</label>
-                  <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
+                  <select className="select" value={row.product_id} onChange={(e) => {
+                    const id = e.target.value;
+                    const p = productList.find((x) => x.id.toString() === id);
+                    setRows(rows.map((r, i) => (i === idx ? { ...r, product_id: id, location: r.location || p?.location || "" } : r)));
+                  }}>
                     <option value="">Select...</option>
                     {productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
                   </select>

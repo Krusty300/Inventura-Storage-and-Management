@@ -1,9 +1,10 @@
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, func, select
+from sqlalchemy import JSON, Date, ForeignKey, Integer, Numeric, String, Text, func, select
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import UTCDateTime
 
 
 class Product(Base):
@@ -29,8 +30,8 @@ class Product(Base):
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     image_url: Mapped[str] = mapped_column(String(500), default="")
     is_active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
     category = relationship("Category", back_populates="products")
     supplier = relationship("Supplier", back_populates="products")

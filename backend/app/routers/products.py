@@ -47,10 +47,8 @@ router = APIRouter(prefix="/api/products", tags=["products"], dependencies=[Depe
 
 
 def _effective_location(product: Product) -> str:
-    """Return the location path derived from actual stock lines, falling back to the stored text."""
+    """Return the location path derived from actual stock lines, falling back to the stored default."""
     stock_lines = product.stock_lines
-    if not stock_lines:
-        return ""
     from collections import Counter
     loc_qty: Counter = Counter()
     for sl in stock_lines:
@@ -61,7 +59,9 @@ def _effective_location(product: Product) -> str:
         loc = next((sl.location for sl in stock_lines if sl.location_id == best_loc_id and sl.location), None)
         if loc:
             return loc.path
-    return ""
+    if product.location_id and product.default_location:
+        return product.default_location.path
+    return product.location or ""
 
 
 def validate_refs(db: Session, category_id: Optional[int], supplier_id: Optional[int]) -> None:
@@ -101,7 +101,7 @@ def list_products(
     include_variants: bool = False,
     db: Session = Depends(get_db),
 ):
-    options = [joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.stock_lines).joinedload(StockLine.location)]
+    options = [joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.default_location), joinedload(Product.stock_lines).joinedload(StockLine.location)]
     if include_variants:
         options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location))
     q = db.query(Product).options(*options).filter(Product.parent_id.is_(None))
@@ -279,6 +279,7 @@ def barcode_labels(ids: str = "", db: Session = Depends(get_db)):
 def get_product(product_id: int, db: Session = Depends(get_db)):
     p = get_or_404(Product, product_id, db, options=[
         joinedload(Product.category), joinedload(Product.supplier),
+        joinedload(Product.default_location),
         joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
         joinedload(Product.stock_lines).joinedload(StockLine.location),
     ])
@@ -294,6 +295,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
     p = db.query(Product).options(
         joinedload(Product.category), joinedload(Product.supplier),
+        joinedload(Product.default_location),
         joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
         joinedload(Product.stock_lines).joinedload(StockLine.location),
     ).filter(Product.barcode == barcode, Product.is_active == True).first()
@@ -332,6 +334,9 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
             payload["name"] = parent.name
         payload["category_id"] = parent.category_id
         payload["supplier_id"] = parent.supplier_id
+        if not payload.get("location_id") and not (payload.get("location") or "").strip():
+            payload["location_id"] = parent.location_id
+            payload["location"] = parent.location or ""
         if payload.get("attributes") is None:
             payload["attributes"] = {}
         attrs = payload["attributes"]

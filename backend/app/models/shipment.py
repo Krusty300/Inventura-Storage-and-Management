@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.types import UTCDateTime
 
 
 class Shipment(Base):
@@ -18,11 +19,11 @@ class Shipment(Base):
     staging_location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
     sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id"), nullable=True, unique=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
-    ship_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    shipped_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ship_date: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    shipped_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
     customer = relationship("Customer")
     creator = relationship("User", foreign_keys=[created_by])

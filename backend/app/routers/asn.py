@@ -78,7 +78,7 @@ def create_asn(data: ASNCreate, db: Session = Depends(get_db), user=Depends(requ
             product_id=item.product_id,
             expected_qty=item.expected_qty,
             unit_cost=item.unit_cost,
-            location_id=item.location_id,
+            location_id=item.location_id or product.location_id,
         ))
     db.commit()
     asn = _load_asn(db, asn.id)
@@ -176,14 +176,14 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                         product_id=product.id,
                         serial_number=sn,
                         lot_id=lot.id if lot else None,
-                        location_id=line.location_id,
+                        location_id=line.location_id or product.location_id,
                     )
                     db.add(serial)
                     db.flush()
                     inventory.post_journal_entry(
                         db, product_id=product.id, user_id=user.id,
                         quantity_change=1, movement_type=inventory.RECEIVE,
-                        to_location_id=line.location_id,
+                        to_location_id=line.location_id or product.location_id,
                         lot_id=lot.id if lot else None,
                         serial_id=serial.id,
                         reference_type="asn", reference=asn.asn_number,
@@ -196,7 +196,7 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                 inventory.post_journal_entry(
                     db, product_id=product.id, user_id=user.id,
                     quantity_change=line.received_qty, movement_type=inventory.RECEIVE,
-                    to_location_id=line.location_id,
+                    to_location_id=line.location_id or product.location_id,
                     lot_id=lot.id if lot else None,
                     reference_type="asn", reference=asn.asn_number,
                     notes=data.notes or asn.notes,

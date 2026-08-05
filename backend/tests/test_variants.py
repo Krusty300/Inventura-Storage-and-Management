@@ -37,6 +37,24 @@ def test_create_variant_inherits_and_logs_initial_stock(auth_headers):
     assert updated_parent["total_quantity"] == 25
 
 
+def test_variant_inherits_parent_location(auth_headers):
+    loc = client.post("/api/locations", json={"name": "Variant Bin", "code": "VAR-1", "location_type": "bin"}, headers=auth_headers).json()
+    parent = client.post("/api/products", json={
+        "sku": "VAR-LOC", "name": "Loc Parent", "unit_price": 20.0, "cost_price": 10.0,
+        "quantity": 0, "location_id": loc["id"],
+    }, headers=auth_headers).json()
+
+    var = client.post("/api/products", json={
+        "sku": "VAR-LOC-RED", "parent_id": parent["id"], "quantity": 5, "attributes": {"Color": "Red"},
+    }, headers=auth_headers).json()
+
+    assert var["location_id"] == loc["id"]
+
+    listed = client.get(f"/api/products/{var['id']}", headers=auth_headers).json()
+    assert listed["location_id"] == loc["id"]
+    assert listed["location"] == loc["path"]
+
+
 def test_variant_of_variant_rejected(auth_headers):
     parent = _make_parent(auth_headers)
     v1 = _make_variant(auth_headers, parent["id"], "TS-1").json()

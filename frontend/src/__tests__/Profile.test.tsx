@@ -11,7 +11,6 @@ import Profile from "../pages/Profile";
 
 const getMock = api.get as ReturnType<typeof vi.fn>;
 const putMock = api.put as ReturnType<typeof vi.fn>;
-const postMock = api.post as ReturnType<typeof vi.fn>;
 const deleteMock = api.delete as ReturnType<typeof vi.fn>;
 
 describe("Profile Page", () => {

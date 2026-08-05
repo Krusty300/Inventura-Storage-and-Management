@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.models.types import UTCDateTime
 
 
 class Notification(Base):
@@ -16,6 +17,6 @@ class Notification(Base):
     message = Column(String(500), default="")
     link = Column(String(200), default="")
     is_read = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(UTCDateTime, default=datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="notifications")

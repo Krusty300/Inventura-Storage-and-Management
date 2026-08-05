@@ -67,7 +67,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
       setAttributes(product.attributes ? Object.entries(product.attributes).map(([key, value]) => ({ key, value })) : []);
       if (product.image_url) setImagePreview(product.image_url);
     } else if (parent) {
-      setForm((f) => ({ ...f, sku: "", name: parent.name, category_id: parent.category_id?.toString() || "", supplier_id: parent.supplier_id?.toString() || "" }));
+      setForm((f) => ({ ...f, sku: "", name: parent.name, category_id: parent.category_id?.toString() || "", supplier_id: parent.supplier_id?.toString() || "", location: parent.location || "" }));
     }
   }, [product, parent]);
 

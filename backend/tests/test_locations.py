@@ -1,4 +1,4 @@
-from app.models import Location
+from app.models import Location, StockLine
 from app.services import inventory
 from tests.conftest import TestingSessionLocal, client
 
@@ -68,6 +68,66 @@ def test_product_location_id_wiring(auth_headers):
     assert client.post("/api/products", json={
         "sku": "LOC-BAD", "name": "Bad", "quantity": 0, "location_id": 99999,
     }, headers=auth_headers).status_code == 400
+
+
+def test_product_zero_qty_shows_configured_location(auth_headers):
+    loc = _create_location(auth_headers).json()
+    prod = client.post("/api/products", json={
+        "sku": "LOC-ZERO", "name": "Zero Qty Loc", "unit_price": 1.0, "quantity": 0, "location_id": loc["id"],
+    }, headers=auth_headers).json()
+
+    fetched = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert fetched["quantity"] == 0
+    assert fetched["location"] == loc["path"]
+    assert fetched["location_id"] == loc["id"]
+
+    items = client.get("/api/products", headers=auth_headers).json()["items"]
+    listed = next(i for i in items if i["id"] == prod["id"])
+    assert listed["location"] == loc["path"]
+
+    resp = client.get("/api/products", params={"include_variants": 1}, headers=auth_headers)
+    assert resp.status_code == 200
+    variants_listed = next(i for i in resp.json()["items"] if i["id"] == prod["id"])
+    assert variants_listed["location"] == loc["path"]
+
+
+def test_product_location_change_moves_stock_from_no_location(auth_headers):
+    loc = _create_location(auth_headers, code="NOLOC-1").json()
+    prod = client.post("/api/products", json={
+        "sku": "LOC-NONE", "name": "No Loc Stock", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert prod["location_id"] is None
+
+    received = client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 4, "unit_cost": 1.0}],
+    }, headers=auth_headers)
+    assert received.status_code == 201
+
+    db = TestingSessionLocal()
+    try:
+        line = db.query(StockLine).filter(StockLine.product_id == prod["id"]).first()
+        assert line is not None
+        assert line.location_id is None
+        assert line.quantity == 4
+    finally:
+        db.close()
+
+    resp = client.put(f"/api/products/{prod['id']}", json={
+        "sku": "LOC-NONE", "name": "No Loc Stock", "unit_price": 1.0,
+        "quantity": 4, "location_id": loc["id"], "location": loc["path"],
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["location_id"] == loc["id"]
+    assert data["quantity"] == 4
+
+    db = TestingSessionLocal()
+    try:
+        line = db.query(StockLine).filter(StockLine.product_id == prod["id"]).first()
+        assert line.location_id == loc["id"]
+        assert line.quantity == 4
+    finally:
+        db.close()
 
 
 def test_worker_cannot_create_location(auth_headers):

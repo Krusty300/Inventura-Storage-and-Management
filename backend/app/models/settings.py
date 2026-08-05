@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func
+from sqlalchemy import Boolean, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+from app.models.types import UTCDateTime
 
 
 class Settings(Base):
@@ -17,7 +18,7 @@ class Settings(Base):
     currency_symbol: Mapped[str] = mapped_column(String(10), default="$")
     tax_rate: Mapped[float] = mapped_column(Float, default=0.0)
     default_reorder_level: Mapped[int] = mapped_column(default=10)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
     expiry_warning_days: Mapped[int] = mapped_column(Integer, default=30)
     low_stock_alerts: Mapped[bool] = mapped_column(Boolean, default=True)

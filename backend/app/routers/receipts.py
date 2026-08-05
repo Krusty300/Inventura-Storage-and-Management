@@ -119,7 +119,7 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
                         product_id=product.id,
                         serial_number=sn,
                         lot_id=lot.id if lot else None,
-                        location_id=item.location_id,
+                        location_id=item.location_id or product.location_id,
                         lpn_id=item.lpn_id,
                     )
                     db.add(serial)
@@ -127,7 +127,7 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
                     inventory.post_journal_entry(
                         db, product_id=product.id, user_id=user.id,
                         quantity_change=1, movement_type=inventory.RECEIVE,
-                        to_location_id=item.location_id,
+                        to_location_id=item.location_id or product.location_id,
                         lot_id=lot.id if lot else None,
                         serial_id=serial.id,
                         lpn_id=item.lpn_id,
@@ -141,7 +141,7 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
                 inventory.post_journal_entry(
                     db, product_id=product.id, user_id=user.id,
                     quantity_change=item.quantity, movement_type=inventory.RECEIVE,
-                    to_location_id=item.location_id,
+                    to_location_id=item.location_id or product.location_id,
                     lot_id=lot.id if lot else None,
                     lpn_id=item.lpn_id,
                     reference_type="receipt", reference=receipt.receipt_number,
@@ -155,7 +155,7 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
                 quantity=quantity,
                 unit_cost=item.unit_cost,
                 lot_id=lot.id if lot else None,
-                location_id=item.location_id,
+                location_id=item.location_id or product.location_id,
             ))
             total_quantity += quantity
             total_cost += quantity * item.unit_cost

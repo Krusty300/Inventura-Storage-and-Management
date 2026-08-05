@@ -18,7 +18,7 @@ mirror the pick/pack/ship endpoints (transfer to staging, then SHIP).
 """
 
 import random
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -82,7 +82,7 @@ def wipe_all(db):
 
 
 def days_ago(n, hour=10, minute=0):
-    return datetime.now() - timedelta(days=n, hours=hour, minutes=minute)
+    return datetime.now(timezone.utc) - timedelta(days=n, hours=hour, minutes=minute)
 
 
 def _sellable(db: Session, product_id: int) -> int:

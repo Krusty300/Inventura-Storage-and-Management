@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -297,7 +297,7 @@ def post_journal_entry(
         else:
             if movement_type == SALE or movement_type == SHIP:
                 serial.status = SERIAL_STATUS_SOLD
-                serial.sold_at = datetime.utcnow()
+                serial.sold_at = datetime.now(timezone.utc)
             elif movement_type == TRANSFER_OUT or movement_type == TRANSFER_IN:
                 serial.status = SERIAL_STATUS_IN_STOCK
                 if to_location_id is not None and movement_type == TRANSFER_IN:
@@ -308,13 +308,19 @@ def post_journal_entry(
                 serial.status = SERIAL_STATUS_QUARANTINED
     else:
         if quantity_change > 0:
-            dest_location = to_location_id if to_location_id is not None else from_location_id
+            if movement_type == TRANSFER_IN:
+                dest_location = to_location_id
+            else:
+                dest_location = to_location_id if to_location_id is not None else from_location_id
             line = get_or_create_stock_line(
                 db, product_id=product_id, location_id=dest_location, lot_id=lot_id, lpn_id=lpn_id
             )
             line.quantity += quantity_change
         else:
-            source_location = from_location_id if from_location_id is not None else to_location_id
+            if movement_type == TRANSFER_OUT:
+                source_location = from_location_id
+            else:
+                source_location = from_location_id if from_location_id is not None else to_location_id
             line = get_or_create_stock_line(
                 db, product_id=product_id, location_id=source_location, lot_id=lot_id, lpn_id=lpn_id
             )

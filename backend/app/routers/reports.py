@@ -425,7 +425,7 @@ def inventory_aging(db: Session = Depends(get_db)):
             StockMovement.lot_id == lot.id
         ).scalar()
         age_ref = last or datetime.combine(lot.received_date, datetime.min.time())
-        age_days = max((datetime.utcnow() - age_ref).days, 0)
+        age_days = max((datetime.now(timezone.utc) - age_ref).days, 0)
         daily_out = _avg_daily_demand(db, lot.product_id)
         days_of_stock = round(on_hand / daily_out, 1) if daily_out > 0 else None
         result.append({
@@ -509,7 +509,7 @@ def _stockout_risk_data(db: Session, lead_time_days: int = 7) -> tuple[list[dict
 def top_customers(limit: int = Query(10, ge=1, le=100), days: int | None = Query(None, ge=1), db: Session = Depends(get_db)):
     since = None
     if days:
-        since = datetime.utcnow() - timedelta(days=days)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
     q = (
         db.query(
             Customer.id,
@@ -547,7 +547,7 @@ def top_customers(limit: int = Query(10, ge=1, le=100), days: int | None = Query
 def top_suppliers(limit: int = Query(10, ge=1, le=100), days: int | None = Query(None, ge=1), db: Session = Depends(get_db)):
     since = None
     if days:
-        since = datetime.utcnow() - timedelta(days=days)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
     q = (
         db.query(
             Supplier.id,
