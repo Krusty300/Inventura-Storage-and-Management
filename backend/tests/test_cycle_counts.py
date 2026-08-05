@@ -8,7 +8,7 @@ def _make_location(auth_headers, code="CC-LOC"):
 
 
 def _make_product(auth_headers, sku, serialized=False):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "quantity": 0,
         "is_serialized": serialized,
     }, headers=auth_headers).json()
@@ -17,6 +17,12 @@ def _make_product(auth_headers, sku, serialized=False):
 def _receive(auth_headers, product_id, quantity, location_id):
     return client.post("/api/receipts", json={
         "items": [{"product_id": product_id, "quantity": quantity, "location_id": location_id}],
+    }, headers=auth_headers)
+
+
+def _receive_serialized(auth_headers, product_id, serials, location_id):
+    return client.post("/api/receipts", json={
+        "items": [{"product_id": product_id, "quantity": len(serials), "serial_numbers": serials, "location_id": location_id}],
     }, headers=auth_headers)
 
 
@@ -34,12 +40,63 @@ def test_cycle_count_requires_location(auth_headers):
     assert "location" in resp.json()["detail"].lower()
 
 
-def test_cycle_count_rejects_serialized_product(auth_headers):
-    prod = _make_product(auth_headers, "CC-SER", serialized=True)
-    loc = _make_location(auth_headers, "CC-SER-LOC")
-    resp = _create_cc(auth_headers, prod["id"], location_id=loc["id"])
+def test_cycle_count_serialized_expected_uses_serial_count(auth_headers):
+    prod = _make_product(auth_headers, "CC-SERX", serialized=True)
+    loc = _make_location(auth_headers, "CC-SERX-LOC")
+    assert _receive_serialized(auth_headers, prod["id"], ["SNX-1", "SNX-2", "SNX-3"], loc["id"]).status_code == 201
+    cc = _create_cc(auth_headers, prod["id"], location_id=loc["id"], expected=999)
+    assert cc.status_code == 201
+    assert cc.json()["items"][0]["expected_qty"] == 3
+
+
+def test_cycle_count_serialized_short_scraps_missing(auth_headers):
+    prod = _make_product(auth_headers, "CC-SER2", serialized=True)
+    loc = _make_location(auth_headers, "CC-SER2-LOC")
+    serials = [f"SN2-{i}" for i in range(1, 6)]
+    assert _receive_serialized(auth_headers, prod["id"], serials, loc["id"]).status_code == 201
+
+    cc = _create_cc(auth_headers, prod["id"], location_id=loc["id"]).json()
+    assert cc["items"][0]["expected_qty"] == 5
+
+    result = client.post(f"/api/cycle-counts/{cc['id']}/submit", json={
+        "items": [{"product_id": prod["id"], "counted_qty": 3}],
+    }, headers=auth_headers).json()
+    assert result["status"] == "completed"
+    assert result["total_variance"] == -2
+    assert result["items"][0]["status"] == "mismatch"
+
+    statuses = {s["serial_number"]: s["status"] for s in client.get(
+        "/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers
+    ).json()["items"]}
+    assert sum(1 for v in statuses.values() if v == "scrapped") == 2
+    assert sum(1 for v in statuses.values() if v == "in_stock") == 3
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 3
+
+
+def test_cycle_count_serialized_overage_rejected(auth_headers):
+    prod = _make_product(auth_headers, "CC-SEROV", serialized=True)
+    loc = _make_location(auth_headers, "CC-SEROV-LOC")
+    assert _receive_serialized(auth_headers, prod["id"], ["SNOV-1", "SNOV-2"], loc["id"]).status_code == 201
+
+    cc = _create_cc(auth_headers, prod["id"], location_id=loc["id"]).json()
+    resp = client.post(f"/api/cycle-counts/{cc['id']}/submit", json={
+        "items": [{"product_id": prod["id"], "counted_qty": 4}],
+    }, headers=auth_headers)
     assert resp.status_code == 400
-    assert "serialized" in resp.json()["detail"].lower()
+    assert "overage" in resp.json()["detail"].lower()
+
+
+def test_cycle_count_serialized_exact_match_no_variance(auth_headers):
+    prod = _make_product(auth_headers, "CC-SEROK", serialized=True)
+    loc = _make_location(auth_headers, "CC-SEROK-LOC")
+    assert _receive_serialized(auth_headers, prod["id"], ["SNOK-1", "SNOK-2"], loc["id"]).status_code == 201
+    cc = _create_cc(auth_headers, prod["id"], location_id=loc["id"]).json()
+    result = client.post(f"/api/cycle-counts/{cc['id']}/submit", json={
+        "items": [{"product_id": prod["id"], "counted_qty": 2}],
+    }, headers=auth_headers).json()
+    assert result["status"] == "completed"
+    assert result["has_variance"] is False
+    assert result["items"][0]["status"] == "ok"
 
 
 def test_cycle_count_expected_autofilled_from_system(auth_headers):

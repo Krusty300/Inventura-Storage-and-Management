@@ -3,7 +3,7 @@ from tests.conftest import TestingSessionLocal, client
 
 
 def _make_parent(auth_headers, sku="VAR-PARENT", name="T-Shirt", category_id=None):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": name, "category_id": category_id,
         "unit_price": 20.00, "cost_price": 10.00,
     }, headers=auth_headers).json()
@@ -12,7 +12,7 @@ def _make_parent(auth_headers, sku="VAR-PARENT", name="T-Shirt", category_id=Non
 def _make_variant(auth_headers, parent_id, sku, quantity=0, attributes=None, price=None):
     body = {
         "sku": sku, "parent_id": parent_id, "quantity": quantity,
-        "attributes": attributes or {"Color": "Red", "Size": "M"},
+        "attributes": attributes or {"Color": "Red", "Size": "M"}, "location_id": 1,
     }
     if price is not None:
         body["unit_price"] = price
@@ -58,7 +58,7 @@ def test_variant_inherits_parent_location(auth_headers):
 def test_variant_of_variant_rejected(auth_headers):
     parent = _make_parent(auth_headers)
     v1 = _make_variant(auth_headers, parent["id"], "TS-1").json()
-    resp = client.post("/api/products", json={"sku": "TS-2", "parent_id": v1["id"]}, headers=auth_headers)
+    resp = client.post("/api/products", json={"location_id": 1, "sku": "TS-2", "parent_id": v1["id"]}, headers=auth_headers)
     assert resp.status_code == 400
 
 
@@ -100,7 +100,7 @@ def test_variant_can_rename_and_keeps_name_on_parent_rename(auth_headers):
 
 def test_variant_created_with_custom_name(auth_headers):
     parent = _make_parent(auth_headers)
-    resp = client.post("/api/products", json={
+    resp = client.post("/api/products", json={"location_id": 1, 
         "sku": "TS-NAMED", "parent_id": parent["id"], "name": "Custom Child",
         "attributes": {"Color": "Green"},
     }, headers=auth_headers)
@@ -141,7 +141,7 @@ def test_stock_movement_requires_variant(auth_headers):
 
 
 def test_first_variant_transfers_parent_stock(auth_headers):
-    parent = client.post("/api/products", json={
+    parent = client.post("/api/products", json={"location_id": 1, 
         "sku": "TS-PARENT-QTY", "name": "Stocked Parent",
         "quantity": 15, "unit_price": 20.00, "cost_price": 10.00,
     }, headers=auth_headers).json()
@@ -158,7 +158,7 @@ def test_first_variant_transfers_parent_stock_from_located_line(auth_headers):
     loc = client.post("/api/locations", json={
         "name": "Bin A-01", "code": "A-01", "location_type": "bin",
     }, headers=auth_headers).json()
-    parent = client.post("/api/products", json={
+    parent = client.post("/api/products", json={"location_id": 1, 
         "sku": "TS-PARENT-LOC", "name": "Stocked Parent",
         "unit_price": 20.00, "cost_price": 10.00, "quantity": 0,
     }, headers=auth_headers).json()

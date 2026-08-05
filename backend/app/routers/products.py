@@ -344,6 +344,12 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
         for v in dup:
             if (v.attributes or {}) == attrs:
                 raise HTTPException(status_code=400, detail="A variant with these attributes already exists")
+    loc_id = payload.get("location_id")
+    if loc_id is None:
+        raise HTTPException(status_code=400, detail="A location is required when creating a product")
+    loc = db.get(Location, loc_id)
+    if loc is None or not loc.is_active:
+        raise HTTPException(status_code=400, detail=f"Location '{loc.path if loc else ''}' must be active - it is not available")
     p = Product(**payload)
     db.add(p)
     db.flush()
@@ -391,7 +397,13 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     validate_refs(db, updates.get("category_id"), updates.get("supplier_id"))
     validate_location_ref(db, updates.get("location_id"))
     if "location" in updates or "location_id" in updates:
-        updates["location_id"] = resolve_location(db, updates.get("location_id"), updates.get("location"))
+        new_loc_id = resolve_location(db, updates.get("location_id"), updates.get("location"))
+        if new_loc_id is None:
+            raise HTTPException(status_code=400, detail="A location is required for a product - set a valid location")
+        loc = db.get(Location, new_loc_id)
+        if loc is None or not loc.is_active:
+            raise HTTPException(status_code=400, detail=f"Location must be active - '{loc.path if loc else ''}' is not available")
+        updates["location_id"] = new_loc_id
     if "is_serialized" in updates and updates["is_serialized"] != p.is_serialized:
         if p.is_serialized:
             has_serials = db.query(SerialNumber).filter(SerialNumber.product_id == p.id).first() is not None
@@ -565,6 +577,22 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
             if is_serialized and qty != 0:
                 result.errors.append(f"Row {row_idx} ({sku}): serialized products cannot have opening quantity")
                 continue
+            loc_text = (row.get("location") or "").strip()
+            if parent is not None:
+                loc_id = parent.location_id
+            else:
+                loc_id = resolve_location(db, None, loc_text)
+            if loc_id is None:
+                result.errors.append(
+                    f"Row {row_idx} ({sku}): a location is required - set a 'location' column matching an active location"
+                )
+                continue
+            loc_obj = db.get(Location, loc_id)
+            if loc_obj is None or not loc_obj.is_active:
+                result.errors.append(
+                    f"Row {row_idx} ({sku}): location '{loc_text or loc_id}' is not an active location"
+                )
+                continue
             p = Product(
                 sku=sku,
                 name=parent.name if parent else name,
@@ -578,6 +606,7 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
                 quantity=qty,
                 reorder_level=int(row.get("reorder_level") or default_reorder),
                 location=(row.get("location") or "").strip(),
+                location_id=loc_id,
                 barcode=(row.get("barcode") or "").strip(),
                 is_serialized=is_serialized,
             )
@@ -589,6 +618,7 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
                     inventory.post_journal_entry(
                         db, product_id=parent.id, user_id=user.id,
                         quantity_change=-transfer_qty, movement_type="out",
+                        from_location_id=parent.location_id, to_location_id=loc_id,
                         reference=f"Stock transfer to {p.sku}",
                         notes="Parent stock carried over to imported variant",
                     )
@@ -596,7 +626,7 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
             if p.quantity > 0:
                 inventory.post_journal_entry(
                     db, product_id=p.id, user_id=user.id, quantity_change=p.quantity,
-                    movement_type="in", reference="Initial stock",
+                    movement_type="in", to_location_id=loc_id, reference="Initial stock",
                     notes="Opening balance",
                 )
             log_activity(db, user.id, user.username, "create", "product", p.id, f"Imported product '{p.display_name}' ({p.sku})")

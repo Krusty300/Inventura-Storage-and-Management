@@ -6,7 +6,7 @@ from tests.conftest import TestingSessionLocal, client
 
 
 def _make_product(auth_headers, sku="SALE-PROD", quantity=10):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 20.00, "cost_price": 10.00, "quantity": quantity,
     }, headers=auth_headers).json()
 
@@ -119,7 +119,7 @@ def test_sale_pdf_not_found(auth_headers):
 
 
 def test_checkout_allocates_soonest_expiry_lots_first(auth_headers):
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "FEFO-PROD", "name": "FEFO Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
     }, headers=auth_headers).json()
 
@@ -164,7 +164,7 @@ def test_checkout_allocates_soonest_expiry_lots_first(auth_headers):
 
 
 def test_sale_of_stock_located_in_a_bin_succeeds(auth_headers):
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "LOC-SALE", "name": "Located Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
     }, headers=auth_headers).json()
 

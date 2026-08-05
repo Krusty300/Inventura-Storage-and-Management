@@ -2,7 +2,7 @@ from tests.conftest import client
 
 
 def test_create_product(auth_headers):
-    resp = client.post("/api/products", json={
+    resp = client.post("/api/products", json={"location_id": 1, 
         "sku": "SKU001",
         "name": "Test Product",
         "unit_price": 19.99,
@@ -17,28 +17,28 @@ def test_create_product(auth_headers):
 
 
 def test_create_duplicate_sku(auth_headers):
-    client.post("/api/products", json={"sku": "SKU002", "name": "Product 2"}, headers=auth_headers)
-    resp = client.post("/api/products", json={"sku": "SKU002", "name": "Product 2 Dup"}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "SKU002", "name": "Product 2"}, headers=auth_headers)
+    resp = client.post("/api/products", json={"location_id": 1, "sku": "SKU002", "name": "Product 2 Dup"}, headers=auth_headers)
     assert resp.status_code == 400
 
 
 def test_list_products(auth_headers):
-    client.post("/api/products", json={"sku": "SKU003", "name": "Alpha"}, headers=auth_headers)
-    client.post("/api/products", json={"sku": "SKU004", "name": "Beta"}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "SKU003", "name": "Alpha"}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "SKU004", "name": "Beta"}, headers=auth_headers)
     resp = client.get("/api/products", headers=auth_headers)
     assert resp.status_code == 200
     assert len(resp.json()["items"]) >= 2
 
 
 def test_search_products(auth_headers):
-    client.post("/api/products", json={"sku": "SRCH01", "name": "Searchable Item"}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "SRCH01", "name": "Searchable Item"}, headers=auth_headers)
     resp = client.get("/api/products?search=Searchable", headers=auth_headers)
     assert resp.status_code == 200
     assert any(p["name"] == "Searchable Item" for p in resp.json()["items"])
 
 
 def test_get_product(auth_headers):
-    create = client.post("/api/products", json={"sku": "SKU005", "name": "Get Me"}, headers=auth_headers)
+    create = client.post("/api/products", json={"location_id": 1, "sku": "SKU005", "name": "Get Me"}, headers=auth_headers)
     pid = create.json()["id"]
     resp = client.get(f"/api/products/{pid}", headers=auth_headers)
     assert resp.status_code == 200
@@ -51,7 +51,7 @@ def test_get_product_not_found(auth_headers):
 
 
 def test_update_product(auth_headers):
-    create = client.post("/api/products", json={"sku": "SKU006", "name": "Original"}, headers=auth_headers)
+    create = client.post("/api/products", json={"location_id": 1, "sku": "SKU006", "name": "Original"}, headers=auth_headers)
     pid = create.json()["id"]
     resp = client.put(f"/api/products/{pid}", json={"name": "Updated", "unit_price": 25.00}, headers=auth_headers)
     assert resp.status_code == 200
@@ -60,7 +60,7 @@ def test_update_product(auth_headers):
 
 
 def test_delete_product(auth_headers):
-    create = client.post("/api/products", json={"sku": "SKU007", "name": "Delete Me"}, headers=auth_headers)
+    create = client.post("/api/products", json={"location_id": 1, "sku": "SKU007", "name": "Delete Me"}, headers=auth_headers)
     pid = create.json()["id"]
     resp = client.delete(f"/api/products/{pid}", headers=auth_headers)
     assert resp.status_code == 200
@@ -112,9 +112,8 @@ def test_create_product_free_text_location_matches_path(auth_headers):
     assert any(s["product_name"] == "Text Located" and s["quantity"] == 3 for s in stock)
 
 
-def test_create_product_free_text_location_unassigned_when_no_match(auth_headers):
-    prod = client.post("/api/products", json={
+def test_create_product_free_text_location_rejected_when_no_match(auth_headers):
+    resp = client.post("/api/products", json={
         "sku": "SKU-LOC4", "name": "Unassigned Product", "quantity": 3, "location": "Nowhere 99",
-    }, headers=auth_headers).json()
-    assert prod["location_id"] is None
-    assert prod["quantity"] == 3
+    }, headers=auth_headers)
+    assert resp.status_code == 400

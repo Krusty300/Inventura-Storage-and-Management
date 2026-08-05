@@ -63,7 +63,7 @@ def _validate_items(db: Session, items) -> dict[int, int]:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - ship a specific variant")
         qty_by_product[item.product_id] = qty_by_product.get(item.product_id, 0) + item.quantity
     for pid, qty in qty_by_product.items():
-        on_hand = inventory.on_hand(db, product_id=pid)
+        on_hand = inventory.on_hand(db, product_id=pid, sellable_only=True)
         if on_hand < qty:
             product = get_or_404(Product, pid, db)
             raise HTTPException(status_code=400, detail=f"Insufficient stock for '{product.display_name}': have {on_hand}, need {qty}")

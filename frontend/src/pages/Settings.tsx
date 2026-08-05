@@ -6,14 +6,14 @@ import { useToast } from "../context/ToastContext";
 
 type Tab = "store" | "notifications" | "documents" | "workflow" | "financial" | "display" | "password";
 
-const TABS: { key: Tab; label: string; icon: typeof Save; adminOnly?: boolean }[] = [
+const TABS: { key: Tab; label: string; icon: typeof Save }[] = [
   { key: "store", label: "Store", icon: Save },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "documents", label: "Document Numbering", icon: Hash },
   { key: "workflow", label: "Workflow", icon: Workflow },
   { key: "financial", label: "Financial", icon: DollarSign },
   { key: "display", label: "Display", icon: Monitor },
-  { key: "password", label: "Password", icon: KeyRound, adminOnly: false },
+  { key: "password", label: "Password", icon: KeyRound },
 ];
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -39,10 +39,7 @@ export default function Settings() {
   const [pw, setPw] = useState({ current_password: "", new_password: "" });
   const [pwSaving, setPwSaving] = useState(false);
   const canUpdateSettings = can("settings.update");
-
-  useEffect(() => {
-    setTab(canUpdateSettings ? "store" : "password");
-  }, [canUpdateSettings]);
+  const readOnly = !canUpdateSettings;
 
   useEffect(() => {
     let cancelled = false;
@@ -108,117 +105,135 @@ export default function Settings() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-ink">Settings</h1>
 
+      {readOnly && (
+        <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2">
+          You have read-only access to these settings. Contact an administrator to make changes.
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-1 border-b border-border pb-2">
-        {TABS.filter((t) => !t.adminOnly || can("settings.update")).map((t) => (
+        {TABS.map((t) => (
           <TabButton key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
             <t.icon size={15} /> {t.label}
           </TabButton>
         ))}
       </div>
 
-      {tab === "store" && can("settings.update") && (
+      {tab === "store" && (
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Store Information</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Store Name" value={form.store_name} onChange={(v) => set("store_name", v)} />
-            <Field label="Currency Symbol" value={form.currency_symbol} onChange={(v) => set("currency_symbol", v)} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Address</label>
-            <textarea className="input" rows={2} value={form.address || ""} onChange={(e) => set("address", e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Phone" value={form.phone} onChange={(v) => set("phone", v)} />
-            <Field label="Email" value={form.email} onChange={(v) => set("email", v)} type="email" />
-          </div>
-          <SaveButton loading={saving} />
+          <fieldset disabled={readOnly} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Store Name" value={form.store_name} onChange={(v) => set("store_name", v)} />
+              <Field label="Currency Symbol" value={form.currency_symbol} onChange={(v) => set("currency_symbol", v)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Address</label>
+              <textarea className="input" rows={2} value={form.address || ""} onChange={(e) => set("address", e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Phone" value={form.phone} onChange={(v) => set("phone", v)} />
+              <Field label="Email" value={form.email} onChange={(v) => set("email", v)} type="email" />
+            </div>
+          </fieldset>
+          {!readOnly && <SaveButton loading={saving} />}
         </form>
       )}
 
-      {tab === "notifications" && can("settings.update") && (
+      {tab === "notifications" && (
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Notification Preferences</h2>
-          <Toggle label="Low Stock Alerts" checked={form.low_stock_alerts} onChange={(v) => set("low_stock_alerts", v)}
-            description="Notify admins when a product falls below its reorder level" />
-          <Toggle label="Expiry Alerts" checked={form.expiry_alerts} onChange={(v) => set("expiry_alerts", v)}
-            description="Notify admins when products are expiring or expired" />
-          <Field label="Expiry Warning Days" value={form.expiry_warning_days} onChange={(v) => set("expiry_warning_days", v)} type="number"
-            description="How many days before expiry to start warning" />
-          <SaveButton loading={saving} />
+          <fieldset disabled={readOnly} className="space-y-4">
+            <Toggle label="Low Stock Alerts" checked={form.low_stock_alerts} onChange={(v) => set("low_stock_alerts", v)}
+              description="Notify admins when a product falls below its reorder level" />
+            <Toggle label="Expiry Alerts" checked={form.expiry_alerts} onChange={(v) => set("expiry_alerts", v)}
+              description="Notify admins when products are expiring or expired" />
+            <Field label="Expiry Warning Days" value={form.expiry_warning_days} onChange={(v) => set("expiry_warning_days", v)} type="number"
+              description="How many days before expiry to start warning" />
+          </fieldset>
+          {!readOnly && <SaveButton loading={saving} />}
         </form>
       )}
 
-      {tab === "documents" && can("settings.update") && (
+      {tab === "documents" && (
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Document Numbering</h2>
           <p className="text-sm text-muted">Configure prefixes for auto-generated document numbers.</p>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Shipment Prefix" value={form.shipment_prefix} onChange={(v) => set("shipment_prefix", v)} description="e.g. SHP → SHP-0001" />
-            <Field label="Work Order Prefix" value={form.work_order_prefix} onChange={(v) => set("work_order_prefix", v)} description="e.g. WO → WO-0001" />
-            <Field label="Sale Prefix" value={form.sale_prefix} onChange={(v) => set("sale_prefix", v)} description="e.g. SALE → SALE-0001" />
-            <Field label="Invoice Prefix" value={form.invoice_prefix} onChange={(v) => set("invoice_prefix", v)} description="e.g. INV → INV-0001" />
-            <Field label="Purchase Order Prefix" value={form.po_prefix} onChange={(v) => set("po_prefix", v)} description="e.g. PO → PO-0001" />
-          </div>
-          <SaveButton loading={saving} />
+          <fieldset disabled={readOnly} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Shipment Prefix" value={form.shipment_prefix} onChange={(v) => set("shipment_prefix", v)} description="e.g. SHP → SHP-0001" />
+              <Field label="Work Order Prefix" value={form.work_order_prefix} onChange={(v) => set("work_order_prefix", v)} description="e.g. WO → WO-0001" />
+              <Field label="Sale Prefix" value={form.sale_prefix} onChange={(v) => set("sale_prefix", v)} description="e.g. SALE → SALE-0001" />
+              <Field label="Invoice Prefix" value={form.invoice_prefix} onChange={(v) => set("invoice_prefix", v)} description="e.g. INV → INV-0001" />
+              <Field label="Purchase Order Prefix" value={form.po_prefix} onChange={(v) => set("po_prefix", v)} description="e.g. PO → PO-0001" />
+            </div>
+          </fieldset>
+          {!readOnly && <SaveButton loading={saving} />}
         </form>
       )}
 
-      {tab === "workflow" && can("settings.update") && (
+      {tab === "workflow" && (
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Workflow Settings</h2>
-          <Toggle label="Require QC Before Shipping" checked={form.require_qc_before_ship} onChange={(v) => set("require_qc_before_ship", v)}
-            description="Block picking and shipping if a pending quality check exists for the product (failed quality checks always block)" />
-          <Toggle label="Auto-Allocate Stock" checked={form.auto_allocate_stock} onChange={(v) => set("auto_allocate_stock", v)}
-            description="Automatically reserve stock when a shipment is created" />
-          <Toggle label="Enforce FEFO (First Expired, First Out)" checked={form.enforce_fefo} onChange={(v) => set("enforce_fefo", v)}
-            description="Allocate stock by earliest expiry date. Disable for FIFO by registration order." />
-          <SaveButton loading={saving} />
+          <fieldset disabled={readOnly} className="space-y-4">
+            <Toggle label="Require QC Before Shipping" checked={form.require_qc_before_ship} onChange={(v) => set("require_qc_before_ship", v)}
+              description="Block picking and shipping if a pending quality check exists for the product (failed quality checks always block)" />
+            <Toggle label="Auto-Allocate Stock" checked={form.auto_allocate_stock} onChange={(v) => set("auto_allocate_stock", v)}
+              description="Automatically reserve stock when a shipment is created" />
+            <Toggle label="Enforce FEFO (First Expired, First Out)" checked={form.enforce_fefo} onChange={(v) => set("enforce_fefo", v)}
+              description="Allocate stock by earliest expiry date. Disable for FIFO by registration order." />
+          </fieldset>
+          {!readOnly && <SaveButton loading={saving} />}
         </form>
       )}
 
-      {tab === "financial" && can("settings.update") && (
+      {tab === "financial" && (
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Financial Settings</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Tax Rate (%)" value={form.tax_rate} onChange={(v) => set("tax_rate", v)} type="number" />
-            <Field label="Default Reorder Level" value={form.default_reorder_level} onChange={(v) => set("default_reorder_level", v)} type="number" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Default Costing Method</label>
-            <select className="select" value={form.default_costing_method} onChange={(e) => set("default_costing_method", e.target.value)}>
-              <option value="weighted_average">Weighted Average</option>
-              <option value="fifo">FIFO (First In, First Out)</option>
-              <option value="standard">Standard Cost</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Fiscal Year Start Month</label>
-            <select className="select" value={form.fiscal_year_start_month} onChange={(e) => set("fiscal_year_start_month", e.target.value)}>
-              {Array.from({ length: 12 }, (_, i) => (
-                <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleString("default", { month: "long" })}</option>
-              ))}
-            </select>
-          </div>
-          <SaveButton loading={saving} />
+          <fieldset disabled={readOnly} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Tax Rate (%)" value={form.tax_rate} onChange={(v) => set("tax_rate", v)} type="number" />
+              <Field label="Default Reorder Level" value={form.default_reorder_level} onChange={(v) => set("default_reorder_level", v)} type="number" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Default Costing Method</label>
+              <select className="select" value={form.default_costing_method} onChange={(e) => set("default_costing_method", e.target.value)}>
+                <option value="weighted_average">Weighted Average</option>
+                <option value="fifo">FIFO (First In, First Out)</option>
+                <option value="standard">Standard Cost</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Fiscal Year Start Month</label>
+              <select className="select" value={form.fiscal_year_start_month} onChange={(e) => set("fiscal_year_start_month", e.target.value)}>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleString("default", { month: "long" })}</option>
+                ))}
+              </select>
+            </div>
+          </fieldset>
+          {!readOnly && <SaveButton loading={saving} />}
         </form>
       )}
 
-      {tab === "display" && can("settings.update") && (
+      {tab === "display" && (
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Display Preferences</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Default Items Per Page" value={form.default_items_per_page} onChange={(v) => set("default_items_per_page", v)} type="number" />
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Date Format</label>
-              <select className="select" value={form.date_format} onChange={(e) => set("date_format", e.target.value)}>
-                <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                <option value="DD.MM.YYYY">DD.MM.YYYY</option>
-              </select>
+          <fieldset disabled={readOnly} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Default Items Per Page" value={form.default_items_per_page} onChange={(v) => set("default_items_per_page", v)} type="number" />
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Date Format</label>
+                <select className="select" value={form.date_format} onChange={(e) => set("date_format", e.target.value)}>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                  <option value="DD.MM.YYYY">DD.MM.YYYY</option>
+                </select>
+              </div>
             </div>
-          </div>
-          <SaveButton loading={saving} />
+          </fieldset>
+          {!readOnly && <SaveButton loading={saving} />}
         </form>
       )}
 

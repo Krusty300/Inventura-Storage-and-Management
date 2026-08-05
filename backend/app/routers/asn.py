@@ -11,7 +11,7 @@ from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
-from app.utils import get_or_404, log_activity, broadcast_change
+from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
 router = APIRouter(prefix="/api/asns", tags=["asns"], dependencies=[Depends(get_current_user)])
 
@@ -140,7 +140,10 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
             if not product.is_active:
                 raise HTTPException(status_code=400, detail=f"'{product.display_name}' is inactive")
             if line.location_id is not None:
-                get_or_404(Location, line.location_id, db)
+                line_loc = get_or_404(Location, line.location_id, db)
+                if not line_loc.is_active:
+                    raise HTTPException(status_code=400, detail=f"Location '{line_loc.path}' is inactive")
+            require_active_location(db, product)
 
             lot = None
             if line.lot_number:

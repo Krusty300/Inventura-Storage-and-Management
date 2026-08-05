@@ -15,7 +15,7 @@ interface Props {
 
 export default function StockMovementForm({ movement, onClose, onSaved }: Props) {
   const isEdit = !!movement;
-  const products = useSelectableProducts();
+  const products = useSelectableProducts().filter((p) => !p.is_serialized);
   const [productId, setProductId] = useState(movement?.product_id?.toString() || "");
   const [quantityChange, setQuantityChange] = useState(
     movement ? (movement.movement_type === "out" ? Math.abs(movement.quantity_change).toString() : movement.quantity_change.toString()) : ""

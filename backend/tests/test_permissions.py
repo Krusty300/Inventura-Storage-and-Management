@@ -10,7 +10,7 @@ def _register(auth_headers, username, email, password="testpass123"):
 
 
 def _make_product(headers, sku="PERM-PROD", quantity=10):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "cost_price": 5.0, "quantity": quantity,
     }, headers=headers).json()
 
@@ -19,7 +19,7 @@ def _make_product(headers, sku="PERM-PROD", quantity=10):
 
 def test_worker_cannot_create_product(auth_headers):
     worker = _register(auth_headers, "w_noprod", "w_noprod@example.com")
-    resp = client.post("/api/products", json={"sku": "P-X", "name": "X", "unit_price": 1.0}, headers=worker)
+    resp = client.post("/api/products", json={"location_id": 1, "sku": "P-X", "name": "X", "unit_price": 1.0}, headers=worker)
     assert resp.status_code == 403
 
 
@@ -75,7 +75,7 @@ def test_worker_cannot_update_settings(auth_headers):
 
 
 def test_worker_can_create_receipt_but_cannot_update_lot(auth_headers):
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "PERM-RCP", "name": "Rcp", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     receipt = client.post("/api/receipts", json={
@@ -129,7 +129,7 @@ def test_worker_can_create_sale(auth_headers):
 
 
 def test_worker_can_view_receipts_lots_and_serials(auth_headers):
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "PERM-VIEW", "name": "View", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     assert client.post("/api/receipts", json={
@@ -165,7 +165,7 @@ def test_worker_cannot_refund(auth_headers):
 # --- Admins retain everything --------------------------------------------
 
 def test_admin_can_manage_products_and_settings(auth_headers):
-    prod = client.post("/api/products", json={"sku": "PERM-A1", "name": "A1", "unit_price": 1.0}, headers=auth_headers)
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "PERM-A1", "name": "A1", "unit_price": 1.0}, headers=auth_headers)
     assert prod.status_code == 201
     assert client.put("/api/settings", json={"store_name": "Updated"}, headers=auth_headers).status_code == 200
     assert client.get("/api/users", headers=auth_headers).status_code == 200
@@ -184,4 +184,4 @@ def test_unknown_role_has_no_permissions():
     token = client.post("/api/auth/login", json={"username": "ghost", "password": "testpass123"}).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     assert client.get("/api/products", headers=headers).status_code == 200
-    assert client.post("/api/products", json={"sku": "GHOST-1", "name": "G", "unit_price": 1.0}, headers=headers).status_code == 403
+    assert client.post("/api/products", json={"location_id": 1, "sku": "GHOST-1", "name": "G", "unit_price": 1.0}, headers=headers).status_code == 403

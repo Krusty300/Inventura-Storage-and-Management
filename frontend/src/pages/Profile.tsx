@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  KeyRound, User as UserIcon, Clock, Shield, Save, History, Camera, Trash2,
+  User as Clock, Shield, Save, History, Camera, Trash2,
   Monitor, Download, LogOut,
 } from "lucide-react";
 import api from "../api/client";
@@ -168,7 +168,6 @@ export default function Profile() {
         <div className="space-y-6 lg:col-span-2">
           <div className="card">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <UserIcon size={18} className="text-faint" />
               Account Information
             </h2>
             <div className="flex items-center gap-4 mb-6">
@@ -230,7 +229,6 @@ export default function Profile() {
 
           <div className="card">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <KeyRound size={18} className="text-faint" />
               Change Password
             </h2>
             <form onSubmit={handlePassword} className="space-y-4 max-w-md">

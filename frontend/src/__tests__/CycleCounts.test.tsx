@@ -42,12 +42,16 @@ function mockCycleCount(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockCounts(items: ReturnType<typeof mockCycleCount>[]) {
+function mockCounts(
+  items: ReturnType<typeof mockCycleCount>[],
+  location: { locations?: Array<Record<string, unknown>>; stockLines?: Array<Record<string, unknown>>; serials?: Array<Record<string, unknown>> } = {}
+) {
   getMock.mockImplementation((url: string) => {
     if (url === "/cycle-counts") return Promise.resolve({ data: { items, total: items.length, page: 1, pages: 1 } });
     if (url === "/products")
       return Promise.resolve({ data: { items: [{ id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, variants: [] }], total: 1, page: 1, pages: 1 } });
-    if (url === "/locations") return Promise.resolve({ data: { items: [] } });
+    if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 1, name: "Warehouse A", path: "Warehouse A", is_active: true }, ...(location.locations || [])] } });
+    if (url === "/locations/1/detail") return Promise.resolve({ data: { stock_lines: location.stockLines || [], serials: location.serials || [] } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
 }
@@ -97,5 +101,36 @@ describe("CycleCounts Page", () => {
     renderWithProviders(<CycleCounts />);
     fireEvent.click(await screen.findByRole("button", { name: "New Count" }));
     expect(await screen.findByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
+  });
+
+  it("limits product options to products stocked at the selected location", async () => {
+    mockCounts([mockCycleCount()], {
+      stockLines: [
+        { id: 1, product_id: 1, product_name: "Widget", sku: "SKU-1", lot_number: "", lpn_number: "", quantity: 5, unit_cost: 10, value: 50 },
+        { id: 2, product_id: 2, product_name: "Gadget", sku: "SKU-2", lot_number: "", lpn_number: "", quantity: 3, unit_cost: 20, value: 60 },
+      ],
+    });
+    renderWithProviders(<CycleCounts />);
+    fireEvent.click(await screen.findByRole("button", { name: "New Count" }));
+    await screen.findByRole("option", { name: "Warehouse A" });
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "1" } });
+    expect(await screen.findByRole("option", { name: "Gadget (SKU-2)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
+  });
+
+  it("includes serialized products from the selected location", async () => {
+    mockCounts([mockCycleCount()], {
+      stockLines: [
+        { id: 1, product_id: 1, product_name: "Widget", sku: "SKU-1", lot_number: "", lpn_number: "", quantity: 5, unit_cost: 10, value: 50 },
+      ],
+      serials: [
+        { id: 1, product_id: 3, product_name: "Asset", sku: "SKU-3", serial_number: "SN-1", lot_number: "", status: "in_stock", unit_cost: 25, value: 25 },
+      ],
+    });
+    renderWithProviders(<CycleCounts />);
+    fireEvent.click(await screen.findByRole("button", { name: "New Count" }));
+    await screen.findByRole("option", { name: "Warehouse A" });
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "1" } });
+    expect(await screen.findByRole("option", { name: "Asset (SKU-3) (Serialized)" })).toBeInTheDocument();
   });
 });

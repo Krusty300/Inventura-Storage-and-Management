@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import api from "../api/client";
-import type { Order, Product, Supplier } from "../types";
+import type { Order, Product, Supplier, Location } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import Modal from "./Modal";
@@ -19,6 +19,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   const isEdit = !!order;
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [supplierId, setSupplierId] = useState(order?.supplier_id?.toString() || "");
   const [notes, setNotes] = useState(order?.notes || "");
   const [items, setItems] = useState(
@@ -32,11 +33,23 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   useEffect(() => {
     api.get("/suppliers").then(({ data }) => setSuppliers(data.items));
     api.get("/products", { params: { active_only: true, limit: 1000, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
+    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
   }, []);
+
+  const activeLocationIds = new Set(locations.filter((l) => l.is_active).map((l) => l.id));
+  const hasActiveLocation = (p: Product) => !!p.location_id && activeLocationIds.has(p.location_id);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    for (const item of items) {
+      const p = products.find((sp) => sp.id === parseInt(item.product_id));
+      if (item.product_id && p && !hasActiveLocation(p)) {
+        addToast(`${p.name} has no active location and cannot be ordered`, "error");
+        setSaving(false);
+        return;
+      }
+    }
     try {
       const payload = {
         supplier_id: supplierId ? parseInt(supplierId) : null,
@@ -61,7 +74,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
     setSaving(false);
   };
 
-  const selectable = selectableProducts(products);
+  const selectable = selectableProducts(products).filter(hasActiveLocation);
 
   const addItem = () => setItems([...items, { product_id: "", quantity: "1", unit_price: "0" }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
@@ -91,7 +104,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
           <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-medium text-ink">Order Items</label>
             <div className="flex gap-2">
-              <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.cost_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan to add item..." />
+              <BarcodeScanner onProductFound={(p) => { if (!hasActiveLocation(p)) { addToast(`${p.name} has no active location and cannot be ordered`, "error"); return; } if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.cost_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan to add item..." />
               <button type="button" onClick={addItem} className="btn-secondary text-xs py-1 px-2">
                 Add Item
               </button>
@@ -109,7 +122,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
                   >
                     <option value="">Select product</option>
                     {selectable.map((p) => (
-                      <option key={p.id} value={p.id}>{productLabel(p)} ({formatCurrency(p.cost_price, currencySymbol)})</option>
+                      <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""} ({formatCurrency(p.cost_price, currencySymbol)})</option>
                     ))}
                   </select>
                 </div>

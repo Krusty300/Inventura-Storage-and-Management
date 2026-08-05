@@ -27,6 +27,8 @@ const Locations = lazy(() => import("./pages/Locations"));
 const Receipts = lazy(() => import("./pages/Receipts"));
 const ASNs = lazy(() => import("./pages/ASNs"));
 const LPNs = lazy(() => import("./pages/LPNs"));
+const Lots = lazy(() => import("./pages/Lots"));
+const SerialNumbers = lazy(() => import("./pages/SerialNumbers"));
 const CycleCounts = lazy(() => import("./pages/CycleCounts"));
 const Boms = lazy(() => import("./pages/Boms"));
 const WorkOrders = lazy(() => import("./pages/WorkOrders"));
@@ -70,6 +72,8 @@ function AppRoutes() {
           <Route path="/receiving" element={<Receipts />} />
           <Route path="/asns" element={<ASNs />} />
           <Route path="/lpns" element={<LPNs />} />
+          <Route path="/lots" element={<Lots />} />
+          <Route path="/serial-numbers" element={<SerialNumbers />} />
           <Route path="/cycle-counts" element={<CycleCounts />} />
           <Route path="/boms" element={<Boms />} />
           <Route path="/work-orders" element={<WorkOrders />} />

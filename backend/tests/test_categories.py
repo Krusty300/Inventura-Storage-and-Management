@@ -47,7 +47,7 @@ def test_delete_category(auth_headers):
 def test_delete_category_with_products(auth_headers):
     cat = client.post("/api/categories", json={"name": "Has Products"}, headers=auth_headers)
     cid = cat.json()["id"]
-    client.post("/api/products", json={"sku": "CATPRD", "name": "Test", "category_id": cid}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "CATPRD", "name": "Test", "category_id": cid}, headers=auth_headers)
     resp = client.delete(f"/api/categories/{cid}", headers=auth_headers)
     assert resp.status_code == 400
 

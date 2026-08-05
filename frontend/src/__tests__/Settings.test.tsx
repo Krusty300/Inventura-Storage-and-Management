@@ -41,11 +41,14 @@ describe("Settings Page", () => {
     await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/settings", expect.objectContaining({ store_name: "My Store", currency_symbol: "€", phone: "555-0000" })));
   });
 
-  it("hides store settings for workers", async () => {
+  it("shows settings read-only for workers", async () => {
     getMock.mockResolvedValue({ data: settings });
     renderWithProviders(<Settings />, { role: "worker" });
-    expect(await screen.findByRole("heading", { name: "Change Password" })).toBeInTheDocument();
-    expect(screen.queryByText("Store Information")).not.toBeInTheDocument();
+    expect(await screen.findByText("Store Information")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("My Store")).toBeDisabled();
+    expect(screen.getByDisplayValue("€")).toBeDisabled();
+    expect(screen.getByDisplayValue("555-0199")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save Settings" })).not.toBeInTheDocument();
+    expect(screen.getByText(/read-only access/)).toBeInTheDocument();
   });
 });

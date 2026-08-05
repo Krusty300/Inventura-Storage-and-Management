@@ -4,7 +4,7 @@ from tests.conftest import TestingSessionLocal, client
 
 
 def _make_serialized_product(auth_headers, sku="SER-PROD"):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 50.0, "cost_price": 30.0,
         "quantity": 0, "is_serialized": True,
     }, headers=auth_headers).json()

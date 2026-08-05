@@ -451,6 +451,7 @@ export interface Location {
   updated_at: string;
   stock_line_count: number;
   lpn_count: number;
+  serial_count: number;
   total_quantity: number;
   stock_value: number;
 }
@@ -524,6 +525,21 @@ export interface LPNContentItem {
   lot_id: number | null;
   lot_number: string;
   quantity: number;
+}
+
+export interface Lot {
+  id: number;
+  product_id: number;
+  lot_number: string;
+  supplier_id: number | null;
+  expiry_date: string | null;
+  received_date: string;
+  status: string;
+  created_at: string;
+  product_name: string;
+  supplier_name: string;
+  on_hand: number;
+  serial_count: number;
 }
 
 export interface CycleCountItem {

@@ -35,7 +35,7 @@ export default function QualityChecks() {
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["quality-checks"] });
-    queryClient.invalidateQueries({ queryKey: ["lots"] });
+    queryClient.invalidateQueries({ queryKey: ["exceptions"] });
   };
 
   const resultBadge = (r: string) =>
@@ -70,7 +70,7 @@ export default function QualityChecks() {
             {isLoading ? (
               <Skeleton rows={5} cols={8} />
             ) : checks.length === 0 ? (
-              <EmptyState title="No quality checks yet" message="Record a QC result to keep lot quality controlled. Failing a check quarantines its lot." actionLabel="New Check" onAction={() => { setEditing(null); setShowForm(true); }} />
+              <EmptyState title="No quality checks yet" message="Record a QC result to keep lot quality controlled. Failing a check quarantines its lot." actionLabel={can("quality_checks.create") ? "New Check" : undefined} onAction={can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
             ) : checks.map((qc) => (
               <tr key={qc.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{qc.qc_number}</td>
@@ -184,9 +184,9 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Lot (optional)</label>
-            <select className="select" value={lotId} onChange={(e) => setLotId(e.target.value)}>
+            <select className="select" value={lotId} onChange={(e) => setLotId(e.target.value)} disabled={!!qc}>
               <option value="">No lot / all lots</option>
-              {lots.map((l) => <option key={l.id} value={l.id}>{l.lot_number} ({l.on_hand} on hand)</option>)}
+              {lots.map((l) => <option key={l.id} value={l.id}>{l.lot_number} ({l.on_hand} on hand){l.status !== "in_stock" ? ` [${l.status}]` : ""}</option>)}
             </select>
           </div>
         </div>
@@ -208,8 +208,12 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        {result === "fail" && lotId && (
-          <p className="text-xs text-orange-600 dark:text-orange-400">Failing this check will quarantine the linked lot.</p>
+        {result === "fail" && (
+          <p className="text-xs text-orange-600 dark:text-orange-400">
+            {lotId
+              ? "Failing this check will quarantine the linked lot."
+              : "Failing without a linked lot will block shipments for this product until the check is updated or deleted."}
+          </p>
         )}
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

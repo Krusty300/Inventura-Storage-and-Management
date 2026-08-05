@@ -46,14 +46,14 @@ def test_delete_supplier(auth_headers):
 
 def test_delete_supplier_with_products(auth_headers):
     sup = client.post("/api/suppliers", json={"name": "Has Products"}, headers=auth_headers).json()
-    client.post("/api/products", json={"sku": "SUPPPRD", "name": "Test", "supplier_id": sup["id"]}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "SUPPPRD", "name": "Test", "supplier_id": sup["id"]}, headers=auth_headers)
     resp = client.delete(f"/api/suppliers/{sup['id']}", headers=auth_headers)
     assert resp.status_code == 200
     assert client.get(f"/api/suppliers/{sup['id']}", headers=auth_headers).json()["is_active"] is False
 
 
 def _received_order(auth_headers, supplier_id, sku, price=10.0, qty=2):
-    prod = client.post("/api/products", json={"sku": sku, "name": "Test Item", "quantity": 10, "unit_price": price, "supplier_id": supplier_id}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": sku, "name": "Test Item", "quantity": 10, "unit_price": price, "supplier_id": supplier_id}, headers=auth_headers).json()
     order = client.post("/api/orders", json={
         "supplier_id": supplier_id,
         "items": [{"product_id": prod["id"], "quantity": qty, "unit_price": price}],

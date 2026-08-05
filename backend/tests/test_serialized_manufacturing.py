@@ -8,7 +8,7 @@ def _make_location(auth_headers, code, location_type="bin"):
 
 
 def _make_product(auth_headers, sku, serialized=False):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "cost_price": 4.0, "quantity": 0,
         "is_serialized": serialized,
     }, headers=auth_headers).json()

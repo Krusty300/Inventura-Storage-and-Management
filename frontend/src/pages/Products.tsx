@@ -320,6 +320,9 @@ export default function Products() {
                         {isGroup && (
                           <span className="badge bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">{p.variants.filter((v) => v.is_active).length} variants</span>
                         )}
+                        {p.is_serialized && (
+                          <span className="badge bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">Serialized</span>
+                        )}
                         {qty <= p.reorder_level && !isGroup && (
                           <AlertTriangle size={14} className="text-red-500" aria-label="Low stock" />
                         )}
@@ -360,7 +363,7 @@ export default function Products() {
                         <button onClick={() => setViewing(p)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${p.display_name}`}>
                           <Eye size={16} />
                         </button>
-                        {!isGroup && (
+                        {!isGroup && !p.is_serialized && (
                           <button onClick={() => setAdjusting(p)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Adjust stock for ${p.display_name}`}>
                             <ClipboardList size={16} />
                           </button>

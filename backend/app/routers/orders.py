@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.order import Order, OrderItem
 from app.models.product import Product
+from app.models.location import Location
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
 from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate
@@ -17,7 +18,7 @@ from app.services.pdf_helpers import (
     BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
     draw_notes, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
-from app.utils import get_or_404, log_activity, broadcast_change
+from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
 router = APIRouter(prefix="/api/orders", tags=["orders"], dependencies=[Depends(get_current_user)])
 
@@ -32,11 +33,17 @@ ORDER_TRANSITIONS = {
 
 @router.post("/auto-reorder", response_model=OrderOut)
 def auto_reorder(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    low_stock = db.query(Product).filter(
-        Product.is_active == True, Product.quantity <= Product.reorder_level,
-        Product.reorder_level > 0,
-        Product.id.notin_(Product.variant_parent_id_subquery()),
-    ).all()
+    low_stock = (
+        db.query(Product)
+        .join(Location, Product.location_id == Location.id)
+        .filter(
+            Location.is_active == True,
+            Product.is_active == True, Product.quantity <= Product.reorder_level,
+            Product.reorder_level > 0,
+            Product.id.notin_(Product.variant_parent_id_subquery()),
+        )
+        .all()
+    )
     if not low_stock:
         raise HTTPException(status_code=400, detail="No low-stock products found")
     items = []
@@ -200,6 +207,7 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(
             raise HTTPException(status_code=404, detail=f"Product {item_data.product_id} not found")
         if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - order a specific variant")
+        require_active_location(db, product)
     order = Order(order_number=generate_po_number(db), user_id=user.id, **data.model_dump(exclude={"items"}))
     db.add(order)
     db.flush()
@@ -240,6 +248,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                 raise HTTPException(status_code=404, detail=f"Product {item_data.product_id} not found")
             if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
                 raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - order a specific variant")
+            require_active_location(db, product)
             total += item_data.quantity * item_data.unit_price
             db.execute(OrderItem.__table__.insert().values(order_id=o.id, **item_data.model_dump()))
         o.total_amount = total
@@ -262,6 +271,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                 product = item.product
                 if not product:
                     continue
+                require_active_location(db, product)
                 if product.is_serialized:
                     serials = [s.strip() for s in serials_by_product.get(product.id, []) if s and s.strip()]
                     if not serials:

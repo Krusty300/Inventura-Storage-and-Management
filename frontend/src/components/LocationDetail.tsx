@@ -27,6 +27,17 @@ interface LocationDetailData {
     status: string;
     total_quantity: number;
   }[];
+  serials: {
+    id: number;
+    product_id: number;
+    product_name: string;
+    sku: string;
+    serial_number: string;
+    lot_number: string;
+    status: string;
+    unit_cost: number;
+    value: number;
+  }[];
 }
 
 interface ActivityLogEntry {
@@ -79,6 +90,7 @@ export default function LocationDetail({ location, onClose }: Props) {
 
   const stockLines = detail?.stock_lines || [];
   const lpns = detail?.lpns || [];
+  const serials = detail?.serials || [];
   const logs = activity?.items || [];
 
   return (
@@ -119,7 +131,7 @@ export default function LocationDetail({ location, onClose }: Props) {
 
         <div className="flex gap-2 border-b border-border pb-3">
           <TabButton active={tab === "stock"} onClick={() => setTab("stock")}>
-            <Package size={14} /> Stock ({stockLines.length})
+            <Package size={14} /> Stock ({stockLines.length + serials.length})
           </TabButton>
           <TabButton active={tab === "lpns"} onClick={() => setTab("lpns")}>
             <MapPin size={14} /> LPNs ({lpns.length})
@@ -132,36 +144,69 @@ export default function LocationDetail({ location, onClose }: Props) {
         {isLoading ? (
           <p className="text-muted py-4">Loading...</p>
         ) : tab === "stock" ? (
-          stockLines.length === 0 ? (
-            <p className="text-muted py-4">No stock at this location.</p>
-          ) : (
-            <div className="overflow-x-auto max-h-72 overflow-y-auto">
-              <table className="w-full text-sm" role="grid" aria-label="Stock at location">
-                <thead>
-                  <tr className="bg-app text-left text-muted">
-                    <th className="px-3 py-2 font-medium">Product</th>
-                    <th className="px-3 py-2 font-medium">SKU</th>
-                    <th className="px-3 py-2 font-medium">Lot</th>
-                    <th className="px-3 py-2 font-medium">LPN</th>
-                    <th className="px-3 py-2 font-medium text-right">Qty</th>
-                    <th className="px-3 py-2 font-medium text-right">Value</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {stockLines.map((sl) => (
-                    <tr key={sl.id}>
-                      <td className="px-3 py-2 font-medium">{sl.product_name}</td>
-                      <td className="px-3 py-2 text-muted">{sl.sku}</td>
-                      <td className="px-3 py-2 text-muted">{sl.lot_number || "—"}</td>
-                      <td className="px-3 py-2 text-muted">{sl.lpn_number || "—"}</td>
-                      <td className="px-3 py-2 text-right">{sl.quantity}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(sl.value, currencySymbol)}</td>
+          <>
+            {stockLines.length === 0 ? (
+              <p className="text-muted py-4">No stock at this location.</p>
+            ) : (
+              <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                <table className="w-full text-sm" role="grid" aria-label="Stock at location">
+                  <thead>
+                    <tr className="bg-app text-left text-muted">
+                      <th className="px-3 py-2 font-medium">Product</th>
+                      <th className="px-3 py-2 font-medium">SKU</th>
+                      <th className="px-3 py-2 font-medium">Lot</th>
+                      <th className="px-3 py-2 font-medium">LPN</th>
+                      <th className="px-3 py-2 font-medium text-right">Qty</th>
+                      <th className="px-3 py-2 font-medium text-right">Value</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {stockLines.map((sl) => (
+                      <tr key={sl.id}>
+                        <td className="px-3 py-2 font-medium">{sl.product_name}</td>
+                        <td className="px-3 py-2 text-muted">{sl.sku}</td>
+                        <td className="px-3 py-2 text-muted">{sl.lot_number || "—"}</td>
+                        <td className="px-3 py-2 text-muted">{sl.lpn_number || "—"}</td>
+                        <td className="px-3 py-2 text-right">{sl.quantity}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(sl.value, currencySymbol)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {serials.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-ink mb-2">Serialized items ({serials.length})</p>
+                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                  <table className="w-full text-sm" role="grid" aria-label="Serialized items at location">
+                    <thead>
+                      <tr className="bg-app text-left text-muted">
+                        <th className="px-3 py-2 font-medium">Serial #</th>
+                        <th className="px-3 py-2 font-medium">Product</th>
+                        <th className="px-3 py-2 font-medium">SKU</th>
+                        <th className="px-3 py-2 font-medium">Lot</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                        <th className="px-3 py-2 font-medium text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {serials.map((s) => (
+                        <tr key={s.id}>
+                          <td className="px-3 py-2 font-medium font-mono">{s.serial_number}</td>
+                          <td className="px-3 py-2 text-muted">{s.product_name}</td>
+                          <td className="px-3 py-2 text-muted">{s.sku}</td>
+                          <td className="px-3 py-2 text-muted">{s.lot_number || "—"}</td>
+                          <td className="px-3 py-2"><span className="badge badge-success">{s.status}</span></td>
+                          <td className="px-3 py-2 text-right">{formatCurrency(s.value, currencySymbol)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
         ) : tab === "lpns" ? (
           lpns.length === 0 ? (
             <p className="text-muted py-4">No LPNs at this location.</p>

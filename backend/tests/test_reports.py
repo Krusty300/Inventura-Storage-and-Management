@@ -4,7 +4,7 @@ from tests.conftest import client
 def test_inventory_valuation(auth_headers):
     cat = client.post("/api/categories", json={"name": "Val Cat"}, headers=auth_headers).json()
     sup = client.post("/api/suppliers", json={"name": "Val Supplier"}, headers=auth_headers).json()
-    client.post("/api/products", json={
+    client.post("/api/products", json={"location_id": 1, 
         "sku": "VAL-001", "name": "Val Item", "category_id": cat["id"], "supplier_id": sup["id"],
         "quantity": 10, "cost_price": 5.0, "unit_price": 12.0,
     }, headers=auth_headers)
@@ -21,8 +21,8 @@ def test_inventory_valuation(auth_headers):
 
 
 def test_profit_analysis_excludes_parents_with_variants(auth_headers):
-    parent = client.post("/api/products", json={"sku": "PROF-PARENT", "name": "Parent", "unit_price": 20.0, "cost_price": 10.0}, headers=auth_headers).json()
-    var = client.post("/api/products", json={
+    parent = client.post("/api/products", json={"location_id": 1, "sku": "PROF-PARENT", "name": "Parent", "unit_price": 20.0, "cost_price": 10.0}, headers=auth_headers).json()
+    var = client.post("/api/products", json={"location_id": 1, 
         "sku": "PROF-VAR", "parent_id": parent["id"], "quantity": 4,
         "attributes": {"Color": "Red"}, "unit_price": 25.0, "cost_price": 10.0,
     }, headers=auth_headers).json()
@@ -37,7 +37,7 @@ def test_profit_analysis_excludes_parents_with_variants(auth_headers):
 
 def test_category_breakdown(auth_headers):
     cat = client.post("/api/categories", json={"name": "Brk Cat"}, headers=auth_headers).json()
-    client.post("/api/products", json={
+    client.post("/api/products", json={"location_id": 1, 
         "sku": "BRK-001", "name": "Brk Item", "category_id": cat["id"],
         "quantity": 3, "cost_price": 2.0, "unit_price": 8.0,
     }, headers=auth_headers)
@@ -49,7 +49,7 @@ def test_category_breakdown(auth_headers):
 
 def test_top_customers_report(auth_headers):
     c = client.post("/api/customers", json={"name": "Top Spender"}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={"sku": "TOP-1", "name": "Top Item", "quantity": 50, "unit_price": 5.0}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "TOP-1", "name": "Top Item", "quantity": 50, "unit_price": 5.0}, headers=auth_headers).json()
     for _ in range(3):
         client.post("/api/sales", json={"customer_id": c["id"], "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 50.0}]}, headers=auth_headers)
     data = client.get("/api/reports/top-customers", headers=auth_headers).json()
@@ -61,7 +61,7 @@ def test_top_customers_report(auth_headers):
 
 def test_top_suppliers_report(auth_headers):
     sup = client.post("/api/suppliers", json={"name": "Top Supplier"}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={"sku": "TSUP-1", "name": "TSup", "cost_price": 10.0}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "TSUP-1", "name": "TSup", "cost_price": 10.0}, headers=auth_headers).json()
     order = client.post("/api/orders", json={
         "supplier_id": sup["id"],
         "items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 10.0}],
@@ -76,7 +76,7 @@ def test_top_suppliers_report(auth_headers):
 
 def test_order_summary(auth_headers):
     sup = client.post("/api/suppliers", json={"name": "Ord Sup"}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={"sku": "OSUM-001", "name": "OSum", "cost_price": 5.0}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "OSUM-001", "name": "OSum", "cost_price": 5.0}, headers=auth_headers).json()
     client.post("/api/orders", json={"supplier_id": sup["id"], "items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 5.0}]}, headers=auth_headers)
     data = client.get("/api/reports/order-summary", headers=auth_headers).json()
     assert data["total_orders"] >= 1
@@ -86,7 +86,7 @@ def test_order_summary(auth_headers):
 
 
 def test_sales_summary_with_refund(auth_headers):
-    prod = client.post("/api/products", json={"sku": "SSUM-001", "name": "SSum", "unit_price": 50.0, "quantity": 10}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "SSUM-001", "name": "SSum", "unit_price": 50.0, "quantity": 10}, headers=auth_headers).json()
     sale = client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 50.0}], "payment_method": "card"}, headers=auth_headers).json()
     data = client.get("/api/reports/sales-summary", headers=auth_headers).json()
     assert data["total_sales"] == 1
@@ -100,7 +100,7 @@ def test_sales_summary_with_refund(auth_headers):
 
 
 def test_stock_movement_trends(auth_headers):
-    prod = client.post("/api/products", json={"sku": "TREND-001", "name": "Trend", "quantity": 5, "cost_price": 1.0}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "TREND-001", "name": "Trend", "quantity": 5, "cost_price": 1.0}, headers=auth_headers).json()
     client.post("/api/stock-movements", json={"product_id": prod["id"], "quantity_change": -2, "movement_type": "out"}, headers=auth_headers)
     client.post("/api/stock-movements", json={"product_id": prod["id"], "quantity_change": 3, "movement_type": "in"}, headers=auth_headers)
     data = client.get("/api/reports/stock-movement-trends", headers=auth_headers).json()
@@ -110,7 +110,7 @@ def test_stock_movement_trends(auth_headers):
 
 
 def test_report_exports(auth_headers):
-    prod = client.post("/api/products", json={"sku": "EXP-001", "name": "Export Item", "quantity": 1, "cost_price": 1.0}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "EXP-001", "name": "Export Item", "quantity": 1, "cost_price": 1.0}, headers=auth_headers).json()
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
     for path in ("/api/reports/export/sales", "/api/reports/export/movements", "/api/reports/export/products"):
         resp = client.get(path, headers=auth_headers)

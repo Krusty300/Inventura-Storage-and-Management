@@ -21,6 +21,7 @@ BACKFLUSH = "backflush"
 ADJUSTMENT = "adjustment"
 COUNT = "count"
 SHIP = "ship"
+SCRAP = "scrap"
 
 VALID_MOVEMENT_TYPES = {
     RECEIVE,
@@ -33,6 +34,7 @@ VALID_MOVEMENT_TYPES = {
     ADJUSTMENT,
     COUNT,
     SHIP,
+    SCRAP,
     # Legacy types used by the existing API contract
     "in",
     "out",
@@ -95,8 +97,13 @@ def on_hand(
     product_id: int,
     location_id: int | None = None,
     lot_id: int | None = None,
+    sellable_only: bool = False,
 ) -> int:
-    """Current sellable quantity for a product, optionally filtered by location/lot."""
+    """Current quantity for a product, optionally filtered by location/lot.
+
+    With ``sellable_only=True``, stock held in non-``in_stock`` lots (quarantined
+    or expired) is excluded, matching what allocations can actually consume.
+    """
     product = db.get(Product, product_id)
     if product is None:
         raise InventoryError("Product not found")
@@ -105,12 +112,20 @@ def on_hand(
             select(func.count(SerialNumber.id))
             .where(SerialNumber.product_id == product_id, SerialNumber.status == SERIAL_STATUS_IN_STOCK)
         )
+        if sellable_only:
+            stmt = stmt.outerjoin(Lot, SerialNumber.lot_id == Lot.id).where(
+                (SerialNumber.lot_id.is_(None)) | (Lot.status == "in_stock")
+            )
         if location_id is not None:
             stmt = stmt.where(SerialNumber.location_id == location_id)
         if lot_id is not None:
             stmt = stmt.where(SerialNumber.lot_id == lot_id)
         return int(db.execute(stmt).scalar() or 0)
     stmt = select(func.coalesce(func.sum(StockLine.quantity), 0)).where(StockLine.product_id == product_id)
+    if sellable_only:
+        stmt = stmt.outerjoin(Lot, StockLine.lot_id == Lot.id).where(
+            (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock")
+        )
     if location_id is not None:
         stmt = stmt.where(StockLine.location_id == location_id)
     if lot_id is not None:
@@ -304,6 +319,8 @@ def post_journal_entry(
                     serial.location_id = to_location_id
             elif movement_type == ISSUE:
                 serial.status = SERIAL_STATUS_RESERVED
+            elif movement_type == SCRAP:
+                serial.status = SERIAL_STATUS_SCRAPPED
             else:
                 serial.status = SERIAL_STATUS_QUARANTINED
     else:
@@ -402,6 +419,54 @@ def count_adjustment(
             remaining -= take
         if remaining > 0:
             raise InventoryError(f"Insufficient stock on hand: {total}")
+    return movements
+
+
+def scrap_serials(
+    db: Session,
+    *,
+    product_id: int,
+    user_id: int,
+    location_id: int,
+    quantity: int,
+    reference: str = "",
+    notes: str = "",
+) -> list[StockMovement]:
+    """Scrap `quantity` in-stock serial numbers for a serialized product at a
+    location (e.g. missing items found during a cycle count). Serials are chosen
+    by soonest lot expiry (FEFO) then registration order, matching allocation.
+    Raises InventoryError if fewer serials are in stock than requested."""
+    if quantity < 0:
+        raise InventoryError("Scrap quantity must be non-negative")
+    if quantity == 0:
+        return []
+    from app.models.settings import Settings
+    s = db.query(Settings).first()
+    use_fefo = s.enforce_fefo if s else True
+    order = [Lot.expiry_date.asc().nulls_last(), SerialNumber.id.asc()] if use_fefo else [SerialNumber.id.asc()]
+    stmt = (
+        select(SerialNumber)
+        .where(
+            SerialNumber.product_id == product_id,
+            SerialNumber.status == SERIAL_STATUS_IN_STOCK,
+            SerialNumber.location_id == location_id,
+        )
+        .outerjoin(Lot, SerialNumber.lot_id == Lot.id)
+        .order_by(*order)
+    )
+    serials = db.execute(stmt).scalars().all()
+    if len(serials) < quantity:
+        raise InventoryError(
+            f"Insufficient in-stock serials at location: need {quantity}, on hand {len(serials)}"
+        )
+    movements: list[StockMovement] = []
+    for serial in serials[:quantity]:
+        movements.append(post_journal_entry(
+            db, product_id=product_id, user_id=user_id, quantity_change=-1,
+            movement_type=SCRAP, from_location_id=location_id,
+            lot_id=serial.lot_id, serial_id=serial.id,
+            reference_type="cycle_count", reference=reference, notes=notes,
+        ))
     return movements
 
 

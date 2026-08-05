@@ -95,3 +95,20 @@ class StockMovementTransfer(BaseModel):
         if v <= 0:
             raise ValueError("quantity must be positive")
         return v
+
+
+class StockMovementSerialTransfer(BaseModel):
+    product_id: int
+    serial_ids: list[int]
+    from_location_id: int
+    to_location_id: int
+    notes: str = ""
+
+    @field_validator("serial_ids")
+    @classmethod
+    def validate_serial_ids(cls, v: list[int]) -> list[int]:
+        if not v:
+            raise ValueError("serial_ids must not be empty")
+        if len(set(v)) != len(v):
+            raise ValueError("serial_ids must be unique")
+        return v

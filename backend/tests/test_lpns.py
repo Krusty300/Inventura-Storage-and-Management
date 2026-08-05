@@ -30,7 +30,7 @@ def test_duplicate_lpn_rejected(auth_headers):
 def test_receive_into_lpn_and_contents(auth_headers):
     loc = _loc(auth_headers, "LPN-B")
     lpn = client.post("/api/lpns", json={"lpn_number": "PAL-CONT", "location_id": loc["id"]}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "LPN-PROD", "name": "LPN Prod", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     assert client.post("/api/receipts", json={
@@ -47,7 +47,7 @@ def test_move_lpn_moves_contents(auth_headers):
     src = _loc(auth_headers, "LPN-C")
     dst = _loc(auth_headers, "LPN-D")
     lpn = client.post("/api/lpns", json={"lpn_number": "PAL-MOVE", "location_id": src["id"]}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "LPN-MOV", "name": "LPN Mov", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     assert client.post("/api/receipts", json={
@@ -66,7 +66,7 @@ def test_move_lpn_merges_into_existing_line(auth_headers):
     src = _loc(auth_headers, "LPN-E")
     dst = _loc(auth_headers, "LPN-F")
     lpn = client.post("/api/lpns", json={"lpn_number": "PAL-MRG", "location_id": src["id"]}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "LPN-MRG", "name": "LPN Mrg", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     # Existing stock at dst for same product (no LPN)
@@ -87,7 +87,7 @@ def test_move_lpn_moves_serials(auth_headers):
     src = _loc(auth_headers, "LPN-J")
     dst = _loc(auth_headers, "LPN-K")
     lpn = client.post("/api/lpns", json={"lpn_number": "PAL-SER", "location_id": src["id"]}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "LPN-SER", "name": "LPN Ser", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
     }, headers=auth_headers).json()
     assert client.post("/api/receipts", json={
@@ -119,7 +119,7 @@ def test_delete_empty_lpn(auth_headers):
 def test_delete_lpn_with_stock_rejected(auth_headers):
     loc = _loc(auth_headers, "LPN-H")
     lpn = client.post("/api/lpns", json={"lpn_number": "PAL-STK", "location_id": loc["id"]}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "LPN-STK", "name": "LPN Stk", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     assert client.post("/api/receipts", json={
@@ -134,7 +134,7 @@ def test_delete_lpn_with_stock_rejected(auth_headers):
 def test_delete_lpn_detaches_historical_movements(auth_headers):
     loc = _loc(auth_headers, "LPN-I")
     lpn = client.post("/api/lpns", json={"lpn_number": "PAL-HIST", "location_id": loc["id"]}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "LPN-HIST", "name": "LPN Hist", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     assert client.post("/api/receipts", json={

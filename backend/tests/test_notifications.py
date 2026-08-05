@@ -2,7 +2,7 @@ from tests.conftest import client
 
 
 def _make_product(auth_headers, sku="NOTIF-PROD", quantity=10, reorder_level=0):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "quantity": quantity, "reorder_level": reorder_level,
     }, headers=auth_headers).json()
 

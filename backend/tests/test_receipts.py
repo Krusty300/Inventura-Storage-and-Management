@@ -4,7 +4,7 @@ from tests.conftest import TestingSessionLocal, client
 
 
 def _make_product(auth_headers, sku="RCP-PROD", serialized=False):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 20.0, "cost_price": 10.0,
         "quantity": 0, "is_serialized": serialized,
     }, headers=auth_headers).json()
@@ -161,7 +161,7 @@ def test_receipt_with_supplier(auth_headers):
 
 def test_receipt_with_variant_parent_rejected(auth_headers):
     parent = _make_product(auth_headers, sku="RCP-PARENT")
-    client.post("/api/products", json={
+    client.post("/api/products", json={"location_id": 1, 
         "sku": "RCP-VAR", "name": parent["name"], "parent_id": parent["id"],
         "attributes": {"Color": "Red"}, "quantity": 0,
     }, headers=auth_headers).json()

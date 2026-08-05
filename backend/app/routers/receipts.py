@@ -16,7 +16,7 @@ from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
-from app.utils import get_or_404, log_activity, broadcast_change
+from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"], dependencies=[Depends(get_current_user)])
 
@@ -80,7 +80,10 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
             if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
                 raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - receive stock on a specific variant")
             if item.location_id is not None:
-                get_or_404(Location, item.location_id, db)
+                item_loc = get_or_404(Location, item.location_id, db)
+                if not item_loc.is_active:
+                    raise HTTPException(status_code=400, detail=f"Location '{item_loc.path}' is inactive")
+            require_active_location(db, product)
             if item.lpn_id is not None:
                 get_or_404(LPN, item.lpn_id, db)
 

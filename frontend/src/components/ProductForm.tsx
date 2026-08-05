@@ -36,6 +36,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const { addToast } = useToast();
   const { data: settings } = useSettings();
 
@@ -74,8 +75,14 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError("");
     const locationMatch = locations.find((l) => l.path === form.location.trim());
     const locationId = locationMatch ? locationMatch.id : (product ? product.location_id ?? null : null);
+    if (!locationId) {
+      setError("Every product must be assigned to an active location.");
+      setSaving(false);
+      return;
+    }
     let payload: Record<string, unknown> = {
       ...form,
       location_id: locationId,
@@ -257,8 +264,9 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Location</label>
+            <label className="block text-sm font-medium text-ink mb-1">Location *</label>
             <LocationPicker value={form.location} onChange={(v) => setForm({ ...form, location: v })} placeholder="e.g. A-01-B" />
+            {error && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{error}</p>}
           </div>
           {field("Barcode", "barcode")}
         </div>

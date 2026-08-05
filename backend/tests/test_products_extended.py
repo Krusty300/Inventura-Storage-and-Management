@@ -5,7 +5,7 @@ from tests.conftest import client
 
 
 def _make_product(auth_headers, sku, **kwargs):
-    payload = {"sku": sku, "name": sku, "quantity": 10, "reorder_level": 0, **kwargs}
+    payload = {"sku": sku, "name": sku, "quantity": 10, "reorder_level": 0, "location_id": 1, **kwargs}
     return client.post("/api/products", json=payload, headers=auth_headers).json()
 
 
@@ -123,9 +123,9 @@ def test_bulk_edit_requires_admin(auth_headers):
 
 def test_import_products_csv(auth_headers):
     csv_data = (
-        "sku,name,unit_price,cost_price,quantity,reorder_level\n"
-        "IMP-001,Imported One,10.0,5.0,25,10\n"
-        "IMP-002,Imported Two,20.0,10.0,15,5\n"
+        "sku,name,unit_price,cost_price,quantity,reorder_level,location\n"
+        "IMP-001,Imported One,10.0,5.0,25,10,Default Location\n"
+        "IMP-002,Imported Two,20.0,10.0,15,5,Default Location\n"
     )
     resp = client.post(
         "/api/products/import-csv",
@@ -142,10 +142,10 @@ def test_import_products_csv(auth_headers):
 
 def test_import_products_csv_reports_bad_rows(auth_headers):
     csv_data = (
-        "sku,name,quantity\n"
-        "IMP-003,Good Row,5\n"
-        "IMP-004,,3\n"
-        ",Missing Name,2\n"
+        "sku,name,quantity,location\n"
+        "IMP-003,Good Row,5,Default Location\n"
+        "IMP-004,,3,Default Location\n"
+        ",Missing Name,2,Default Location\n"
     )
     resp = client.post(
         "/api/products/import-csv",

@@ -13,14 +13,6 @@ from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/quality-checks", tags=["quality-checks"], dependencies=[Depends(get_current_user)])
 
-# Status transitions allowed from the LOT management screen. A QC failure
-# quarantines a lot; a manual release moves it back to sellable stock.
-ALLOWED_LOT_TRANSITIONS = {
-    "in_stock": {"quarantined", "expired"},
-    "quarantined": {"in_stock", "expired"},
-    "expired": set(),
-}
-
 
 def _load_qc(db: Session, qc_id: int) -> QualityCheck:
     return get_or_404(QualityCheck, qc_id, db, options=[
@@ -32,9 +24,21 @@ def _load_qc(db: Session, qc_id: int) -> QualityCheck:
 def _quarantine_lot(db: Session, lot: Lot) -> None:
     if lot.status == "quarantined":
         return
-    if lot.status not in ALLOWED_LOT_TRANSITIONS.get("in_stock", set()) and lot.status != "in_stock":
+    if lot.status != "in_stock":
         raise HTTPException(status_code=400, detail=f"Cannot quarantine lot '{lot.lot_number}' in status '{lot.status}'")
     lot.status = "quarantined"
+
+
+def _release_lot_if_clear(db: Session, lot: Lot) -> None:
+    """Restore a quarantined lot to sellable stock once no failing quality check
+    still references it (e.g. after its only failing check is updated to pass)."""
+    if lot.status != "quarantined":
+        return
+    still_failing = db.query(QualityCheck.id).filter(
+        QualityCheck.lot_id == lot.id, QualityCheck.result == "fail"
+    ).first()
+    if still_failing is None:
+        lot.status = "in_stock"
 
 
 @router.get("")
@@ -123,12 +127,15 @@ def update_quality_check(qc_id: int, data: QualityCheckUpdate, db: Session = Dep
     if updates.get("result") == "fail" and qc.lot_id is not None:
         _quarantine_lot(db, qc.lot)
     db.commit()
+    if qc.result == "pass" and qc.lot_id is not None:
+        _release_lot_if_clear(db, qc.lot)
+        db.commit()
     qc = _load_qc(db, qc.id)
     log_activity(db, user.id, user.username, "update", "quality_check", qc.id,
                  f"Updated quality check '{qc.qc_number}' ({old_result} -> {qc.result})")
     db.commit()
     broadcast_change("quality_check", "updated")
-    if qc.result == "fail" and qc.lot_id:
+    if qc.lot_id and qc.result in ("pass", "fail"):
         broadcast_change("lot", "updated")
     return qc
 
@@ -136,8 +143,13 @@ def update_quality_check(qc_id: int, data: QualityCheckUpdate, db: Session = Dep
 @router.delete("/{qc_id}", status_code=204)
 def delete_quality_check(qc_id: int, db: Session = Depends(get_db), user=Depends(require_permission("quality_checks.delete"))):
     qc = _load_qc(db, qc_id)
+    lot = qc.lot
+    was_fail = qc.result == "fail" and qc.lot_id is not None
     db.delete(qc)
     db.commit()
+    if was_fail and lot is not None:
+        _release_lot_if_clear(db, lot)
+        db.commit()
     log_activity(db, user.id, user.username, "delete", "quality_check", qc.id, f"Deleted quality check '{qc.qc_number}'")
     db.commit()
     broadcast_change("quality_check", "deleted")

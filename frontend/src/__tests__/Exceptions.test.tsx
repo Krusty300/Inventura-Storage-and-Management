@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -73,5 +73,25 @@ describe("Exceptions Page", () => {
     expect(screen.getByText("10")).toBeInTheDocument();
     expect(screen.getByText("Beverages")).toBeInTheDocument();
     expect(screen.getByText("Acme")).toBeInTheDocument();
+  });
+
+  it("releases a quarantined lot via the Quarantined Lots section", async () => {
+    const putMock = api.put as ReturnType<typeof vi.fn>;
+    putMock.mockResolvedValue({ data: {} });
+    mockExceptions({
+      summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 1, open_cycle_counts: 0, pending_asns: 0 },
+      quarantined_lots: [{
+        id: 5, lot_number: "Q-LOT-1", product_id: 1, product_name: "Widget",
+        on_hand: 12, expiry_date: null, received_date: "2026-01-15T00:00:00",
+      }],
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderWithProviders(<Exceptions />);
+    expect(await screen.findByText("Exceptions Dashboard")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show Quarantined Lots" }));
+    expect(await screen.findByText("Q-LOT-1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Release/ }));
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/lots/5", { status: "in_stock" }));
+    confirmSpy.mockRestore();
   });
 });

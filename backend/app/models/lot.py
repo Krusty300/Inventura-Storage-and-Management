@@ -37,6 +37,10 @@ class Lot(Base):
         return self.product.display_name if self.product else ""
 
     @property
+    def supplier_name(self) -> str:
+        return self.supplier.name if self.supplier else ""
+
+    @property
     def on_hand(self) -> int:
         return sum(sl.quantity for sl in self.stock_lines)
 

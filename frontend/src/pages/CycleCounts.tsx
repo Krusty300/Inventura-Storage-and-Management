@@ -116,8 +116,9 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [rows, setRows] = useState([{ product_id: "" }]);
   const [saving, setSaving] = useState(false);
   const [expectedByProduct, setExpectedByProduct] = useState<Record<number, number>>({});
+  const [locationProducts, setLocationProducts] = useState<{ product_id: number; label: string }[]>([]);
   const { addToast } = useToast();
-  const productList = useSelectableProducts().filter((p) => !p.is_serialized);
+  const productList = useSelectableProducts();
   const [locations, setLocations] = useState<Location[]>([]);
 
   useEffect(() => {
@@ -127,18 +128,39 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   useEffect(() => {
     if (!location_id) {
       setExpectedByProduct({});
+      setLocationProducts([]);
       return;
     }
     api
       .get(`/locations/${location_id}/detail`)
       .then(({ data }) => {
         const map: Record<number, number> = {};
+        const productMap: Record<number, string> = {};
+        const serializedIds = new Set((data.serials || []).map((s: { product_id: number }) => s.product_id));
         for (const sl of data.stock_lines) {
           map[sl.product_id] = (map[sl.product_id] || 0) + sl.quantity;
+          productMap[sl.product_id] = `${sl.product_name}${sl.sku ? ` (${sl.sku})` : ""}`;
+        }
+        for (const s of data.serials || []) {
+          map[s.product_id] = (map[s.product_id] || 0) + 1;
+          if (!productMap[s.product_id]) {
+            productMap[s.product_id] = `${s.product_name}${s.sku ? ` (${s.sku})` : ""}`;
+          }
         }
         setExpectedByProduct(map);
+        setLocationProducts(
+          Object.entries(productMap)
+            .map(([id, label]) => ({
+              product_id: Number(id),
+              label: serializedIds.has(Number(id)) ? `${label} (Serialized)` : label,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label))
+        );
       })
-      .catch(() => setExpectedByProduct({}));
+      .catch(() => {
+        setExpectedByProduct({});
+        setLocationProducts([]);
+      });
   }, [location_id]);
 
   const expectedQty = (productId: string) => (productId ? expectedByProduct[Number(productId)] ?? 0 : 0);
@@ -183,8 +205,8 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Location</label>
-            <select className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)} required>
+            <label className="block text-sm font-medium text-ink mb-1" htmlFor="cc-location">Location</label>
+            <select id="cc-location" className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)} required>
               <option value="">Select location...</option>
               {locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
             </select>
@@ -206,10 +228,12 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
             {rows.map((row, idx) => (
               <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
                 <div className="col-span-7">
-                  <label className="block text-xs font-medium text-muted mb-1">Product</label>
-                  <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
+                  <label className="block text-xs font-medium text-muted mb-1" htmlFor={`cc-product-${idx}`}>Product</label>
+                  <select id={`cc-product-${idx}`} className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                     <option value="">Select...</option>
-                    {productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
+                    {location_id
+                      ? locationProducts.map((p) => <option key={p.product_id} value={p.product_id}>{p.label}</option>)
+                      : productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
                   </select>
                 </div>
                 <div className="col-span-3">

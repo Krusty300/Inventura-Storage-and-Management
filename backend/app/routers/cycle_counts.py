@@ -68,8 +68,6 @@ def create_cycle_count(data: CycleCountCreate, db: Session = Depends(get_db), us
         product = get_or_404(Product, item.product_id, db)
         if not product.is_active:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' is inactive")
-        if product.is_serialized:
-            raise HTTPException(status_code=400, detail=f"'{product.display_name}' is serialized and cannot be cycle counted")
         expected_qty = inventory.on_hand(db, product_id=item.product_id, location_id=data.location_id)
         db.add(CycleCountItem(
             cycle_count_id=cc.id,
@@ -118,14 +116,34 @@ def submit_cycle_count(cc_id: int, data: CycleCountSubmit, db: Session = Depends
             item = by_product.get(line.product_id)
             if item is None:
                 raise HTTPException(status_code=400, detail=f"Product {line.product_id} is not on this cycle count")
+            product = get_or_404(Product, item.product_id, db)
             prev_variance = item.variance
             new_variance = line.counted_qty - item.expected_qty
             delta = new_variance - prev_variance
             item.counted_qty = line.counted_qty
             item.variance = new_variance
             item.status = "ok" if new_variance == 0 else "mismatch"
-            if delta != 0:
-                product = get_or_404(Product, item.product_id, db)
+            if delta == 0:
+                continue
+            if product.is_serialized:
+                if new_variance > 0:
+                    raise HTTPException(status_code=400, detail=(
+                        f"Overage of {new_variance} cannot be posted for serialized '{product.display_name}'. "
+                        "Register the extra serial number(s) before counting."
+                    ))
+                if delta > 0:
+                    raise HTTPException(status_code=400, detail=(
+                        f"Counted quantity for serialized '{product.display_name}' cannot be increased "
+                        "after a shortage was posted."
+                    ))
+                inventory.scrap_serials(
+                    db, product_id=item.product_id, user_id=user.id,
+                    location_id=cc.location_id, quantity=-delta,
+                    reference=f"Cycle count {cc.cc_number}",
+                    notes=f"Counted {line.counted_qty}, expected {item.expected_qty}",
+                )
+                notify_low_stock(db, product)
+            else:
                 inventory.count_adjustment(
                     db, product_id=item.product_id, user_id=user.id,
                     variance=delta, location_id=cc.location_id,

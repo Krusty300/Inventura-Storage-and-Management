@@ -2,7 +2,7 @@ from tests.conftest import client
 
 
 def test_activity_logs_created_on_actions(auth_headers):
-    prod = client.post("/api/products", json={"sku": "ACT-001", "name": "Act Item"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ACT-001", "name": "Act Item"}, headers=auth_headers).json()
     resp = client.get("/api/activity-logs", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
@@ -12,7 +12,7 @@ def test_activity_logs_created_on_actions(auth_headers):
 
 
 def test_activity_log_search_and_filter(auth_headers):
-    client.post("/api/products", json={"sku": "ACT-002", "name": "Zebra Item"}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "ACT-002", "name": "Zebra Item"}, headers=auth_headers)
     res = client.get("/api/activity-logs", params={"search": "Zebra"}, headers=auth_headers).json()
     assert res["total"] >= 1
     res = client.get("/api/activity-logs", params={"action": "delete"}, headers=auth_headers).json()

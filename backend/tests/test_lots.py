@@ -3,16 +3,19 @@ from tests.conftest import TestingSessionLocal, client
 
 
 def _make_product(auth_headers, sku="LOT-PROD"):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 20.0, "cost_price": 10.0, "quantity": 0,
     }, headers=auth_headers).json()
 
 
-def _receive_with_lot(auth_headers, product_id, qty, lot_number, expiry=None):
+def _receive_with_lot(auth_headers, product_id, qty, lot_number, expiry=None, supplier_id=None):
     item = {"product_id": product_id, "quantity": qty, "lot_number": lot_number}
     if expiry:
         item["expiry_date"] = expiry
-    resp = client.post("/api/receipts", json={"items": [item]}, headers=auth_headers)
+    payload = {"items": [item]}
+    if supplier_id:
+        payload["supplier_id"] = supplier_id
+    resp = client.post("/api/receipts", json=payload, headers=auth_headers)
     assert resp.status_code == 201
     return resp.json()
 
@@ -47,6 +50,19 @@ def test_lot_on_hand_tracks_movements(auth_headers):
 
     lot = client.get(f"/api/lots/{lot['id']}", headers=auth_headers).json()
     assert lot["on_hand"] == 3
+
+
+def test_lot_list_returns_supplier_and_expiry(auth_headers):
+    supplier = client.post("/api/suppliers", json={"name": "Coffee Roasters Co"}, headers=auth_headers)
+    assert supplier.status_code == 201
+    prod = _make_product(auth_headers, sku="LOT-SUP")
+    _receive_with_lot(auth_headers, prod["id"], 4, "BQ-001",
+                      expiry="2026-08-26", supplier_id=supplier.json()["id"])
+
+    lots = client.get("/api/lots", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    item = lots["items"][0]
+    assert item["supplier_name"] == "Coffee Roasters Co"
+    assert item["expiry_date"] == "2026-08-26"
 
 
 def test_update_lot_status_and_expiry(auth_headers):

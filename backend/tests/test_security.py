@@ -11,7 +11,7 @@ JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 16
 
 def _make_product(auth_headers, sku="SEC-001"):
     return client.post(
-        "/api/products", json={"sku": sku, "name": "Security Test Product"}, headers=auth_headers
+        "/api/products", json={"location_id": 1, "sku": sku, "name": "Security Test Product"}, headers=auth_headers
     ).json()
 
 
@@ -76,7 +76,7 @@ def test_upload_non_image_extension_rejected(auth_headers):
 def test_create_product_with_unknown_category_rejected(auth_headers):
     resp = client.post(
         "/api/products",
-        json={"sku": "SEC-006", "name": "Bad Ref", "category_id": 99999},
+        json={"location_id": 1, "sku": "SEC-006", "name": "Bad Ref", "category_id": 99999},
         headers=auth_headers,
     )
     assert resp.status_code == 400
@@ -85,7 +85,7 @@ def test_create_product_with_unknown_category_rejected(auth_headers):
 def test_create_product_with_unknown_supplier_rejected(auth_headers):
     resp = client.post(
         "/api/products",
-        json={"sku": "SEC-007", "name": "Bad Ref", "supplier_id": 99999},
+        json={"location_id": 1, "sku": "SEC-007", "name": "Bad Ref", "supplier_id": 99999},
         headers=auth_headers,
     )
     assert resp.status_code == 400
@@ -109,7 +109,7 @@ def test_bulk_edit_with_unknown_supplier_rejected(auth_headers):
 
 def test_delete_supplier_with_orders_soft_deletes(auth_headers):
     prod = client.post(
-        "/api/products", json={"sku": "SEC-010", "name": "Ordered", "cost_price": 5.0}, headers=auth_headers
+        "/api/products", json={"location_id": 1, "sku": "SEC-010", "name": "Ordered", "cost_price": 5.0}, headers=auth_headers
     ).json()
     sup = client.post("/api/suppliers", json={"name": "Has Orders"}, headers=auth_headers).json()
     client.post(

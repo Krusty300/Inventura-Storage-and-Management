@@ -53,7 +53,7 @@ def test_worker_cannot_create_customer(auth_headers):
 
 def test_list_includes_analytics(auth_headers):
     c = client.post("/api/customers", json={"name": "Analytics Co", "email": "a@example.com"}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={"sku": "AN-1", "name": "Analytics Item", "quantity": 10, "unit_price": 10.0}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "AN-1", "name": "Analytics Item", "quantity": 10, "unit_price": 10.0}, headers=auth_headers).json()
     client.post("/api/sales", json={"customer_id": c["id"], "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 10.0}]}, headers=auth_headers)
     row = next(i for i in client.get("/api/customers", headers=auth_headers).json()["items"] if i["id"] == c["id"])
     assert row["total_sales"] == 1
@@ -64,7 +64,7 @@ def test_list_includes_analytics(auth_headers):
 
 def test_customer_stats_endpoint(auth_headers):
     c = client.post("/api/customers", json={"name": "Stats Co"}, headers=auth_headers).json()
-    prod = client.post("/api/products", json={"sku": "ST-1", "name": "Stats Item", "quantity": 10, "unit_price": 8.0}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ST-1", "name": "Stats Item", "quantity": 10, "unit_price": 8.0}, headers=auth_headers).json()
     client.post("/api/sales", json={"customer_id": c["id"], "items": [{"product_id": prod["id"], "quantity": 3, "unit_price": 8.0}]}, headers=auth_headers)
     data = client.get(f"/api/customers/{c['id']}/stats", headers=auth_headers).json()
     assert data["total_sales"] == 1

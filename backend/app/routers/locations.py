@@ -5,8 +5,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import LPN, Location, Product, StockLine
+from app.models import LPN, Location, Product, SerialNumber, StockLine
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
+from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.utils import get_or_404, log_activity, broadcast_change
 
@@ -23,7 +24,7 @@ def _validate_type(location_type: str):
         )
 
 
-def _stats_map(db: Session) -> tuple[dict, dict, dict, dict]:
+def _stats_map(db: Session) -> tuple[dict, dict, dict, dict, dict, dict]:
     line_counts = dict(
         db.query(StockLine.location_id, func.count(StockLine.id)).group_by(StockLine.location_id).all()
     )
@@ -44,11 +45,27 @@ def _stats_map(db: Session) -> tuple[dict, dict, dict, dict]:
     lpn_counts = dict(
         db.query(LPN.location_id, func.count(LPN.id)).group_by(LPN.location_id).all()
     )
-    return line_counts, qty, value, lpn_counts
+    serial_counts = dict(
+        db.query(SerialNumber.location_id, func.count(SerialNumber.id))
+        .filter(SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK)
+        .group_by(SerialNumber.location_id)
+        .all()
+    )
+    serial_value = dict(
+        db.query(
+            SerialNumber.location_id,
+            func.coalesce(func.sum(Product.cost_price), 0),
+        )
+        .join(Product, SerialNumber.product_id == Product.id)
+        .filter(SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK)
+        .group_by(SerialNumber.location_id)
+        .all()
+    )
+    return line_counts, qty, value, lpn_counts, serial_counts, serial_value
 
 
 def _with_counts(locations: list[Location], db: Session) -> list[dict]:
-    line_counts, qty, value, lpn_counts = _stats_map(db)
+    line_counts, qty, value, lpn_counts, serial_counts, serial_value = _stats_map(db)
     return [{
         "id": l.id,
         "name": l.name,
@@ -60,8 +77,9 @@ def _with_counts(locations: list[Location], db: Session) -> list[dict]:
         "path": l.path,
         "stock_line_count": line_counts.get(l.id, 0),
         "lpn_count": lpn_counts.get(l.id, 0),
-        "total_quantity": qty.get(l.id, 0),
-        "stock_value": float(value.get(l.id, 0.0)),
+        "serial_count": serial_counts.get(l.id, 0),
+        "total_quantity": qty.get(l.id, 0) + serial_counts.get(l.id, 0),
+        "stock_value": float(value.get(l.id, 0.0)) + float(serial_value.get(l.id, 0.0)),
     } for l in locations]
 
 
@@ -102,13 +120,15 @@ def list_locations(
 @router.get("/tree")
 def location_tree(db: Session = Depends(get_db)):
     locations = db.query(Location).options(joinedload(Location.parent)).all()
-    line_counts, qty, value, lpn_counts = _stats_map(db)
+    line_counts, qty, value, lpn_counts, serial_counts, serial_value = _stats_map(db)
     nodes = {l.id: {**dict(
         id=l.id, name=l.name, code=l.code, location_type=l.location_type,
         parent_id=l.parent_id, is_active=l.is_active, created_at=l.created_at,
         path=l.path,
     ), "stock_line_count": line_counts.get(l.id, 0), "lpn_count": lpn_counts.get(l.id, 0),
-        "total_quantity": qty.get(l.id, 0), "stock_value": float(value.get(l.id, 0.0)),
+        "serial_count": serial_counts.get(l.id, 0),
+        "total_quantity": qty.get(l.id, 0) + serial_counts.get(l.id, 0),
+        "stock_value": float(value.get(l.id, 0.0)) + float(serial_value.get(l.id, 0.0)),
         "children": []} for l in locations}
     roots = []
     for node in nodes.values():
@@ -129,14 +149,23 @@ def location_summary(db: Session = Depends(get_db)):
     total_value = db.query(
         func.coalesce(func.sum(StockLine.quantity * Product.cost_price), 0)
     ).join(Product, StockLine.product_id == Product.id).scalar() or 0.0
+    total_serial_qty = db.query(func.count(SerialNumber.id)).filter(
+        SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK
+    ).scalar() or 0
+    total_serial_value = db.query(
+        func.coalesce(func.sum(Product.cost_price), 0)
+    ).select_from(SerialNumber).join(Product, SerialNumber.product_id == Product.id).filter(
+        SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK
+    ).scalar() or 0.0
     return {
         "total": total,
         "active": active,
         "inactive": total - active,
         "total_stock_lines": total_stock_lines,
         "total_lpns": total_lpns,
-        "total_quantity": total_quantity,
-        "total_value": float(total_value),
+        "total_quantity": total_quantity + total_serial_qty,
+        "total_value": float(total_value) + float(total_serial_value),
+        "total_serials": total_serial_qty,
     }
 
 
@@ -163,6 +192,16 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
         .order_by(LPN.lpn_number)
         .all()
     )
+    serials = (
+        db.query(SerialNumber)
+        .options(joinedload(SerialNumber.product), joinedload(SerialNumber.lot))
+        .filter(
+            SerialNumber.location_id == location_id,
+            SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK,
+        )
+        .order_by(SerialNumber.serial_number)
+        .all()
+    )
     return {
         "location": _with_counts([loc], db)[0],
         "stock_lines": [{
@@ -183,6 +222,17 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
             "status": l.status,
             "total_quantity": sum(sl.quantity for sl in l.stock_lines),
         } for l in lpns],
+        "serials": [{
+            "id": s.id,
+            "product_id": s.product_id,
+            "product_name": s.product.display_name if s.product else "",
+            "sku": s.product.sku if s.product else "",
+            "serial_number": s.serial_number,
+            "lot_number": s.lot.lot_number if s.lot else "",
+            "status": s.status,
+            "unit_cost": float(s.product.cost_price) if s.product and s.product.cost_price else 0.0,
+            "value": float(s.product.cost_price or 0) if s.product else 0.0,
+        } for s in serials],
     }
 
 
@@ -249,6 +299,11 @@ def delete_location(location_id: int, db: Session = Depends(get_db), user=Depend
     has_lpns = db.query(LPN).filter(LPN.location_id == loc.id).first() is not None
     if has_lpns:
         raise HTTPException(status_code=400, detail="Cannot delete a location that has LPNs")
+    has_serials = db.query(SerialNumber).filter(
+        SerialNumber.location_id == loc.id, SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK
+    ).first() is not None
+    if has_serials:
+        raise HTTPException(status_code=400, detail="Cannot delete a location that has serialized items on hand")
     path = loc.path
     db.delete(loc)
     db.commit()

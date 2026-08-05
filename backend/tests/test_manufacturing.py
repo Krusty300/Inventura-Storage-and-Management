@@ -8,7 +8,7 @@ def _make_location(auth_headers, code, location_type="bin"):
 
 
 def _make_product(auth_headers, sku, serialized=False):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "cost_price": 4.0, "quantity": 0,
         "is_serialized": serialized,
     }, headers=auth_headers).json()
@@ -265,6 +265,80 @@ def test_lot_transition_validation(auth_headers):
     resp = client.put(f"/api/lots/{lot_id}", json={"status": "in_stock"}, headers=auth_headers)
     assert resp.status_code == 400
     assert "transition" in resp.json()["detail"].lower()
+
+
+def test_qc_fail_on_expired_lot_rejected(auth_headers):
+    prod = _make_product(auth_headers, "QC-EXPIRED")
+    loc = _make_location(auth_headers, "QC-EXPIRED-LOC")
+    assert _receive(auth_headers, prod["id"], 5, loc["id"], lot_number="LOT-EXP").status_code == 201
+    lots = client.get("/api/lots", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    lot_id = lots["items"][0]["id"]
+    assert client.put(f"/api/lots/{lot_id}", json={"status": "expired"}, headers=auth_headers).status_code == 200
+
+    resp = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "lot_id": lot_id, "result": "fail",
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "expired"
+
+
+def test_delete_failing_qc_releases_lot_when_none_remain(auth_headers):
+    prod = _make_product(auth_headers, "QC-DELETE")
+    loc = _make_location(auth_headers, "QC-DELETE-LOC")
+    assert _receive(auth_headers, prod["id"], 5, loc["id"], lot_number="LOT-DEL").status_code == 201
+    lots = client.get("/api/lots", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    lot_id = lots["items"][0]["id"]
+
+    qc1 = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "lot_id": lot_id, "result": "fail",
+    }, headers=auth_headers).json()
+    qc2 = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "lot_id": lot_id, "result": "fail",
+    }, headers=auth_headers).json()
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "quarantined"
+
+    assert client.delete(f"/api/quality-checks/{qc1['id']}", headers=auth_headers).status_code == 204
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "quarantined"
+
+    assert client.delete(f"/api/quality-checks/{qc2['id']}", headers=auth_headers).status_code == 204
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "in_stock"
+
+
+def test_qc_fail_then_pass_releases_lot(auth_headers):
+    prod = _make_product(auth_headers, "QC-RELEASE")
+    loc = _make_location(auth_headers, "QC-RELEASE-LOC")
+    assert _receive(auth_headers, prod["id"], 5, loc["id"], lot_number="LOT-REL").status_code == 201
+    lots = client.get("/api/lots", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    lot_id = lots["items"][0]["id"]
+
+    qc = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "lot_id": lot_id, "result": "fail",
+    }, headers=auth_headers).json()
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "quarantined"
+
+    assert client.put(f"/api/quality-checks/{qc['id']}", json={"result": "pass"}, headers=auth_headers).status_code == 200
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "in_stock"
+
+
+def test_qc_pass_keeps_quarantine_when_another_fail_exists(auth_headers):
+    prod = _make_product(auth_headers, "QC-MULTI")
+    loc = _make_location(auth_headers, "QC-MULTI-LOC")
+    assert _receive(auth_headers, prod["id"], 5, loc["id"], lot_number="LOT-MULTI").status_code == 201
+    lots = client.get("/api/lots", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    lot_id = lots["items"][0]["id"]
+
+    qc1 = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "lot_id": lot_id, "result": "fail",
+    }, headers=auth_headers).json()
+    qc2 = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "lot_id": lot_id, "result": "fail",
+    }, headers=auth_headers).json()
+
+    assert client.put(f"/api/quality-checks/{qc1['id']}", json={"result": "pass"}, headers=auth_headers).status_code == 200
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "quarantined"
+
+    assert client.put(f"/api/quality-checks/{qc2['id']}", json={"result": "pass"}, headers=auth_headers).status_code == 200
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "in_stock"
 
 
 # ---------------------------------------------------------------- Trace

@@ -34,6 +34,18 @@ def reset_rate_limit():
     yield
 
 
+@pytest.fixture(autouse=True)
+def default_location(setup_db):
+    from app.models.location import Location
+    db = TestingSessionLocal()
+    loc = Location(name="Default Location", code="DFT-0")
+    db.add(loc)
+    db.commit()
+    loc_id = loc.id
+    db.close()
+    return loc_id
+
+
 app.dependency_overrides[get_db] = override_get_db
 
 client = TestClient(app)

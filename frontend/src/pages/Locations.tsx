@@ -30,6 +30,7 @@ interface LocationSummary {
   total_lpns: number;
   total_quantity: number;
   total_value: number;
+  total_serials: number;
 }
 
 export default function Locations() {
@@ -184,6 +185,7 @@ export default function Locations() {
     { label: "Inactive", value: summary?.inactive ?? 0 },
     { label: "Stock Lines", value: summary?.total_stock_lines ?? 0 },
     { label: "LPNs", value: summary?.total_lpns ?? 0 },
+    { label: "Serialized Units", value: summary?.total_serials ?? 0 },
     { label: "Stock Value", value: formatCurrency(summary?.total_value ?? 0, currencySymbol, 0) },
   ];
 

@@ -8,7 +8,7 @@ def _make_location(auth_headers, code, location_type="bin"):
 
 
 def _make_product(auth_headers, sku, serialized=False, cost=4.0):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "cost_price": cost, "quantity": 0,
         "is_serialized": serialized,
     }, headers=auth_headers).json()
@@ -44,6 +44,19 @@ def _create_shipment(auth_headers, items, customer_id=None, sale_id=None):
 def test_shipment_create_rejects_insufficient_stock(auth_headers):
     p = _make_product(auth_headers, "SHP-P")
     resp = _create_shipment(auth_headers, [(p["id"], 5)])
+    assert resp.status_code == 400
+    assert "insufficient" in resp.json()["detail"].lower()
+
+
+def test_shipment_create_rejects_quarantined_stock(auth_headers):
+    p = _make_product(auth_headers, "SHP-QLOC")
+    loc = _make_location(auth_headers, "SHP-QLOC")
+    assert _receive(auth_headers, p["id"], 5, loc["id"], lot_number="Q-LOT").status_code == 201
+    lots = client.get("/api/lots", params={"product_id": p["id"]}, headers=auth_headers).json()
+    lot_id = lots["items"][0]["id"]
+    assert client.put(f"/api/lots/{lot_id}", json={"status": "quarantined"}, headers=auth_headers).status_code == 200
+
+    resp = _create_shipment(auth_headers, [(p["id"], 2)])
     assert resp.status_code == 400
     assert "insufficient" in resp.json()["detail"].lower()
 
@@ -144,7 +157,7 @@ def test_shipment_stats(auth_headers):
 
 def test_shipment_variant_products(auth_headers):
     parent = _make_product(auth_headers, "SHP-VAR-PARENT")
-    variant = client.post("/api/products", json={
+    variant = client.post("/api/products", json={"location_id": 1, 
         "sku": "SHP-VAR-RED", "name": parent["name"], "parent_id": parent["id"],
         "attributes": {"Color": "Red"}, "quantity": 0,
     }, headers=auth_headers).json()

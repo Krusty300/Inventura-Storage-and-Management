@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { AlertTriangle, PackageX, ShieldAlert, ClipboardList, Truck, Search } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, PackageX, ShieldAlert, ClipboardList, Truck, Search, Undo2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { ExceptionsReport, LotGenealogy } from "../types";
 import Skeleton from "../components/Skeleton";
 import Modal from "../components/Modal";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+import { parseLocalDate } from "../utils/date";
 
 type Section = "low_stock" | "zero_stock" | "quarantined_lots" | "open_cycle_counts" | "pending_asns";
 
@@ -108,7 +111,26 @@ function ZeroStockTable({ data }: { data: ExceptionsReport }) {
 
 function QuarantineTable({ data }: { data: ExceptionsReport }) {
   const [recallLot, setRecallLot] = useState<(typeof data.quarantined_lots)[number] | null>(null);
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const { addToast } = useToast();
+  const [releasing, setReleasing] = useState<number | null>(null);
   if (data.quarantined_lots.length === 0) return <p className="text-sm text-muted">No quarantined lots.</p>;
+
+  const releaseLot = async (lot: (typeof data.quarantined_lots)[number]) => {
+    if (!confirm(`Release lot ${lot.lot_number} back to sellable stock?`)) return;
+    setReleasing(lot.id);
+    try {
+      await api.put(`/lots/${lot.id}`, { status: "in_stock" });
+      addToast(`Lot ${lot.lot_number} released`, "success");
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to release lot", "error");
+    } finally {
+      setReleasing(null);
+    }
+  };
+
   return (
     <div>
       <table className="w-full text-sm">
@@ -119,12 +141,20 @@ function QuarantineTable({ data }: { data: ExceptionsReport }) {
               <td className="py-2 font-medium">{l.lot_number}</td>
               <td className="py-2 text-muted">{l.product_name}</td>
               <td className="py-2 text-orange-600 dark:text-orange-400 font-medium">{l.on_hand}</td>
-              <td className="py-2 text-muted">{l.expiry_date ? new Date(l.expiry_date).toLocaleDateString() : "—"}</td>
-              <td className="py-2 text-muted">{new Date(l.received_date).toLocaleDateString()}</td>
+              <td className="py-2 text-muted">{l.expiry_date ? parseLocalDate(l.expiry_date).toLocaleDateString() : "—"}</td>
+              <td className="py-2 text-muted">{parseLocalDate(l.received_date).toLocaleDateString()}</td>
               <td className="py-2">
-                <button onClick={() => setRecallLot(l)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
-                  <Search size={12} /> Recall
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => setRecallLot(l)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
+                    <Search size={12} /> Recall
+                  </button>
+                  {can("lots.update") && (
+                    <button onClick={() => releaseLot(l)} disabled={releasing === l.id}
+                      className="btn-primary text-xs py-1 px-2 inline-flex items-center gap-1">
+                      <Undo2 size={12} /> {releasing === l.id ? "Releasing..." : "Release"}
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

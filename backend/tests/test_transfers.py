@@ -14,7 +14,7 @@ def _receive(auth_headers, product_id, qty, location_id=None, lot=None):
 def test_transfer_posts_matched_pair(auth_headers):
     src = _loc(auth_headers, "TRF-A")
     dst = _loc(auth_headers, "TRF-B")
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "TRF-PROD", "name": "Transfer Prod", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     _receive(auth_headers, prod["id"], 10, src["id"])
@@ -43,7 +43,7 @@ def test_transfer_posts_matched_pair(auth_headers):
 def test_transfer_insufficient_stock(auth_headers):
     src = _loc(auth_headers, "TRF-C")
     dst = _loc(auth_headers, "TRF-D")
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "TRF-LOW", "name": "Low", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     _receive(auth_headers, prod["id"], 2, src["id"])
@@ -56,7 +56,7 @@ def test_transfer_insufficient_stock(auth_headers):
 
 def test_transfer_same_location_rejected(auth_headers):
     src = _loc(auth_headers, "TRF-E")
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "TRF-SAME", "name": "Same", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
     _receive(auth_headers, prod["id"], 3, src["id"])
@@ -69,7 +69,7 @@ def test_transfer_same_location_rejected(auth_headers):
 def test_transfer_serialized_blocked(auth_headers):
     src = _loc(auth_headers, "TRF-F")
     dst = _loc(auth_headers, "TRF-G")
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "TRF-SER", "name": "Ser", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
     }, headers=auth_headers).json()
     resp = client.post("/api/stock-movements/transfer", json={
@@ -77,3 +77,83 @@ def test_transfer_serialized_blocked(auth_headers):
     }, headers=auth_headers)
     assert resp.status_code == 400
     assert "serial" in resp.json()["detail"].lower()
+
+
+def _receive_serials(auth_headers, product_id, serials, location_id):
+    return client.post("/api/receipts", json={
+        "items": [{"product_id": product_id, "quantity": len(serials), "serial_numbers": serials, "location_id": location_id}],
+    }, headers=auth_headers)
+
+
+def test_transfer_serialized_by_serial_number(auth_headers):
+    src = _loc(auth_headers, "TRF-SRCA")
+    dst = _loc(auth_headers, "TRF-DSTA")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-SERA", "name": "Ser A", "unit_price": 1.0, "cost_price": 2.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert _receive_serials(auth_headers, prod["id"], ["S-A1", "S-A2"], src["id"]).status_code == 201
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert len(serials) == 2
+
+    resp = client.post("/api/stock-movements/transfer-serial", json={
+        "product_id": prod["id"], "serial_ids": [s["id"] for s in serials],
+        "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["reference"].startswith("TRF-")
+    assert body["count"] == 2
+    types = [m["movement_type"] for m in body["movements"]]
+    assert types.count("transfer_out") == 2
+    assert types.count("transfer_in") == 2
+
+    after = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    for s in after:
+        assert s["location_id"] == dst["id"]
+    prod_after = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert prod_after["quantity"] == 2
+
+
+def test_transfer_serial_wrong_source_rejected(auth_headers):
+    src = _loc(auth_headers, "TRF-SRCB")
+    dst = _loc(auth_headers, "TRF-DSTB")
+    other = _loc(auth_headers, "TRF-OTHB")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-SERB", "name": "Ser B", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert _receive_serials(auth_headers, prod["id"], ["S-B1"], src["id"]).status_code == 201
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+
+    resp = client.post("/api/stock-movements/transfer-serial", json={
+        "product_id": prod["id"], "serial_ids": [serials[0]["id"]],
+        "from_location_id": other["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "not at" in resp.json()["detail"].lower()
+
+
+def test_transfer_serial_requires_serialized_product(auth_headers):
+    src = _loc(auth_headers, "TRF-SRCC")
+    dst = _loc(auth_headers, "TRF-DSTC")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-NOTSER", "name": "Not Ser", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    resp = client.post("/api/stock-movements/transfer-serial", json={
+        "product_id": prod["id"], "serial_ids": [1], "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "not serialized" in resp.json()["detail"].lower()
+
+
+def test_transfer_serial_same_location_rejected(auth_headers):
+    src = _loc(auth_headers, "TRF-SRCD")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-SERD", "name": "Ser D", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert _receive_serials(auth_headers, prod["id"], ["S-D1"], src["id"]).status_code == 201
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    resp = client.post("/api/stock-movements/transfer-serial", json={
+        "product_id": prod["id"], "serial_ids": [serials[0]["id"]],
+        "from_location_id": src["id"], "to_location_id": src["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400

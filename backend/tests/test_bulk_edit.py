@@ -10,7 +10,7 @@ def _worker(auth_headers, username):
 
 
 def _make_order(auth_headers, sku):
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "cost_price": 5.0, "quantity": 10,
     }, headers=auth_headers).json()
     return client.post("/api/orders", json={
@@ -130,7 +130,7 @@ def test_bulk_edit_orders_rejects_invalid_transition(auth_headers):
 # --- Sales ---------------------------------------------------------------
 
 def test_bulk_edit_sales_notes(auth_headers):
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "SALE-B1", "name": "S1", "unit_price": 10.0, "cost_price": 5.0, "quantity": 10,
     }, headers=auth_headers).json()
     s = client.post("/api/sales", json={
@@ -152,7 +152,7 @@ def test_bulk_edit_no_fields(auth_headers):
     assert client.patch("/api/customers/bulk-edit", json={"ids": [cu["id"]]}, headers=auth_headers).status_code == 400
     o = _make_order(auth_headers, "NF-O")
     assert client.patch("/api/orders/bulk-edit", json={"ids": [o["id"]]}, headers=auth_headers).status_code == 400
-    prod = client.post("/api/products", json={"sku": "NF-SALE", "name": "NS", "unit_price": 1.0, "quantity": 5}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "NF-SALE", "name": "NS", "unit_price": 1.0, "quantity": 5}, headers=auth_headers).json()
     sale = client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 1.0}]}, headers=auth_headers).json()
     assert client.patch("/api/sales/bulk-edit", json={"ids": [sale["id"]]}, headers=auth_headers).status_code == 400
 
@@ -174,6 +174,6 @@ def test_workers_cannot_bulk_edit(auth_headers):
     assert client.patch("/api/customers/bulk-edit", json={"ids": [cu["id"]], "notes": "x"}, headers=worker).status_code == 403
     o = _make_order(auth_headers, "W-O")
     assert client.patch("/api/orders/bulk-edit", json={"ids": [o["id"]], "notes": "x"}, headers=worker).status_code == 403
-    prod = client.post("/api/products", json={"sku": "W-SALE", "name": "WS", "unit_price": 1.0, "quantity": 5}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "W-SALE", "name": "WS", "unit_price": 1.0, "quantity": 5}, headers=auth_headers).json()
     sale = client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 1.0}]}, headers=auth_headers).json()
     assert client.patch("/api/sales/bulk-edit", json={"ids": [sale["id"]], "notes": "x"}, headers=worker).status_code == 403

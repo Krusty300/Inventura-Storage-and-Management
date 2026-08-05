@@ -24,6 +24,8 @@ const entityQueryMap: Record<string, string[]> = {
   user: ["users"],
   activity_log: ["activity-logs"],
   notification: ["notifications"],
+  lot: ["lots", "lot-genealogy", "exceptions"],
+  quality_check: ["quality-checks", "exceptions"],
 };
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {

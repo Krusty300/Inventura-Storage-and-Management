@@ -10,7 +10,7 @@ def _register(auth_headers, username, email, password="testpass123", role="worke
 
 
 def _make_product(auth_headers, sku="P1-PROD", quantity=10):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 20.00, "cost_price": 10.00, "quantity": quantity,
     }, headers=auth_headers).json()
 

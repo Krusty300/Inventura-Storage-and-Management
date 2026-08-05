@@ -1,0 +1,191 @@
+import { useState } from "react";
+import { Eye, Fingerprint } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import api from "../api/client";
+import type { PaginatedResponse, SerialNumber, StockMovement } from "../types";
+import Modal from "../components/Modal";
+import Pagination from "../components/Pagination";
+import Skeleton from "../components/Skeleton";
+import EmptyState from "../components/EmptyState";
+import { useDebounce } from "../hooks/useDebounce";
+
+const PAGE_SIZE = 25;
+
+const STATUS_FILTERS = [
+  { value: "", label: "All" },
+  { value: "in_stock", label: "In Stock" },
+  { value: "reserved", label: "Reserved" },
+  { value: "sold", label: "Sold" },
+  { value: "quarantined", label: "Quarantined" },
+  { value: "scrapped", label: "Scrapped" },
+] as const;
+
+function statusBadge(status: string) {
+  switch (status) {
+    case "in_stock": return "badge-success";
+    case "reserved": return "badge-info";
+    case "quarantined": return "badge-warning";
+    case "scrapped": return "badge-danger";
+    default: return "";
+  }
+}
+
+export default function SerialNumbers() {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [viewing, setViewing] = useState<SerialNumber | null>(null);
+  const debouncedSearch = useDebounce(search, 300);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["serial-numbers", debouncedSearch, status, page, pageSize],
+    queryFn: async () => {
+      const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (status) params.status = status;
+      const { data } = await api.get("/serial-numbers", { params });
+      return data as PaginatedResponse<SerialNumber>;
+    },
+  });
+
+  const serials = data?.items || [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-ink">Serial Numbers</h1>
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="relative flex-1 max-w-md">
+          <input className="input pl-10" placeholder="Search by serial number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search serial numbers" />
+        </div>
+        <div role="group" aria-label="Filter by status" className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => { setStatus(f.value); setPage(1); }}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${status === f.value ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card overflow-hidden p-0">
+        <table className="w-full text-sm" role="grid" aria-label="Serial numbers table">
+          <thead>
+            <tr className="bg-app text-left">
+              <th className="px-4 py-3 font-medium text-muted">Serial #</th>
+              <th className="px-4 py-3 font-medium text-muted">Product</th>
+              <th className="px-4 py-3 font-medium text-muted">Lot</th>
+              <th className="px-4 py-3 font-medium text-muted">Location</th>
+              <th className="px-4 py-3 font-medium text-muted">Status</th>
+              <th className="px-4 py-3 font-medium text-muted">Sold</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {isLoading ? (
+              <Skeleton rows={5} cols={7} />
+            ) : serials.length === 0 ? (
+              <EmptyState title="No serial numbers yet" message="Serialized products are tracked individually. Record a receipt for a serialized product to create serial numbers." />
+            ) : serials.map((s) => (
+              <tr key={s.id} className="hover:bg-app">
+                <td className="px-4 py-3 font-medium font-mono">{s.serial_number}</td>
+                <td className="px-4 py-3 text-muted">{s.product_name}</td>
+                <td className="px-4 py-3 text-muted">{s.lot_number || "—"}</td>
+                <td className="px-4 py-3 text-muted">{s.location_name || "—"}</td>
+                <td className="px-4 py-3">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
+                <td className="px-4 py-3 text-muted">{s.sold_at ? new Date(s.sold_at).toLocaleDateString() : "—"}</td>
+                <td className="px-4 py-3">
+                  <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${s.serial_number}`}><Eye size={16} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
+
+      {viewing && <SerialDetail serial={viewing} onClose={() => setViewing(null)} />}
+    </div>
+  );
+}
+
+function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () => void }) {
+  const { data: movements, isLoading } = useQuery({
+    queryKey: ["serial-movements", serial.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/serial-numbers/${serial.id}/movements`);
+      return data as StockMovement[];
+    },
+  });
+
+  return (
+    <Modal open onClose={onClose} title={`Serial ${serial.serial_number}`} wide>
+      <div className="space-y-4">
+        <div className="grid grid-cols-4 gap-4 text-sm">
+          <div>
+            <p className="text-muted">Product</p>
+            <p className="font-medium">{serial.product_name}</p>
+          </div>
+          <div>
+            <p className="text-muted">Lot</p>
+            <p className="font-medium">{serial.lot_number || "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted">Location</p>
+            <p className="font-medium">{serial.location_name || "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted">Status</p>
+            <p className="font-medium">{statusBadge(serial.status) ? <span className={`badge ${statusBadge(serial.status)}`}>{serial.status}</span> : <span className="capitalize">{serial.status}</span>}</p>
+          </div>
+        </div>
+
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="bg-app px-4 py-2 flex items-center gap-2">
+            <Fingerprint size={14} className="text-muted" />
+            <span className="text-sm font-medium text-ink">Movements</span>
+          </div>
+          {isLoading ? (
+            <p className="text-sm text-muted px-4 py-3">Loading...</p>
+          ) : !movements || movements.length === 0 ? (
+            <p className="text-sm text-muted px-4 py-3">No movements recorded for this serial number.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-app text-left">
+                  <th className="px-4 py-2 font-medium text-muted">Date</th>
+                  <th className="px-4 py-2 font-medium text-muted">Type</th>
+                  <th className="px-4 py-2 font-medium text-muted">Qty</th>
+                  <th className="px-4 py-2 font-medium text-muted">User</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {movements.map((m) => (
+                  <tr key={m.id}>
+                    <td className="px-4 py-2 text-muted">{new Date(m.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-2 capitalize">{m.movement_type}</td>
+                    <td className={`px-4 py-2 ${m.quantity_change < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                      {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}
+                    </td>
+                    <td className="px-4 py-2 text-muted">{m.username}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button onClick={onClose} className="btn-secondary">Close</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

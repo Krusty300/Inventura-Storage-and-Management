@@ -3,7 +3,7 @@ from tests.conftest import TestingSessionLocal, client
 
 
 def _make_product(auth_headers, sku, price=10.0, qty=0, reorder=5):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": price, "quantity": qty, "reorder_level": reorder,
     }, headers=auth_headers).json()
 
@@ -51,7 +51,7 @@ def test_exceptions_quarantined_lot_and_pending_asn(auth_headers):
 
 
 def test_quarantined_stock_excluded_from_sellable_metrics(auth_headers):
-    prod = client.post("/api/products", json={
+    prod = client.post("/api/products", json={"location_id": 1, 
         "sku": "SEL-Q", "name": "SEL-Q", "unit_price": 15.0, "cost_price": 8.0,
         "quantity": 0, "reorder_level": 5,
     }, headers=auth_headers).json()

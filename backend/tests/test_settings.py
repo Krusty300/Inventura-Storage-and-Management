@@ -13,19 +13,19 @@ def test_get_settings_defaults(auth_headers):
 
 def test_default_reorder_level_applies_to_new_products(auth_headers):
     client.put("/api/settings", json={"default_reorder_level": 25}, headers=auth_headers)
-    prod = client.post("/api/products", json={"sku": "REORDER-1", "name": "Reorder Item"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "REORDER-1", "name": "Reorder Item"}, headers=auth_headers).json()
     assert prod["reorder_level"] == 25
 
 
 def test_explicit_reorder_level_overrides_default(auth_headers):
     client.put("/api/settings", json={"default_reorder_level": 25}, headers=auth_headers)
-    prod = client.post("/api/products", json={"sku": "REORDER-2", "name": "Reorder Item", "reorder_level": 5}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "REORDER-2", "name": "Reorder Item", "reorder_level": 5}, headers=auth_headers).json()
     assert prod["reorder_level"] == 5
 
 
 def test_default_reorder_level_applies_to_csv_import(auth_headers):
     client.put("/api/settings", json={"default_reorder_level": 30}, headers=auth_headers)
-    csv_data = "sku,name,quantity\nCSV-REORDER-1,CSV Reorder Item,0\n"
+    csv_data = "sku,name,quantity,location\nCSV-REORDER-1,CSV Reorder Item,0,Default Location\n"
     resp = client.post("/api/products/import-csv", files={"file": ("products.csv", csv_data, "text/csv")}, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["created"] == 1
@@ -37,7 +37,7 @@ def test_default_reorder_level_applies_to_csv_import(auth_headers):
 
 def test_csv_reorder_level_column_overrides_default(auth_headers):
     client.put("/api/settings", json={"default_reorder_level": 30}, headers=auth_headers)
-    csv_data = "sku,name,quantity,reorder_level\nCSV-REORDER-2,CSV Reorder Item 2,0,12\n"
+    csv_data = "sku,name,quantity,reorder_level,location\nCSV-REORDER-2,CSV Reorder Item 2,0,12,Default Location\n"
     resp = client.post("/api/products/import-csv", files={"file": ("products.csv", csv_data, "text/csv")}, headers=auth_headers)
     assert resp.status_code == 200
     prod = client.get("/api/products?search=CSV-REORDER-2", headers=auth_headers).json()
@@ -55,7 +55,7 @@ def test_update_settings(auth_headers):
 
 def test_settings_tax_rate_applies_to_sales(auth_headers):
     client.put("/api/settings", json={"tax_rate": 10.0}, headers=auth_headers)
-    prod = client.post("/api/products", json={"sku": "TAX-001", "name": "Tax Item", "unit_price": 100.0, "quantity": 5}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "TAX-001", "name": "Tax Item", "unit_price": 100.0, "quantity": 5}, headers=auth_headers).json()
     sale = client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 100.0}]}, headers=auth_headers).json()
     assert sale["subtotal"] == 100.0
     assert sale["tax_amount"] == 10.0

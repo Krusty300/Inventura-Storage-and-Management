@@ -8,7 +8,7 @@ def _make_location(auth_headers, code):
 
 
 def _make_product(auth_headers, sku, cost=4.0):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "cost_price": cost, "quantity": 0,
     }, headers=auth_headers).json()
 

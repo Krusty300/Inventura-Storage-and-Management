@@ -3,7 +3,7 @@ from tests.conftest import TestingSessionLocal, client
 
 
 def _make_product(auth_headers, sku="ASN-PROD"):
-    return client.post("/api/products", json={
+    return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "quantity": 0,
     }, headers=auth_headers).json()
 
