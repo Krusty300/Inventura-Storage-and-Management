@@ -60,11 +60,11 @@ describe("Receipts Page", () => {
     expect(screen.getByLabelText("View receipt RCV-0001")).toBeInTheDocument();
   });
 
-  it("hides admin actions for workers", async () => {
+  it("shows record receipt action for workers", async () => {
     mockReceipts([mockReceipt()]);
     renderWithProviders(<Receipts />, { role: "worker" });
     expect(await screen.findByText("RCV-0001")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Record Receipt" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record Receipt" })).toBeInTheDocument();
     expect(screen.getByLabelText("Export receipts to CSV")).toBeInTheDocument();
     expect(screen.getByLabelText("View receipt RCV-0001")).toBeInTheDocument();
   });

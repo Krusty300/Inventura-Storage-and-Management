@@ -127,11 +127,15 @@ def test_adjust_stock_same_quantity_rejected(auth_headers):
     assert resp.status_code == 400
 
 
-def test_stock_movement_requires_admin(auth_headers):
+def test_worker_can_record_but_cannot_adjust_stock(auth_headers):
     client.post("/api/users", json={"username": "stockworker", "email": "stockworker@example.com", "password": "testpass123", "role": "worker"}, headers=auth_headers)
     token = client.post("/api/auth/login", json={"username": "stockworker", "password": "testpass123"}).json()["access_token"]
     prod = client.post("/api/products", json={"sku": "STK014", "name": "Worker Access", "quantity": 10}, headers=auth_headers).json()
     resp = client.post("/api/stock-movements", json={
         "product_id": prod["id"], "quantity_change": 1, "movement_type": "in",
     }, headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 403
+    assert resp.status_code == 201
+    adjust = client.post("/api/stock-movements/adjust", json={
+        "product_id": prod["id"], "new_quantity": 20,
+    }, headers={"Authorization": f"Bearer {token}"})
+    assert adjust.status_code == 403

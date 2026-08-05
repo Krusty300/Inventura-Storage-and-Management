@@ -59,11 +59,11 @@ describe("StockMovements Page", () => {
     expect(screen.getByLabelText("Delete movement 1")).toBeInTheDocument();
   });
 
-  it("hides admin actions for workers", async () => {
+  it("allows workers to record but not edit or delete movements", async () => {
     mockMovements([mockMovement()]);
     renderWithProviders(<StockMovements />, { role: "worker" });
     expect(await screen.findByText("Widget")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Record Movement" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record Movement" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Edit movement 1")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Delete movement 1")).not.toBeInTheDocument();
   });

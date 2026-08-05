@@ -255,7 +255,7 @@ export default function Dashboard() {
               <button
                 key={a.label}
                 onClick={() => navigate(a.path)}
-                className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border hover:border-indigo-300 hover:bg-indigo-50 dark:bg-indigo-500/10 transition-colors text-sm font-medium text-ink"
+                className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border hover:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-400/60 transition-colors text-sm font-medium text-ink"
               >
                 <a.icon size={18} className="text-indigo-600 dark:text-indigo-400" />
                 {a.label}

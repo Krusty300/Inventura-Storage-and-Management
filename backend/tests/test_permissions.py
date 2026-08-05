@@ -58,12 +58,12 @@ def test_worker_cannot_import_suppliers(auth_headers):
     assert resp.status_code == 403
 
 
-def test_worker_cannot_record_or_adjust_stock(auth_headers):
+def test_worker_can_record_but_cannot_adjust_stock(auth_headers):
     prod = _make_product(auth_headers)
     worker = _register(auth_headers, "w_stock", "w_stock@example.com")
     assert client.post("/api/stock-movements", json={
         "product_id": prod["id"], "quantity_change": 5, "movement_type": "in",
-    }, headers=worker).status_code == 403
+    }, headers=worker).status_code == 201
     assert client.post("/api/stock-movements/adjust", json={
         "product_id": prod["id"], "new_quantity": 20,
     }, headers=worker).status_code == 403
@@ -74,7 +74,7 @@ def test_worker_cannot_update_settings(auth_headers):
     assert client.put("/api/settings", json={"store_name": "Hacked"}, headers=worker).status_code == 403
 
 
-def test_worker_cannot_create_receipt_or_update_lot(auth_headers):
+def test_worker_can_create_receipt_but_cannot_update_lot(auth_headers):
     prod = client.post("/api/products", json={
         "sku": "PERM-RCP", "name": "Rcp", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
@@ -88,7 +88,7 @@ def test_worker_cannot_create_receipt_or_update_lot(auth_headers):
     resp = client.post("/api/receipts", json={
         "items": [{"product_id": prod["id"], "quantity": 1}],
     }, headers=worker)
-    assert resp.status_code == 403
+    assert resp.status_code == 201
     assert client.put(f"/api/lots/{lot_id}", json={"status": "quarantined"}, headers=worker).status_code == 403
 
 

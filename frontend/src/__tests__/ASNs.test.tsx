@@ -86,7 +86,7 @@ describe("ASNs Page", () => {
     expect(await screen.findByText("ASN-0001")).toBeInTheDocument();
     expect(screen.getByLabelText("View ASN-0001")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New ASN" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Receive" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Receive" })).toBeInTheDocument();
   });
 
   it("shows empty state when no ASNs", async () => {

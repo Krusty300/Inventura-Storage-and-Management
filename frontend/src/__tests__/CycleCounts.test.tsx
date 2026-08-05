@@ -77,13 +77,13 @@ describe("CycleCounts Page", () => {
     expect(screen.getByLabelText("Count CC-0001")).toBeInTheDocument();
   });
 
-  it("hides admin actions for workers", async () => {
+  it("shows counting actions for workers", async () => {
     mockCounts([mockCycleCount()]);
     renderWithProviders(<CycleCounts />, { role: "worker" });
     expect(await screen.findByText("CC-0001")).toBeInTheDocument();
     expect(screen.getByLabelText("View CC-0001")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "New Count" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Count CC-0001")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New Count" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Count CC-0001")).toBeInTheDocument();
   });
 
   it("shows empty state when no cycle counts", async () => {

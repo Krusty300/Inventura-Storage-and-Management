@@ -156,10 +156,10 @@ describe("Dashboard Page", () => {
     mockDashboard();
     renderWithProviders(<Dashboard />, { role: "worker" });
     expect(await screen.findByText("Quick Actions")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record Receipt" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "Record Receipt" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "New ASN" })).not.toBeInTheDocument();
     });
-    expect(screen.queryByRole("button", { name: "New ASN" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Order" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New Sale" })).toBeInTheDocument();
   });

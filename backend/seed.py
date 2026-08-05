@@ -636,7 +636,7 @@ def create_asns(db, users, suppliers, by_sku, lots, locs):
 
     # 3) Fully received - soft drinks from DrinksDirect.
     asn = ASN(asn_number=f"ASN-{asn_counter:04d}",
-              supplier_id=sup["DrinksDirect"].id, user_id=worker.id,
+              supplier_id=sup["DrinksDirect"].id, user_id=admin.id,
               expected_arrival=days_ago(7).date(), notes="Soft drinks delivery",
               status="received", received_at=days_ago(7, hour=14),
               created_at=days_ago(10, hour=9))
@@ -1318,21 +1318,21 @@ def create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, b
         (admin, "create", "category", 1, "Created category 'Electronics'", 40),
         (admin, "create", "supplier", 1, "Created supplier 'TechSource Distribution'", 38),
         (admin, "create", "customer", 1, "Created customer 'Acme Retail Store'", 36),
-        (worker, "create", "product", 1, "Created product 'Laptop Stand Pro'", 30),
-        (worker, "create", "product", by_sku["TECH-030"].id, "Created serialized product 'Smart Watch Pro'", 25),
+        (admin, "create", "product", 1, "Created product 'Laptop Stand Pro'", 30),
+        (admin, "create", "product", by_sku["TECH-030"].id, "Created serialized product 'Smart Watch Pro'", 25),
         (worker, "create", "order", orders[0].id, f"Created order '{orders[0].order_number}'", 28),
         (worker, "update", "order", orders[0].id, f"Order '{orders[0].order_number}' status changed to 'received'", 27),
         (worker, "create", "receipt", receipts[0].id, f"Receipt '{receipts[0].receipt_number}' for 48 unit(s)", 27),
         (worker, "create", "stock_movement", 1, "in movement of 8 x 'Laptop Stand Pro'", 27),
-        (worker, "create", "lpn", 1, "Created LPN 'PAL-1001'", 30),
-        (worker, "move", "lpn", 2, "Moved LPN 'PAL-1002'", 22),
-        (worker, "create", "asn", asns[0].id, f"Created ASN '{asns[0].asn_number}'", 2),
+        (admin, "create", "lpn", 1, "Created LPN 'PAL-1001'", 30),
+        (admin, "move", "lpn", 2, "Moved LPN 'PAL-1002'", 22),
+        (admin, "create", "asn", asns[0].id, f"Created ASN '{asns[0].asn_number}'", 2),
         (worker, "create", "asn", asns[2].id, f"Received ASN '{asns[2].asn_number}' (36 unit(s))", 7),
         (worker, "complete", "cycle_count", ccs[0].id, f"Completed cycle count '{ccs[0].cc_number}' (variance +1)", 4),
         (worker, "create", "sale", sale_records[0]["id"], f"Sale '{sale_records[0]['invoice']}'", 10),
         (worker, "create", "stock_movement", 3, "out movement of 4 x 'Wireless Mouse M300'", 2),
-        (worker, "create", "customer", 8, "Created customer 'Bright Learning Center'", 1),
-        (worker, "update", "stock_movement", 2, "Updated stock movement #2", 1),
+        (admin, "create", "customer", 8, "Created customer 'Bright Learning Center'", 1),
+        (admin, "update", "stock_movement", 2, "Updated stock movement #2", 1),
     ]
     for user, action, entity, eid, desc, day in logs:
         db.add(ActivityLog(user_id=user.id, username=user.username, action=action,
