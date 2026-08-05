@@ -167,7 +167,7 @@ export default function Settings() {
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Workflow Settings</h2>
           <Toggle label="Require QC Before Shipping" checked={form.require_qc_before_ship} onChange={(v) => set("require_qc_before_ship", v)}
-            description="Block shipment if a pending quality check exists for it" />
+            description="Block picking and shipping if a pending quality check exists for the product (failed quality checks always block)" />
           <Toggle label="Auto-Allocate Stock" checked={form.auto_allocate_stock} onChange={(v) => set("auto_allocate_stock", v)}
             description="Automatically reserve stock when a shipment is created" />
           <Toggle label="Enforce FEFO (First Expired, First Out)" checked={form.enforce_fefo} onChange={(v) => set("enforce_fefo", v)}

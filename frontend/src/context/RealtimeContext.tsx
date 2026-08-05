@@ -19,6 +19,7 @@ const entityQueryMap: Record<string, string[]> = {
   category: ["categories"],
   supplier: ["suppliers"],
   stock_movement: ["stock-movements", "product-movements"],
+  shipment: ["shipments", "shipment"],
   order: ["orders"],
   user: ["users"],
   activity_log: ["activity-logs"],

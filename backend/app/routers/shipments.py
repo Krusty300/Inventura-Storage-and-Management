@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import Customer, Location, Product, Sale, SaleItem, Shipment, ShipmentItem
+from app.models import Customer, Location, Product, QualityCheck, Sale, SaleItem, Shipment, ShipmentItem
 from app.models.settings import Settings
 from app.schemas.sale import SaleOut
 from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentUpdate
@@ -68,6 +68,31 @@ def _validate_items(db: Session, items) -> dict[int, int]:
             product = get_or_404(Product, pid, db)
             raise HTTPException(status_code=400, detail=f"Insufficient stock for '{product.display_name}': have {on_hand}, need {qty}")
     return qty_by_product
+
+
+def _qc_blocker(db: Session, shipment: Shipment) -> QualityCheck | None:
+    """Return the quality check that should block this shipment from being
+    picked or shipped, if any. A FAILED check always blocks; a PENDING check
+    blocks only when the 'require QC before shipping' setting is enabled."""
+    product_ids = [item.product_id for item in shipment.items if item.product_id]
+    if not product_ids:
+        return None
+    qc = (
+        db.query(QualityCheck)
+        .options(joinedload(QualityCheck.product))
+        .filter(
+            QualityCheck.product_id.in_(product_ids),
+            QualityCheck.result.in_(("pending", "fail")),
+        )
+        .order_by(QualityCheck.created_at.desc())
+        .first()
+    )
+    if qc is None:
+        return None
+    s = db.query(Settings).first()
+    if qc.result == "fail" or (s and s.require_qc_before_ship):
+        return qc
+    return None
 
 
 @router.get("")
@@ -160,6 +185,12 @@ def pick_shipment(shipment_id: int, db: Session = Depends(get_db), user=Depends(
     shipment = _load_shipment(db, shipment_id)
     if shipment.status not in PICKABLE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Only {'/'.join(PICKABLE_STATUSES)} shipments can be picked")
+    qc = _qc_blocker(db, shipment)
+    if qc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Quality check '{qc.qc_number}' is {qc.result} for '{qc.product_name}'. Resolve QC before picking.",
+        )
     staging = _staging_location(db)
     try:
         for item in shipment.items:
@@ -231,16 +262,12 @@ def ship_shipment(
     shipment = _load_shipment(db, shipment_id)
     if shipment.status not in SHIPPABLE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Only {'/'.join(SHIPPABLE_STATUSES)} shipments can be shipped")
-    s = db.query(Settings).first()
-    if s and s.require_qc_before_ship:
-        from app.models.quality_check import QualityCheck
-        qc_pending = db.query(QualityCheck).filter(
-            QualityCheck.reference_type == "shipment",
-            QualityCheck.reference_id == shipment_id,
-            QualityCheck.result == "pending",
-        ).first()
-        if qc_pending:
-            raise HTTPException(status_code=400, detail="Quality check is pending for this shipment. Complete QC before shipping.")
+    qc = _qc_blocker(db, shipment)
+    if qc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Quality check '{qc.qc_number}' is {qc.result} for '{qc.product_name}'. Resolve QC before shipping.",
+        )
     staging = shipment.staging_location_id
     if staging is None:
         raise HTTPException(status_code=400, detail="Nothing has been picked for this shipment")

@@ -139,3 +139,60 @@ def test_worker_can_record_but_cannot_adjust_stock(auth_headers):
         "product_id": prod["id"], "new_quantity": 20,
     }, headers={"Authorization": f"Bearer {token}"})
     assert adjust.status_code == 403
+
+
+def _create_transfer_location(auth_headers, name, code):
+    return client.post("/api/locations", json={
+        "name": name, "code": code, "location_type": "bin",
+    }, headers=auth_headers).json()
+
+
+def test_product_stock_locations_lists_only_stocked_locations(auth_headers):
+    src = _create_transfer_location(auth_headers, "Bin Src", "TSRC")
+    dst = _create_transfer_location(auth_headers, "Bin Dst", "TDST")
+    prod = client.post("/api/products", json={
+        "sku": "STK-LOC", "name": "Loc Stock", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 12, "location_id": src["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    resp = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["location_id"] == src["id"]
+    assert body[0]["quantity"] == 12
+    assert body[0]["path"] == "Bin Src"
+    assert dst["id"] not in [b["location_id"] for b in body]
+
+
+def test_product_stock_locations_with_lot_breakdown(auth_headers):
+    src = _create_transfer_location(auth_headers, "Bin Lot", "TLOT")
+    prod = client.post("/api/products", json={
+        "sku": "STK-LOTLOC", "name": "Lot Loc", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 5, "location_id": src["id"], "lot_number": "LOT-A"}],
+    }, headers=auth_headers).status_code == 201
+
+    body = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    assert len(body) == 1
+    assert body[0]["quantity"] == 5
+    assert len(body[0]["lots"]) == 1
+    assert body[0]["lots"][0]["lot_number"] == "LOT-A"
+    assert body[0]["lots"][0]["quantity"] == 5
+
+
+def test_product_stock_locations_empty_when_no_stock(auth_headers):
+    prod = client.post("/api/products", json={
+        "sku": "STK-NOSTK", "name": "No Loc", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    resp = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_product_stock_locations_unknown_product(auth_headers):
+    resp = client.get("/api/stock-movements/locations", params={"product_id": 999999}, headers=auth_headers)
+    assert resp.status_code == 404

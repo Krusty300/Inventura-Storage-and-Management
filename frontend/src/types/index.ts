@@ -459,6 +459,20 @@ export interface LocationTree extends Location {
   children: LocationTree[];
 }
 
+export interface StockLocationLot {
+  lot_id: number;
+  lot_number: string;
+  quantity: number;
+}
+
+export interface StockLocation {
+  location_id: number;
+  path: string;
+  is_active: boolean;
+  quantity: number;
+  lots: StockLocationLot[];
+}
+
 export interface ASNItem {
   id: number;
   asn_id: number;

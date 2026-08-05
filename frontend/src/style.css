@@ -22,7 +22,7 @@
   --t-surface: #ffffff;
   --t-subtle: #f3f4f6;
   --t-subtle-strong: #e5e7eb;
-  --t-sidebar: #111827;
+  --t-sidebar: #ffffff;
   --t-border: #f3f4f6;
   --t-border-strong: #d1d5db;
   --t-ink: #111827;
@@ -70,29 +70,33 @@ body {
   gap: 0.75rem;
   padding: 0.65rem 1rem;
   border-radius: 0.5rem;
-  color: #d1d5db;
+  color: var(--t-muted);
   font-size: 0.875rem;
   transition: all 0.15s;
 }
 .sidebar-link:hover {
-  background-color: #1f2937;
-  color: white;
+  background-color: var(--t-subtle);
+  color: var(--t-ink);
 }
 .sidebar-link.active {
-  background-color: #1f2937;
-  color: white;
+  background-color: #eef2ff;
+  color: #4f46e5;
   font-weight: 500;
+}
+.dark .sidebar-link.active {
+  background-color: rgb(99 102 241 / 0.15);
+  color: #a5b4fc;
 }
 
 .sidebar-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #4b5563 transparent;
+  scrollbar-color: var(--t-border-strong) transparent;
 }
 .sidebar-scroll::-webkit-scrollbar {
   width: 6px;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--t-border-strong);
   border-radius: 9999px;
 }
 .sidebar-scroll::-webkit-scrollbar-track {

@@ -211,6 +211,90 @@ def test_shipment_delete(auth_headers):
     assert client.get(f"/api/shipments/{s3['id']}", headers=auth_headers).status_code == 404
 
 
+def test_shipment_blocked_by_pending_qc(auth_headers):
+    client.put("/api/settings", json={"require_qc_before_ship": True}, headers=auth_headers)
+    p = _make_product(auth_headers, "SHP-QC")
+    loc = _make_location(auth_headers, "SHP-QC-LOC")
+    assert _receive(auth_headers, p["id"], 5, loc["id"]).status_code == 201
+
+    qc = client.post("/api/quality-checks", json={
+        "product_id": p["id"], "result": "pending",
+    }, headers=auth_headers)
+    assert qc.status_code == 201
+
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    blocked_pick = client.post(f"/api/shipments/{created['id']}/pick", headers=auth_headers)
+    assert blocked_pick.status_code == 400
+    assert "quality check" in blocked_pick.json()["detail"].lower()
+
+    # resolve the pending QC, then pick and pack
+    qc_id = qc.json()["id"]
+    assert client.put(f"/api/quality-checks/{qc_id}", json={"result": "pass"}, headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{created['id']}/pick", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{created['id']}/pack", headers=auth_headers).status_code == 200
+
+    # a new pending QC blocks shipping
+    qc2 = client.post("/api/quality-checks", json={
+        "product_id": p["id"], "result": "pending",
+    }, headers=auth_headers)
+    blocked_ship = client.post(f"/api/shipments/{created['id']}/ship", headers=auth_headers)
+    assert blocked_ship.status_code == 400
+    assert "quality check" in blocked_ship.json()["detail"].lower()
+
+    # pending QC on an unrelated product does not block this shipment
+    assert client.put(f"/api/quality-checks/{qc2.json()['id']}", json={"result": "pass"}, headers=auth_headers).status_code == 200
+    other = _make_product(auth_headers, "SHP-QC-OTHER")
+    assert _receive(auth_headers, other["id"], 5, loc["id"]).status_code == 201
+    client.post("/api/quality-checks", json={
+        "product_id": other["id"], "result": "pending",
+    }, headers=auth_headers)
+
+    shipped = client.post(f"/api/shipments/{created['id']}/ship", headers=auth_headers)
+    assert shipped.status_code == 200
+    assert shipped.json()["status"] == "shipped"
+
+
+def test_shipment_qc_setting_default_allows_shipping(auth_headers):
+    p = _make_product(auth_headers, "SHP-NOQC")
+    loc = _make_location(auth_headers, "SHP-NOQC-LOC")
+    assert _receive(auth_headers, p["id"], 5, loc["id"]).status_code == 201
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    client.post(f"/api/shipments/{created['id']}/pick", headers=auth_headers)
+    client.post(f"/api/shipments/{created['id']}/pack", headers=auth_headers)
+    assert client.post(f"/api/shipments/{created['id']}/ship", headers=auth_headers).status_code == 200
+
+
+def test_shipment_blocked_by_failed_qc_without_lot(auth_headers):
+    # a failed QC with no lot linked quarantines nothing, but must still block shipping
+    p = _make_product(auth_headers, "SHP-FAILQC")
+    loc = _make_location(auth_headers, "SHP-FAILQC-LOC")
+    assert _receive(auth_headers, p["id"], 5, loc["id"]).status_code == 201
+
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    assert client.post(f"/api/shipments/{created['id']}/pick", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{created['id']}/pack", headers=auth_headers).status_code == 200
+
+    qc = client.post("/api/quality-checks", json={
+        "product_id": p["id"], "result": "fail",
+    }, headers=auth_headers)
+    assert qc.status_code == 201
+
+    blocked = client.post(f"/api/shipments/{created['id']}/ship", headers=auth_headers)
+    assert blocked.status_code == 400
+    assert "quality check" in blocked.json()["detail"].lower()
+
+    # a fresh shipment for the same product is blocked at picking
+    created2 = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    blocked_pick = client.post(f"/api/shipments/{created2['id']}/pick", headers=auth_headers)
+    assert blocked_pick.status_code == 400
+    assert "quality check" in blocked_pick.json()["detail"].lower()
+
+    # once the QC passes, both shipments proceed
+    assert client.put(f"/api/quality-checks/{qc.json()['id']}", json={"result": "pass"}, headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{created['id']}/ship", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{created2['id']}/pick", headers=auth_headers).status_code == 200
+
+
 def test_shipment_create_sale_invoice(auth_headers):
     p = _make_product(auth_headers, "SHP-INV")
     loc = _make_location(auth_headers, "SHP-INV-LOC")

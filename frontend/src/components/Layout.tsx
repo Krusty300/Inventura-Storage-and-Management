@@ -113,7 +113,7 @@ export default function Layout() {
     <div className="flex h-screen bg-app overflow-hidden">
       <aside
         style={{ width: sidebarWidth }}
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar max-w-[85vw] transform transition-transform lg:translate-x-0 lg:static lg:inset-auto lg:max-w-none ${
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-border max-w-[85vw] transform transition-transform lg:translate-x-0 lg:static lg:inset-auto lg:max-w-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -133,10 +133,10 @@ export default function Layout() {
             );
           })}
         </nav>
-        <div className="shrink-0 border-t border-gray-800 p-4">
+        <div className="shrink-0 border-t border-border p-4">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-faint truncate">{user?.username}</div>
-            <button onClick={handleLogout} className="p-2 text-faint hover:text-white">
+            <div className="text-sm text-muted truncate">{user?.username}</div>
+            <button onClick={handleLogout} className="p-2 text-faint hover:text-ink" title="Log out">
               <LogOut size={18} />
             </button>
           </div>

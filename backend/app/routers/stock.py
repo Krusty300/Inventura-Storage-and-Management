@@ -1,10 +1,13 @@
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.product import Product
 from app.models.location import Location
+from app.models.lot import Lot
+from app.models.stock_line import StockLine
 from app.models.stock_movement import StockMovement
 from app.schemas.stock_movement import StockMovementAdjust, StockMovementCreate, StockMovementOut, StockMovementTransfer, StockMovementUpdate
 from app.services import inventory
@@ -29,6 +32,67 @@ def list_movements(search: str = Query(""), skip: int = 0, limit: int = 100, db:
     total = q.count()
     items = q.order_by(StockMovement.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [StockMovementOut.model_validate(m) for m in items], "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.get("/locations")
+def product_stock_locations(product_id: int = Query(...), db: Session = Depends(get_db)):
+    """Locations that currently hold stock of a product, for the transfer modal.
+
+    Returns each location with its on-hand quantity and a per-lot breakdown so
+    the UI can pre-fill the source location dropdown from the selected product.
+    """
+    get_or_404(Product, product_id, db)
+    stock = (
+        db.query(
+            StockLine.location_id,
+            StockLine.lot_id,
+            func.coalesce(func.sum(StockLine.quantity), 0).label("quantity"),
+        )
+        .filter(StockLine.product_id == product_id, StockLine.quantity > 0)
+        .group_by(StockLine.location_id, StockLine.lot_id)
+        .all()
+    )
+    location_ids = {r.location_id for r in stock if r.location_id is not None}
+    locations = {
+        l.id: l
+        for l in db.query(Location).filter(Location.id.in_(location_ids)).all()
+    } if location_ids else {}
+    lot_ids = {r.lot_id for r in stock if r.lot_id is not None}
+    lots = {
+        l.id: l
+        for l in db.query(Lot).filter(Lot.id.in_(lot_ids)).all()
+    } if lot_ids else {}
+
+    by_location: dict[int, dict] = {}
+    for row in stock:
+        if row.location_id is None:
+            continue
+        entry = by_location.setdefault(row.location_id, {
+            "location_id": row.location_id,
+            "path": "",
+            "is_active": False,
+            "quantity": 0,
+            "lots": [],
+        })
+        qty = int(row.quantity or 0)
+        entry["quantity"] += qty
+        if row.lot_id is not None:
+            lot = lots.get(row.lot_id)
+            entry["lots"].append({
+                "lot_id": row.lot_id,
+                "lot_number": lot.lot_number if lot else "",
+                "quantity": qty,
+            })
+
+    result = []
+    for loc_id, entry in by_location.items():
+        loc = locations.get(loc_id)
+        entry["path"] = loc.path if loc else ""
+        entry["is_active"] = loc.is_active if loc else False
+        entry["lots"].sort(key=lambda x: x["lot_number"])
+        result.append(entry)
+    result.sort(key=lambda x: x["path"].lower())
+    return result
 
 
 @router.post("", response_model=StockMovementOut, status_code=201)

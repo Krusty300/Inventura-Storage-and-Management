@@ -42,6 +42,7 @@ export default function Shipments() {
       const { data } = await api.get("/shipments", { params: { skip: ((page - 1) * PAGE_SIZE).toString(), limit: PAGE_SIZE.toString() } });
       return data as PaginatedResponse<Shipment>;
     },
+    refetchInterval: 15000,
   });
 
   const { data: stats } = useQuery({
@@ -295,13 +296,27 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   const [busy, setBusy] = useState<string | null>(null);
   const { addToast } = useToast();
   const { can } = useAuth();
+  const queryClient = useQueryClient();
+
+  const { data: liveShipment } = useQuery({
+    queryKey: ["shipment", shipment.id],
+    queryFn: async () => (await api.get(`/shipments/${shipment.id}`)).data as Shipment,
+    initialData: shipment,
+    refetchInterval: 15000,
+  });
+  const current = liveShipment ?? shipment;
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["shipment", shipment.id] });
+    onChanged();
+  };
 
   const run = async (action: string, url: string, okMsg: string) => {
     setBusy(action);
     try {
       await api.post(url);
       addToast(okMsg, "success");
-      onChanged();
+      refresh();
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Action failed", "error");
     }
@@ -311,27 +326,27 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   const ship = async () => {
     setBusy("ship");
     try {
-      await api.post(`/shipments/${shipment.id}/ship`, null, { params: { carrier, tracking_number: tracking } });
-      addToast(`${shipment.shipment_number} shipped`, "success");
-      onChanged();
+      await api.post(`/shipments/${current.id}/ship`, null, { params: { carrier, tracking_number: tracking } });
+      addToast(`${current.shipment_number} shipped`, "success");
+      refresh();
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Error shipping", "error");
     }
     setBusy(null);
   };
 
-  const canPick = (shipment.status === "draft" || shipment.status === "picking") && can("shipments.pick");
-  const canPack = shipment.status === "picking" && can("shipments.pick");
-  const canShip = (shipment.status === "picking" || shipment.status === "packed") && can("shipments.ship");
-  const canCancel = (shipment.status === "draft" || shipment.status === "picking") && can("shipments.cancel");
-  const canCreateSale = shipment.status === "shipped" && !shipment.sale_id && can("sales.create");
+  const canPick = (current.status === "draft" || current.status === "picking") && can("shipments.pick");
+  const canPack = current.status === "picking" && can("shipments.pick");
+  const canShip = (current.status === "picking" || current.status === "packed") && can("shipments.ship");
+  const canCancel = (current.status === "draft" || current.status === "picking") && can("shipments.cancel");
+  const canCreateSale = current.status === "shipped" && !current.sale_id && can("sales.create");
 
   const createSale = async () => {
     setBusy("invoice");
     try {
-      const { data } = await api.post(`/shipments/${shipment.id}/create-sale`);
+      const { data } = await api.post(`/shipments/${current.id}/create-sale`);
       addToast(`Invoice ${data.invoice_number} created`, "success");
-      onChanged();
+      refresh();
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Error creating invoice", "error");
     }
@@ -339,17 +354,17 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   };
 
   return (
-    <Modal open onClose={onClose} title={shipment.shipment_number} wide>
+    <Modal open onClose={onClose} title={current.shipment_number} wide>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
-          <div><p className="text-muted">Status</p><p className="font-medium capitalize">{shipment.status}</p></div>
-          <div><p className="text-muted">Customer</p><p className="font-medium">{shipment.customer_name || "—"}</p></div>
-          <div><p className="text-muted">Carrier</p><p className="font-medium">{shipment.carrier || "—"}</p></div>
-          <div><p className="text-muted">Tracking</p><p className="font-medium">{shipment.tracking_number || "—"}</p></div>
-          <div><p className="text-muted">Invoice</p><p className="font-medium">{shipment.invoice_number || "—"}</p></div>
-          <div><p className="text-muted">Amount</p><p className="font-medium">{shipment.total_amount ? `$${shipment.total_amount.toFixed(2)}` : "—"}</p></div>
-          <div><p className="text-muted">Created By</p><p className="font-medium">{shipment.username}</p></div>
-          <div><p className="text-muted">Created</p><p className="font-medium">{new Date(shipment.created_at).toLocaleDateString()}</p></div>
+          <div><p className="text-muted">Status</p><p className="font-medium capitalize">{current.status}</p></div>
+          <div><p className="text-muted">Customer</p><p className="font-medium">{current.customer_name || "—"}</p></div>
+          <div><p className="text-muted">Carrier</p><p className="font-medium">{current.carrier || "—"}</p></div>
+          <div><p className="text-muted">Tracking</p><p className="font-medium">{current.tracking_number || "—"}</p></div>
+          <div><p className="text-muted">Invoice</p><p className="font-medium">{current.invoice_number || "—"}</p></div>
+          <div><p className="text-muted">Amount</p><p className="font-medium">{current.total_amount ? `$${current.total_amount.toFixed(2)}` : "—"}</p></div>
+          <div><p className="text-muted">Created By</p><p className="font-medium">{current.username}</p></div>
+          <div><p className="text-muted">Created</p><p className="font-medium">{new Date(current.created_at).toLocaleDateString()}</p></div>
         </div>
 
         <div className="border border-border rounded-lg overflow-hidden">
@@ -364,7 +379,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {shipment.items.map((item) => (
+              {current.items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-2 font-medium">{item.product_name}{item.is_serialized && <span className="ml-2 badge-info">serialized</span>}</td>
                   <td className="px-4 py-2">{item.quantity_ordered}</td>
@@ -393,12 +408,12 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             )}
             <div className="ml-auto flex gap-2">
               {canPick && (
-                <button onClick={() => run("pick", `/shipments/${shipment.id}/pick`, "Picked")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
+                <button onClick={() => run("pick", `/shipments/${current.id}/pick`, "Picked")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
                   <PackageCheck size={14} /> Pick
                 </button>
               )}
               {canPack && (
-                <button onClick={() => run("pack", `/shipments/${shipment.id}/pack`, "Packed")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
+                <button onClick={() => run("pack", `/shipments/${current.id}/pack`, "Packed")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
                   <Box size={14} /> Pack
                 </button>
               )}
@@ -417,9 +432,9 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             </button>
           </div>
         )}
-        {shipment.status !== "shipped" && shipment.status !== "cancelled" && canCancel && (
+        {current.status !== "shipped" && current.status !== "cancelled" && canCancel && (
           <div className="flex justify-end">
-            <button onClick={() => run("cancel", `/shipments/${shipment.id}/cancel`, "Cancelled")} disabled={busy !== null} className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400 inline-flex items-center gap-1">
+            <button onClick={() => run("cancel", `/shipments/${current.id}/cancel`, "Cancelled")} disabled={busy !== null} className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400 inline-flex items-center gap-1">
               Cancel shipment
             </button>
           </div>
