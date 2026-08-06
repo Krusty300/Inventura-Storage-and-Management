@@ -79,3 +79,55 @@ def test_checkout_blocked_for_serialized_product(auth_headers):
     }, headers=auth_headers)
     assert resp.status_code == 400
     assert "serialized" in resp.json()["detail"].lower()
+
+
+def test_toggle_serial_active_inactive(auth_headers):
+    prod = _make_serialized_product(auth_headers, sku="SER-TOGGLE")
+    assert _receive_serials(auth_headers, prod["id"], ["SER-TOGGLE-1"]).status_code == 201
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+
+    deactivated = client.put(f"/api/serial-numbers/{serial['id']}/status", json={"status": "inactive"}, headers=auth_headers)
+    assert deactivated.status_code == 200
+    assert deactivated.json()["status"] == "inactive"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 0
+    assert any(m["movement_type"] == "deactivate" for m in
+               client.get(f"/api/serial-numbers/{serial['id']}/movements", headers=auth_headers).json())
+
+    activated = client.put(f"/api/serial-numbers/{serial['id']}/status", json={"status": "in_stock"}, headers=auth_headers)
+    assert activated.status_code == 200
+    assert activated.json()["status"] == "in_stock"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 1
+    assert any(m["movement_type"] == "activate" for m in
+               client.get(f"/api/serial-numbers/{serial['id']}/movements", headers=auth_headers).json())
+
+
+def test_toggle_serial_rejects_invalid_transitions(auth_headers):
+    prod = _make_serialized_product(auth_headers, sku="SER-TOGGLE2")
+    assert _receive_serials(auth_headers, prod["id"], ["SER-TOGGLE2-1"]).status_code == 201
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+
+    # activating an in-stock serial is invalid
+    resp = client.put(f"/api/serial-numbers/{serial['id']}/status", json={"status": "in_stock"}, headers=auth_headers)
+    assert resp.status_code == 400
+
+    # deactivating twice is invalid
+    assert client.put(f"/api/serial-numbers/{serial['id']}/status", json={"status": "inactive"}, headers=auth_headers).status_code == 200
+    resp = client.put(f"/api/serial-numbers/{serial['id']}/status", json={"status": "inactive"}, headers=auth_headers)
+    assert resp.status_code == 400
+
+    # unknown status is rejected
+    resp = client.put(f"/api/serial-numbers/{serial['id']}/status", json={"status": "sold"}, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_worker_cannot_toggle_serial_status(auth_headers):
+    client.post("/api/users", json={
+        "username": "ser-worker", "email": "ser-worker@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers)
+    token = client.post("/api/auth/login", json={"username": "ser-worker", "password": "testpass123"}).json()["access_token"]
+    worker = {"Authorization": f"Bearer {token}"}
+
+    prod = _make_serialized_product(auth_headers, sku="SER-WORKER")
+    assert _receive_serials(auth_headers, prod["id"], ["SER-WORKER-1"]).status_code == 201
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+    assert client.put(f"/api/serial-numbers/{serial['id']}/status", json={"status": "inactive"}, headers=worker).status_code == 403

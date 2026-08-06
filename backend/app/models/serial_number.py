@@ -26,6 +26,7 @@ class SerialNumber(Base):
     product = relationship("Product", back_populates="serial_numbers")
     lot = relationship("Lot", back_populates="serial_numbers")
     location = relationship("Location")
+    lpn = relationship("LPN", back_populates="serial_numbers")
     stock_movements = relationship("StockMovement", back_populates="serial_number")
 
     @property

@@ -4,6 +4,7 @@ import {
   PieChart, Pie, Cell, LineChart, Line, Legend,
 } from "recharts";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import type {
   InventoryValuation, StockMovementTrends, CategoryBreakdownItem,
@@ -51,7 +52,9 @@ function TabState({ isLoading, isError }: { isLoading: boolean; isError: boolean
 }
 
 export default function Reports() {
-  const [activeTab, setActiveTab] = useState<Tab>("valuation");
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<Tab>(tabs.some((t) => t.key === tabParam) ? (tabParam as Tab) : "valuation");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const { addToast } = useToast();
@@ -103,7 +106,8 @@ export default function Reports() {
     queryFn: async () => (await api.get("/reports/inventory-aging")).data,
   });
 
-  const [leadTime, setLeadTime] = useState(7);
+  const leadTimeParam = Number(searchParams.get("lead_time_days"));
+  const [leadTime, setLeadTime] = useState(leadTimeParam > 0 ? leadTimeParam : 7);
   const { data: stockout, isLoading: stockoutLoading, isError: stockoutError } = useQuery<StockoutRisk>({
     queryKey: ["reports", "stockout", leadTime],
     queryFn: async () => (await api.get("/reports/stockout-risk", { params: { lead_time_days: leadTime } })).data,

@@ -83,6 +83,28 @@ def test_move_lpn_merges_into_existing_line(auth_headers):
     assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 5
 
 
+def test_lpn_detail_includes_serialized_items(auth_headers):
+    loc = _loc(auth_headers, "LPN-L")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-SER2", "location_id": loc["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-SER2", "name": "LPN Ser2", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "serial_numbers": ["S-LPN-A", "S-LPN-B"],
+                   "location_id": loc["id"], "lpn_id": lpn["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    contents = client.get(f"/api/lpns/{lpn['id']}/contents", headers=auth_headers).json()
+    assert contents["content_count"] == 2
+    assert len(contents["serials"]) == 2
+    assert {s["serial_number"] for s in contents["serials"]} == {"S-LPN-A", "S-LPN-B"}
+    assert all(s["location_name"] == loc["name"] for s in contents["serials"])
+    assert all(s["product_name"] == "LPN Ser2" for s in contents["serials"])
+    lst = client.get("/api/lpns", headers=auth_headers).json()
+    match = next(l for l in lst["items"] if l["id"] == lpn["id"])
+    assert len(match["serials"]) == 2
+
+
 def test_move_lpn_moves_serials(auth_headers):
     src = _loc(auth_headers, "LPN-J")
     dst = _loc(auth_headers, "LPN-K")

@@ -41,3 +41,11 @@ class StockMovement(Base):
     @property
     def username(self) -> str:
         return self.user.username if self.user else ""
+
+    @property
+    def from_location_name(self) -> str:
+        return self.from_location.name if self.from_location else ""
+
+    @property
+    def to_location_name(self) -> str:
+        return self.to_location.name if self.to_location else ""

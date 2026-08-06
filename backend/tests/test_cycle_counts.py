@@ -73,6 +73,44 @@ def test_cycle_count_serialized_short_scraps_missing(auth_headers):
     assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 3
 
 
+def test_cycle_count_serialized_short_updates_location_qty(auth_headers):
+    """A short serialized count must reduce the location's on-hand and post the
+    scrap movements against the location so the route is visible on the stock
+    movements page."""
+    prod = _make_product(auth_headers, "CC-SERLOC", serialized=True)
+    loc = _make_location(auth_headers, "CC-SERLOC-LOC")
+    serials = [f"SNLOC-{i}" for i in range(1, 6)]
+    assert _receive_serialized(auth_headers, prod["id"], serials, loc["id"]).status_code == 201
+
+    before = client.get(f"/api/locations/{loc['id']}/detail", headers=auth_headers).json()
+    assert before["location"]["total_quantity"] == 5
+    assert len(before["serials"]) == 5
+    assert before["scrapped_serials"] == []
+
+    cc = _create_cc(auth_headers, prod["id"], location_id=loc["id"]).json()
+    assert client.post(f"/api/cycle-counts/{cc['id']}/submit", json={
+        "items": [{"product_id": prod["id"], "counted_qty": 3}],
+    }, headers=auth_headers).status_code == 200
+
+    after = client.get(f"/api/locations/{loc['id']}/detail", headers=auth_headers).json()
+    assert after["location"]["total_quantity"] == 3
+    assert len(after["serials"]) == 3
+    assert all(s["status"] == "in_stock" for s in after["serials"])
+    assert len(after["scrapped_serials"]) == 2
+    assert {s["serial_number"] for s in after["scrapped_serials"]} == {"SNLOC-1", "SNLOC-2"}
+    assert all(s["status"] == "scrapped" for s in after["scrapped_serials"])
+    assert all(s["product_name"] == prod["name"] for s in after["scrapped_serials"])
+
+    scrap = [m for m in client.get("/api/stock-movements", params={"limit": 50}, headers=auth_headers).json()["items"]
+             if m["movement_type"] == "scrap"]
+    assert len(scrap) == 2
+    for m in scrap:
+        assert m["from_location_id"] == loc["id"]
+        assert m["from_location_name"] == loc["name"]
+        assert m["quantity_change"] == -1
+        assert m["serial_id"] is not None
+
+
 def test_cycle_count_serialized_overage_rejected(auth_headers):
     prod = _make_product(auth_headers, "CC-SEROV", serialized=True)
     loc = _make_location(auth_headers, "CC-SEROV-LOC")
@@ -158,6 +196,28 @@ def test_cycle_count_unknown_product_rejected(auth_headers):
         "items": [{"product_id": other["id"], "counted_qty": 1}],
     }, headers=auth_headers)
     assert resp.status_code == 400
+
+
+def test_cycle_count_submit_reports_current_on_hand(auth_headers):
+    """Submitting must re-validate against live on-hand and report it per item so
+    a mid-count change is visible, while variance still reconciles against the
+    snapshot taken when the count was created."""
+    prod = _make_product(auth_headers, "CC-ONHAND")
+    loc = _make_location(auth_headers, "CC-ONHAND-LOC")
+    assert _receive(auth_headers, prod["id"], 10, loc["id"]).status_code == 201
+    cc = _create_cc(auth_headers, prod["id"], location_id=loc["id"]).json()
+    assert cc["items"][0]["expected_qty"] == 10
+
+    # stock changes after the count was created (e.g. a receipt arrives)
+    assert _receive(auth_headers, prod["id"], 3, loc["id"]).status_code == 201
+
+    result = client.post(f"/api/cycle-counts/{cc['id']}/submit", json={
+        "items": [{"product_id": prod["id"], "counted_qty": 12}],
+    }, headers=auth_headers).json()
+    assert result["items"][0]["current_on_hand"] == 13
+    assert result["items"][0]["expected_qty"] == 10
+    assert result["items"][0]["variance"] == 2
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 15
 
 
 def test_cycle_count_cancel_and_double_submit(auth_headers):

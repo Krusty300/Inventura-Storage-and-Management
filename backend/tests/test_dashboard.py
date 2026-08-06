@@ -31,6 +31,15 @@ def test_dashboard_low_stock_and_expiring(auth_headers):
     assert data["expiring_products"][0]["batch_number"] == "B1"
 
 
+def test_dashboard_expiring_excludes_expired(auth_headers):
+    client.post("/api/products", json={"location_id": 1,
+        "sku": "DASH-EXPD", "name": "Expired Item", "quantity": 10, "cost_price": 1.0,
+        "expiry_date": (date.today() - timedelta(days=1)).isoformat(), "batch_number": "B-OLD",
+    }, headers=auth_headers)
+    data = client.get("/api/dashboard/stats", headers=auth_headers).json()
+    assert not any(p["sku"] == "DASH-EXPD" for p in data["expiring_products"])
+
+
 def test_dashboard_movement_today(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "DASH-MOV", "name": "Move", "quantity": 5, "cost_price": 1.0}, headers=auth_headers).json()
     client.post("/api/stock-movements", json={
@@ -39,3 +48,19 @@ def test_dashboard_movement_today(auth_headers):
     data = client.get("/api/dashboard/stats", headers=auth_headers).json()
     assert data["total_stock_movements_today"] >= 1
     assert any(m["product_name"] == "Move" for m in data["recent_movements"])
+
+
+def test_movement_today_counts_transfer_pair_once(auth_headers):
+    src = client.post("/api/locations", json={"name": "Dash Src", "code": "DSRC"}, headers=auth_headers).json()
+    dst = client.post("/api/locations", json={"name": "Dash Dst", "code": "DDST"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "DASH-TRF", "name": "Dash Transfer", "quantity": 0, "unit_price": 1.0, "cost_price": 1.0,
+    }, headers=auth_headers).json()
+    client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 6, "location_id": src["id"]}],
+    }, headers=auth_headers)
+    client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 2, "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    data = client.get("/api/dashboard/stats", headers=auth_headers).json()
+    assert data["total_stock_movements_today"] == 2

@@ -21,7 +21,7 @@ from app.models.stock_line import StockLine
 from app.models.customer import Customer
 from app.models.settings import Settings
 from app.services.auth import get_current_user
-from app.services.inventory import quarantined_qty_by_product, quarantined_qty_subquery
+from app.services.inventory import SHIP, TRANSFER_OUT, quarantined_qty_by_product, quarantined_qty_subquery
 from app.services.pdf_helpers import (
     MARGIN,
     draw_header,
@@ -115,7 +115,10 @@ def stock_movement_trends(days: int = 30, start_date: str | None = None, end_dat
     q = db.query(
         func.date(StockMovement.created_at).label("date"),
         StockMovement.quantity_change,
-    ).filter(StockMovement.created_at >= since)
+    ).filter(
+        StockMovement.created_at >= since,
+        StockMovement.movement_type != TRANSFER_OUT,  # count each transfer pair once
+    )
     if end:
         q = q.filter(StockMovement.created_at <= end)
     daily = q.order_by(func.date(StockMovement.created_at)).all()
@@ -408,7 +411,7 @@ def _avg_daily_demand(db: Session, product_id: int, days: int = 90) -> float:
         StockMovement.product_id == product_id,
         StockMovement.created_at >= since,
         StockMovement.quantity_change < 0,
-        StockMovement.movement_type.in_(["sale", "out"]),
+        StockMovement.movement_type.in_(["sale", "out", SHIP]),
     ).scalar() or 0
     return float(out_qty) / days
 
@@ -628,7 +631,8 @@ def dashboard_pdf(db: Session = Depends(get_db)):
         Product.is_active == True
     ).scalar() or 0.0)
     movements_today = db.query(func.count(StockMovement.id)).filter(
-        StockMovement.created_at >= today_start
+        StockMovement.created_at >= today_start,
+        StockMovement.movement_type != TRANSFER_OUT,  # count each transfer pair once
     ).scalar() or 0
 
     _, risk_summary = _stockout_risk_data(db)

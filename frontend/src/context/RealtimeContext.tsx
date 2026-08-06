@@ -25,6 +25,7 @@ const entityQueryMap: Record<string, string[]> = {
   activity_log: ["activity-logs"],
   notification: ["notifications"],
   lot: ["lots", "lot-genealogy", "exceptions"],
+  location: ["locations"],
   quality_check: ["quality-checks", "exceptions"],
 };
 

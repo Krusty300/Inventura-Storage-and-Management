@@ -15,7 +15,7 @@ import { useToast } from "../context/ToastContext";
 const PAGE_SIZE = 25;
 
 export default function LPNs() {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [showForm, setShowForm] = useState(false);
@@ -211,6 +211,21 @@ function LpnCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 }
 
 function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
+  const contents = lpn.contents || [];
+  const serials = lpn.serials || [];
+  const hasContents = contents.length > 0 || serials.length > 0;
+
+  function statusBadge(status: string) {
+    switch (status) {
+      case "in_stock": return "badge-success";
+      case "reserved": return "badge-info";
+      case "sold": return "badge-neutral";
+      case "quarantined": return "badge-warning";
+      case "inactive": return "badge-neutral";
+      case "scrapped": return "badge-danger";
+      default: return "";
+    }
+  }
   return (
     <Modal open onClose={onClose} title={`LPN ${lpn.lpn_number}`} wide>
       <div className="space-y-4">
@@ -228,29 +243,65 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
             <p className="font-medium capitalize">{lpn.status}</p>
           </div>
         </div>
-        {lpn.contents.length === 0 ? (
+        {!hasContents ? (
           <p className="text-sm text-muted">This LPN has no contents yet. Receive stock into it via a receipt or move stock to it.</p>
         ) : (
-          <div className="border border-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-app text-left">
-                  <th className="px-4 py-2 font-medium text-muted">Product</th>
-                  <th className="px-4 py-2 font-medium text-muted">Lot</th>
-                  <th className="px-4 py-2 font-medium text-muted">Qty</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {lpn.contents.map((c, i) => (
-                  <tr key={i}>
-                    <td className="px-4 py-2 font-medium">{c.product_name}</td>
-                    <td className="px-4 py-2 text-muted">{c.lot_number || "—"}</td>
-                    <td className="px-4 py-2">{c.quantity}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {contents.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-muted mb-2">Products</p>
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-app text-left">
+                        <th className="px-4 py-2 font-medium text-muted">Product</th>
+                        <th className="px-4 py-2 font-medium text-muted">Lot</th>
+                        <th className="px-4 py-2 font-medium text-muted">Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {contents.map((c, i) => (
+                        <tr key={i}>
+                          <td className="px-4 py-2 font-medium">{c.product_name}</td>
+                          <td className="px-4 py-2 text-muted">{c.lot_number || "—"}</td>
+                          <td className="px-4 py-2">{c.quantity}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {serials.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-muted mb-2">Serialized Items</p>
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-app text-left">
+                        <th className="px-4 py-2 font-medium text-muted">Product</th>
+                        <th className="px-4 py-2 font-medium text-muted">Serial #</th>
+                        <th className="px-4 py-2 font-medium text-muted">Lot</th>
+                        <th className="px-4 py-2 font-medium text-muted">Status</th>
+                        <th className="px-4 py-2 font-medium text-muted">Location</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {serials.map((s) => (
+                        <tr key={s.serial_id}>
+                          <td className="px-4 py-2 font-medium">{s.product_name}</td>
+                          <td className="px-4 py-2">{s.serial_number}</td>
+                          <td className="px-4 py-2 text-muted">{s.lot_number || "—"}</td>
+                          <td className="px-4 py-2">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
+                          <td className="px-4 py-2 text-muted">{s.location_name || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
         )}
         <div className="flex justify-end pt-2">
           <button onClick={onClose} className="btn-secondary">Close</button>

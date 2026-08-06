@@ -3,12 +3,15 @@ import csv
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.order import Order
 from app.models.product import Product
+from app.models.stock_line import StockLine
 from app.models.supplier import Supplier
+from app.routers.products import _effective_location
+from app.schemas.product import ProductOut
 from app.schemas.supplier import (
     SupplierBulkEdit, SupplierCreate, SupplierImportResult, SupplierListItem, SupplierOut,
     SupplierStats, SupplierUpdate,
@@ -74,6 +77,7 @@ def _serialize_with_stats(s: Supplier, total_orders, total_spent, last_order_at,
 def list_suppliers(
     search: str = Query(""),
     include_inactive: bool = False,
+    category_id: int | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -89,6 +93,13 @@ def list_suppliers(
     if search:
         like = f"%{search}%"
         q = q.filter(Supplier.name.ilike(like) | Supplier.contact_person.ilike(like) | Supplier.email.ilike(like))
+    if category_id:
+        q = q.filter(
+            Supplier.id.in_(
+                select(Product.supplier_id)
+                .where(Product.supplier_id.isnot(None), Product.category_id == category_id)
+            )
+        )
     total = q.count()
     rows = q.order_by(Supplier.name).offset(skip).limit(limit).all()
     items = [_serialize_with_stats(s, to, ts, lo, pc) for s, to, ts, lo, pc in rows]
@@ -183,6 +194,36 @@ def supplier_stats(supplier_id: int, db: Session = Depends(get_db)):
         last_order_at=row[2],
         product_count=product_count,
     )
+
+
+@router.get("/{supplier_id}/products")
+def supplier_products(
+    supplier_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    get_or_404(Supplier, supplier_id, db)
+    options = [
+        joinedload(Product.category),
+        joinedload(Product.supplier),
+        joinedload(Product.default_location),
+        joinedload(Product.stock_lines).joinedload(StockLine.location),
+        joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
+    ]
+    q = db.query(Product).options(*options).filter(Product.parent_id.is_(None))
+    q = q.filter((Product.supplier_id == supplier_id) | Product.variants.any(Product.supplier_id == supplier_id))
+    total = q.count()
+    items = q.order_by(Product.name).offset(skip).limit(limit).all()
+    results = []
+    for p in items:
+        out = ProductOut.model_validate(p)
+        out.location = _effective_location(p)
+        if p.variants and out.variants:
+            for v_orm, v_out in zip(p.variants, out.variants):
+                v_out.location = _effective_location(v_orm)
+        results.append(out)
+    return {"items": results, "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 
 @router.post("/{supplier_id}/restore", response_model=SupplierOut)

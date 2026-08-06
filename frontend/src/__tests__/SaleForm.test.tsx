@@ -61,4 +61,18 @@ describe("SaleForm", () => {
     fireEvent.click(submit);
     await vi.waitFor(() => expect(postMock).not.toHaveBeenCalled());
   });
+
+  it("excludes serialized products from the product dropdown", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    const serialized = makeProduct({ id: 8, name: "Serial Gadget", sku: "SKU-8", is_serialized: true });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
+      if (url === "/products") return Promise.resolve({ data: { items: [widget, serialized] } });
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Serial Gadget/ })).not.toBeInTheDocument();
+  });
 });

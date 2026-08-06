@@ -79,6 +79,14 @@ class CustomerStats(BaseModel):
     last_purchase_at: Optional[datetime] = None
 
 
+class FrequentProduct(BaseModel):
+    product_id: int
+    product_name: str = ""
+    sku: str = ""
+    order_count: int = 0
+    total_quantity: int = 0
+
+
 class CustomerListItem(CustomerOut):
     total_sales: int = 0
     total_spent: float = 0.0

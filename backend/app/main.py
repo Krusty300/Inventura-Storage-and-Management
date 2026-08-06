@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, backfill_stock_lines, engine, run_migrations
-from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, dashboard, labels, locations, lots, lpns, notifications, orders, planning, products, quality_checks, receipts, reports, sales, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
+from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, dashboard, labels, locations, lots, lpns, notifications, orders, planning, products, quality_checks, receipts, reports, sales, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
 from app.ws_manager import manager
 
 
@@ -58,6 +58,7 @@ app.include_router(quality_checks.router)
 app.include_router(planning.router)
 app.include_router(costing.router)
 app.include_router(shipments.router)
+app.include_router(search.router)
 
 uploads_dir = Path(__file__).resolve().parent / "uploads"
 uploads_dir.mkdir(exist_ok=True)

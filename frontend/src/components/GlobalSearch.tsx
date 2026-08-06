@@ -1,0 +1,163 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { CornerDownLeft } from "lucide-react";
+import api from "../api/client";
+import type { GlobalSearchResponse, GlobalSearchResult } from "../types";
+import { useDebounce } from "../hooks/useDebounce";
+
+const TYPE_LABELS: Record<string, string> = {
+  product: "Products",
+  lot: "Lots",
+  serial: "Serial Numbers",
+  lpn: "LPNs",
+  location: "Locations",
+  category: "Categories",
+  customer: "Customers",
+  supplier: "Suppliers",
+  user: "Users",
+  receipt: "Receipts",
+  asn: "ASNs",
+  order: "Orders",
+  sale: "Sales",
+  shipment: "Shipments",
+  work_order: "Work Orders",
+  cycle_count: "Cycle Counts",
+  quality_check: "Quality Checks",
+  bom: "Bills of Materials",
+};
+
+interface Group {
+  type: string;
+  label: string;
+  results: GlobalSearchResult[];
+}
+
+function groupResults(results: GlobalSearchResult[]): Group[] {
+  const order = Object.keys(TYPE_LABELS);
+  const map = new Map<string, GlobalSearchResult[]>();
+  for (const r of results) {
+    const list = map.get(r.type) || [];
+    list.push(r);
+    map.set(r.type, list);
+  }
+  const groups: Group[] = [];
+  for (const t of order) {
+    const list = map.get(t);
+    if (list) groups.push({ type: t, label: TYPE_LABELS[t] ?? t, results: list });
+  }
+  return groups;
+}
+
+export default function GlobalSearch() {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const debounced = useDebounce(query, 300);
+  const navigate = useNavigate();
+
+  const { data, isFetching } = useQuery({
+    queryKey: ["global-search", debounced],
+    queryFn: async () => {
+      const { data } = await api.get("/search", { params: { q: debounced } });
+      return data as GlobalSearchResponse;
+    },
+    enabled: debounced.trim().length >= 2,
+  });
+
+  const results = data?.results ?? [];
+  const groups = groupResults(results);
+  const searching = debounced.trim().length >= 2;
+  const showPanel = open && searching;
+
+  const select = (r: GlobalSearchResult) => {
+    setOpen(false);
+    setQuery("");
+    navigate(`${r.route}?search=${encodeURIComponent(r.label)}`);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOpen(false);
+      return;
+    }
+    if (!showPanel || results.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((a) => Math.min(a + 1, results.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((a) => Math.max(a - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      select(results[active]);
+    }
+  };
+
+  return (
+    <div className="relative z-50">
+      {showPanel && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+
+      <div className="relative flex-1 max-w-2xl">
+        <input
+          className="input pl-10 pr-10"
+          placeholder="Search everything: products, lots, serials, documents, people..."
+          value={query}
+          aria-label="Global search"
+          onFocus={() => setOpen(true)}
+          onChange={(e) => { setQuery(e.target.value); setActive(0); }}
+          onKeyDown={handleKeyDown}
+        />
+        {isFetching && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          </div>
+        )}
+      </div>
+
+      {showPanel && (
+        <div className="absolute left-0 right-0 top-full mt-2 z-50 card p-0 overflow-hidden max-h-[70vh] overflow-y-auto">
+          {isFetching && results.length === 0 ? (
+            <p className="text-sm text-muted px-4 py-6 text-center">Searching...</p>
+          ) : results.length === 0 ? (
+            <p className="text-sm text-muted px-4 py-6 text-center">
+              No matches for "{debounced}"
+            </p>
+          ) : (
+            <div>
+              {groups.map((g) => (
+                <div key={g.type}>
+                  <div className="bg-app px-4 py-1.5 text-xs font-semibold text-muted uppercase tracking-wide">
+                    {g.label} ({g.results.length})
+                  </div>
+                  {g.results.map((r) => {
+                    const idx = results.indexOf(r);
+                    return (
+                      <button
+                        key={`${r.type}-${r.id}`}
+                        onClick={() => select(r)}
+                        onMouseEnter={() => setActive(idx)}
+                        className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors ${idx === active ? "bg-indigo-50 dark:bg-indigo-500/10" : "hover:bg-app"}`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block font-medium text-ink truncate">{r.label}</span>
+                          {r.subtitle && <span className="block text-xs text-muted truncate">{r.subtitle}</span>}
+                        </span>
+                        <span className="shrink-0 text-faint">
+                          <CornerDownLeft size={14} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+              <div className="border-t border-border px-4 py-2 text-xs text-faint">
+                ↑↓ navigate · ↵ open · esc close
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

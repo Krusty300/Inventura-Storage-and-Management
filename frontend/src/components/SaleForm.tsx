@@ -37,6 +37,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   }, []);
 
   const selectable = selectableProducts(products);
+  const sellable = selectable.filter((p) => !p.is_serialized);
 
   const addItem = () => setItems([...items, { product_id: "", quantity: "1", unit_price: "0" }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
@@ -45,7 +46,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     const updated = [...items];
     (updated[idx] as any)[field] = value;
     if (field === "product_id") {
-      const p = selectable.find((x) => x.id === parseInt(value));
+      const p = sellable.find((x) => x.id === parseInt(value));
       if (p) updated[idx].unit_price = p.unit_price.toString();
     }
     setItems(updated);
@@ -107,7 +108,10 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-medium text-ink">Items</label>
             <div className="flex gap-2">
-              <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.unit_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan to add item..." />
+              <BarcodeScanner onProductFound={(p) => {
+                if (p.is_serialized) { addToast("Serialized products can't be sold at checkout - create a shipment instead", "error"); return; }
+                if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.unit_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error");
+              }} placeholder="Scan to add item..." />
               <button type="button" onClick={addItem} className="btn-secondary text-xs py-1 px-2">
                 Add Item
               </button>
@@ -119,7 +123,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 <div className="flex-1">
                   <select className="select text-sm" value={item.product_id} onChange={(e) => updateItem(idx, "product_id", e.target.value)} required>
                     <option value="">Select product</option>
-                    {selectable.map((p) => (
+                    {sellable.map((p) => (
                       <option key={p.id} value={p.id}>{productLabel(p)} ({formatCurrency(p.unit_price, currency)})</option>
                     ))}
                   </select>

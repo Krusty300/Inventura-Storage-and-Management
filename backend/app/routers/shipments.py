@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Customer, Location, Product, QualityCheck, Sale, SaleItem, Shipment, ShipmentItem
+from app.models.stock_movement import StockMovement
 from app.models.settings import Settings
 from app.schemas.sale import SaleOut
 from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentUpdate
@@ -68,6 +69,21 @@ def _validate_items(db: Session, items) -> dict[int, int]:
             product = get_or_404(Product, pid, db)
             raise HTTPException(status_code=400, detail=f"Insufficient stock for '{product.display_name}': have {on_hand}, need {qty}")
     return qty_by_product
+
+
+def _ensure_products_active(shipment: Shipment, action: str) -> None:
+    """Reject picking/shipping when an item's product has been deactivated
+    after the shipment was created."""
+    inactive = sorted({
+        item.product.display_name
+        for item in shipment.items
+        if item.product and not item.product.is_active
+    })
+    if inactive:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot {action} shipment - product(s) inactive: {', '.join(inactive)}",
+        )
 
 
 def _qc_blocker(db: Session, shipment: Shipment) -> QualityCheck | None:
@@ -185,6 +201,7 @@ def pick_shipment(shipment_id: int, db: Session = Depends(get_db), user=Depends(
     shipment = _load_shipment(db, shipment_id)
     if shipment.status not in PICKABLE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Only {'/'.join(PICKABLE_STATUSES)} shipments can be picked")
+    _ensure_products_active(shipment, "pick")
     qc = _qc_blocker(db, shipment)
     if qc:
         raise HTTPException(
@@ -262,6 +279,7 @@ def ship_shipment(
     shipment = _load_shipment(db, shipment_id)
     if shipment.status not in SHIPPABLE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Only {'/'.join(SHIPPABLE_STATUSES)} shipments can be shipped")
+    _ensure_products_active(shipment, "ship")
     qc = _qc_blocker(db, shipment)
     if qc:
         raise HTTPException(
@@ -373,12 +391,37 @@ def cancel_shipment(shipment_id: int, db: Session = Depends(get_db), user=Depend
     shipment = _load_shipment(db, shipment_id)
     if shipment.status not in PICKABLE_STATUSES:
         raise HTTPException(status_code=400, detail="Only draft or picking shipments can be cancelled")
-    shipment.status = "cancelled"
+    try:
+        legs = db.query(StockMovement).filter(
+            StockMovement.reference_type == "shipment",
+            StockMovement.reference == shipment.shipment_number,
+            StockMovement.movement_type == inventory.TRANSFER_OUT,
+        ).all()
+        for leg in legs:
+            inventory.transfer_stock(
+                db, product_id=leg.product_id, user_id=user.id,
+                quantity=-leg.quantity_change,
+                from_location_id=leg.to_location_id,
+                to_location_id=leg.from_location_id,
+                lot_id=leg.lot_id, lpn_id=leg.lpn_id, serial_id=leg.serial_id,
+                reference_type="shipment", reference=shipment.shipment_number,
+                notes=f"Cancelled {shipment.shipment_number}",
+            )
+        for item in shipment.items:
+            item.quantity_picked = 0
+            item.quantity_packed = 0
+        shipment.staging_location_id = None
+        shipment.status = "cancelled"
+    except inventory.InventoryError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     shipment = _load_shipment(db, shipment.id)
     log_activity(db, user.id, user.username, "cancel", "shipment", shipment.id, f"Cancelled shipment '{shipment.shipment_number}'")
     db.commit()
     broadcast_change("shipment", "updated")
+    broadcast_change("stock_movement", "created")
+    broadcast_change("product", "updated")
     return shipment
 
 

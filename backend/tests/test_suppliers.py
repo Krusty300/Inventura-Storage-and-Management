@@ -84,6 +84,50 @@ def test_supplier_stats_endpoint(auth_headers):
     assert data["product_count"] == 1
 
 
+def test_supplier_products_endpoint(auth_headers):
+    sup_a = client.post("/api/suppliers", json={"name": "Prod Sup A"}, headers=auth_headers).json()
+    sup_b = client.post("/api/suppliers", json={"name": "Prod Sup B"}, headers=auth_headers).json()
+
+    client.post("/api/products", json={"location_id": 1, "sku": "PSA-ACT", "name": "A Active", "supplier_id": sup_a["id"], "quantity": 5}, headers=auth_headers).json()
+    client.post("/api/products", json={"location_id": 1, "sku": "PSA-INA", "name": "A Inactive", "supplier_id": sup_a["id"], "is_active": False}, headers=auth_headers).json()
+    parent = client.post("/api/products", json={"location_id": 1, "sku": "PSA-GRP", "name": "A Group", "supplier_id": sup_a["id"]}, headers=auth_headers).json()
+    client.post("/api/products", json={"location_id": 1, "sku": "PSA-VAR", "parent_id": parent["id"], "quantity": 3, "attributes": {"Color": "Red"}}, headers=auth_headers).json()
+    client.post("/api/products", json={"location_id": 1, "sku": "PSB-ONE", "name": "B Product", "supplier_id": sup_b["id"]}, headers=auth_headers).json()
+
+    data = client.get(f"/api/suppliers/{sup_a['id']}/products", params={"limit": 50}, headers=auth_headers).json()
+    assert data["total"] == 3
+    skus = {p["sku"] for p in data["items"]}
+    assert skus == {"PSA-ACT", "PSA-INA", "PSA-GRP"}
+    by_sku = {p["sku"]: p for p in data["items"]}
+    assert by_sku["PSA-INA"]["is_active"] is False
+    assert by_sku["PSA-ACT"]["supplier_name"] == "Prod Sup A"
+    assert [v["sku"] for v in by_sku["PSA-GRP"]["variants"]] == ["PSA-VAR"]
+    assert all(p["supplier_id"] == sup_a["id"] for p in data["items"])
+
+    assert client.get("/api/suppliers/999999/products", headers=auth_headers).status_code == 404
+
+
+def test_suppliers_filtered_by_category(auth_headers):
+    cat = client.post("/api/categories", json={"name": "Cat Filter"}, headers=auth_headers).json()
+    other_cat = client.post("/api/categories", json={"name": "Other Cat"}, headers=auth_headers).json()
+    sup_a = client.post("/api/suppliers", json={"name": "Cat Sup A"}, headers=auth_headers).json()
+    sup_b = client.post("/api/suppliers", json={"name": "Cat Sup B"}, headers=auth_headers).json()
+    sup_c = client.post("/api/suppliers", json={"name": "Cat Sup C"}, headers=auth_headers).json()
+    client.post("/api/products", json={"location_id": 1, "sku": "CS-1", "name": "In Cat", "supplier_id": sup_a["id"], "category_id": cat["id"]}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "CS-2", "name": "Other Cat Item", "supplier_id": sup_b["id"], "category_id": other_cat["id"]}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "CS-3", "name": "In Cat C", "supplier_id": sup_c["id"], "category_id": cat["id"]}, headers=auth_headers)
+
+    names = {i["name"] for i in client.get("/api/suppliers", params={"category_id": cat["id"], "limit": 50}, headers=auth_headers).json()["items"]}
+    assert names == {"Cat Sup A", "Cat Sup C"}
+    assert "Cat Sup B" not in names
+
+    client.delete(f"/api/suppliers/{sup_c['id']}", headers=auth_headers)
+    active = {i["name"] for i in client.get("/api/suppliers", params={"category_id": cat["id"], "limit": 50}, headers=auth_headers).json()["items"]}
+    assert active == {"Cat Sup A"}
+    with_inactive = {i["name"] for i in client.get("/api/suppliers", params={"category_id": cat["id"], "include_inactive": "true", "limit": 50}, headers=auth_headers).json()["items"]}
+    assert with_inactive == {"Cat Sup A", "Cat Sup C"}
+
+
 def test_duplicate_supplier_rejected(auth_headers):
     client.post("/api/suppliers", json={"name": "Dup Supply", "email": "dup@example.com"}, headers=auth_headers)
     r = client.post("/api/suppliers", json={"name": "Other Supply", "email": "dup@example.com"}, headers=auth_headers)

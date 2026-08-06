@@ -28,6 +28,7 @@ def list_cycle_counts(
     status: str | None = None,
     location_id: int | None = None,
     has_variance: bool | None = None,
+    search: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -37,6 +38,11 @@ def list_cycle_counts(
         q = q.filter(CycleCount.status == status)
     if location_id:
         q = q.filter(CycleCount.location_id == location_id)
+    if search:
+        like = f"%{search}%"
+        q = q.join(CycleCount.location, isouter=True).filter(
+            CycleCount.cc_number.ilike(like) | Location.name.ilike(like) | CycleCount.notes.ilike(like)
+        )
     counts = q.order_by(CycleCount.created_at.desc()).all()
     if has_variance is not None:
         counts = [c for c in counts if c.has_variance == has_variance]
@@ -111,6 +117,10 @@ def submit_cycle_count(cc_id: int, data: CycleCountSubmit, db: Session = Depends
         raise HTTPException(status_code=400, detail="Cannot submit a cancelled cycle count")
 
     by_product = {item.product_id: item for item in cc.items}
+    on_hand_at_submit = {
+        item.product_id: inventory.on_hand(db, product_id=item.product_id, location_id=cc.location_id)
+        for item in cc.items
+    }
     try:
         for line in data.items:
             item = by_product.get(line.product_id)
@@ -166,7 +176,10 @@ def submit_cycle_count(cc_id: int, data: CycleCountSubmit, db: Session = Depends
     log_activity(db, user.id, user.username, "complete", "cycle_count", cc.id,
                  f"Completed cycle count '{cc.cc_number}' (variance {cc.total_variance:+d})")
     db.commit()
+    for item in cc.items:
+        item.current_on_hand = on_hand_at_submit.get(item.product_id)
     broadcast_change("cycle_count", "updated")
     broadcast_change("stock_movement", "created")
     broadcast_change("product", "updated")
+    broadcast_change("location", "updated")
     return cc

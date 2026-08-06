@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -100,5 +100,67 @@ describe("ASNs Page", () => {
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
     expect(await screen.findByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
+  });
+
+  it("prefills the new ASN location from where the product's stock actually is", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [mockASN()], total: 1, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [{ id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] }], total: 1, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
+      if (url === "/locations")
+        return Promise.resolve({ data: { items: [{ id: 10, name: "Warehouse B", path: "Warehouse B", is_active: true }] } });
+      if (url === "/stock-movements/locations")
+        return Promise.resolve({ data: { locations: [{ location_id: 10, path: "Warehouse B", is_active: true, quantity: 5 }], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
+    await screen.findByRole("option", { name: "Widget (SKU-1)" });
+    fireEvent.change(screen.getByLabelText("Product"), { target: { value: "1" } });
+    await waitFor(() => expect(screen.getByLabelText("Location")).toHaveValue("Warehouse B"));
+  });
+
+  it("shows stock location chips without overriding when a product spans multiple locations", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [mockASN()], total: 1, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [{ id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] }], total: 1, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
+      if (url === "/locations")
+        return Promise.resolve({ data: { items: [{ id: 10, name: "A", path: "A", is_active: true }, { id: 20, name: "B", path: "B", is_active: true }] } });
+      if (url === "/stock-movements/locations")
+        return Promise.resolve({ data: { locations: [
+          { location_id: 10, path: "A", is_active: true, quantity: 3 },
+          { location_id: 20, path: "B", is_active: true, quantity: 2 },
+        ], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
+    await screen.findByRole("option", { name: "Widget (SKU-1)" });
+    fireEvent.change(screen.getByLabelText("Product"), { target: { value: "1" } });
+    expect(await screen.findByText("Stock is currently at:")).toBeInTheDocument();
+    expect(screen.getByText("A (3)")).toBeInTheDocument();
+    expect(screen.getByText("B (2)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Location")).toHaveValue("");
+  });
+
+  it("prefills the receive location from where the product's serials actually are", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [mockASN()], total: 1, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [{ id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: true, variants: [] }], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations")
+        return Promise.resolve({ data: { items: [{ id: 10, name: "Warehouse B", path: "Warehouse B", is_active: true }] } });
+      if (url === "/serial-numbers")
+        return Promise.resolve({ data: { items: [
+          { id: 1, product_id: 1, serial_number: "SN-1", lot_id: null, location_id: 10, status: "in_stock", sold_at: null, location_name: "Warehouse B", lot_number: "", product_name: "Widget" },
+        ], total: 1, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "Receive" }));
+    await waitFor(() => expect(screen.getByLabelText("Location")).toHaveValue("Warehouse B"));
   });
 });

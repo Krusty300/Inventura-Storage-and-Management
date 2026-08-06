@@ -75,6 +75,8 @@ class StockMovementOut(BaseModel):
     lpn_id: Optional[int] = None
     transfer_id: Optional[int] = None
     reference_type: str = ""
+    from_location_name: str = ""
+    to_location_name: str = ""
 
     class Config:
         from_attributes = True
@@ -111,4 +113,19 @@ class StockMovementSerialTransfer(BaseModel):
             raise ValueError("serial_ids must not be empty")
         if len(set(v)) != len(v):
             raise ValueError("serial_ids must be unique")
+        return v
+
+
+class StockMovementUnallocatedMove(BaseModel):
+    product_id: int
+    quantity: int
+    to_location_id: int
+    lot_id: Optional[int] = None
+    notes: str = ""
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("quantity must be positive")
         return v

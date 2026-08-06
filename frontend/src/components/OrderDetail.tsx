@@ -1,11 +1,15 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import api from "../api/client";
 import type { Order } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { useToast } from "../context/ToastContext";
+import LocationPicker from "./LocationPicker";
 import Modal from "./Modal";
+import StockLocationHints from "./StockLocationHints";
 
 interface Props {
   order: Order;
@@ -13,13 +17,45 @@ interface Props {
   onUpdated: () => void;
 }
 
+function ReceiveLocationHints({
+  productId,
+  isSerialized,
+  selectedPath,
+  onSelect,
+}: {
+  productId: number;
+  isSerialized: boolean;
+  selectedPath: string;
+  onSelect: (path: string) => void;
+}) {
+  const { locations, isLoading } = useProductStockLocations(productId, isSerialized);
+  return (
+    <StockLocationHints
+      locations={locations}
+      isSerialized={isSerialized}
+      selectedPath={selectedPath}
+      onSelect={onSelect}
+      isLoading={isLoading}
+    />
+  );
+}
+
 export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [receiving, setReceiving] = useState(false);
   const [serials, setSerials] = useState<Record<number, string>>({});
+  const [receiveLocations, setReceiveLocations] = useState<Record<number, string>>({});
   const { addToast } = useToast();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+
+  const { data: locationOptions } = useQuery({
+    queryKey: ["locations", "order-picker"],
+    queryFn: async () => {
+      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      return (data.items || []) as { id: number; path: string }[];
+    },
+  });
 
   const serializedItems = order.items.filter((i) => i.is_serialized);
   const needsSerials = serializedItems.length > 0;
@@ -45,26 +81,41 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
 
   const handleReceive = async () => {
     setReceiving(false);
-    if (!needsSerials) {
-      await updateStatus("received");
-      return;
+    const payload: Record<string, unknown> = { status: "received" };
+
+    const receive_locations: Record<number, number> = {};
+    for (const item of order.items) {
+      const path = (receiveLocations[item.product_id] || "").trim();
+      if (!path) continue;
+      const loc = (locationOptions || []).find((l) => l.path === path);
+      if (!loc) {
+        addToast(`Unknown location for ${item.product_name} - pick from the dropdown`, "error");
+        return;
+      }
+      receive_locations[item.product_id] = loc.id;
     }
-    const payload: Record<number, string[]> = {};
-    let missing = false;
-    for (const item of serializedItems) {
-      const list = (serials[item.product_id] || "")
-        .split(/[\n,]+/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (list.length !== item.quantity) missing = true;
-      payload[item.product_id] = list;
+    if (Object.keys(receive_locations).length > 0) payload.receive_locations = receive_locations;
+
+    if (needsSerials) {
+      const serialPayload: Record<number, string[]> = {};
+      let missing = false;
+      for (const item of serializedItems) {
+        const list = (serials[item.product_id] || "")
+          .split(/[\n,]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (list.length !== item.quantity) missing = true;
+        serialPayload[item.product_id] = list;
+      }
+      if (missing) {
+        addToast(`Enter exactly the ordered quantity of serial numbers for each serialized item`, "error");
+        return;
+      }
+      payload.serial_numbers = serialPayload;
     }
-    if (missing) {
-      addToast(`Enter exactly the ordered quantity of serial numbers for each serialized item`, "error");
-      return;
-    }
+
     try {
-      await api.put(`/orders/${order.id}`, { status: "received", serial_numbers: payload });
+      await api.put(`/orders/${order.id}`, payload);
       addToast("Order marked as received", "success");
       onUpdated();
     } catch (err: any) {
@@ -72,9 +123,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
     }
   };
 
-  const confirmLabel = confirming === "received"
-    ? `Receive ${order.order_number} and update stock?`
-    : `Are you sure you want to cancel ${order.order_number}?`;
+  const confirmLabel = `Are you sure you want to cancel ${order.order_number}?`;
 
   return (
     <Modal open onClose={onClose} title={order.order_number}>
@@ -140,20 +189,31 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
 
         {receiving && (
           <div className="bg-app rounded-lg p-4 space-y-3">
-            <p className="text-sm font-medium text-ink">Enter serial numbers to receive</p>
-            {serializedItems.map((item) => (
-              <div key={item.id}>
-                <label className="block text-sm text-muted mb-1">
-                  {item.product_name} — enter {item.quantity} serial number(s), one per line
-                </label>
-                <textarea
-                  className="input font-mono text-xs"
-                  rows={3}
-                  value={serials[item.product_id] || ""}
-                  onChange={(e) => setSerials({ ...serials, [item.product_id]: e.target.value })}
-                  placeholder={"SN-001\nSN-002"}
-                  aria-label={`Serial numbers for ${item.product_name}`}
+            <p className="text-sm font-medium text-ink">Choose a location to receive into (optional - defaults to each product's location)</p>
+            {order.items.map((item) => (
+              <div key={item.id} className="space-y-1.5">
+                <label className="block text-sm text-muted">{item.product_name}</label>
+                <LocationPicker
+                  value={receiveLocations[item.product_id] || ""}
+                  onChange={(v) => setReceiveLocations({ ...receiveLocations, [item.product_id]: v })}
+                  placeholder="Location (defaults to product location)"
                 />
+                <ReceiveLocationHints
+                  productId={item.product_id}
+                  isSerialized={item.is_serialized}
+                  selectedPath={receiveLocations[item.product_id] || ""}
+                  onSelect={(p) => setReceiveLocations({ ...receiveLocations, [item.product_id]: p })}
+                />
+                {item.is_serialized && (
+                  <textarea
+                    className="input font-mono text-xs"
+                    rows={3}
+                    value={serials[item.product_id] || ""}
+                    onChange={(e) => setSerials({ ...serials, [item.product_id]: e.target.value })}
+                    placeholder={`Enter ${item.quantity} serial number(s), one per line`}
+                    aria-label={`Serial numbers for ${item.product_name}`}
+                  />
+                )}
               </div>
             ))}
             <div className="flex gap-2">
@@ -169,7 +229,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
           </button>
           {order.status === "pending" && !confirming && !receiving && (
             <>
-              <button onClick={() => (needsSerials ? setReceiving(true) : setConfirming("received"))} className="btn-primary flex-1">Mark Received</button>
+              <button onClick={() => setReceiving(true)} className="btn-primary flex-1">Mark Received</button>
               <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1">Cancel Order</button>
             </>
           )}

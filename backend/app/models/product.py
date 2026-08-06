@@ -59,6 +59,12 @@ class Product(Base):
         return self.parent_id is not None
 
     @property
+    def variant_of_name(self) -> str:
+        if self.parent_id is None:
+            return ""
+        return self.variant_of.name if self.variant_of else ""
+
+    @property
     def variant_label(self) -> str:
         if not self.attributes:
             return ""

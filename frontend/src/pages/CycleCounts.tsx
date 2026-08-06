@@ -7,6 +7,7 @@ import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
@@ -15,6 +16,7 @@ import { useToast } from "../context/ToastContext";
 const PAGE_SIZE = 25;
 
 export default function CycleCounts() {
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [showForm, setShowForm] = useState(false);
@@ -22,11 +24,14 @@ export default function CycleCounts() {
   const [counting, setCounting] = useState<CycleCount | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
+  const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["cycle-counts", page, pageSize],
+    queryKey: ["cycle-counts", debouncedSearch, page, pageSize],
     queryFn: async () => {
-      const { data } = await api.get("/cycle-counts", { params: { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() } });
+      const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
+      if (debouncedSearch) params.search = debouncedSearch;
+      const { data } = await api.get("/cycle-counts", { params });
       return data as PaginatedResponse<CycleCount>;
     },
   });
@@ -45,6 +50,12 @@ export default function CycleCounts() {
             New Count
           </button>
         )}
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="relative flex-1 max-w-md">
+          <input className="input pl-10" placeholder="Search by count number, location, or notes..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search cycle counts" />
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -103,7 +114,7 @@ export default function CycleCounts() {
         <CountSubmitModal
           count={counting}
           onClose={() => setCounting(null)}
-          onSaved={() => { setCounting(null); queryClient.invalidateQueries({ queryKey: ["cycle-counts"] }); queryClient.invalidateQueries({ queryKey: ["products"] }); }}
+          onSaved={() => { setCounting(null); queryClient.invalidateQueries({ queryKey: ["cycle-counts"] }); queryClient.invalidateQueries({ queryKey: ["products"] }); queryClient.invalidateQueries({ queryKey: ["locations"] }); }}
         />
       )}
     </div>
@@ -321,7 +332,26 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
     count.items.map((i) => ({ product_id: i.product_id, counted_qty: i.counted_qty != null ? i.counted_qty.toString() : i.expected_qty.toString() }))
   );
   const [saving, setSaving] = useState(false);
+  const [onHandNow, setOnHandNow] = useState<Record<number, number>>({});
   const { addToast } = useToast();
+
+  useEffect(() => {
+    if (count.location_id == null) return;
+    api
+      .get(`/locations/${count.location_id}/detail`)
+      .then(({ data }) => {
+        const map: Record<number, number> = {};
+        for (const sl of data.stock_lines || []) map[sl.product_id] = (map[sl.product_id] || 0) + sl.quantity;
+        for (const s of data.serials || []) map[s.product_id] = (map[s.product_id] || 0) + 1;
+        setOnHandNow(map);
+      })
+      .catch(() => setOnHandNow({}));
+  }, [count.location_id]);
+
+  const changedItems = count.items.filter((item) => {
+    const now = onHandNow[item.product_id];
+    return now != null && now !== item.expected_qty;
+  });
 
   const setRow = (idx: number, value: string) => {
     setRows(rows.map((r, i) => (i === idx ? { ...r, counted_qty: value } : r)));
@@ -334,6 +364,13 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
       const { data } = await api.post(`/cycle-counts/${count.id}/submit`, {
         items: rows.map((r) => ({ product_id: r.product_id, counted_qty: parseInt(r.counted_qty) || 0 })),
       });
+      const submitDrift = (data.items || []).filter(
+        (i: { current_on_hand?: number | null; expected_qty: number }) =>
+          i.current_on_hand != null && i.current_on_hand !== i.expected_qty
+      );
+      if (submitDrift.length > 0) {
+        addToast(`On-hand changed for ${submitDrift.length} item(s) since this count was created — verify the counted quantities.`, "info");
+      }
       addToast(data.status === "completed" ? "Cycle count completed" : "Count saved", "success");
       onSaved();
     } catch (err: any) {
@@ -345,10 +382,20 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
   return (
     <Modal open onClose={onClose} title={`Count ${count.cc_number}`} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {changedItems.length > 0 && (
+          <div className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">System on-hand changed since this count was created</p>
+            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300/80">
+              {changedItems.map((item) => `${item.product_name}: expected ${item.expected_qty}, on hand now ${onHandNow[item.product_id]}`).join("  ·  ")}
+            </p>
+          </div>
+        )}
         <div className="divide-y divide-border border border-border rounded-lg max-h-[50vh] overflow-auto">
           {count.items.map((item, idx) => {
             const row = rows[idx];
             const variance = (parseInt(row?.counted_qty) || 0) - item.expected_qty;
+            const now = onHandNow[item.product_id];
+            const onHandChanged = now != null && now !== item.expected_qty;
             return (
               <div key={item.id} className="p-4 grid grid-cols-12 gap-2 items-center">
                 <div className="col-span-5">
@@ -356,6 +403,11 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
                 </div>
                 <div className="col-span-2 text-sm text-muted">
                   Expected: {item.expected_qty}
+                  {onHandChanged && (
+                    <span className={`block text-xs font-medium ${onHandChanged ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                      On hand now: {now}
+                    </span>
+                  )}
                 </div>
                 <div className="col-span-3">
                   <input

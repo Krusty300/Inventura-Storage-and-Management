@@ -38,6 +38,17 @@ interface LocationDetailData {
     unit_cost: number;
     value: number;
   }[];
+  scrapped_serials: {
+    id: number;
+    product_id: number;
+    product_name: string;
+    sku: string;
+    serial_number: string;
+    lot_number: string;
+    status: string;
+    unit_cost: number;
+    value: number;
+  }[];
 }
 
 interface ActivityLogEntry {
@@ -91,6 +102,7 @@ export default function LocationDetail({ location, onClose }: Props) {
   const stockLines = detail?.stock_lines || [];
   const lpns = detail?.lpns || [];
   const serials = detail?.serials || [];
+  const scrappedSerials = detail?.scrapped_serials || [];
   const logs = activity?.items || [];
 
   return (
@@ -198,6 +210,37 @@ export default function LocationDetail({ location, onClose }: Props) {
                           <td className="px-3 py-2 text-muted">{s.sku}</td>
                           <td className="px-3 py-2 text-muted">{s.lot_number || "—"}</td>
                           <td className="px-3 py-2"><span className="badge badge-success">{s.status}</span></td>
+                          <td className="px-3 py-2 text-right">{formatCurrency(s.value, currencySymbol)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {scrappedSerials.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-ink mb-2">Scrapped serials ({scrappedSerials.length})</p>
+                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                  <table className="w-full text-sm" role="grid" aria-label="Scrapped serials at location">
+                    <thead>
+                      <tr className="bg-app text-left text-muted">
+                        <th className="px-3 py-2 font-medium">Serial #</th>
+                        <th className="px-3 py-2 font-medium">Product</th>
+                        <th className="px-3 py-2 font-medium">SKU</th>
+                        <th className="px-3 py-2 font-medium">Lot</th>
+                        <th className="px-3 py-2 font-medium">Status</th>
+                        <th className="px-3 py-2 font-medium text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {scrappedSerials.map((s) => (
+                        <tr key={s.id}>
+                          <td className="px-3 py-2 font-medium font-mono">{s.serial_number}</td>
+                          <td className="px-3 py-2 text-muted">{s.product_name}</td>
+                          <td className="px-3 py-2 text-muted">{s.sku}</td>
+                          <td className="px-3 py-2 text-muted">{s.lot_number || "—"}</td>
+                          <td className="px-3 py-2"><span className="badge badge-danger">{s.status}</span></td>
                           <td className="px-3 py-2 text-right">{formatCurrency(s.value, currencySymbol)}</td>
                         </tr>
                       ))}

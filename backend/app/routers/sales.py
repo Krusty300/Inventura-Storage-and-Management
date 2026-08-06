@@ -8,6 +8,8 @@ from app.database import get_db
 from app.models.product import Product
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
+from app.models.shipment import Shipment
+from app.models.stock_movement import StockMovement
 from app.schemas.sale import SaleBulkEdit, SaleCreate, SaleOut
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
@@ -187,16 +189,40 @@ def refund_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
     if sale.status != "completed":
         raise HTTPException(status_code=400, detail="Only completed sales can be refunded")
 
+    shipment = db.query(Shipment).filter(Shipment.sale_id == sale.id).first()
     for item in sale.items:
         product = item.product
-        if product:
-            inventory.post_journal_entry(
-                db, product_id=product.id, user_id=user.id,
-                quantity_change=item.quantity, movement_type="return",
-                reference_type="sale_return",
-                reference=f"Refund {sale.invoice_number}",
-                notes="Sale refund",
-            )
+        if not product:
+            continue
+        if product.is_serialized:
+            if shipment is None:
+                raise HTTPException(status_code=400, detail="Cannot refund serialized items: no linked shipment found")
+            serial_ids = [
+                m.serial_id for m in db.query(StockMovement).filter(
+                    StockMovement.product_id == product.id,
+                    StockMovement.serial_id.isnot(None),
+                    StockMovement.reference_type == "shipment",
+                    StockMovement.reference == shipment.shipment_number,
+                    StockMovement.quantity_change < 0,
+                ).all()
+            ]
+            for serial_id in serial_ids:
+                inventory.post_journal_entry(
+                    db, product_id=product.id, user_id=user.id,
+                    quantity_change=1, movement_type=inventory.SALE_RETURN,
+                    serial_id=serial_id,
+                    reference_type="sale_return",
+                    reference=f"Refund {sale.invoice_number}",
+                    notes="Sale refund",
+                )
+            continue
+        inventory.post_journal_entry(
+            db, product_id=product.id, user_id=user.id,
+            quantity_change=item.quantity, movement_type="return",
+            reference_type="sale_return",
+            reference=f"Refund {sale.invoice_number}",
+            notes="Sale refund",
+        )
 
     sale.status = "refunded"
     db.commit()
@@ -208,6 +234,7 @@ def refund_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
     db.commit()
     broadcast_change("sale", "updated")
     broadcast_change("stock_movement", "created")
+    broadcast_change("product", "updated")
     return sale
 
 

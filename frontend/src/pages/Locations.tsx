@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronRight, ChevronDown, MapPin, Pencil, Trash2, Package, Eye, FolderOpen, Folder } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -38,11 +39,12 @@ export default function Locations() {
   const [editing, setEditing] = useState<Location | null>(null);
   const [deleting, setDeleting] = useState<Location | null>(null);
   const [viewing, setViewing] = useState<Location | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const { can } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const q = search.trim().toLowerCase();
@@ -79,6 +81,34 @@ export default function Locations() {
     },
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot delete location", "error"),
   });
+
+  const openDetail = (loc: Location) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("location", String(loc.id));
+      return next;
+    }, { replace: true });
+  };
+
+  const closeDetail = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("location");
+      return next;
+    }, { replace: true });
+  };
+
+  useEffect(() => {
+    const locParam = searchParams.get("location");
+    if (!locParam) {
+      setViewing(null);
+      return;
+    }
+    const id = Number(locParam);
+    if (!Number.isInteger(id)) return;
+    const found = (all || []).find((l) => l.id === id);
+    if (found && viewing?.id !== found.id) setViewing(found);
+  }, [all, viewing, searchParams]);
 
   const matches = (n: LocationTree) =>
     n.name.toLowerCase().includes(q) ||
@@ -159,7 +189,7 @@ export default function Locations() {
             <span>{node.lpn_count} LPNs</span>
           </span>
           <div className="flex gap-1">
-            <button onClick={() => setViewing(node)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${node.path}`}>
+            <button onClick={() => openDetail(node)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${node.path}`}>
               <Eye size={14} />
             </button>
             {canEdit && (
@@ -257,7 +287,7 @@ export default function Locations() {
         />
       )}
 
-      {viewing && <LocationDetail location={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <LocationDetail location={viewing} onClose={closeDetail} />}
 
       <ConfirmDialog
         open={!!deleting}

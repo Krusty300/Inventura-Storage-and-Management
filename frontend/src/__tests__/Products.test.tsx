@@ -33,6 +33,18 @@ describe("Products Page", () => {
     expect(screen.getByText("$12.50")).toBeInTheDocument();
   });
 
+  it("renders the supplier column with supplier names", async () => {
+    mockProducts([
+      makeProduct({ id: 1, sku: "ABC-1", name: "Widget", supplier_name: "Acme Supplies" }),
+      makeProduct({ id: 2, sku: "ABC-2", name: "Gadget" }),
+    ]);
+    renderWithProviders(<Products />);
+    expect(await screen.findByText("Acme Supplies")).toBeInTheDocument();
+    expect(screen.getByLabelText("Sort by supplier")).toBeInTheDocument();
+    expect(screen.getByText("Widget")).toBeInTheDocument();
+    expect(screen.getByText("Gadget")).toBeInTheDocument();
+  });
+
   it("renders variant rows under a group with a variant count badge", async () => {
     const parent = makeProduct({ id: 2, sku: "P-2", name: "T-Shirt" });
     const variant = makeVariant(parent, { sku: "V-2" });

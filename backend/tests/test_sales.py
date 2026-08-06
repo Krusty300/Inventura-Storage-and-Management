@@ -92,6 +92,43 @@ def test_refund_twice_rejected(auth_headers):
     assert resp.status_code == 400
 
 
+def test_refund_serialized_invoice_restores_serials(auth_headers):
+    loc = client.post("/api/locations", json={
+        "code": "SALE-SER-LOC", "name": "SALE-SER-LOC", "location_type": "bin",
+    }, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "SALE-SER", "name": "Serialized Sale", "unit_price": 25.00, "cost_price": 10.00,
+        "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    recv = client.post("/api/receipts", json={"items": [{
+        "product_id": prod["id"], "quantity": 3, "location_id": loc["id"],
+        "serial_numbers": ["SR-1", "SR-2", "SR-3"],
+    }]}, headers=auth_headers)
+    assert recv.status_code == 201
+
+    shipment = client.post("/api/shipments", json={
+        "items": [{"product_id": prod["id"], "quantity": 2}],
+    }, headers=auth_headers).json()
+    sid = shipment["id"]
+    assert client.post(f"/api/shipments/{sid}/pick", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{sid}/pack", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{sid}/ship", headers=auth_headers).status_code == 200
+    sale = client.post(f"/api/shipments/{sid}/create-sale", headers=auth_headers).json()
+
+    serials = client.get(f"/api/serial-numbers?product_id={prod['id']}&limit=10", headers=auth_headers).json()["items"]
+    assert sum(1 for s in serials if s["status"] == "sold") == 2
+    assert sum(1 for s in serials if s["status"] == "in_stock") == 1
+
+    refund = client.put(f"/api/sales/{sale['id']}/refund", headers=auth_headers)
+    assert refund.status_code == 200
+    assert refund.json()["status"] == "refunded"
+
+    serials = client.get(f"/api/serial-numbers?product_id={prod['id']}&limit=10", headers=auth_headers).json()["items"]
+    assert all(s["status"] == "in_stock" for s in serials)
+    assert all(s["sold_at"] is None for s in serials)
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 3
+
+
 def test_sale_search_and_stats(auth_headers):
     prod = _make_product(auth_headers)
     _make_sale(auth_headers, [{"product_id": prod["id"], "quantity": 2, "unit_price": 20.00}])

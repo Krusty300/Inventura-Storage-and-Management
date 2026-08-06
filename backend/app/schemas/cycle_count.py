@@ -45,6 +45,7 @@ class CycleCountItemOut(BaseModel):
     variance: int = 0
     status: str = "pending"
     product_name: str = ""
+    current_on_hand: Optional[int] = None
 
     class Config:
         from_attributes = True

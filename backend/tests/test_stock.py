@@ -170,12 +170,13 @@ def test_product_stock_locations_lists_only_stocked_locations(auth_headers):
 
     resp = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers)
     assert resp.status_code == 200
-    body = resp.json()
+    body = resp.json()["locations"]
     assert len(body) == 1
     assert body[0]["location_id"] == src["id"]
     assert body[0]["quantity"] == 12
     assert body[0]["path"] == "Bin Src"
     assert dst["id"] not in [b["location_id"] for b in body]
+    assert resp.json()["unallocated"] == 0
 
 
 def test_product_stock_locations_with_lot_breakdown(auth_headers):
@@ -187,12 +188,34 @@ def test_product_stock_locations_with_lot_breakdown(auth_headers):
         "items": [{"product_id": prod["id"], "quantity": 5, "location_id": src["id"], "lot_number": "LOT-A"}],
     }, headers=auth_headers).status_code == 201
 
-    body = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    body = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()["locations"]
     assert len(body) == 1
     assert body[0]["quantity"] == 5
     assert len(body[0]["lots"]) == 1
     assert body[0]["lots"][0]["lot_number"] == "LOT-A"
     assert body[0]["lots"][0]["quantity"] == 5
+
+
+def test_product_stock_locations_reports_unallocated_stock(auth_headers):
+    from tests.conftest import TestingSessionLocal
+    from app.models.stock_line import StockLine
+    src = _create_transfer_location(auth_headers, "Bin Unal", "TUNL")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "STK-UNAL", "name": "Unallocated Loc", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 4, "location_id": src["id"]}],
+    }, headers=auth_headers).status_code == 201
+    db = TestingSessionLocal()
+    db.add(StockLine(product_id=prod["id"], location_id=None, lot_id=None, lpn_id=None, quantity=9))
+    db.commit()
+    db.close()
+
+    body = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    assert body["unallocated"] == 9
+    assert len(body["locations"]) == 1
+    assert body["locations"][0]["location_id"] == src["id"]
+    assert body["locations"][0]["quantity"] == 4
 
 
 def test_product_stock_locations_empty_when_no_stock(auth_headers):
@@ -201,9 +224,77 @@ def test_product_stock_locations_empty_when_no_stock(auth_headers):
     }, headers=auth_headers).json()
     resp = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.json()["locations"] == []
+    assert resp.json()["unallocated"] == 0
 
 
 def test_product_stock_locations_unknown_product(auth_headers):
     resp = client.get("/api/stock-movements/locations", params={"product_id": 999999}, headers=auth_headers)
     assert resp.status_code == 404
+
+
+def test_move_unallocated_stock_to_location(auth_headers):
+    from tests.conftest import TestingSessionLocal
+    from app.models.stock_line import StockLine
+    dst = _create_transfer_location(auth_headers, "Bin UnalMove", "TUNM")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "STK-UNALMV", "name": "Unallocated Move", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    db = TestingSessionLocal()
+    db.add(StockLine(product_id=prod["id"], location_id=None, lot_id=None, lpn_id=None, quantity=9))
+    db.commit()
+    db.close()
+
+    resp = client.post("/api/stock-movements/unallocated-move", json={
+        "product_id": prod["id"], "quantity": 4, "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["reference"].startswith("UNL-")
+    assert len(body["movements"]) == 2
+    assert body["movements"][0]["movement_type"] == "transfer_out"
+    assert body["movements"][1]["movement_type"] == "transfer_in"
+
+    locs = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()
+    assert locs["unallocated"] == 5
+    assert len(locs["locations"]) == 1
+    assert locs["locations"][0]["location_id"] == dst["id"]
+    assert locs["locations"][0]["quantity"] == 4
+
+
+def test_move_unallocated_stock_exceeds_available_rejected(auth_headers):
+    from tests.conftest import TestingSessionLocal
+    from app.models.stock_line import StockLine
+    dst = _create_transfer_location(auth_headers, "Bin UnalOver", "TUNO")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "STK-UNALOV", "name": "Unallocated Over", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    db = TestingSessionLocal()
+    db.add(StockLine(product_id=prod["id"], location_id=None, lot_id=None, lpn_id=None, quantity=3))
+    db.commit()
+    db.close()
+
+    resp = client.post("/api/stock-movements/unallocated-move", json={
+        "product_id": prod["id"], "quantity": 5, "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "unallocated" in resp.json()["detail"].lower()
+
+
+def test_move_unallocated_stock_inactive_location_rejected(auth_headers):
+    from tests.conftest import TestingSessionLocal
+    from app.models.stock_line import StockLine
+    inactive = client.post("/api/locations", json={"name": "Bin UnalInact", "code": "TUNI", "is_active": False}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "STK-UNALIN", "name": "Unallocated Inact", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    db = TestingSessionLocal()
+    db.add(StockLine(product_id=prod["id"], location_id=None, lot_id=None, lpn_id=None, quantity=3))
+    db.commit()
+    db.close()
+
+    resp = client.post("/api/stock-movements/unallocated-move", json={
+        "product_id": prod["id"], "quantity": 2, "to_location_id": inactive["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "inactive" in resp.json()["detail"].lower()

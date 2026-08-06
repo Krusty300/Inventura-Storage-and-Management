@@ -25,6 +25,7 @@ function mockLPN(overrides: Record<string, unknown> = {}) {
     content_count: 2,
     total_quantity: 5,
     contents: [],
+    serials: [],
     ...overrides,
   };
 }
@@ -79,6 +80,26 @@ describe("LPNs Page", () => {
     mockLPNs([]);
     renderWithProviders(<LPNs />);
     expect(await screen.findByText("No LPNs yet")).toBeInTheDocument();
+  });
+
+  it("shows both products and serialized items in the detail view", async () => {
+    mockLPNs([mockLPN({
+      contents: [{ product_id: 1, product_name: "Widget", lot_id: null, lot_number: "", quantity: 7 }],
+      serials: [
+        { serial_id: 1, product_id: 2, product_name: "Serial Gadget", serial_number: "SN-001", lot_number: "", status: "in_stock", location_name: "Aisle A" },
+        { serial_id: 2, product_id: 2, product_name: "Serial Gadget", serial_number: "SN-002", lot_number: "LOT-X", status: "in_stock", location_name: "Aisle A" },
+      ],
+    })]);
+    renderWithProviders(<LPNs />);
+    fireEvent.click(await screen.findByLabelText("View LPN-0001"));
+
+    expect(screen.getByText("Products")).toBeInTheDocument();
+    expect(screen.getByText("Widget")).toBeInTheDocument();
+    expect(screen.getByText("7")).toBeInTheDocument();
+    expect(screen.getByText("Serialized Items")).toBeInTheDocument();
+    expect(screen.getByText("SN-001")).toBeInTheDocument();
+    expect(screen.getByText("SN-002")).toBeInTheDocument();
+    expect(screen.getByText("LOT-X")).toBeInTheDocument();
   });
 
   it("opens the confirm dialog and deletes an LPN", async () => {

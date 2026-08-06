@@ -36,6 +36,7 @@ import { useSettings } from "../hooks/useSettings";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import GlobalSearch from "../components/GlobalSearch";
 
 const TREND_OPTIONS = [7, 30, 90];
 
@@ -56,6 +57,7 @@ export default function Dashboard() {
   const [costReport, setCostReport] = useState<ManufacturingCostReport | null>(null);
   const [trendDays, setTrendDays] = useState(30);
   const [topProductsDays, setTopProductsDays] = useState(30);
+  const [riskLeadTime, setRiskLeadTime] = useState(7);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -63,9 +65,9 @@ export default function Dashboard() {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
 
-  const get = useCallback(async <T,>(url: string): Promise<T | null> => {
+  const get = useCallback(async <T,>(url: string, config?: { params?: Record<string, string | number> }): Promise<T | null> => {
     try {
-      const res = await api.get(url);
+      const res = await api.get(url, config);
       return res.data as T;
     } catch {
       return null;
@@ -88,7 +90,7 @@ export default function Dashboard() {
       get<SalesStats>("/sales/stats"),
       get<InventoryValuation>("/reports/inventory-valuation"),
       get<ExceptionsReport>("/reports/exceptions"),
-      get<StockoutRisk>("/reports/stockout-risk"),
+      get<StockoutRisk>("/reports/stockout-risk", { params: { lead_time_days: riskLeadTime } }),
       get<PaginatedResponse<LPN>>("/lpns?limit=20"),
       get<PaginatedResponse<Receipt>>("/receipts?limit=20"),
       get<OrderSummary>("/reports/order-summary"),
@@ -105,7 +107,7 @@ export default function Dashboard() {
     setProfit(profData);
     setCostReport(costData);
     setRefreshing(false);
-  }, [get, addToast]);
+  }, [get, addToast, riskLeadTime]);
 
   const fetchTrends = useCallback(async () => {
     const t = await get<StockMovementTrends>(`/reports/stock-movement-trends?days=${trendDays}`);
@@ -173,7 +175,7 @@ export default function Dashboard() {
   ];
 
   const inventoryCards = [
-    { label: "Total Products", value: stats.total_products, link: "/products" },
+    { label: "Active Products", value: stats.total_products, link: "/products" },
     {
       label: "Inventory Value",
       value: formatCurrency(stats.total_inventory_value, currencySymbol, 0),
@@ -246,6 +248,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <GlobalSearch />
+
       <div className="card">
         <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -265,25 +269,41 @@ export default function Dashboard() {
       </div>
 
       {riskSummary && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <button onClick={() => navigate("/reports")} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-red-500 text-left">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Stockout Risk</h2>
+            <div className="flex rounded-lg border border-border overflow-hidden" aria-label="Stockout risk lead time">
+              {[7, 14, 30].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setRiskLeadTime(d)}
+                  className={`px-3 py-1 text-xs font-medium ${riskLeadTime === d ? "bg-indigo-600 text-white" : "text-muted hover:bg-app"}`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-red-500 text-left">
             <div className="flex items-center gap-2">
               <AlertTriangle className="text-red-500" size={16} />
               <p className="text-sm text-muted">High Stockout Risk</p>
             </div>
             <p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{riskSummary.high}</p>
           </button>
-          <button onClick={() => navigate("/reports")} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-amber-400 text-left">
+          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-amber-400 text-left">
             <div className="flex items-center gap-2">
               <AlertTriangle className="text-amber-500" size={16} />
               <p className="text-sm text-muted">Medium Stockout Risk</p>
             </div>
             <p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">{riskSummary.medium}</p>
           </button>
-          <button onClick={() => navigate("/reports")} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-emerald-400 text-left">
+          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-emerald-400 text-left">
             <p className="text-sm text-muted">Low Stockout Risk</p>
             <p className="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">{riskSummary.low}</p>
           </button>
+        </div>
         </div>
       )}
 

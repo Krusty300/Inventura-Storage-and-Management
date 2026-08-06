@@ -8,6 +8,7 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
+import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
@@ -16,6 +17,7 @@ import { useToast } from "../context/ToastContext";
 const PAGE_SIZE = 25;
 
 export default function Shipments() {
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Shipment | null>(null);
@@ -24,6 +26,7 @@ export default function Shipments() {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const { addToast } = useToast();
+  const debouncedSearch = useDebounce(search, 300);
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/shipments/${id}`),
@@ -37,9 +40,11 @@ export default function Shipments() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["shipments", page],
+    queryKey: ["shipments", debouncedSearch, page],
     queryFn: async () => {
-      const { data } = await api.get("/shipments", { params: { skip: ((page - 1) * PAGE_SIZE).toString(), limit: PAGE_SIZE.toString() } });
+      const params: Record<string, string> = { skip: ((page - 1) * PAGE_SIZE).toString(), limit: PAGE_SIZE.toString() };
+      if (debouncedSearch) params.search = debouncedSearch;
+      const { data } = await api.get("/shipments", { params });
       return data as PaginatedResponse<Shipment>;
     },
     refetchInterval: 15000,
@@ -74,6 +79,12 @@ export default function Shipments() {
             New Shipment
           </button>
         )}
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="relative flex-1 max-w-md">
+          <input className="input pl-10" placeholder="Search by shipment number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search shipments" />
+        </div>
       </div>
 
       {statCards.length > 0 && (

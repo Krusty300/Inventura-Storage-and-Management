@@ -109,6 +109,24 @@ def test_stock_movement_trends(auth_headers):
     assert data["net_movement"] == 6
 
 
+def test_stock_movement_trends_counts_transfer_pair_once(auth_headers):
+    src = client.post("/api/locations", json={"name": "Trend Src", "code": "TRS"}, headers=auth_headers).json()
+    dst = client.post("/api/locations", json={"name": "Trend Dst", "code": "TRD"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TREND-TRF", "name": "Trend Transfer", "quantity": 0, "unit_price": 1.0, "cost_price": 1.0,
+    }, headers=auth_headers).json()
+    client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 10, "location_id": src["id"]}],
+    }, headers=auth_headers)
+    client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 4, "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    data = client.get("/api/reports/stock-movement-trends", headers=auth_headers).json()
+    assert data["total_in"] == 14
+    assert data["total_out"] == 0
+    assert data["net_movement"] == 14
+
+
 def test_report_exports(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "EXP-001", "name": "Export Item", "quantity": 1, "cost_price": 1.0}, headers=auth_headers).json()
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)

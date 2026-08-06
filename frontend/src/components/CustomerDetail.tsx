@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import api from "../api/client";
-import type { Customer, CustomerStats, PaginatedResponse, Sale } from "../types";
+import type { Customer, CustomerStats, FrequentProduct, PaginatedResponse, Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
 
 interface Props {
@@ -15,6 +15,14 @@ export default function CustomerDetail({ customer, onClose }: Props) {
     queryFn: async () => (await api.get(`/customers/${customer.id}/stats`)).data as CustomerStats,
   });
 
+  const { data: frequent, isLoading: frequentLoading } = useQuery({
+    queryKey: ["customer-frequent-products", customer.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/customers/${customer.id}/frequent-products`);
+      return data as FrequentProduct[];
+    },
+  });
+
   const { data: sales, isLoading } = useQuery({
     queryKey: ["customer-sales", customer.id],
     queryFn: async () => {
@@ -25,6 +33,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
 
   const s = stats;
   const history = sales?.items || [];
+  const frequentProducts = frequent || [];
 
   return (
     <Modal open onClose={onClose} title={customer.name} wide>
@@ -81,6 +90,38 @@ export default function CustomerDetail({ customer, onClose }: Props) {
               <p className="font-semibold text-lg">{s?.last_purchase_at ? new Date(s.last_purchase_at).toLocaleDateString() : (customer.last_purchase_at ? new Date(customer.last_purchase_at).toLocaleDateString() : "Never")}</p>
             </div>
           </div>
+        </div>
+
+        <div>
+          <h3 className="font-semibold text-ink mb-2">Frequently Purchased</h3>
+          {frequentLoading ? (
+            <p className="text-faint">Loading...</p>
+          ) : frequentProducts.length === 0 ? (
+            <p className="text-faint">No purchase history yet.</p>
+          ) : (
+            <div className="overflow-x-auto border border-border rounded-lg">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-app text-left text-muted">
+                    <th className="px-3 py-2 font-medium">Product</th>
+                    <th className="px-3 py-2 font-medium">SKU</th>
+                    <th className="px-3 py-2 font-medium">Times Ordered</th>
+                    <th className="px-3 py-2 font-medium">Total Qty</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {frequentProducts.map((p) => (
+                    <tr key={p.product_id}>
+                      <td className="px-3 py-2 font-medium">{p.product_name}</td>
+                      <td className="px-3 py-2 text-muted">{p.sku || "—"}</td>
+                      <td className="px-3 py-2">{p.order_count}</td>
+                      <td className="px-3 py-2">{p.total_quantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div>

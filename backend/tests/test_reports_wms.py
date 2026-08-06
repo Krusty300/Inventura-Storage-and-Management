@@ -116,6 +116,30 @@ def test_stockout_risk(auth_headers):
     assert data["summary"]["high"] >= 1
 
 
+def test_stockout_risk_counts_shipment_demand(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "RISK-SHP", "name": "RISK-SHP", "unit_price": 10.0, "cost_price": 4.0,
+        "quantity": 0, "reorder_level": 5,
+    }, headers=auth_headers).json()
+    loc = client.post("/api/locations", json={"code": "RSHP", "name": "RSHP"}, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 5, "location_id": loc["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    shipment = client.post("/api/shipments", json={
+        "items": [{"product_id": prod["id"], "quantity": 5}],
+    }, headers=auth_headers).json()
+    client.post(f"/api/shipments/{shipment['id']}/pick", headers=auth_headers)
+    client.post(f"/api/shipments/{shipment['id']}/ship", headers=auth_headers)
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 0
+
+    data = client.get("/api/reports/stockout-risk", headers=auth_headers).json()
+    row = next(r for r in data["items"] if r["sku"] == "RISK-SHP")
+    assert row["on_hand"] == 0
+    assert row["avg_daily_demand"] > 0
+    assert row["risk_level"] == "high"
+
+
 def test_exceptions_open_cycle_count_with_variance(auth_headers):
     prod = _make_product(auth_headers, "EX-CC")
     loc = client.post("/api/locations", json={"name": "Ex Loc", "code": "EX-01"}, headers=auth_headers).json()

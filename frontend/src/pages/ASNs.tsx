@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { Eye, PackagePlus, Plus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { ASN, PaginatedResponse } from "../types";
+import type { ASN, PaginatedResponse, Product } from "../types";
 import Modal from "../components/Modal";
 import LocationPicker from "../components/LocationPicker";
+import StockLocationHints from "../components/StockLocationHints";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
@@ -17,7 +19,7 @@ import { useToast } from "../context/ToastContext";
 const PAGE_SIZE = 25;
 
 export default function ASNs() {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [showForm, setShowForm] = useState(false);
@@ -116,11 +118,71 @@ export default function ASNs() {
   );
 }
 
+interface AsnFormRowData {
+  product_id: string;
+  expected_qty: string;
+  unit_cost: string;
+  location: string;
+}
+
+function AsnFormRow({ row, idx, productList, onChange }: {
+  row: AsnFormRowData;
+  idx: number;
+  productList: Product[];
+  onChange: (idx: number, key: keyof AsnFormRowData, value: string) => void;
+}) {
+  const product = productList.find((x) => x.id.toString() === row.product_id);
+  const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(
+    product?.id,
+    !!product?.is_serialized
+  );
+
+  useEffect(() => {
+    if (!product || row.location) return;
+    if (stockLocations.length === 1) {
+      onChange(idx, "location", stockLocations[0].path);
+    }
+  }, [stockLocations]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="p-4 grid grid-cols-12 gap-2 items-end">
+      <div className="col-span-5">
+        <label className="block text-xs font-medium text-muted mb-1">Product</label>
+        <select className="select" aria-label="Product" value={row.product_id} onChange={(e) => onChange(idx, "product_id", e.target.value)}>
+          <option value="">Select...</option>
+          {productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
+        </select>
+      </div>
+      <div className="col-span-2">
+        <label className="block text-xs font-medium text-muted mb-1">Expected Qty</label>
+        <input type="number" min={1} className="input" value={row.expected_qty} onChange={(e) => onChange(idx, "expected_qty", e.target.value)} />
+      </div>
+      <div className="col-span-2">
+        <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
+        <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => onChange(idx, "unit_cost", e.target.value)} />
+      </div>
+      <div className="col-span-3">
+        <label className="block text-xs font-medium text-muted mb-1">Location</label>
+        <LocationPicker value={row.location} onChange={(v) => onChange(idx, "location", v)} />
+        {product && (
+          <StockLocationHints
+            locations={stockLocations}
+            isSerialized={!!product.is_serialized}
+            selectedPath={row.location}
+            onSelect={(path) => onChange(idx, "location", path)}
+            isLoading={stockLoading}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [supplier_id, setSupplierId] = useState("");
   const [expected_arrival, setExpectedArrival] = useState("");
   const [notes, setNotes] = useState("");
-  const [rows, setRows] = useState([{ product_id: "", expected_qty: "1", unit_cost: "0", location: "" }]);
+  const [rows, setRows] = useState<AsnFormRowData[]>([{ product_id: "", expected_qty: "1", unit_cost: "0", location: "" }]);
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const productList = useSelectableProducts();
@@ -130,8 +192,11 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
     api.get("/suppliers", { params: { limit: 500 } }).then(({ data }) => setSuppliers(data.items));
   }, []);
 
-  const setRow = (idx: number, key: string, value: string) => {
-    setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+  const setRow = (idx: number, key: keyof AsnFormRowData, value: string) => {
+    setRows((prev) => prev.map((r, i) => {
+      if (i !== idx) return r;
+      return key === "product_id" ? { ...r, product_id: value, location: "" } : { ...r, [key]: value };
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -192,31 +257,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
           </div>
           <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (
-              <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-5">
-                  <label className="block text-xs font-medium text-muted mb-1">Product</label>
-                  <select className="select" value={row.product_id} onChange={(e) => {
-                    const id = e.target.value;
-                    const p = productList.find((x) => x.id.toString() === id);
-                    setRows(rows.map((r, i) => (i === idx ? { ...r, product_id: id, location: r.location || p?.location || "" } : r)));
-                  }}>
-                    <option value="">Select...</option>
-                    {productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-muted mb-1">Expected Qty</label>
-                  <input type="number" min={1} className="input" value={row.expected_qty} onChange={(e) => setRow(idx, "expected_qty", e.target.value)} />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
-                  <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => setRow(idx, "unit_cost", e.target.value)} />
-                </div>
-                <div className="col-span-3">
-                  <label className="block text-xs font-medium text-muted mb-1">Location</label>
-                  <LocationPicker value={row.location} onChange={(v) => setRow(idx, "location", v)} />
-                </div>
-              </div>
+              <AsnFormRow key={idx} row={row} idx={idx} productList={productList} onChange={setRow} />
             ))}
           </div>
         </div>
@@ -281,8 +322,77 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
   );
 }
 
+interface AsnRowData {
+  product_id: number;
+  product_name: string;
+  received_qty: string;
+  lot_number: string;
+  expiry_date: string;
+  location: string;
+  serial_numbers: string;
+}
+
+function AsnReceiveRow({ row, idx, productList, onChange }: {
+  row: AsnRowData;
+  idx: number;
+  productList: Product[];
+  onChange: (idx: number, key: keyof AsnRowData, value: string) => void;
+}) {
+  const product = productList.find((p) => p.id === row.product_id);
+  const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(
+    product?.id,
+    !!product?.is_serialized
+  );
+
+  useEffect(() => {
+    if (!product || row.location) return;
+    if (stockLocations.length === 1) {
+      onChange(idx, "location", stockLocations[0].path);
+    }
+  }, [stockLocations]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="p-4 space-y-2">
+      <p className="text-sm font-medium">{row.product_name}</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">Qty Received</label>
+          <input type="number" min={1} className="input" value={row.received_qty} onChange={(e) => onChange(idx, "received_qty", e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">Lot #</label>
+          <input className="input" value={row.lot_number} onChange={(e) => onChange(idx, "lot_number", e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
+          <input type="date" className="input" value={row.expiry_date} onChange={(e) => onChange(idx, "expiry_date", e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">Location</label>
+          <LocationPicker value={row.location} onChange={(v) => onChange(idx, "location", v)} />
+          {product && (
+            <StockLocationHints
+              locations={stockLocations}
+              isSerialized={!!product.is_serialized}
+              selectedPath={row.location}
+              onSelect={(path) => onChange(idx, "location", path)}
+              isLoading={stockLoading}
+            />
+          )}
+        </div>
+      </div>
+      {product?.is_serialized && (
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">Serial numbers (one per line)</label>
+          <textarea className="input font-mono text-xs" rows={2} value={row.serial_numbers} onChange={(e) => onChange(idx, "serial_numbers", e.target.value)} placeholder={"SN-001\nSN-002"} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => void; onSaved: () => void }) {
-  const [rows, setRows] = useState(
+  const [rows, setRows] = useState<AsnRowData[]>(
     asn.items.filter((i) => i.received_qty < i.expected_qty).map((i) => ({
       product_id: i.product_id,
       product_name: i.product_name,
@@ -303,8 +413,8 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
     api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
   }, []);
 
-  const setRow = (idx: number, key: string, value: string) => {
-    setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+  const setRow = (idx: number, key: keyof AsnRowData, value: string) => {
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -347,38 +457,9 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
     <Modal open onClose={onClose} title={`Receive ${asn.asn_number}`} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="divide-y divide-border max-h-[50vh] overflow-auto border border-border rounded-lg">
-          {rows.map((row, idx) => {
-            const product = productList.find((p) => p.id === row.product_id);
-            return (
-              <div key={idx} className="p-4 space-y-2">
-                <p className="text-sm font-medium">{row.product_name}</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Qty Received</label>
-                    <input type="number" min={1} className="input" value={row.received_qty} onChange={(e) => setRow(idx, "received_qty", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Lot #</label>
-                    <input className="input" value={row.lot_number} onChange={(e) => setRow(idx, "lot_number", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
-                    <input type="date" className="input" value={row.expiry_date} onChange={(e) => setRow(idx, "expiry_date", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Location</label>
-                    <LocationPicker value={row.location} onChange={(v) => setRow(idx, "location", v)} />
-                  </div>
-                </div>
-                {product?.is_serialized && (
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1">Serial numbers (one per line)</label>
-                    <textarea className="input font-mono text-xs" rows={2} value={row.serial_numbers} onChange={(e) => setRow(idx, "serial_numbers", e.target.value)} placeholder={"SN-001\nSN-002"} />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {rows.map((row, idx) => (
+            <AsnReceiveRow key={idx} row={row} idx={idx} productList={productList} onChange={setRow} />
+          ))}
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>

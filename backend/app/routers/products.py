@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
-from sqlalchemy import String, cast
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.category import Category
@@ -137,13 +137,21 @@ def list_products(
         else:
             q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date >= today, Product.expiry_date <= soon)
     if low_stock:
+        # match the dashboard definition: active, sellable (on-hand minus quarantined)
+        sellable = Product.quantity - func.coalesce(inventory.quarantined_qty_subquery(), 0)
+        q = q.filter(Product.is_active == True)
         if include_variants:
+            low_variant_parent_ids = select(Product.parent_id).where(
+                Product.parent_id.isnot(None),
+                Product.is_active == True,
+                Product.quantity - func.coalesce(inventory.quarantined_qty_subquery(), 0) <= Product.reorder_level,
+            )
             q = q.filter(
-                (Product.quantity <= Product.reorder_level)
-                | Product.variants.any(Product.quantity <= Product.reorder_level)
+                (Product.id.notin_(Product.variant_parent_id_subquery()) & (sellable <= Product.reorder_level))
+                | Product.id.in_(low_variant_parent_ids)
             )
         else:
-            q = q.filter(Product.quantity <= Product.reorder_level)
+            q = q.filter(sellable <= Product.reorder_level)
     total = q.count()
     if sort_by in ("category_name", "supplier_name"):
         relation = Product.category if sort_by == "category_name" else Product.supplier
@@ -438,6 +446,10 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     old_quantity = p.quantity
     old_name = p.name
     old_location_id = p.location_id
+    old_active = p.is_active
+    variant_active_before: dict[int, bool] = {}
+    if not p.is_variant and "is_active" in updates:
+        variant_active_before = {v.id: v.is_active for v in p.variants}
     for k, v in updates.items():
         setattr(p, k, v)
     if not p.is_variant:
@@ -447,6 +459,35 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
             if "name" in sync:
                 q = q.filter(Product.name == old_name)
             q.update(sync, synchronize_session=False)
+    if "is_active" in updates and updates["is_active"] != old_active:
+        if old_active and not p.is_active:
+            inventory.deactivate_serials(
+                db, product_id=p.id, user_id=user.id,
+                reference=f"Product '{p.display_name}' deactivated",
+                notes="Product set inactive",
+            )
+        elif not old_active and p.is_active:
+            inventory.reactivate_serials(
+                db, product_id=p.id, user_id=user.id,
+                reference=f"Product '{p.display_name}' reactivated",
+                notes="Product set active",
+            )
+        # A parent toggle cascades is_active to its variants; flag their serials too.
+        for vid, was_active in variant_active_before.items():
+            if was_active == p.is_active:
+                continue
+            if p.is_active:
+                inventory.reactivate_serials(
+                    db, product_id=vid, user_id=user.id,
+                    reference=f"Variant reactivated via parent '{p.display_name}'",
+                    notes="Parent product set active",
+                )
+            else:
+                inventory.deactivate_serials(
+                    db, product_id=vid, user_id=user.id,
+                    reference=f"Variant deactivated via parent '{p.display_name}'",
+                    notes="Parent product set inactive",
+                )
     if "quantity" in updates and p.quantity != old_quantity:
         try:
             inventory.post_journal_entry(
@@ -509,8 +550,21 @@ def delete_product(product_id: int, db: Session = Depends(get_db), user=Depends(
     p = get_or_404(Product, product_id, db)
     name = p.display_name
     p.is_active = False
+    if p.is_serialized:
+        inventory.deactivate_serials(
+            db, product_id=p.id, user_id=user.id,
+            reference=f"Deleted product '{name}'",
+            notes="Product deleted",
+        )
     if p.parent_id is None:
+        serialized_variants = [v.id for v in p.variants if v.is_serialized]
         db.query(Product).filter(Product.parent_id == p.id).update({"is_active": False}, synchronize_session=False)
+        for vid in serialized_variants:
+            inventory.deactivate_serials(
+                db, product_id=vid, user_id=user.id,
+                reference=f"Variant deactivated via deleted parent '{name}'",
+                notes="Parent product deleted",
+            )
     db.commit()
     log_activity(db, user.id, user.username, "delete", "product", product_id, f"Deleted product '{name}'")
     db.commit()

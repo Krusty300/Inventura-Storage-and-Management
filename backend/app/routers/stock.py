@@ -16,6 +16,7 @@ from app.schemas.stock_movement import (
     StockMovementOut,
     StockMovementSerialTransfer,
     StockMovementTransfer,
+    StockMovementUnallocatedMove,
     StockMovementUpdate,
 )
 from app.services import inventory
@@ -30,7 +31,8 @@ router = APIRouter(prefix="/api/stock-movements", tags=["stock-movements"], depe
 @router.get("")
 def list_movements(search: str = Query(""), skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     q = db.query(StockMovement).options(
-        joinedload(StockMovement.product), joinedload(StockMovement.user)
+        joinedload(StockMovement.product), joinedload(StockMovement.user),
+        joinedload(StockMovement.from_location), joinedload(StockMovement.to_location),
     )
     if search:
         like = f"%{search}%"
@@ -72,8 +74,10 @@ def product_stock_locations(product_id: int = Query(...), db: Session = Depends(
     } if lot_ids else {}
 
     by_location: dict[int, dict] = {}
+    unallocated = 0
     for row in stock:
         if row.location_id is None:
+            unallocated += int(row.quantity or 0)
             continue
         entry = by_location.setdefault(row.location_id, {
             "location_id": row.location_id,
@@ -100,7 +104,7 @@ def product_stock_locations(product_id: int = Query(...), db: Session = Depends(
         entry["lots"].sort(key=lambda x: x["lot_number"])
         result.append(entry)
     result.sort(key=lambda x: x["path"].lower())
-    return result
+    return {"locations": result, "unallocated": unallocated}
 
 
 @router.post("", response_model=StockMovementOut, status_code=201)
@@ -148,6 +152,31 @@ def transfer_stock(data: StockMovementTransfer, db: Session = Depends(get_db), u
     if data.from_location_id == data.to_location_id:
         raise HTTPException(status_code=400, detail="Source and destination locations must differ")
     reference = next_document_number(db, "transfer", "TRF-")
+    if data.lot_id is not None:
+        lot = get_or_404(Lot, data.lot_id, db)
+        line = db.query(StockLine).filter(
+            StockLine.product_id == product.id,
+            StockLine.location_id == from_loc.id,
+            StockLine.lot_id == lot.id,
+            StockLine.lpn_id == data.lpn_id,
+        ).first()
+        available = int(line.quantity) if line else 0
+        if available < data.quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lot '{lot.lot_number}' only has {available} on hand at '{from_loc.path}'",
+            )
+    else:
+        available = db.query(func.coalesce(func.sum(StockLine.quantity), 0)).filter(
+            StockLine.product_id == product.id,
+            StockLine.location_id == from_loc.id,
+            StockLine.lpn_id == data.lpn_id,
+        ).scalar() or 0
+        if available < data.quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only {int(available)} on hand at '{from_loc.path}'",
+            )
     try:
         out, inbound = inventory.transfer_stock(
             db, product_id=product.id, user_id=user.id,
@@ -159,7 +188,6 @@ def transfer_stock(data: StockMovementTransfer, db: Session = Depends(get_db), u
             reference_type="transfer", reference=reference,
             notes=data.notes,
         )
-        inbound.transfer_id = out.id
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -222,7 +250,6 @@ def transfer_serialized_stock(data: StockMovementSerialTransfer, db: Session = D
                 reference_type="transfer", reference=reference,
                 notes=data.notes,
             )
-            inbound.transfer_id = out.id
             movements.extend([out, inbound])
     except inventory.InventoryError as e:
         db.rollback()
@@ -238,6 +265,81 @@ def transfer_serialized_stock(data: StockMovementSerialTransfer, db: Session = D
     return {
         "reference": reference,
         "count": len(data.serial_ids),
+        "movements": [StockMovementOut.model_validate(m) for m in movements],
+    }
+
+
+@router.post("/unallocated-move", status_code=201)
+def move_unallocated_stock(data: StockMovementUnallocatedMove, db: Session = Depends(get_db), user=Depends(require_permission("stock.record"))):
+    """Move stock recorded with no location into a chosen destination location.
+
+    Unallocated stock lines (location_id IS NULL) are not visible in any
+    location view, so this lets an operator assign them to a real location.
+    The move posts a matched transfer_out / transfer_in pair so the ledger
+    stays consistent and the movements can be reverted like any transfer.
+    """
+    product = get_or_404(Product, data.product_id, db)
+    if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
+        raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - move stock on a specific variant")
+    if product.is_serialized:
+        raise HTTPException(status_code=400, detail="Unallocated serialized stock must be moved by scanning serial numbers")
+    to_loc = get_or_404(Location, data.to_location_id, db)
+    if not to_loc.is_active:
+        raise HTTPException(status_code=400, detail=f"Destination location '{to_loc.path}' is inactive")
+    if data.lot_id is not None:
+        get_or_404(Lot, data.lot_id, db)
+
+    lines = (
+        db.query(StockLine)
+        .filter(
+            StockLine.product_id == product.id,
+            StockLine.location_id.is_(None),
+            StockLine.quantity > 0,
+        )
+        .order_by(StockLine.id)
+        .all()
+    )
+    if data.lot_id is not None:
+        lines = [l for l in lines if l.lot_id == data.lot_id]
+    total = sum(l.quantity for l in lines)
+    if data.quantity > total:
+        raise HTTPException(status_code=400, detail=f"Only {total} unallocated unit(s) on hand for '{product.display_name}'")
+
+    reference = next_document_number(db, "unallocated_move", "UNL-")
+    movements: list[StockMovement] = []
+    remaining = data.quantity
+    try:
+        for line in lines:
+            if remaining <= 0:
+                break
+            take = min(line.quantity, remaining)
+            if take <= 0:
+                continue
+            out, inbound = inventory.transfer_stock(
+                db, product_id=product.id, user_id=user.id,
+                quantity=take,
+                from_location_id=None,
+                to_location_id=to_loc.id,
+                lot_id=line.lot_id,
+                lpn_id=line.lpn_id,
+                reference_type="unallocated_move", reference=reference,
+                notes=data.notes,
+            )
+            movements.extend([out, inbound])
+            remaining -= take
+    except inventory.InventoryError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    log_activity(db, user.id, user.username, "create", "stock_movement", movements[0].id,
+                 f"Moved {data.quantity} unallocated x '{product.display_name}' to '{to_loc.path}' ({reference})")
+    notify_low_stock(db, product)
+    db.commit()
+    broadcast_change("stock_movement", "created")
+    broadcast_change("product", "updated")
+    return {
+        "reference": reference,
+        "count": len(movements),
         "movements": [StockMovementOut.model_validate(m) for m in movements],
     }
 
@@ -281,6 +383,15 @@ def adjust_stock(data: StockMovementAdjust, db: Session = Depends(get_db), user=
 def update_movement(movement_id: int, data: StockMovementUpdate, db: Session = Depends(get_db), user=Depends(require_permission("stock.update"))):
     sm = get_or_404(StockMovement, movement_id, db)
     updates = data.model_dump(exclude_unset=True)
+    if sm.movement_type in (inventory.TRANSFER_OUT, inventory.TRANSFER_IN):
+        new_qty_change = updates.get("quantity_change", sm.quantity_change)
+        new_product_id = updates.get("product_id", sm.product_id)
+        new_movement_type = updates.get("movement_type", sm.movement_type)
+        if new_product_id != sm.product_id or new_qty_change != sm.quantity_change or new_movement_type != sm.movement_type:
+            raise HTTPException(
+                status_code=400,
+                detail="Transfer movements belong to a matched pair and cannot be edited. Delete the transfer to revert it instead.",
+            )
     old_qty_change = sm.quantity_change
     old_product_id = sm.product_id
     new_qty_change = updates.get("quantity_change", old_qty_change)
@@ -321,21 +432,48 @@ def update_movement(movement_id: int, data: StockMovementUpdate, db: Session = D
 @router.delete("/{movement_id}")
 def delete_movement(movement_id: int, db: Session = Depends(get_db), user=Depends(require_permission("stock.delete"))):
     sm = get_or_404(StockMovement, movement_id, db)
+    legs = [sm]
+    if sm.movement_type in (inventory.TRANSFER_OUT, inventory.TRANSFER_IN):
+        other = db.get(StockMovement, sm.transfer_id) if sm.transfer_id else None
+        if other and other.movement_type in (inventory.TRANSFER_OUT, inventory.TRANSFER_IN) and other.id != sm.id:
+            legs = [sm, other]
     try:
-        product = get_or_404(Product, sm.product_id, db)
-        loc_id = require_active_location(db, product)
-        inventory.post_journal_entry(
-            db, product_id=sm.product_id, user_id=user.id,
-            quantity_change=-sm.quantity_change, movement_type="adjustment",
-            from_location_id=loc_id if sm.quantity_change > 0 else None,
-            to_location_id=loc_id if sm.quantity_change < 0 else None,
-            reference=f"Reversed {sm.id}", notes="Deleted stock movement reversal",
-        )
+        for leg in legs:
+            if leg.movement_type == inventory.TRANSFER_OUT:
+                inventory.post_journal_entry(
+                    db, product_id=leg.product_id, user_id=user.id,
+                    quantity_change=-leg.quantity_change, movement_type="adjustment",
+                    to_location_id=leg.from_location_id,
+                    lot_id=leg.lot_id, lpn_id=leg.lpn_id, serial_id=leg.serial_id,
+                    reference=f"Reversed {leg.id}", notes="Deleted transfer movement reversal",
+                )
+            elif leg.movement_type == inventory.TRANSFER_IN:
+                if leg.serial_id is not None:
+                    continue  # the paired transfer_out reversal already restores the serial's location
+                inventory.post_journal_entry(
+                    db, product_id=leg.product_id, user_id=user.id,
+                    quantity_change=-leg.quantity_change, movement_type="adjustment",
+                    from_location_id=leg.to_location_id,
+                    lot_id=leg.lot_id, lpn_id=leg.lpn_id,
+                    reference=f"Reversed {leg.id}", notes="Deleted transfer movement reversal",
+                )
+            else:
+                product = get_or_404(Product, leg.product_id, db)
+                loc_id = require_active_location(db, product)
+                inventory.post_journal_entry(
+                    db, product_id=leg.product_id, user_id=user.id,
+                    quantity_change=-leg.quantity_change, movement_type="adjustment",
+                    from_location_id=loc_id if leg.quantity_change > 0 else None,
+                    to_location_id=loc_id if leg.quantity_change < 0 else None,
+                    reference=f"Reversed {leg.id}", notes="Deleted stock movement reversal",
+                )
     except inventory.InventoryError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    db.delete(sm)
+    for leg in legs:
+        db.delete(leg)
     db.commit()
-    log_activity(db, user.id, user.username, "delete", "stock_movement", movement_id, f"Deleted stock movement #{movement_id}")
+    log_activity(db, user.id, user.username, "delete", "stock_movement", movement_id,
+                 f"Deleted stock movement #{movement_id}" + (f" and its paired movement #{sm.transfer_id}" if len(legs) > 1 else ""))
     db.commit()
     broadcast_change("stock_movement", "deleted")
     broadcast_change("product", "updated")

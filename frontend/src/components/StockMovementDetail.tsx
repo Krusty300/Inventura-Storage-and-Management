@@ -7,6 +7,7 @@ interface Props {
 }
 
 export default function StockMovementDetail({ movement, onClose }: Props) {
+  const isTransfer = movement.movement_type === "transfer_out" || movement.movement_type === "transfer_in";
   return (
     <Modal open onClose={onClose} title={`Movement #${movement.id}`}>
       <div className="space-y-4 text-sm">
@@ -19,6 +20,20 @@ export default function StockMovementDetail({ movement, onClose }: Props) {
             <span className="text-muted">Type:</span>
             <p className="font-medium">{movement.movement_type}</p>
           </div>
+          {(movement.from_location_name || movement.to_location_name) && (
+            <div>
+              <span className="text-muted">Route:</span>
+              <p className="font-medium">
+                {[movement.from_location_name, movement.to_location_name].filter(Boolean).join(" → ") || "—"}
+              </p>
+            </div>
+          )}
+          {isTransfer && (
+            <div>
+              <span className="text-muted">Paired movement:</span>
+              <p className="font-medium">{movement.transfer_id ? `#${movement.transfer_id}` : "—"}</p>
+            </div>
+          )}
           <div>
             <span className="text-muted">Quantity Change:</span>
             <p className={`font-medium ${movement.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>

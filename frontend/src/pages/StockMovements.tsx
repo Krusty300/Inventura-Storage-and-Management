@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Trash2, ArrowUpRight, ArrowDownRight, Eye } from "lucide-react";
+import { Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Eye } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, StockMovement } from "../types";
@@ -18,7 +18,7 @@ import { useToast } from "../context/ToastContext";
 const PAGE_SIZE = 25;
 
 export default function StockMovements() {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [showForm, setShowForm] = useState(false);
@@ -53,11 +53,18 @@ export default function StockMovements() {
   });
 
   const movements = data?.items || [];
+  const isTransfer = (m: StockMovement) => m.movement_type === "transfer_out" || m.movement_type === "transfer_in";
+  const routeLabel = (m: StockMovement) => {
+    const from = m.from_location_name;
+    const to = m.to_location_name;
+    if (from && to) return `${from} → ${to}`;
+    return from || to || "";
+  };
 
   const handleExport = () => {
     exportCSV(
-      ["Date", "Product", "Type", "Qty Change", "Reference", "User", "Notes"],
-      movements.map((m) => [new Date(m.created_at).toLocaleDateString(), m.product_name, m.movement_type, m.quantity_change, m.reference, m.username, m.notes]),
+      ["Date", "Product", "Type", "Route", "Qty Change", "Reference", "User", "Notes"],
+      movements.map((m) => [new Date(m.created_at).toLocaleDateString(), m.product_name, m.movement_type, routeLabel(m), m.quantity_change, m.reference, m.username, m.notes]),
       "stock-movements"
     );
     addToast("Movements exported to CSV", "success");
@@ -99,6 +106,7 @@ export default function StockMovements() {
               <th className="px-4 py-3 font-medium text-muted">Date</th>
               <th className="px-4 py-3 font-medium text-muted">Product</th>
               <th className="px-4 py-3 font-medium text-muted">Type</th>
+              <th className="px-4 py-3 font-medium text-muted">Route</th>
               <th className="px-4 py-3 font-medium text-muted">Qty Change</th>
               <th className="px-4 py-3 font-medium text-muted">Reference</th>
               <th className="px-4 py-3 font-medium text-muted">User</th>
@@ -108,7 +116,7 @@ export default function StockMovements() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={8} />
+              <Skeleton rows={5} cols={9} />
             ) : movements.length === 0 ? (
               <EmptyState title="No movements recorded" message="Record a stock movement to start tracking inventory changes." actionLabel="Record Movement" onAction={() => setShowForm(true)} />
             ) : movements.map((m) => (
@@ -121,6 +129,28 @@ export default function StockMovements() {
                   <span className={`badge ${["in", "receive", "transfer_in", "sale_return", "count"].includes(m.movement_type) ? "badge-success" : ["out", "sale", "transfer_out", "issue", "backflush", "return"].includes(m.movement_type) ? "badge-danger" : "badge-info"}`}>
                     {m.movement_type}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-muted">
+                  {isTransfer(m) ? (
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <span>{m.from_location_name || "—"}</span>
+                        <ArrowLeftRight size={12} className="text-faint" />
+                        <span>{m.to_location_name || "—"}</span>
+                      </div>
+                      {m.transfer_id != null && (
+                        <div className="text-xs text-faint">paired #{m.transfer_id}</div>
+                      )}
+                    </div>
+                  ) : m.from_location_name || m.to_location_name ? (
+                    <div className="flex items-center gap-1">
+                      {m.from_location_name && <span>{m.from_location_name}</span>}
+                      {m.from_location_name && m.to_location_name && <ArrowLeftRight size={12} className="text-faint" />}
+                      {m.to_location_name && <span>{m.to_location_name}</span>}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
@@ -140,7 +170,7 @@ export default function StockMovements() {
                 <td className="px-4 py-3 text-muted max-w-50 truncate">{m.notes}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    {can("stock.update") && (
+                    {can("stock.update") && !isTransfer(m) && (
                       <button onClick={() => { setEditing(m); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit movement ${m.id}`}>
                         <Pencil size={16} />
                       </button>
@@ -181,7 +211,9 @@ export default function StockMovements() {
       <ConfirmDialog
         open={!!deleting}
         title="Delete Stock Movement"
-        message={`Are you sure you want to delete this movement? This will revert the quantity change on the product and cannot be undone.`}
+        message={deleting && isTransfer(deleting)
+          ? `This movement is part of a matched transfer. Deleting it will revert the entire transfer (both the outbound and inbound legs) and cannot be undone.`
+          : `Are you sure you want to delete this movement? This will revert the quantity change on the product and cannot be undone.`}
         onConfirm={() => { deleteMutation.mutate(deleting!.id); setDeleting(null); }}
         onCancel={() => setDeleting(null)}
       />

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Eye, Fingerprint } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, SerialNumber, StockMovement } from "../types";
 import Modal from "../components/Modal";
@@ -8,6 +8,8 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 
 const PAGE_SIZE = 25;
 
@@ -17,6 +19,7 @@ const STATUS_FILTERS = [
   { value: "reserved", label: "Reserved" },
   { value: "sold", label: "Sold" },
   { value: "quarantined", label: "Quarantined" },
+  { value: "inactive", label: "Inactive" },
   { value: "scrapped", label: "Scrapped" },
 ] as const;
 
@@ -24,14 +27,16 @@ function statusBadge(status: string) {
   switch (status) {
     case "in_stock": return "badge-success";
     case "reserved": return "badge-info";
+    case "sold": return "badge-neutral";
     case "quarantined": return "badge-warning";
+    case "inactive": return "badge-neutral";
     case "scrapped": return "badge-danger";
     default: return "";
   }
 }
 
 export default function SerialNumbers() {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
@@ -117,6 +122,22 @@ export default function SerialNumbers() {
 }
 
 function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const { addToast } = useToast();
+  const [status, setStatus] = useState(serial.status);
+
+  const statusMutation = useMutation({
+    mutationFn: (next: string) => api.put(`/serial-numbers/${serial.id}/status`, { status: next }),
+    onSuccess: (_res, next) => {
+      setStatus(next);
+      addToast(`Serial ${serial.serial_number} ${next === "inactive" ? "deactivated" : "activated"}`, "success");
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["serial-movements", serial.id] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot update serial", "error"),
+  });
+
   const { data: movements, isLoading } = useQuery({
     queryKey: ["serial-movements", serial.id],
     queryFn: async () => {
@@ -124,6 +145,8 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
       return data as StockMovement[];
     },
   });
+
+  const canToggle = can("serial_numbers.update") && (status === "in_stock" || status === "inactive");
 
   return (
     <Modal open onClose={onClose} title={`Serial ${serial.serial_number}`} wide>
@@ -143,7 +166,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
           </div>
           <div>
             <p className="text-muted">Status</p>
-            <p className="font-medium">{statusBadge(serial.status) ? <span className={`badge ${statusBadge(serial.status)}`}>{serial.status}</span> : <span className="capitalize">{serial.status}</span>}</p>
+            <p className="font-medium">{statusBadge(status) ? <span className={`badge ${statusBadge(status)}`}>{status}</span> : <span className="capitalize">{status}</span>}</p>
           </div>
         </div>
 
@@ -182,7 +205,17 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
           )}
         </div>
 
-        <div className="flex justify-end pt-2">
+        <div className="flex justify-end gap-2 pt-2">
+          {canToggle && status === "in_stock" && (
+            <button onClick={() => statusMutation.mutate("inactive")} disabled={statusMutation.isPending} className="btn-danger">
+              Deactivate
+            </button>
+          )}
+          {canToggle && status === "inactive" && (
+            <button onClick={() => statusMutation.mutate("in_stock")} disabled={statusMutation.isPending} className="btn-secondary">
+              Activate
+            </button>
+          )}
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>

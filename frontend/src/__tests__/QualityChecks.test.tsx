@@ -97,6 +97,16 @@ describe("QualityChecks Page", () => {
     expect(await screen.findByText("No quality checks yet")).toBeInTheDocument();
   });
 
+  it("sends a debounced search query", async () => {
+    mockGet([mockQC()]);
+    renderWithProviders(<QualityChecks />);
+    expect(await screen.findByText("QC-0001")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search quality checks"), { target: { value: "Widget" } });
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith("/quality-checks", expect.objectContaining({ params: expect.objectContaining({ search: "Widget" }) }))
+    );
+  });
+
   it("creates a failing check and posts the payload", async () => {
     mockGet([], [mockProduct()], [{ id: 5, lot_number: "LOT-5", status: "in_stock", on_hand: 4 }]);
     postMock.mockResolvedValue({ data: { qc_number: "QC-0002" } });
@@ -148,12 +158,26 @@ describe("QualityChecks Page", () => {
     await waitFor(() => expect(putMock).toHaveBeenCalledWith("/quality-checks/1", { result: "pass", notes: "off spec" }));
   });
 
-  it("deletes a check after confirmation", async () => {
+  it("shows serialized products with a marker and serial-based lot counts", async () => {
+    mockGet(
+      [],
+      [mockProduct({ id: 7, display_name: "Asset", sku: "SKU-7", is_serialized: true })],
+      [{ id: 9, lot_number: "LOT-9", status: "in_stock", on_hand: 0, serial_count: 5 }]
+    );
+    renderWithProviders(<QualityChecks />);
+    fireEvent.click(await screen.findByRole("button", { name: "New Check" }));
+    expect(await screen.findByRole("option", { name: "Asset (SKU-7) (Serialized)" })).toBeInTheDocument();
+    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "7" } });
+    await waitFor(() => expect(screen.getByRole("option", { name: /LOT-9 \(5 on hand\)/ })).toBeInTheDocument());
+  });
+
+  it("deletes a check through the confirm dialog", async () => {
     mockGet([mockQC()]);
     deleteMock.mockResolvedValue({ data: {} });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     renderWithProviders(<QualityChecks />);
     fireEvent.click(await screen.findByLabelText("Delete QC-0001"));
+    expect(await screen.findByText(/Are you sure you want to delete quality check QC-0001/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/quality-checks/1"));
   });
 });

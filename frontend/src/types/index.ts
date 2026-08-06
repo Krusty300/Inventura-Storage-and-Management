@@ -24,6 +24,7 @@ export interface Product {
   category_name: string;
   supplier_name: string;
   is_variant: boolean;
+  variant_of_name: string;
   variant_label: string;
   display_name: string;
   total_quantity: number;
@@ -258,6 +259,20 @@ export interface PaginatedResponse<T> {
   pages: number;
 }
 
+export interface GlobalSearchResult {
+  type: string;
+  id: number;
+  label: string;
+  subtitle: string;
+  route: string;
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  total: number;
+  results: GlobalSearchResult[];
+}
+
 export interface SerialNumber {
   id: number;
   product_id: number;
@@ -337,6 +352,14 @@ export interface CustomerStats {
   total_spent: number;
   avg_order_value: number;
   last_purchase_at: string | null;
+}
+
+export interface FrequentProduct {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  order_count: number;
+  total_quantity: number;
 }
 
 export interface TopCustomer {
@@ -517,6 +540,7 @@ export interface LPN {
   content_count: number;
   total_quantity: number;
   contents: LPNContentItem[];
+  serials: LPNSerialItem[];
 }
 
 export interface LPNContentItem {
@@ -525,6 +549,16 @@ export interface LPNContentItem {
   lot_id: number | null;
   lot_number: string;
   quantity: number;
+}
+
+export interface LPNSerialItem {
+  serial_id: number;
+  product_id: number;
+  product_name: string;
+  serial_number: string;
+  lot_number: string;
+  status: string;
+  location_name: string;
 }
 
 export interface Lot {
@@ -551,6 +585,7 @@ export interface CycleCountItem {
   variance: number;
   status: string;
   product_name: string;
+  current_on_hand?: number | null;
 }
 
 export interface CycleCount {

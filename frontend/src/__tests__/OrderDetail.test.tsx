@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
-import { renderWithProviders } from "./testUtils";
+import { renderWithProviders, makeQueryClient } from "./testUtils";
 import api from "../api/client";
 import OrderDetail from "../components/OrderDetail";
 import type { Order } from "../types";
@@ -30,24 +30,26 @@ function makeOrder(overrides: Record<string, unknown> = {}): Order {
   };
 }
 
-describe("OrderDetail serialized receive", () => {
+describe("OrderDetail receive", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     getMock.mockImplementation((url: string) => {
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 5, path: "Main Warehouse" }] } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
   });
 
-  it("shows serial number inputs for serialized items when receiving", async () => {
+  it("shows a location picker and serial number inputs for serialized items when receiving", async () => {
     const order = makeOrder({
       items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget SN", is_serialized: true }],
     });
     renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
     expect(screen.getByLabelText("Serial numbers for Widget SN")).toBeInTheDocument();
-    expect(screen.getByText("Widget SN — enter 2 serial number(s), one per line")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Enter 2 serial number(s), one per line")).toBeInTheDocument();
+    expect(screen.getByLabelText("Location")).toBeInTheDocument();
   });
 
   it("sends serial numbers when receiving a serialized order", async () => {
@@ -77,7 +79,7 @@ describe("OrderDetail serialized receive", () => {
     await vi.waitFor(() => expect(putMock).not.toHaveBeenCalled());
   });
 
-  it("receives non-serialized order via plain confirm without serial inputs", async () => {
+  it("receives a non-serialized order without a chosen location", async () => {
     putMock.mockResolvedValue({ data: { status: "received" } });
     const onUpdated = vi.fn();
     const order = makeOrder({
@@ -85,10 +87,27 @@ describe("OrderDetail serialized receive", () => {
     });
     renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />);
     fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
-    expect(screen.getByText("Receive PO-1001 and update stock?")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Yes, proceed" }));
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
     await vi.waitFor(() => {
       expect(putMock).toHaveBeenCalledWith("/orders/1", { status: "received" });
+    });
+    expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it("sends the chosen location when receiving into a specific location", async () => {
+    putMock.mockResolvedValue({ data: { status: "received" } });
+    const onUpdated = vi.fn();
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    const queryClient = makeQueryClient();
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />, { queryClient });
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    await vi.waitFor(() => expect(queryClient.getQueryState(["locations", "order-picker"])?.status).toBe("success"));
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Main Warehouse" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/orders/1", { status: "received", receive_locations: { 10: 5 } });
     });
     expect(onUpdated).toHaveBeenCalled();
   });

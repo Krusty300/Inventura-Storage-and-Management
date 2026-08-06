@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -96,6 +96,16 @@ describe("CycleCounts Page", () => {
     expect(await screen.findByText("No cycle counts yet")).toBeInTheDocument();
   });
 
+  it("sends a debounced search query", async () => {
+    mockCounts([mockCycleCount()]);
+    renderWithProviders(<CycleCounts />);
+    expect(await screen.findByText("CC-0001")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search cycle counts"), { target: { value: "Warehouse" } });
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith("/cycle-counts", expect.objectContaining({ params: expect.objectContaining({ search: "Warehouse" }) }))
+    );
+  });
+
   it("opens the new count form with selectable products", async () => {
     mockCounts([mockCycleCount()]);
     renderWithProviders(<CycleCounts />);
@@ -132,5 +142,47 @@ describe("CycleCounts Page", () => {
     await screen.findByRole("option", { name: "Warehouse A" });
     fireEvent.change(screen.getByLabelText("Location"), { target: { value: "1" } });
     expect(await screen.findByRole("option", { name: "Asset (SKU-3) (Serialized)" })).toBeInTheDocument();
+  });
+
+  it("warns when system on-hand changed since the count was created", async () => {
+    mockCounts([mockCycleCount()], {
+      stockLines: [
+        { id: 1, product_id: 1, product_name: "Widget", sku: "SKU-1", lot_number: "", lpn_number: "", quantity: 20, unit_cost: 10, value: 200 },
+      ],
+    });
+    renderWithProviders(<CycleCounts />);
+    fireEvent.click(await screen.findByLabelText("Count CC-0001"));
+    expect(await screen.findByText("System on-hand changed since this count was created")).toBeInTheDocument();
+    expect(screen.getByText("Widget: expected 15, on hand now 20")).toBeInTheDocument();
+    expect(screen.getByText("On hand now: 20")).toBeInTheDocument();
+  });
+
+  it("shows no warning when on-hand still matches the expected snapshot", async () => {
+    mockCounts([mockCycleCount()], {
+      stockLines: [
+        { id: 1, product_id: 1, product_name: "Widget", sku: "SKU-1", lot_number: "", lpn_number: "", quantity: 15, unit_cost: 10, value: 150 },
+      ],
+    });
+    renderWithProviders(<CycleCounts />);
+    fireEvent.click(await screen.findByLabelText("Count CC-0001"));
+    expect(await screen.findByLabelText("Counted quantity for Widget")).toBeInTheDocument();
+    expect(screen.queryByText("System on-hand changed since this count was created")).not.toBeInTheDocument();
+    expect(screen.queryByText("On hand now: 20")).not.toBeInTheDocument();
+  });
+
+  it("toasts when on-hand drifted by submit time", async () => {
+    mockCounts([mockCycleCount()], {
+      stockLines: [
+        { id: 1, product_id: 1, product_name: "Widget", sku: "SKU-1", lot_number: "", lpn_number: "", quantity: 15, unit_cost: 10, value: 150 },
+      ],
+    });
+    const postMock = api.post as ReturnType<typeof vi.fn>;
+    postMock.mockResolvedValue({
+      data: { status: "completed", items: [{ product_id: 1, expected_qty: 15, current_on_hand: 20 }] },
+    });
+    renderWithProviders(<CycleCounts />);
+    fireEvent.click(await screen.findByLabelText("Count CC-0001"));
+    fireEvent.click(await screen.findByRole("button", { name: "Submit Count" }));
+    expect(await screen.findByText(/On-hand changed for 1 item/)).toBeInTheDocument();
   });
 });

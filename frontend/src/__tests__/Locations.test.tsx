@@ -31,7 +31,7 @@ function mockLocationTree(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockLocations(tree: ReturnType<typeof mockLocationTree>[], summary: Record<string, unknown> = {}) {
+function mockLocations(tree: ReturnType<typeof mockLocationTree>[], summary: Record<string, unknown> = {}, detail: Record<string, unknown> = {}) {
   getMock.mockImplementation((url: string) => {
     if (url === "/locations/tree") return Promise.resolve({ data: tree });
     if (url === "/locations") return Promise.resolve({ data: { items: tree, total: tree.length, page: 1, pages: 1 } });
@@ -40,12 +40,15 @@ function mockLocations(tree: ReturnType<typeof mockLocationTree>[], summary: Rec
         data: { total: 3, active: 3, inactive: 0, total_stock_lines: 5, total_lpns: 2, total_quantity: 40, total_value: 100, ...summary },
       });
     }
-    if (url === "/locations/1/detail") {
+    if (url.startsWith("/locations/") && url.endsWith("/detail")) {
+      const id = Number(url.split("/")[2]);
+      const loc = tree.find((t) => t.id === id);
       return Promise.resolve({
         data: {
-          location: mockLocationTree(),
+          location: loc ?? mockLocationTree({ id }),
           stock_lines: [{ id: 1, product_id: 1, product_name: "Widget", sku: "SKU-1", lot_number: "", lpn_number: "", quantity: 4, unit_cost: 5, value: 20 }],
           lpns: [{ id: 1, lpn_number: "LPN-1", lpn_type: "pallet", status: "active", total_quantity: 4 }],
+          ...detail,
         },
       });
     }
@@ -162,6 +165,47 @@ describe("Locations Page", () => {
     expect(await screen.findByText("Widget")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /LPNs \(1\)/ }));
     expect(await screen.findByText("LPN-1")).toBeInTheDocument();
+  });
+
+  it("shows scrapped serials in the detail modal", async () => {
+    mockLocations([mockLocationTree()], {}, {
+      scrapped_serials: [
+        { id: 2, product_id: 1, product_name: "Widget", sku: "SKU-1", serial_number: "W-002", lot_number: "", status: "scrapped", unit_cost: 5, value: 5 },
+        { id: 3, product_id: 1, product_name: "Widget", sku: "SKU-1", serial_number: "W-003", lot_number: "", status: "scrapped", unit_cost: 5, value: 5 },
+      ],
+    });
+    renderWithProviders(<Locations />);
+    fireEvent.click(await screen.findByLabelText("View Aisle A"));
+    expect(await screen.findByText("Scrapped serials (2)")).toBeInTheDocument();
+    expect(screen.getByText("W-002")).toBeInTheDocument();
+    expect(screen.getByText("W-003")).toBeInTheDocument();
+    expect(screen.getAllByText("scrapped")).toHaveLength(2);
+  });
+
+  it("opens the detail modal for a location deep link", async () => {
+    mockLocations([mockLocationTree({ id: 2, code: "B-01", name: "Bin B", path: "Bin B", location_type: "bin", children: [] })]);
+    renderWithProviders(<Locations />, { route: "/locations?location=2" });
+    expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
+    expect(screen.getByText("Widget")).toBeInTheDocument();
+  });
+
+  it("closes the detail modal with a single click on the X", async () => {
+    mockLocations([mockLocationTree()]);
+    renderWithProviders(<Locations />);
+    fireEvent.click(await screen.findByLabelText("View Aisle A"));
+    expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    await vi.waitFor(() => expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument());
+  });
+
+  it("does not reopen the detail modal after closing it", async () => {
+    mockLocations([mockLocationTree()]);
+    renderWithProviders(<Locations />);
+    fireEvent.click(await screen.findByLabelText("View Aisle A"));
+    expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    await vi.waitFor(() => expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument());
+    expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument();
   });
 
   it("renders the export button", async () => {

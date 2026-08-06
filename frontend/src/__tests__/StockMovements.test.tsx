@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -72,5 +72,52 @@ describe("StockMovements Page", () => {
     mockMovements([]);
     renderWithProviders(<StockMovements />);
     expect(await screen.findByText("No movements recorded")).toBeInTheDocument();
+  });
+
+  it("shows route and pair for transfer movements and hides edit", async () => {
+    mockMovements([mockMovement({
+      id: 5,
+      quantity_change: -2,
+      movement_type: "transfer_out",
+      from_location_name: "Bin A",
+      to_location_name: "Bin B",
+      transfer_id: 6,
+    })]);
+    renderWithProviders(<StockMovements />);
+    expect(await screen.findByText("Bin A")).toBeInTheDocument();
+    expect(screen.getByText("Bin B")).toBeInTheDocument();
+    expect(screen.getByText("paired #6")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit movement 5")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Delete movement 5")).toBeInTheDocument();
+  });
+
+  it("shows the source location in the route for a scrap movement", async () => {
+    mockMovements([mockMovement({
+      id: 7,
+      quantity_change: -1,
+      movement_type: "scrap",
+      from_location_name: "Bin C",
+      to_location_name: "",
+      reference: "Cycle count CC-0001",
+    })]);
+    renderWithProviders(<StockMovements />);
+    expect(await screen.findByText("Bin C")).toBeInTheDocument();
+  });
+
+  it("shows route in the detail modal for a scrap movement", async () => {
+    mockMovements([mockMovement({
+      id: 8,
+      quantity_change: -1,
+      movement_type: "scrap",
+      from_location_name: "Bin C",
+      to_location_name: "",
+      reference: "Cycle count CC-0001",
+    })]);
+    renderWithProviders(<StockMovements />);
+    const viewButton = await screen.findByLabelText("View movement 8");
+    viewButton.click();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Route:")).toBeInTheDocument();
+    expect(within(dialog).getByText("Bin C")).toBeInTheDocument();
   });
 });

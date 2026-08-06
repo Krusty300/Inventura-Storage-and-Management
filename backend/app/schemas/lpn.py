@@ -23,6 +23,16 @@ class LPNContentOut(BaseModel):
     quantity: int = 0
 
 
+class LPNSerialOut(BaseModel):
+    serial_id: int
+    product_id: int
+    product_name: str = ""
+    serial_number: str = ""
+    lot_number: str = ""
+    status: str = ""
+    location_name: str = ""
+
+
 class LPNOut(BaseModel):
     id: int
     lpn_number: str
@@ -34,6 +44,7 @@ class LPNOut(BaseModel):
     content_count: int = 0
     total_quantity: int = 0
     contents: list[LPNContentOut] = []
+    serials: list[LPNSerialOut] = []
 
     class Config:
         from_attributes = True

@@ -104,4 +104,18 @@ describe("Shipments", () => {
     expect((await screen.findAllByText("shipped")).length).toBeGreaterThan(0);
     expect(await screen.findByRole("button", { name: "Create Invoice" })).toBeInTheDocument();
   });
+
+  it("sends a debounced search query", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/shipments") return Promise.resolve({ data: { items: [baseShipment("draft")], total: 1, page: 1, pages: 1 } });
+      if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 1, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Shipments />);
+    expect(await screen.findByText("SHP-100")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search shipments"), { target: { value: "SHP" } });
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith("/shipments", expect.objectContaining({ params: expect.objectContaining({ search: "SHP" }) }))
+    );
+  });
 });

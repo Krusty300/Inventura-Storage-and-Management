@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useLocation } from "react-router-dom";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -48,14 +49,34 @@ const emptyProfit = { total_cost_value: 0, total_potential_revenue: 0, total_pot
 const emptySalesSummary = { total_sales: 0, total_refunds: 0, total_revenue: 0, total_tax: 0, by_payment_method: [], top_products: [] };
 const emptyCostReport = { items: [], total_material_cost: 0, total_standard_cost: 0, total_variance: 0, completed_orders: 0 };
 
-function mockDashboard(overrides: { stats?: Record<string, unknown>; exceptions?: Record<string, unknown>; lpns?: Record<string, unknown>; receipts?: Record<string, unknown>; salesSummary?: Record<string, unknown> } = {}) {
+const searchResults = {
+  query: "widget",
+  total: 3,
+  results: [
+    { type: "product", id: 1, label: "Widget", subtitle: "SKU-001 · 12 in stock", route: "/products" },
+    { type: "lot", id: 1, label: "LOT-001", subtitle: "Widget · Warehouse A", route: "/lots" },
+    { type: "customer", id: 1, label: "Widget Co", subtitle: "widgetco@example.com", route: "/customers" },
+  ],
+};
+
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname + location.search}</div>;
+}
+
+function mockDashboard(overrides: { stats?: Record<string, unknown>; exceptions?: Record<string, unknown>; lpns?: Record<string, unknown>; receipts?: Record<string, unknown>; salesSummary?: Record<string, unknown>; search?: Record<string, unknown> } = {}) {
   const statsData = overrides.stats ? { ...stats, ...overrides.stats } : stats;
   const exceptionsData = overrides.exceptions ? { ...emptyExceptions, ...overrides.exceptions } : emptyExceptions;
   const lpnsData = overrides.lpns ? { ...emptyPage, ...overrides.lpns } : emptyPage;
   const receiptsData = overrides.receipts ? { ...emptyPage, ...overrides.receipts } : emptyPage;
   const salesSummaryData = overrides.salesSummary ? { ...emptySalesSummary, ...overrides.salesSummary } : emptySalesSummary;
 
-  getMock.mockImplementation((url: string) => {
+  getMock.mockImplementation((url: string, config?: { params?: Record<string, string> }) => {
+    if (url === "/search") {
+      const q = config?.params?.q ?? "";
+      if (q === "widget") return Promise.resolve({ data: searchResults });
+      return Promise.resolve({ data: { query: q, total: 0, results: [] } });
+    }
     if (url === "/dashboard/stats") return Promise.resolve({ data: statsData });
     if (url === "/sales/stats") return Promise.resolve({ data: { total_sales: 5, total_revenue: 1200, recent_sales: [] } });
     if (url.startsWith("/reports/stock-movement-trends")) return Promise.resolve({ data: emptyTrends });
@@ -82,7 +103,7 @@ describe("Dashboard Page", () => {
   it("renders stat cards from the API", async () => {
     mockDashboard();
     renderWithProviders(<Dashboard />);
-    expect(await screen.findByText("Total Products")).toBeInTheDocument();
+    expect(await screen.findByText("Active Products")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("$2,500")).toBeInTheDocument();
     expect(screen.getByText("$1,200")).toBeInTheDocument();
@@ -169,5 +190,72 @@ describe("Dashboard Page", () => {
     renderWithProviders(<Dashboard />);
     expect(await screen.findAllByText("Failed to load dashboard data")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("global search queries /search and shows grouped results", async () => {
+    mockDashboard();
+    renderWithProviders(<Dashboard />);
+    await screen.findByText("Active Products");
+    const input = screen.getByLabelText("Global search");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "widget" } });
+    expect(await screen.findByText("LOT-001")).toBeInTheDocument();
+    expect(screen.getByText("Widget Co")).toBeInTheDocument();
+    expect(screen.getByText("Customers (1)")).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith("/search", { params: { q: "widget" } });
+  });
+
+  it("global search navigates to the result page with a search prefill", async () => {
+    mockDashboard();
+    renderWithProviders(
+      <>
+        <Dashboard />
+        <LocationProbe />
+      </>
+    );
+    await screen.findByText("Active Products");
+    const input = screen.getByLabelText("Global search");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "widget" } });
+    const result = await screen.findByRole("button", { name: /SKU-001/ });
+    fireEvent.click(result);
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/products?search=Widget");
+    });
+    expect(screen.getByLabelText("Global search")).toHaveValue("");
+  });
+
+  it("does not query the global search endpoint for queries shorter than 2 characters", async () => {
+    mockDashboard();
+    renderWithProviders(<Dashboard />);
+    await screen.findByText("Active Products");
+    const input = screen.getByLabelText("Global search");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "w" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(getMock).not.toHaveBeenCalledWith("/search", expect.anything());
+  });
+
+  it("passes lead_time_days to stockout risk and deep-links to the stockout report", async () => {
+    mockDashboard();
+    renderWithProviders(
+      <>
+        <Dashboard />
+        <LocationProbe />
+      </>
+    );
+    await screen.findByText("Active Products");
+    expect(getMock).toHaveBeenCalledWith("/reports/stockout-risk", { params: { lead_time_days: 7 } });
+    const leadGroup = screen.getByLabelText("Stockout risk lead time");
+    fireEvent.click(within(leadGroup).getByRole("button", { name: "30d" }));
+    await waitFor(() => {
+      expect(getMock).toHaveBeenCalledWith("/reports/stockout-risk", { params: { lead_time_days: 30 } });
+    });
+    fireEvent.click(screen.getByRole("button", { name: /High Stockout Risk/ }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/reports?tab=stockout&lead_time_days=30");
+    });
   });
 });

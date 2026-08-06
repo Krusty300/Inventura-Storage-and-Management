@@ -124,6 +124,18 @@ def test_shipment_serialized_flow(auth_headers):
     assert len(in_stock) == 1
 
 
+def test_pick_rejects_deactivated_serialized_product(auth_headers):
+    p = _make_product(auth_headers, "SHP-DEACT", serialized=True)
+    loc = _make_location(auth_headers, "SHP-DEACT-LOC")
+    assert _receive_serials(auth_headers, p["id"], loc["id"], ["D1", "D2"]).status_code == 201
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    assert client.put(f"/api/products/{p['id']}", json={"is_active": False}, headers=auth_headers).status_code == 200
+
+    picked = client.post(f"/api/shipments/{created['id']}/pick", headers=auth_headers)
+    assert picked.status_code == 400
+    assert "inactive" in picked.json()["detail"]
+
+
 def test_shipment_cancel_draft(auth_headers):
     p = _make_product(auth_headers, "SHP-C")
     loc = _make_location(auth_headers, "SHP-C-LOC")
@@ -137,6 +149,44 @@ def test_shipment_cancel_draft(auth_headers):
 
     # cannot ship a cancelled shipment
     assert client.post(f"/api/shipments/{created['id']}/ship", headers=auth_headers).status_code == 400
+
+
+def test_cancel_picked_shipment_returns_stock(auth_headers):
+    p = _make_product(auth_headers, "SHP-RET")
+    loc = _make_location(auth_headers, "SHP-RET-LOC")
+    assert _receive(auth_headers, p["id"], 6, loc["id"], lot_number="LOT-RET").status_code == 201
+    created = _create_shipment(auth_headers, [(p["id"], 4)]).json()
+    sid = created["id"]
+    assert client.post(f"/api/shipments/{sid}/pick", headers=auth_headers).status_code == 200
+    assert client.get(f"/api/locations/{loc['id']}", headers=auth_headers).json()["total_quantity"] == 2
+
+    cancelled = client.post(f"/api/shipments/{sid}/cancel", headers=auth_headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["staging_location_id"] is None
+    assert all(i["quantity_picked"] == 0 for i in cancelled.json()["items"])
+    assert client.get(f"/api/locations/{loc['id']}", headers=auth_headers).json()["total_quantity"] == 6
+
+
+def test_cancel_picked_serialized_shipment_returns_serials(auth_headers):
+    p = _make_product(auth_headers, "SHP-RET-SER", serialized=True)
+    loc = _make_location(auth_headers, "SHP-RET-SER-LOC")
+    assert _receive_serials(auth_headers, p["id"], loc["id"], ["RS-1", "RS-2", "RS-3"]).status_code == 201
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    sid = created["id"]
+    assert client.post(f"/api/shipments/{sid}/pick", headers=auth_headers).status_code == 200
+
+    serials = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"]
+    staged = [s for s in serials if s["location_id"] != loc["id"]]
+    assert len(staged) == 2
+
+    cancelled = client.post(f"/api/shipments/{sid}/cancel", headers=auth_headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+    serials = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"]
+    assert all(s["status"] == "in_stock" for s in serials)
+    assert all(s["location_id"] == loc["id"] for s in serials)
 
 
 def test_shipment_stats(auth_headers):

@@ -18,6 +18,9 @@ def _load_lpn(db: Session, lpn_id: int) -> LPN:
     return get_or_404(LPN, lpn_id, db, options=[
         joinedload(LPN.location), joinedload(LPN.stock_lines).joinedload(StockLine.product),
         joinedload(LPN.stock_lines).joinedload(StockLine.lot),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.product),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.lot),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.location),
     ])
 
 
@@ -33,7 +36,17 @@ def _serialize_lpn(db: Session, lpn: LPN) -> dict:
             "lot_number": sl.lot.lot_number if sl.lot else "",
             "quantity": sl.quantity,
         })
-    serial_count = db.query(SerialNumber).filter(SerialNumber.lpn_id == lpn.id).count()
+    serials = []
+    for s in lpn.serial_numbers:
+        serials.append({
+            "serial_id": s.id,
+            "product_id": s.product_id,
+            "product_name": s.product_name,
+            "serial_number": s.serial_number,
+            "lot_number": s.lot_number,
+            "status": s.status,
+            "location_name": s.location_name,
+        })
     return {
         "id": lpn.id,
         "lpn_number": lpn.lpn_number,
@@ -42,9 +55,10 @@ def _serialize_lpn(db: Session, lpn: LPN) -> dict:
         "status": lpn.status,
         "created_at": lpn.created_at,
         "location_name": lpn.location_name,
-        "content_count": len(contents) + serial_count,
+        "content_count": len(contents) + len(serials),
         "total_quantity": total_qty,
         "contents": contents,
+        "serials": serials,
     }
 
 
@@ -57,7 +71,12 @@ def list_lpns(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    q = db.query(LPN).options(joinedload(LPN.location), joinedload(LPN.stock_lines))
+    q = db.query(LPN).options(
+        joinedload(LPN.location), joinedload(LPN.stock_lines),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.product),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.lot),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.location),
+    )
     if search:
         like = f"%{search}%"
         q = q.filter(LPN.lpn_number.ilike(like))

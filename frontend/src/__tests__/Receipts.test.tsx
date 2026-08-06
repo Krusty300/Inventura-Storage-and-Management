@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -34,6 +34,39 @@ function mockReceipts(items: ReturnType<typeof mockReceipt>[]) {
     if (url === "/receipts") return Promise.resolve({ data: { items, total: items.length, page: 1, pages: 1 } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
+}
+
+const serializedAsset = { id: 2, name: "Asset", sku: "SKU-2", display_name: "Asset", is_active: true, is_variant: false, is_serialized: true, variants: [] };
+const plainWidget = { id: 3, name: "Widget", sku: "SKU-3", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] };
+
+function mockReceiptForm({ serials = [] }: { serials?: Record<string, unknown>[] } = {}) {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/receipts") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+    if (url === "/products")
+      return Promise.resolve({ data: { items: [serializedAsset, plainWidget], total: 2, page: 1, pages: 1 } });
+    if (url === "/suppliers") return Promise.resolve({ data: { items: [] } });
+    if (url === "/locations")
+      return Promise.resolve({
+        data: { items: [
+          { id: 10, name: "Warehouse B", path: "Warehouse B", is_active: true },
+          { id: 11, name: "Warehouse A", path: "Warehouse A", is_active: true },
+        ] },
+      });
+    if (url === "/lpns") return Promise.resolve({ data: { items: [] } });
+    if (url === "/serial-numbers")
+      return Promise.resolve({ data: { items: serials, total: serials.length, page: 1, pages: 1 } });
+    return Promise.reject(new Error(`Unexpected call: ${url}`));
+  });
+}
+
+function openReceiptForm() {
+  renderWithProviders(<Receipts />);
+  fireEvent.click(screen.getByRole("button", { name: "Record Receipt" }));
+}
+
+async function selectProduct(id: string, label: string) {
+  const option = await screen.findByRole("option", { name: label });
+  fireEvent.change(option.closest("select")!, { target: { value: id } });
 }
 
 describe("Receipts Page", () => {
@@ -73,5 +106,28 @@ describe("Receipts Page", () => {
     mockReceipts([]);
     renderWithProviders(<Receipts />);
     expect(await screen.findByText("No receipts yet")).toBeInTheDocument();
+  });
+
+  it("prefills the receipt location from the single location holding serialized stock", async () => {
+    mockReceiptForm({ serials: [
+      { id: 1, product_id: 2, serial_number: "SN-1", lot_id: null, location_id: 10, status: "in_stock", sold_at: null, location_name: "Warehouse B", lot_number: "", product_name: "Asset" },
+    ] });
+    openReceiptForm();
+    await selectProduct("2", "Asset (SKU-2)");
+    await waitFor(() => expect(screen.getByLabelText("Location")).toHaveValue("Warehouse B"));
+  });
+
+  it("shows location chips when serialized stock spans multiple locations without overriding the field", async () => {
+    mockReceiptForm({ serials: [
+      { id: 1, product_id: 2, serial_number: "SN-1", lot_id: null, location_id: 10, status: "in_stock", sold_at: null, location_name: "Warehouse B", lot_number: "", product_name: "Asset" },
+      { id: 2, product_id: 2, serial_number: "SN-2", lot_id: null, location_id: 11, status: "in_stock", sold_at: null, location_name: "Warehouse A", lot_number: "", product_name: "Asset" },
+    ] });
+    openReceiptForm();
+    await selectProduct("2", "Asset (SKU-2)");
+    expect(await screen.findByRole("button", { name: "Warehouse B (1)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Warehouse A (1)" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Location")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "Warehouse A (1)" }));
+    await waitFor(() => expect(screen.getByLabelText("Location")).toHaveValue("Warehouse A"));
   });
 });

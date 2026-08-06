@@ -22,7 +22,7 @@ import { formatCurrency } from "../utils/currency";
 const PAGE_SIZE = 25;
 
 export default function Customers() {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [typeFilter, setTypeFilter] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);

@@ -22,6 +22,8 @@ ADJUSTMENT = "adjustment"
 COUNT = "count"
 SHIP = "ship"
 SCRAP = "scrap"
+DEACTIVATE = "deactivate"
+ACTIVATE = "activate"
 
 VALID_MOVEMENT_TYPES = {
     RECEIVE,
@@ -35,6 +37,8 @@ VALID_MOVEMENT_TYPES = {
     COUNT,
     SHIP,
     SCRAP,
+    DEACTIVATE,
+    ACTIVATE,
     # Legacy types used by the existing API contract
     "in",
     "out",
@@ -46,6 +50,7 @@ SERIAL_STATUS_RESERVED = "reserved"
 SERIAL_STATUS_SOLD = "sold"
 SERIAL_STATUS_QUARANTINED = "quarantined"
 SERIAL_STATUS_SCRAPPED = "scrapped"
+SERIAL_STATUS_INACTIVE = "inactive"
 
 
 def _location_is_valid(db: Session, location_id: int | None) -> bool:
@@ -321,6 +326,8 @@ def post_journal_entry(
                 serial.status = SERIAL_STATUS_RESERVED
             elif movement_type == SCRAP:
                 serial.status = SERIAL_STATUS_SCRAPPED
+            elif movement_type == DEACTIVATE:
+                serial.status = SERIAL_STATUS_INACTIVE
             else:
                 serial.status = SERIAL_STATUS_QUARANTINED
     else:
@@ -364,6 +371,66 @@ def post_journal_entry(
     db.flush()
     product.quantity = on_hand(db, product_id=product_id)
     return movement
+
+
+def deactivate_serials(
+    db: Session,
+    *,
+    product_id: int,
+    user_id: int,
+    reference: str = "",
+    notes: str = "",
+) -> int:
+    """Flag every on-hand (in_stock) serial of a product as ``inactive``.
+
+    Used when a serialized product is deactivated. Returns the number of
+    serials flagged. Caller is responsible for committing.
+    """
+    serials = db.query(SerialNumber).filter(
+        SerialNumber.product_id == product_id,
+        SerialNumber.status == SERIAL_STATUS_IN_STOCK,
+    ).all()
+    count = 0
+    for serial in serials:
+        post_journal_entry(
+            db, product_id=product_id, user_id=user_id, quantity_change=-1,
+            movement_type=DEACTIVATE, from_location_id=serial.location_id,
+            lot_id=serial.lot_id, serial_id=serial.id,
+            reference_type="product", reference=reference,
+            notes=notes or "Product deactivated - unit flagged inactive",
+        )
+        count += 1
+    return count
+
+
+def reactivate_serials(
+    db: Session,
+    *,
+    product_id: int,
+    user_id: int,
+    reference: str = "",
+    notes: str = "",
+) -> int:
+    """Restore every ``inactive`` serial of a product back to ``in_stock``.
+
+    Used when a serialized product is reactivated. Returns the number of
+    serials restored. Caller is responsible for committing.
+    """
+    serials = db.query(SerialNumber).filter(
+        SerialNumber.product_id == product_id,
+        SerialNumber.status == SERIAL_STATUS_INACTIVE,
+    ).all()
+    count = 0
+    for serial in serials:
+        post_journal_entry(
+            db, product_id=product_id, user_id=user_id, quantity_change=+1,
+            movement_type=ACTIVATE, to_location_id=serial.location_id,
+            lot_id=serial.lot_id, serial_id=serial.id,
+            reference_type="product", reference=reference,
+            notes=notes or "Product activated - unit restored to in stock",
+        )
+        count += 1
+    return count
 
 
 def count_adjustment(
@@ -523,4 +590,9 @@ def transfer_stock(
         reference=reference,
         notes=notes,
     )
+    # Link the matched legs both ways so the pair can be found, displayed, and
+    # reverted together. Legacy callers may pass their own transfer_id (e.g. a
+    # shipment id); it is intentionally overwritten by the pair link.
+    out.transfer_id = inbound.id
+    inbound.transfer_id = out.id
     return [out, inbound]

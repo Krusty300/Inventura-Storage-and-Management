@@ -81,4 +81,42 @@ describe("SerialNumbers Page", () => {
     expect(await screen.findByText(/No movements recorded for this serial number/)).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith("/serial-numbers/1/movements");
   });
+
+  it("renders a badge for sold serial numbers", async () => {
+    mockSerials([mockSerial({ status: "sold", sold_at: "2026-02-01T10:00:00" })]);
+    renderWithProviders(<SerialNumbers />);
+    expect(await screen.findByText("sold")).toBeInTheDocument();
+    expect(document.querySelector(".badge-neutral")).toBeInTheDocument();
+  });
+
+  it("filters and badges inactive serial numbers", async () => {
+    getMock.mockImplementation((url: string, config?: any) => {
+      if (url === "/serial-numbers") {
+        const rows = config?.params?.status === "inactive" ? [mockSerial({ id: 3, serial_number: "SN-0003", status: "inactive" })] : [mockSerial()];
+        return Promise.resolve({ data: { items: rows, total: rows.length, page: 1, pages: 1 } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<SerialNumbers />);
+    expect(await screen.findByText("SN-0001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Inactive" }));
+    expect(await screen.findByText("SN-0003")).toBeInTheDocument();
+    expect(document.querySelector(".badge-neutral")).toBeInTheDocument();
+  });
+
+  it("deactivates an in-stock serial from the detail modal", async () => {
+    const putMock = api.put as ReturnType<typeof vi.fn>;
+    putMock.mockResolvedValue({ data: mockSerial({ status: "inactive" }) });
+    mockSerials([mockSerial()]);
+    renderWithProviders(<SerialNumbers />);
+    fireEvent.click(await screen.findByLabelText("View SN-0001"));
+    expect(await screen.findByText("Serial SN-0001")).toBeInTheDocument();
+
+    const deactivate = screen.getByRole("button", { name: "Deactivate" });
+    fireEvent.click(deactivate);
+
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/serial-numbers/1/status", { status: "inactive" }));
+    expect(await screen.findByText("inactive")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Activate" })).toBeInTheDocument();
+  });
 });

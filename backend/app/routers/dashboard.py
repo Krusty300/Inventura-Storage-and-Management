@@ -19,7 +19,7 @@ from app.models.stock_line import StockLine
 from app.models.lot import Lot
 from app.schemas.dashboard import DashboardStats
 from app.services.auth import get_current_user
-from app.services.inventory import quarantined_qty_subquery
+from app.services.inventory import TRANSFER_OUT, quarantined_qty_subquery
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -42,7 +42,8 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
     ).scalar() or 0
     expiring_soon = date.today() + timedelta(days=30)
     expiring_soon_count = db.query(func.count(Product.id)).filter(
-        Product.is_active == True, Product.expiry_date.isnot(None), Product.expiry_date <= expiring_soon,
+        Product.is_active == True, Product.expiry_date.isnot(None),
+        Product.expiry_date >= date.today(), Product.expiry_date <= expiring_soon,
         Product.id.notin_(Product.variant_parent_id_subquery()),
     ).scalar() or 0
     total_value = db.query(func.coalesce(func.sum(sellable * Product.cost_price), 0)).filter(
@@ -50,7 +51,8 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
     ).scalar() or 0.0
 
     movements_today = db.query(func.count(StockMovement.id)).filter(
-        StockMovement.created_at >= today_start
+        StockMovement.created_at >= today_start,
+        StockMovement.movement_type != TRANSFER_OUT,  # count each transfer pair once
     ).scalar() or 0
 
     open_shipments = db.query(func.count(Shipment.id)).filter(
@@ -93,7 +95,8 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
     expiring_products = (
         db.query(Product)
         .filter(
-            Product.is_active == True, Product.expiry_date.isnot(None), Product.expiry_date <= expiring_soon,
+            Product.is_active == True, Product.expiry_date.isnot(None),
+            Product.expiry_date >= date.today(), Product.expiry_date <= expiring_soon,
             Product.id.notin_(Product.variant_parent_id_subquery()),
         )
         .order_by(Product.expiry_date.asc())

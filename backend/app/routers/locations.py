@@ -202,6 +202,30 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
         .order_by(SerialNumber.serial_number)
         .all()
     )
+    scrapped = (
+        db.query(SerialNumber)
+        .options(joinedload(SerialNumber.product), joinedload(SerialNumber.lot))
+        .filter(
+            SerialNumber.location_id == location_id,
+            SerialNumber.status == inventory.SERIAL_STATUS_SCRAPPED,
+        )
+        .order_by(SerialNumber.serial_number)
+        .all()
+    )
+
+    def _serial_payload(s: SerialNumber) -> dict:
+        return {
+            "id": s.id,
+            "product_id": s.product_id,
+            "product_name": s.product.display_name if s.product else "",
+            "sku": s.product.sku if s.product else "",
+            "serial_number": s.serial_number,
+            "lot_number": s.lot.lot_number if s.lot else "",
+            "status": s.status,
+            "unit_cost": float(s.product.cost_price) if s.product and s.product.cost_price else 0.0,
+            "value": float(s.product.cost_price or 0) if s.product else 0.0,
+        }
+
     return {
         "location": _with_counts([loc], db)[0],
         "stock_lines": [{
@@ -222,17 +246,8 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
             "status": l.status,
             "total_quantity": sum(sl.quantity for sl in l.stock_lines),
         } for l in lpns],
-        "serials": [{
-            "id": s.id,
-            "product_id": s.product_id,
-            "product_name": s.product.display_name if s.product else "",
-            "sku": s.product.sku if s.product else "",
-            "serial_number": s.serial_number,
-            "lot_number": s.lot.lot_number if s.lot else "",
-            "status": s.status,
-            "unit_cost": float(s.product.cost_price) if s.product and s.product.cost_price else 0.0,
-            "value": float(s.product.cost_price or 0) if s.product else 0.0,
-        } for s in serials],
+        "serials": [_serial_payload(s) for s in serials],
+        "scrapped_serials": [_serial_payload(s) for s in scrapped],
     }
 
 

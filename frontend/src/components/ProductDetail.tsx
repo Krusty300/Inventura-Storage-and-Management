@@ -1,12 +1,16 @@
 import Modal from "./Modal";
-import { PackagePlus } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { PackagePlus, PackageOpen, MapPin } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Product, ProductTrace } from "../types";
 import { parseLocalDate } from "../utils/date";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { hasVariants } from "../utils/variants";
+import MoveUnallocatedModal from "./MoveUnallocatedModal";
 
 interface Props {
   product: Product;
@@ -24,13 +28,19 @@ const MOVEMENT_LABELS: Record<string, string> = {
   transfer_out: "Transfer out",
   adjustment: "Adjusted",
   count: "Cycle count",
+  deactivate: "Deactivated",
+  activate: "Activated",
 };
 
 export default function ProductDetail({ product, onClose, onAddVariant }: Props) {
   const { data: settings } = useSettings();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [showMoveUnallocated, setShowMoveUnallocated] = useState(false);
   const currencySymbol = settings?.currency_symbol || "$";
   const totalQty = hasVariants(product) ? product.total_quantity : product.quantity;
   const qty = hasVariants(product) ? product.total_quantity : product.quantity;
+  const { locations, unallocated } = useProductStockLocations(product.id, product.is_serialized);
 
   return (
     <Modal open onClose={onClose} title={product.display_name} wide>
@@ -98,6 +108,38 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           )}
         </div>
 
+        {(locations.length > 0 || unallocated > 0) && (
+          <div>
+            <span className="text-sm text-muted">
+              {product.is_serialized ? "In-stock Serial Locations:" : "Stock Locations:"}
+            </span>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {locations.map((l) => (
+                <button
+                  key={l.location_id}
+                  onClick={() => navigate(`/locations?location=${l.location_id}`)}
+                  className="badge bg-subtle text-ink border border-border cursor-pointer hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 inline-flex items-center gap-1"
+                  aria-label={`View location ${l.path}`}
+                >
+                  <MapPin size={12} />
+                  {l.path} ({l.count})
+                </button>
+              ))}
+              {unallocated > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowMoveUnallocated(true)}
+                  className="badge bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30 inline-flex items-center gap-1 cursor-pointer hover:border-amber-400"
+                  aria-label="Move unallocated stock"
+                >
+                  <PackageOpen size={12} />
+                  Unallocated ({unallocated})
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {!product.is_variant && onAddVariant && (
           <div>
             <button onClick={() => onAddVariant(product)} className="btn-secondary w-full inline-flex items-center justify-center gap-2">
@@ -109,7 +151,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
         {product.is_variant && (
           <div>
             <span className="text-sm text-muted">Variant of:</span>
-            <p className="text-sm font-medium mt-1">{product.name}</p>
+            <p className="text-sm font-medium mt-1">{product.variant_of_name || product.name}</p>
           </div>
         )}
 
@@ -163,6 +205,19 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           </div>
         )}
       </div>
+
+      {showMoveUnallocated && (
+        <MoveUnallocatedModal
+          productId={product.id}
+          productName={product.display_name}
+          available={unallocated}
+          onClose={() => setShowMoveUnallocated(false)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });
+            queryClient.invalidateQueries({ queryKey: ["trace", product.id] });
+          }}
+        />
+      )}
     </Modal>
   );
 }

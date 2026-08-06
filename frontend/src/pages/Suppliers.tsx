@@ -22,7 +22,7 @@ import { formatCurrency } from "../utils/currency";
 const PAGE_SIZE = 25;
 
 export default function Suppliers() {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);

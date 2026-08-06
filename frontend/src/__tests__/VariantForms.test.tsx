@@ -19,7 +19,7 @@ function mockGet({ products, locations, stockLocations = [] }: { products: unkno
     if (url === "/suppliers") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
     if (url === "/lpns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
     if (url === "/lots") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
-    if (url === "/stock-movements/locations") return Promise.resolve({ data: stockLocations });
+    if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: stockLocations, unallocated: 0 } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
 }

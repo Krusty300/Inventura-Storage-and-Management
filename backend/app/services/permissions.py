@@ -41,6 +41,7 @@ ALL_PERMISSIONS = frozenset({
     "lots.view",
     "lots.update",
     "serial_numbers.view",
+    "serial_numbers.update",
     "locations.view",
     "locations.create",
     "locations.update",

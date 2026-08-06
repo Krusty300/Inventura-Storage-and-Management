@@ -73,6 +73,35 @@ def test_customer_stats_endpoint(auth_headers):
     assert data["avg_order_value"] == round(data["total_spent"], 2)
 
 
+def test_customer_frequent_products_ranks_by_order_count(auth_headers):
+    c = client.post("/api/customers", json={"name": "Freq Co"}, headers=auth_headers).json()
+    p1 = client.post("/api/products", json={"location_id": 1, "sku": "FR-1", "name": "Frequent Item", "quantity": 50, "unit_price": 5.0}, headers=auth_headers).json()
+    p2 = client.post("/api/products", json={"location_id": 1, "sku": "FR-2", "name": "One-Off Item", "quantity": 50, "unit_price": 5.0}, headers=auth_headers).json()
+    for _ in range(3):
+        client.post("/api/sales", json={"customer_id": c["id"], "items": [{"product_id": p1["id"], "quantity": 1, "unit_price": 5.0}]}, headers=auth_headers)
+    client.post("/api/sales", json={"customer_id": c["id"], "items": [{"product_id": p2["id"], "quantity": 2, "unit_price": 5.0}]}, headers=auth_headers)
+
+    data = client.get(f"/api/customers/{c['id']}/frequent-products", headers=auth_headers).json()
+    assert [r["product_id"] for r in data] == [p1["id"], p2["id"]]
+    assert data[0]["product_name"] == p1["name"]
+    assert data[0]["order_count"] == 3
+    assert data[0]["total_quantity"] == 3
+    assert data[1]["order_count"] == 1
+    assert data[1]["total_quantity"] == 2
+
+
+def test_customer_frequent_products_excludes_refunded_and_others(auth_headers):
+    c1 = client.post("/api/customers", json={"name": "Owner Co"}, headers=auth_headers).json()
+    c2 = client.post("/api/customers", json={"name": "Other Co"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "FR-3", "name": "Shared Item", "quantity": 50, "unit_price": 5.0}, headers=auth_headers).json()
+    sale = client.post("/api/sales", json={"customer_id": c1["id"], "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 5.0}]}, headers=auth_headers).json()
+    client.put(f"/api/sales/{sale['id']}/refund", headers=auth_headers)
+    client.post("/api/sales", json={"customer_id": c2["id"], "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 5.0}]}, headers=auth_headers)
+
+    assert client.get(f"/api/customers/{c1['id']}/frequent-products", headers=auth_headers).json() == []
+    assert len(client.get(f"/api/customers/{c2['id']}/frequent-products", headers=auth_headers).json()) == 1
+
+
 def test_duplicate_customer_rejected(auth_headers):
     client.post("/api/customers", json={"name": "Dup Co", "phone": "555-1234"}, headers=auth_headers)
     r = client.post("/api/customers", json={"name": "Other", "phone": "555-1234"}, headers=auth_headers)

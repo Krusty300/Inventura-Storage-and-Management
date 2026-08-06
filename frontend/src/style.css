@@ -197,6 +197,10 @@ body {
   background: #dbeafe;
   color: #1e40af;
 }
+.badge-neutral {
+  background: #e5e7eb;
+  color: #374151;
+}
 .dark .badge-success {
   background: rgb(16 185 129 / 0.15);
   color: #6ee7b7;
@@ -212,6 +216,10 @@ body {
 .dark .badge-info {
   background: rgb(59 130 246 / 0.15);
   color: #93c5fd;
+}
+.dark .badge-neutral {
+  background: rgb(107 114 128 / 0.15);
+  color: #d1d5db;
 }
 
 @keyframes slide-up {

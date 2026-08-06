@@ -157,3 +157,109 @@ def test_transfer_serial_same_location_rejected(auth_headers):
         "from_location_id": src["id"], "to_location_id": src["id"],
     }, headers=auth_headers)
     assert resp.status_code == 400
+
+
+def test_transfer_pair_linked_both_ways(auth_headers):
+    src = _loc(auth_headers, "TRF-PRSRC")
+    dst = _loc(auth_headers, "TRF-PRDST")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-PAIR", "name": "Pair Link", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    _receive(auth_headers, prod["id"], 8, src["id"])
+    body = client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 3, "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers).json()
+    out, inbound = body["movements"]
+    assert out["transfer_id"] == inbound["id"]
+    assert inbound["transfer_id"] == out["id"]
+    assert out["from_location_name"] == "Loc TRF-PRSRC"
+    assert inbound["to_location_name"] == "Loc TRF-PRDST"
+
+
+def test_delete_transfer_leg_reverts_whole_pair(auth_headers):
+    src = _loc(auth_headers, "TRF-DLSRC")
+    dst = _loc(auth_headers, "TRF-DLDST")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-DLPR", "name": "Delete Pair", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    _receive(auth_headers, prod["id"], 10, src["id"])
+    body = client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 4, "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers).json()
+    out, inbound = body["movements"]
+
+    resp = client.delete(f"/api/stock-movements/{out['id']}", headers=auth_headers)
+    assert resp.status_code == 200
+
+    remaining = {m["id"] for m in client.get("/api/stock-movements", headers=auth_headers).json()["items"]}
+    assert out["id"] not in remaining
+    assert inbound["id"] not in remaining
+
+    prod_after = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert prod_after["quantity"] == 10
+
+    locs = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()["locations"]
+    by_id = {l["location_id"]: l["quantity"] for l in locs}
+    assert by_id.get(src["id"]) == 10
+    assert dst["id"] not in by_id
+
+
+def test_delete_transfer_serial_pair_restores_serial_location(auth_headers):
+    src = _loc(auth_headers, "TRF-DLSRA")
+    dst = _loc(auth_headers, "TRF-DLSRB")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-DLSER", "name": "Delete Ser", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert _receive_serials(auth_headers, prod["id"], ["S-DEL1"], src["id"]).status_code == 201
+    serial_id = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]["id"]
+    body = client.post("/api/stock-movements/transfer-serial", json={
+        "product_id": prod["id"], "serial_ids": [serial_id],
+        "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers).json()
+    out, inbound = body["movements"]
+    assert out["transfer_id"] == inbound["id"]
+
+    resp = client.delete(f"/api/stock-movements/{inbound['id']}", headers=auth_headers)
+    assert resp.status_code == 200
+
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert serials[0]["location_id"] == src["id"]
+    assert serials[0]["status"] == "in_stock"
+
+
+def test_edit_transfer_leg_blocked(auth_headers):
+    src = _loc(auth_headers, "TRF-EDSRC")
+    dst = _loc(auth_headers, "TRF-EDDST")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-EDPR", "name": "Edit Pair", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    _receive(auth_headers, prod["id"], 6, src["id"])
+    out, inbound = client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 2, "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers).json()["movements"]
+
+    resp = client.put(f"/api/stock-movements/{out['id']}", json={"quantity_change": -3}, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "pair" in resp.json()["detail"].lower()
+
+    resp = client.put(f"/api/stock-movements/{inbound['id']}", json={"notes": "typo fix"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["notes"] == "typo fix"
+
+
+def test_transfer_over_lot_available_rejected_with_lot_detail(auth_headers):
+    src = _loc(auth_headers, "TRF-LOTSRC")
+    dst = _loc(auth_headers, "TRF-LOTDST")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-LOTPR", "name": "Lot Detail", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    _receive(auth_headers, prod["id"], 3, src["id"], lot="LOT-X")
+    lot_id = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()["locations"][0]["lots"][0]["lot_id"]
+
+    resp = client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 5, "from_location_id": src["id"], "to_location_id": dst["id"], "lot_id": lot_id,
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "LOT-X" in detail
+    assert "3" in detail

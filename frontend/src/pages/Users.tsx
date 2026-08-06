@@ -28,7 +28,7 @@ const PASSWORD_HINT = "At least 8 characters.";
 const PAGE_SIZE = 25;
 
 export default function Users() {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [sortBy, setSortBy] = useState("username");

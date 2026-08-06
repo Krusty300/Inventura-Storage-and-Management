@@ -19,6 +19,7 @@ class LPN(Base):
 
     location = relationship("Location", back_populates="lpns")
     stock_lines = relationship("StockLine", back_populates="lpn")
+    serial_numbers = relationship("SerialNumber", back_populates="lpn")
 
     @property
     def location_name(self) -> str:

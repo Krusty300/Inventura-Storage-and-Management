@@ -80,6 +80,7 @@ class ProductOut(BaseModel):
     category_name: str = ""
     supplier_name: str = ""
     is_variant: bool = False
+    variant_of_name: str = ""
     variant_label: str = ""
     display_name: str = ""
     total_quantity: int = 0

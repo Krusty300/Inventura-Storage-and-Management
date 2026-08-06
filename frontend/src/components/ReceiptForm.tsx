@@ -3,9 +3,12 @@ import { Plus, Trash2 } from "lucide-react";
 import api from "../api/client";
 import Modal from "./Modal";
 import LocationPicker from "./LocationPicker";
+import StockLocationHints from "./StockLocationHints";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { productLabel } from "../utils/variants";
 import { useToast } from "../context/ToastContext";
+import type { Product } from "../types";
 
 interface Props {
   onClose: () => void;
@@ -28,6 +31,98 @@ const EMPTY_ROW: ItemRow = {
   expiry_date: "", location: "", lpn_number: "", serial_numbers: "",
 };
 
+interface ItemRowProps {
+  row: ItemRow;
+  idx: number;
+  productList: Product[];
+  onChange: (idx: number, key: keyof ItemRow, value: string) => void;
+  onRemove: (idx: number) => void;
+}
+
+function ReceiptItemRow({ row, idx, productList, onChange, onRemove }: ItemRowProps) {
+  const product = productList.find((p) => p.id.toString() === row.product_id);
+  const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(
+    product?.id,
+    !!product?.is_serialized
+  );
+
+  useEffect(() => {
+    if (!product || row.location) return;
+    if (stockLocations.length === 1) {
+      onChange(idx, "location", stockLocations[0].path);
+    }
+  }, [stockLocations]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="grid grid-cols-12 gap-2 items-end">
+        <div className="col-span-5">
+          <label className="block text-xs font-medium text-muted mb-1">Product</label>
+          <select className="select" value={row.product_id} onChange={(e) => {
+            const id = e.target.value;
+            onChange(idx, "product_id", id);
+            onChange(idx, "location", "");
+          }}>
+            <option value="">Select...</option>
+            {productList.map((p) => (
+              <option key={p.id} value={p.id}>{productLabel(p)}</option>
+            ))}
+          </select>
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-muted mb-1">Qty</label>
+          <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => onChange(idx, "quantity", e.target.value)} />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
+          <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => onChange(idx, "unit_cost", e.target.value)} />
+        </div>
+        <div className="col-span-3 flex gap-2">
+          <input className="input" placeholder="Lot #" value={row.lot_number} onChange={(e) => onChange(idx, "lot_number", e.target.value)} aria-label="Lot number" />
+          <button type="button" onClick={() => onRemove(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
+            <Trash2 size={16} />
+          </button>
+        </div>
+        <div className="col-span-5">
+          <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
+          <input type="date" className="input" value={row.expiry_date} onChange={(e) => onChange(idx, "expiry_date", e.target.value)} />
+        </div>
+        <div className="col-span-4">
+          <label className="block text-xs font-medium text-muted mb-1">Location</label>
+          <LocationPicker value={row.location} onChange={(v) => onChange(idx, "location", v)} />
+          {product && (
+            <StockLocationHints
+              locations={stockLocations}
+              isSerialized={!!product.is_serialized}
+              selectedPath={row.location}
+              onSelect={(path) => onChange(idx, "location", path)}
+              isLoading={stockLoading}
+            />
+          )}
+        </div>
+        <div className="col-span-3">
+          <label className="block text-xs font-medium text-muted mb-1">LPN (pallet)</label>
+          <input className="input" placeholder="e.g. LPN-1001" value={row.lpn_number} onChange={(e) => onChange(idx, "lpn_number", e.target.value)} />
+        </div>
+      </div>
+      {product?.is_serialized && (
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">
+            Serial numbers (one per line, must match quantity)
+          </label>
+          <textarea
+            className="input font-mono text-xs"
+            rows={2}
+            value={row.serial_numbers}
+            onChange={(e) => onChange(idx, "serial_numbers", e.target.value)}
+            placeholder={"SN-001\nSN-002"}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ReceiptForm({ onClose, onSaved }: Props) {
   const [supplier_id, setSupplierId] = useState("");
   const [reference, setReference] = useState("");
@@ -48,7 +143,7 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
   }, []);
 
   const setRow = (idx: number, key: keyof ItemRow, value: string) => {
-    setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
   };
 
   const selectedProduct = (row: ItemRow) => productList.find((p) => p.id.toString() === row.product_id);
@@ -134,68 +229,16 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
             </button>
           </div>
           <div className="divide-y divide-border max-h-[50vh] overflow-auto">
-            {rows.map((row, idx) => {
-              const product = selectedProduct(row);
-              return (
-                <div key={idx} className="p-4 space-y-3">
-                  <div className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-5">
-                      <label className="block text-xs font-medium text-muted mb-1">Product</label>
-                      <select className="select" value={row.product_id} onChange={(e) => {
-                        const id = e.target.value;
-                        const p = productList.find((x) => x.id.toString() === id);
-                        setRows(rows.map((r, i) => (i === idx ? { ...r, product_id: id, location: r.location || p?.location || "" } : r)));
-                      }}>
-                        <option value="">Select...</option>
-                        {productList.map((p) => (
-                          <option key={p.id} value={p.id}>{productLabel(p)}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-muted mb-1">Qty</label>
-                      <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
-                      <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => setRow(idx, "unit_cost", e.target.value)} />
-                    </div>
-                    <div className="col-span-3 flex gap-2">
-                      <input className="input" placeholder="Lot #" value={row.lot_number} onChange={(e) => setRow(idx, "lot_number", e.target.value)} aria-label="Lot number" />
-                      <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    <div className="col-span-5">
-                      <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
-                      <input type="date" className="input" value={row.expiry_date} onChange={(e) => setRow(idx, "expiry_date", e.target.value)} />
-                    </div>
-                    <div className="col-span-4">
-                      <label className="block text-xs font-medium text-muted mb-1">Location</label>
-                      <LocationPicker value={row.location} onChange={(v) => setRow(idx, "location", v)} />
-                    </div>
-                    <div className="col-span-3">
-                      <label className="block text-xs font-medium text-muted mb-1">LPN (pallet)</label>
-                      <input className="input" placeholder="e.g. LPN-1001" value={row.lpn_number} onChange={(e) => setRow(idx, "lpn_number", e.target.value)} />
-                    </div>
-                  </div>
-                  {product?.is_serialized && (
-                    <div>
-                      <label className="block text-xs font-medium text-muted mb-1">
-                        Serial numbers (one per line, must match quantity)
-                      </label>
-                      <textarea
-                        className="input font-mono text-xs"
-                        rows={2}
-                        value={row.serial_numbers}
-                        onChange={(e) => setRow(idx, "serial_numbers", e.target.value)}
-                        placeholder={"SN-001\nSN-002"}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {rows.map((row, idx) => (
+              <ReceiptItemRow
+                key={idx}
+                row={row}
+                idx={idx}
+                productList={productList}
+                onChange={setRow}
+                onRemove={(i) => setRows(rows.filter((_, x) => x !== i))}
+              />
+            ))}
           </div>
         </div>
 

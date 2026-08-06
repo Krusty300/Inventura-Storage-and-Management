@@ -52,6 +52,7 @@ const ALL_PERMISSIONS = [
   "lots.view",
   "lots.update",
   "serial_numbers.view",
+  "serial_numbers.update",
   "locations.view",
   "locations.create",
   "locations.update",

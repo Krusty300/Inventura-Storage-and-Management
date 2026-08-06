@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Eye, Pencil, Trash2 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Lot, PaginatedResponse, QualityCheck } from "../types";
 import Modal from "../components/Modal";
+import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
@@ -15,19 +17,36 @@ import { useToast } from "../context/ToastContext";
 const PAGE_SIZE = 25;
 
 export default function QualityChecks() {
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<QualityCheck | null>(null);
   const [viewing, setViewing] = useState<QualityCheck | null>(null);
+  const [deleting, setDeleting] = useState<QualityCheck | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
+  const { addToast } = useToast();
+  const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["quality-checks", page, pageSize],
+    queryKey: ["quality-checks", debouncedSearch, page, pageSize],
     queryFn: async () => {
-      const { data } = await api.get("/quality-checks", { params: { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() } });
+      const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
+      if (debouncedSearch) params.search = debouncedSearch;
+      const { data } = await api.get("/quality-checks", { params });
       return data as PaginatedResponse<QualityCheck>;
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/quality-checks/${id}`),
+    onSuccess: () => {
+      addToast("Quality check deleted", "success");
+      refresh();
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.detail || "Error deleting quality check", "error");
     },
   });
 
@@ -50,6 +69,12 @@ export default function QualityChecks() {
             New Check
           </button>
         )}
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="relative flex-1 max-w-md">
+          <input className="input pl-10" placeholder="Search by QC number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search quality checks" />
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -87,7 +112,7 @@ export default function QualityChecks() {
                       <button onClick={() => { setEditing(qc); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${qc.qc_number}`}><Pencil size={16} /></button>
                     )}
                     {can("quality_checks.delete") && (
-                      <button onClick={() => deleteCheck(qc)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${qc.qc_number}`}><Trash2 size={16} /></button>
+                      <button onClick={() => setDeleting(qc)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${qc.qc_number}`}><Trash2 size={16} /></button>
                     )}
                   </div>
                 </td>
@@ -108,22 +133,21 @@ export default function QualityChecks() {
       )}
 
       {viewing && <QualityCheckDetail qc={viewing} onClose={() => setViewing(null)} />}
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete Quality Check"
+        message={`Are you sure you want to delete quality check ${deleting?.qc_number}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={() => { deleteMutation.mutate(deleting!.id); setDeleting(null); }}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   );
-
-  async function deleteCheck(qc: QualityCheck) {
-    if (!confirm(`Delete quality check ${qc.qc_number}?`)) return;
-    try {
-      await api.delete(`/quality-checks/${qc.id}`);
-      refresh();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || "Error deleting quality check");
-    }
-  }
 }
 
 function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; onClose: () => void; onSaved: () => void }) {
-  const products = useSelectableProducts().filter((p) => !p.is_serialized);
+  const products = useSelectableProducts();
   const [productId, setProductId] = useState(qc ? String(qc.product_id) : "");
   const [lotId, setLotId] = useState(qc?.lot_id ? String(qc.lot_id) : "");
   const [lots, setLots] = useState<Lot[]>([]);
@@ -132,6 +156,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
   const [notes, setNotes] = useState(qc?.notes || "");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+  const selectedProduct = products.find((p) => p.id === Number(productId));
 
   useEffect(() => {
     if (!productId) {
@@ -179,14 +204,14 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
             <label className="block text-sm font-medium text-ink mb-1">Product</label>
             <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!qc} required>
               <option value="">Select product...</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
+              {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Lot (optional)</label>
             <select className="select" value={lotId} onChange={(e) => setLotId(e.target.value)} disabled={!!qc}>
               <option value="">No lot / all lots</option>
-              {lots.map((l) => <option key={l.id} value={l.id}>{l.lot_number} ({l.on_hand} on hand){l.status !== "in_stock" ? ` [${l.status}]` : ""}</option>)}
+              {lots.map((l) => <option key={l.id} value={l.id}>{l.lot_number} ({(selectedProduct?.is_serialized ? l.serial_count : l.on_hand)} on hand){l.status !== "in_stock" ? ` [${l.status}]` : ""}</option>)}
             </select>
           </div>
         </div>

@@ -21,6 +21,9 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [supplierId, setSupplierId] = useState(order?.supplier_id?.toString() || "");
+  const [supplierProducts, setSupplierProducts] = useState<Product[]>([]);
+  const [selectedSupplierIds, setSelectedSupplierIds] = useState<Set<number>>(new Set());
+  const [supplierProductsLoading, setSupplierProductsLoading] = useState(false);
   const [notes, setNotes] = useState(order?.notes || "");
   const [items, setItems] = useState(
     order?.items?.map((i) => ({ product_id: i.product_id.toString(), quantity: i.quantity.toString(), unit_price: i.unit_price.toString() })) || [{ product_id: "", quantity: "1", unit_price: "0" }]
@@ -36,8 +39,30 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
     api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
   }, []);
 
+  useEffect(() => {
+    setSupplierProducts([]);
+    setSelectedSupplierIds(new Set());
+    if (!supplierId) return;
+    let cancelled = false;
+    setSupplierProductsLoading(true);
+    api.get(`/suppliers/${supplierId}/products`, { params: { limit: 100 } })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rows = (data?.items || []) as Product[];
+        setSupplierProducts(rows);
+        setSelectedSupplierIds(new Set(orderableSupplierProducts(rows).map((p) => p.id)));
+      })
+      .finally(() => { if (!cancelled) setSupplierProductsLoading(false); });
+    return () => { cancelled = true; };
+  }, [supplierId, locations]);
+
   const activeLocationIds = new Set(locations.filter((l) => l.is_active).map((l) => l.id));
   const hasActiveLocation = (p: Product) => !!p.location_id && activeLocationIds.has(p.location_id);
+
+  const orderableSupplierProducts = (rows: Product[]): Product[] =>
+    selectableProducts(rows).filter((p) => p.is_active && hasActiveLocation(p));
+
+  const supplierOrderable = orderableSupplierProducts(supplierProducts);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +101,21 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
   const selectable = selectableProducts(products).filter(hasActiveLocation);
 
+  const dropdownOptions = supplierId ? supplierOrderable : selectable;
+
+  const allSupplierSelected = supplierOrderable.length > 0 && supplierOrderable.every((p) => selectedSupplierIds.has(p.id));
+
+  const addSelectedSupplierItems = () => {
+    const toAdd = supplierOrderable.filter((p) => selectedSupplierIds.has(p.id));
+    if (toAdd.length === 0) {
+      addToast("No supplier products selected", "error");
+      return;
+    }
+    setItems((prev) => [...prev, ...toAdd.map((p) => ({ product_id: p.id.toString(), quantity: "1", unit_price: p.cost_price.toString() }))]);
+    setSelectedSupplierIds(new Set());
+    addToast(`${toAdd.length} product(s) added from supplier`, "success");
+  };
+
   const addItem = () => setItems([...items, { product_id: "", quantity: "1", unit_price: "0" }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
 
@@ -83,7 +123,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
     const updated = [...items];
     (updated[idx] as any)[field] = value;
     if (field === "product_id") {
-      const p = selectable.find((p) => p.id === parseInt(value));
+      const p = dropdownOptions.find((p) => p.id === parseInt(value));
       if (p) updated[idx].unit_price = p.cost_price.toString();
     }
     setItems(updated);
@@ -94,11 +134,59 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-          <select className="select" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+          <select className="select" aria-label="Supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
             <option value="">Select supplier</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
+
+        {supplierId && (
+          <div className="border border-border rounded-lg p-3 bg-app">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <label className="text-sm font-medium text-ink">Supplier Products</label>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-border-strong"
+                    checked={allSupplierSelected}
+                    onChange={(e) => setSelectedSupplierIds(e.target.checked ? new Set(supplierOrderable.map((p) => p.id)) : new Set())}
+                    aria-label="Select all supplier products"
+                  />
+                  Select all
+                </label>
+                <button type="button" onClick={addSelectedSupplierItems} className="btn-primary text-xs py-1 px-2">
+                  Add Selected Items
+                </button>
+              </div>
+            </div>
+            {supplierProductsLoading ? (
+              <p className="text-faint text-sm">Loading supplier products...</p>
+            ) : supplierOrderable.length === 0 ? (
+              <p className="text-faint text-sm">No orderable products found for this supplier.</p>
+            ) : (
+              <div className="space-y-1 max-h-48 overflow-auto">
+                {supplierOrderable.map((p) => (
+                  <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border-strong"
+                      checked={selectedSupplierIds.has(p.id)}
+                      onChange={(e) => {
+                        const next = new Set(selectedSupplierIds);
+                        if (e.target.checked) next.add(p.id); else next.delete(p.id);
+                        setSelectedSupplierIds(next);
+                      }}
+                      aria-label={`Add ${p.display_name} to order`}
+                    />
+                    <span className="flex-1">{productLabel(p)}</span>
+                    <span className="text-muted">{formatCurrency(p.cost_price, currencySymbol)}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -121,7 +209,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
                     required
                   >
                     <option value="">Select product</option>
-                    {selectable.map((p) => (
+                    {dropdownOptions.map((p) => (
                       <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""} ({formatCurrency(p.cost_price, currencySymbol)})</option>
                     ))}
                   </select>

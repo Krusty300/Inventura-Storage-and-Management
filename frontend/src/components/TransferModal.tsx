@@ -40,7 +40,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
     queryKey: ["stock-locations", "transfer", product_id],
     queryFn: async () => {
       const { data } = await api.get("/stock-movements/locations", { params: { product_id } });
-      return data as StockLocation[];
+      return (data?.locations || []) as StockLocation[];
     },
     enabled: !!product_id && !isSerialized,
   });

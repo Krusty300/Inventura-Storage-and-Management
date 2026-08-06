@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import api from "../api/client";
-import type { Order, PaginatedResponse, Supplier, SupplierStats } from "../types";
+import type { Order, PaginatedResponse, Product, Supplier, SupplierStats } from "../types";
 import { formatCurrency } from "../utils/currency";
 
 interface Props {
@@ -23,8 +23,24 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
     },
   });
 
+  const { data: products, isLoading: productsLoading } = useQuery({
+    queryKey: ["supplier-products", supplier.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/suppliers/${supplier.id}/products`, { params: { limit: 20 } });
+      return data as PaginatedResponse<Product>;
+    },
+  });
+
   const s = stats;
   const history = orders?.items || [];
+
+  const productRows: { kind: "parent" | "variant"; product: Product }[] = [];
+  for (const p of products?.items || []) {
+    productRows.push({ kind: "parent", product: p });
+    if (p.variants && p.variants.length > 0) {
+      for (const v of p.variants) productRows.push({ kind: "variant", product: v });
+    }
+  }
 
   return (
     <Modal open onClose={onClose} title={supplier.name} wide>
@@ -107,6 +123,54 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h3 className="font-semibold text-ink mb-2">Products by Supplier</h3>
+          {productsLoading ? (
+            <p className="text-faint">Loading...</p>
+          ) : productRows.length === 0 ? (
+            <p className="text-faint">No products assigned to this supplier.</p>
+          ) : (
+            <div className="overflow-x-auto border border-border rounded-lg">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-app text-left text-muted">
+                    <th className="px-3 py-2 font-medium">Product</th>
+                    <th className="px-3 py-2 font-medium">SKU</th>
+                    <th className="px-3 py-2 font-medium">Category</th>
+                    <th className="px-3 py-2 font-medium">Qty</th>
+                    <th className="px-3 py-2 font-medium">Price</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {productRows.map((r) => {
+                    const p = r.product;
+                    const qty = r.kind === "parent" && p.variants.length > 0 ? p.total_quantity : p.quantity;
+                    return (
+                      <tr key={`${r.kind}-${p.id}`} className={r.kind === "variant" ? "bg-app/60" : ""}>
+                        <td className="px-3 py-2 font-medium">
+                          {r.kind === "variant" ? (
+                            <span className="text-muted font-normal">— {p.display_name}</span>
+                          ) : (
+                            <span>{p.name}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-muted">{p.sku}</td>
+                        <td className="px-3 py-2 text-muted">{p.category_name || "—"}</td>
+                        <td className="px-3 py-2">{qty}</td>
+                        <td className="px-3 py-2">{formatCurrency(p.unit_price)}</td>
+                        <td className="px-3 py-2">
+                          <span className={`badge ${p.is_active ? "badge-success" : "badge-danger"}`}>{p.is_active ? "Active" : "Inactive"}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -266,12 +266,21 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
             joinedload(Order.supplier), joinedload(Order.user)
         ])
         serials_by_product = data.serial_numbers or {}
+        receive_locations = data.receive_locations or {}
         try:
             for item in o.items:
                 product = item.product
                 if not product:
                     continue
-                require_active_location(db, product)
+                loc_id = receive_locations.get(product.id)
+                if loc_id is not None:
+                    loc = db.get(Location, loc_id)
+                    if loc is None:
+                        raise HTTPException(status_code=400, detail=f"Receive location for '{product.display_name}' does not exist")
+                    if not loc.is_active:
+                        raise HTTPException(status_code=400, detail=f"Receive location '{loc.path}' for '{product.display_name}' is inactive")
+                else:
+                    loc_id = require_active_location(db, product)
                 if product.is_serialized:
                     serials = [s.strip() for s in serials_by_product.get(product.id, []) if s and s.strip()]
                     if not serials:
@@ -293,14 +302,14 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                         if existing:
                             raise inventory.InventoryError(f"Serial number '{sn}' is already registered for '{product.display_name}'")
                     for sn in serials:
-                        serial = SerialNumber(product_id=product.id, serial_number=sn, location_id=product.location_id)
+                        serial = SerialNumber(product_id=product.id, serial_number=sn, location_id=loc_id)
                         db.add(serial)
                         db.flush()
                         inventory.post_journal_entry(
                             db, product_id=product.id, user_id=o.user_id,
                             quantity_change=1, movement_type="in",
                             serial_id=serial.id,
-                            to_location_id=product.location_id,
+                            to_location_id=loc_id,
                             reference_type="purchase_order",
                             reference=f"Order {o.order_number}",
                         )
@@ -312,7 +321,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                     inventory.post_journal_entry(
                         db, product_id=product.id, user_id=o.user_id,
                         quantity_change=item.quantity, movement_type="in",
-                        to_location_id=product.location_id,
+                        to_location_id=loc_id,
                         reference_type="purchase_order",
                         reference=f"Order {o.order_number}",
                     )

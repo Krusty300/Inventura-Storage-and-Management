@@ -19,3 +19,7 @@ class SerialNumberOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SerialStatusUpdate(BaseModel):
+    status: str

@@ -7,10 +7,11 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.customer import Customer
-from app.models.sale import Sale
+from app.models.product import Product
+from app.models.sale import Sale, SaleItem
 from app.schemas.customer import (
     CustomerBulkEdit, CustomerCreate, CustomerImportResult, CustomerListItem, CustomerOut,
-    CustomerStats, CustomerUpdate,
+    CustomerStats, CustomerUpdate, FrequentProduct,
 )
 from app.services.auth import get_current_user, require_permission
 from app.utils import get_or_404, log_activity, broadcast_change
@@ -179,6 +180,43 @@ def customer_stats(customer_id: int, db: Session = Depends(get_db)):
         avg_order_value=round(total_spent / total_sales, 2) if total_sales else 0.0,
         last_purchase_at=row[2],
     )
+
+
+@router.get("/{customer_id}/frequent-products", response_model=list[FrequentProduct])
+def customer_frequent_products(
+    customer_id: int,
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """Top products this customer buys most often, across all completed sales,
+    ranked by number of orders containing the product then total quantity."""
+    get_or_404(Customer, customer_id, db)
+    rows = (
+        db.query(
+            Product.id.label("product_id"),
+            Product.name.label("product_name"),
+            Product.sku.label("sku"),
+            func.count(func.distinct(SaleItem.sale_id)).label("order_count"),
+            func.coalesce(func.sum(SaleItem.quantity), 0).label("total_quantity"),
+        )
+        .join(SaleItem, SaleItem.product_id == Product.id)
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .filter(Sale.customer_id == customer_id, Sale.status == "completed")
+        .group_by(Product.id, Product.name, Product.sku)
+        .order_by(func.count(func.distinct(SaleItem.sale_id)).desc(), func.sum(SaleItem.quantity).desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        FrequentProduct(
+            product_id=r.product_id,
+            product_name=r.product_name,
+            sku=r.sku or "",
+            order_count=int(r.order_count or 0),
+            total_quantity=int(r.total_quantity or 0),
+        )
+        for r in rows
+    ]
 
 
 @router.post("/{customer_id}/restore", response_model=CustomerOut)

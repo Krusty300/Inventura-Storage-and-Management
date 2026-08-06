@@ -7,6 +7,7 @@ import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
@@ -15,6 +16,7 @@ import { useToast } from "../context/ToastContext";
 const PAGE_SIZE = 25;
 
 export default function WorkOrders() {
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [showForm, setShowForm] = useState(false);
@@ -24,11 +26,14 @@ export default function WorkOrders() {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const { addToast } = useToast();
+  const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["work-orders", page, pageSize],
+    queryKey: ["work-orders", debouncedSearch, page, pageSize],
     queryFn: async () => {
-      const { data } = await api.get("/work-orders", { params: { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() } });
+      const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
+      if (debouncedSearch) params.search = debouncedSearch;
+      const { data } = await api.get("/work-orders", { params });
       return data as PaginatedResponse<WorkOrder>;
     },
   });
@@ -65,6 +70,12 @@ export default function WorkOrders() {
             New Work Order
           </button>
         )}
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="relative flex-1 max-w-md">
+          <input className="input pl-10" placeholder="Search by work order number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search work orders" />
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">

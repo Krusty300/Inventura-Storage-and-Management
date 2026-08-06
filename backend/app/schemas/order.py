@@ -22,6 +22,7 @@ class OrderUpdate(BaseModel):
     supplier_id: Optional[int] = None
     items: Optional[list[OrderItemCreate]] = None
     serial_numbers: Optional[dict[int, list[str]]] = None
+    receive_locations: Optional[dict[int, int]] = None
 
 
 class OrderBulkEdit(BaseModel):

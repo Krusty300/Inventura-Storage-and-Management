@@ -138,6 +138,51 @@ def test_cancel_received_order_rejected(auth_headers):
     assert resp.status_code == 400
 
 
+def test_receive_order_with_custom_location(auth_headers):
+    loc = client.post("/api/locations", json={"name": "Receiving Dock", "code": "RDOCK"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-LOC", "name": "Location Item", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 6, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"status": "received", "receive_locations": {prod["id"]: loc["id"]}}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 6
+    movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
+    assert any(m["movement_type"] == "in" and m["quantity_change"] == 6 and m["to_location_id"] == loc["id"] for m in movements)
+
+
+def test_receive_order_with_unknown_location_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-BADLOC", "name": "Bad Loc Item", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"status": "received", "receive_locations": {prod["id"]: 99999}}, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "pending"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 0
+
+
+def test_receive_order_with_inactive_location_rejected(auth_headers):
+    loc = client.post("/api/locations", json={"name": "Closed Bin", "code": "CLOSED"}, headers=auth_headers).json()
+    client.put(f"/api/locations/{loc['id']}", json={"is_active": False}, headers=auth_headers)
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-INACT", "name": "Inactive Loc Item", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"status": "received", "receive_locations": {prod["id"]: loc["id"]}}, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "pending"
+
+
+def test_receive_serialized_order_with_custom_location(auth_headers):
+    loc = client.post("/api/locations", json={"name": "Ser Dock", "code": "SDOCK"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-SERLOC", "name": "Ser Loc Item", "cost_price": 5.00, "is_serialized": True}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "serial_numbers": {prod["id"]: ["SER-L1", "SER-L2"]},
+        "receive_locations": {prod["id"]: loc["id"]},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    serials = client.get(f"/api/serial-numbers?product_id={prod['id']}", headers=auth_headers).json()
+    assert len(serials["items"]) == 2
+    assert all(s["location_id"] == loc["id"] for s in serials["items"])
+
+
 def test_cancelled_order_cannot_be_received(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-CAN", "name": "Cancel Item", "cost_price": 5.00}, headers=auth_headers).json()
     order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 5.00}]}, headers=auth_headers).json()

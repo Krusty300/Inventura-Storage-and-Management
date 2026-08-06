@@ -33,7 +33,7 @@ interface DisplayRow {
 
 export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [expiryFilter, setExpiryFilter] = useState("");
   const [lowStock, setLowStock] = useState(searchParams.get("low_stock") === "1");
@@ -268,6 +268,7 @@ export default function Products() {
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("sku")} aria-label="Sort by SKU">SKU{sortIndicator("sku")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("name")} aria-label="Sort by name">Name{sortIndicator("name")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("category_name")} aria-label="Sort by category">Category{sortIndicator("category_name")}</th>
+                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("supplier_name")} aria-label="Sort by supplier">Supplier{sortIndicator("supplier_name")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("unit_price")} aria-label="Sort by price">Price{sortIndicator("unit_price")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("cost_price")} aria-label="Sort by cost">Cost{sortIndicator("cost_price")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("quantity")} aria-label="Sort by quantity">Qty{sortIndicator("quantity")}</th>
@@ -280,7 +281,7 @@ export default function Products() {
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                <Skeleton rows={5} cols={13} />
+                <Skeleton rows={5} cols={14} />
               ) : rows.length === 0 ? (
                 <EmptyState title="No products found" message="Add your first product to start building inventory." actionLabel="Add Product" onAction={() => { setEditing(null); setVariantParent(null); setShowForm(true); }} />
               ) : rows.map((r) => {
@@ -329,6 +330,7 @@ export default function Products() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-muted">{p.category_name}</td>
+                    <td className="px-4 py-3 text-muted">{p.supplier_name || "—"}</td>
                     <td className="px-4 py-3">{formatCurrency(p.unit_price, currencySymbol)}</td>
                     <td className="px-4 py-3">{formatCurrency(p.cost_price, currencySymbol)}</td>
                     <td className="px-4 py-3">

@@ -19,6 +19,30 @@ def _make_variant(auth_headers, parent_id, sku, quantity=0, attributes=None, pri
     return client.post("/api/products", json=body, headers=auth_headers)
 
 
+def test_low_stock_filter_includes_low_variants_only(auth_headers):
+    parent = _make_parent(auth_headers)
+    client.post("/api/products", json={"location_id": 1,
+        "sku": "LS-VAR-LOW", "parent_id": parent["id"], "quantity": 2, "reorder_level": 10,
+        "attributes": {"Color": "Red"},
+    }, headers=auth_headers).json()
+    client.post("/api/products", json={"location_id": 1,
+        "sku": "LS-VAR-OK", "parent_id": parent["id"], "quantity": 50, "reorder_level": 10,
+        "attributes": {"Color": "Blue"},
+    }, headers=auth_headers).json()
+    ok_parent = _make_parent(auth_headers, sku="LS-PARENT-OK", name="OK Group")
+    client.post("/api/products", json={"location_id": 1,
+        "sku": "LS-VAR-OK2", "parent_id": ok_parent["id"], "quantity": 40, "reorder_level": 10,
+        "attributes": {"Color": "Red"},
+    }, headers=auth_headers).json()
+
+    data = client.get("/api/products", params={"low_stock": True, "include_variants": 1, "limit": 100}, headers=auth_headers).json()
+    skus = {p["sku"] for p in data["items"]}
+    assert "VAR-PARENT" in skus
+    assert "LS-PARENT-OK" not in skus
+    row = next(p for p in data["items"] if p["id"] == parent["id"])
+    assert next(v for v in row["variants"] if v["sku"] == "LS-VAR-LOW")["quantity"] == 2
+
+
 def test_create_variant_inherits_and_logs_initial_stock(auth_headers):
     parent = _make_parent(auth_headers)
     resp = _make_variant(auth_headers, parent["id"], "TS-RED-M", quantity=25, attributes={"Color": "Red", "Size": "M"})
