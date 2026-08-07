@@ -24,6 +24,7 @@ function mockLocationTree(overrides: Record<string, unknown> = {}) {
     updated_at: "2026-01-01T00:00:00",
     stock_line_count: 3,
     lpn_count: 1,
+    lot_count: 1,
     total_quantity: 120,
     stock_value: 480.5,
     children: [],
@@ -37,7 +38,7 @@ function mockLocations(tree: ReturnType<typeof mockLocationTree>[], summary: Rec
     if (url === "/locations") return Promise.resolve({ data: { items: tree, total: tree.length, page: 1, pages: 1 } });
     if (url === "/locations/summary") {
       return Promise.resolve({
-        data: { total: 3, active: 3, inactive: 0, total_stock_lines: 5, total_lpns: 2, total_quantity: 40, total_value: 100, ...summary },
+        data: { total: 3, active: 3, inactive: 0, total_stock_lines: 5, total_lpns: 2, total_lots: 1, total_quantity: 40, total_value: 100, ...summary },
       });
     }
     if (url.startsWith("/locations/") && url.endsWith("/detail")) {
@@ -71,6 +72,7 @@ describe("Locations Page", () => {
     expect(screen.getByText("aisle")).toBeInTheDocument();
     expect(screen.getByText("3 lines")).toBeInTheDocument();
     expect(screen.getByText("120 units")).toBeInTheDocument();
+    expect(screen.getByText("1 lots")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     expect(await screen.findByText("Bin A-01")).toBeInTheDocument();
     expect(screen.getByText("5 lines")).toBeInTheDocument();
@@ -118,6 +120,7 @@ describe("Locations Page", () => {
     expect(await screen.findByText("$100")).toBeInTheDocument();
     expect(screen.getByText("Total Locations")).toBeInTheDocument();
     expect(screen.getByText("Inactive")).toBeInTheDocument();
+    expect(screen.getByText("Lots")).toBeInTheDocument();
     expect(screen.getAllByText("3").length).toBeGreaterThan(0);
   });
 
@@ -180,6 +183,24 @@ describe("Locations Page", () => {
     expect(screen.getByText("W-002")).toBeInTheDocument();
     expect(screen.getByText("W-003")).toBeInTheDocument();
     expect(screen.getAllByText("scrapped")).toHaveLength(2);
+  });
+
+  it("shows stock movements in the detail modal activity tab", async () => {
+    mockLocations([mockLocationTree()], {}, {
+      movements: [
+        { id: 1, product_name: "Widget", quantity_change: 4, movement_type: "in", username: "tester", from_location: "", to_location: "Aisle A", lot_number: "LOT-1", created_at: "2026-01-01T10:00:00" },
+        { id: 2, product_name: "Gadget", quantity_change: -2, movement_type: "transfer", username: "tester", from_location: "Aisle A", to_location: "Bin A-01", lot_number: "", created_at: "2026-01-01T11:00:00" },
+      ],
+    });
+    renderWithProviders(<Locations />);
+    fireEvent.click(await screen.findByLabelText("View Aisle A"));
+    fireEvent.click(await screen.findByRole("button", { name: /Activity \(2\)/ }));
+    expect(await screen.findByText("Widget")).toBeInTheDocument();
+    expect(screen.getByText("Gadget")).toBeInTheDocument();
+    expect(screen.getByText("+4")).toBeInTheDocument();
+    expect(screen.getByText("-2")).toBeInTheDocument();
+    expect(screen.getByText("Aisle A → Bin A-01")).toBeInTheDocument();
+    expect(screen.getByText("LOT-1")).toBeInTheDocument();
   });
 
   it("opens the detail modal for a location deep link", async () => {

@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Eye, PackagePlus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,12 +14,13 @@ import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 import { useToast } from "../context/ToastContext";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function Receipts() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState<Receipt | null>(null);
   const queryClient = useQueryClient();
@@ -41,7 +43,7 @@ export default function Receipts() {
   const handleExport = () => {
     exportCSV(
       ["Receipt #", "Supplier", "Date", "Qty", "Total Cost"],
-      receipts.map((r) => [r.receipt_number, r.supplier_name, new Date(r.created_at).toLocaleDateString(), r.total_quantity, r.total_cost]),
+      receipts.map((r) => [r.receipt_number, r.supplier_name, formatDate(r.created_at), r.total_quantity, r.total_cost]),
       "receipts"
     );
     addToast("Receipts exported to CSV", "success");
@@ -68,6 +70,7 @@ export default function Receipts() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Receipts table">
           <thead>
             <tr className="bg-app text-left">
@@ -88,7 +91,7 @@ export default function Receipts() {
               <tr key={r.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{r.receipt_number}</td>
                 <td className="px-4 py-3 text-muted">{r.supplier_name || "—"}</td>
-                <td className="px-4 py-3 text-muted">{new Date(r.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{formatDate(r.created_at)}</td>
                 <td className="px-4 py-3">{r.total_quantity}</td>
                 <td className="px-4 py-3">{r.total_cost.toFixed(2)}</td>
                 <td className="px-4 py-3">
@@ -100,6 +103,7 @@ export default function Receipts() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />

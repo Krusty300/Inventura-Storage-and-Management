@@ -103,7 +103,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-ink">Settings</h1>
+      <h1 className="text-2xl font-bold text-ink">System Settings</h1>
 
       {readOnly && (
         <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2">

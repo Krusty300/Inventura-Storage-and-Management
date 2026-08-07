@@ -120,6 +120,40 @@ describe("ProductDetail", () => {
     expect(screen.getByText("Original Shirt")).toBeInTheDocument();
   });
 
+  it("shows inbound and outbound traceability movements for a variant", async () => {
+    const parent = makeProduct({ id: 20, sku: "SKU-TP", name: "Tee" });
+    const product = makeVariant(parent, { id: 21, sku: "SKU-TV", name: "Tee Red" });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/stock-movements/locations") {
+        return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      }
+      if (url === "/products/21/trace") {
+        return Promise.resolve({
+          data: {
+            incoming: [
+              { id: 1, created_at: "2026-01-01T10:00:00", movement_type: "receive", quantity_change: 10, reference_type: "receipt", reference: "RCV-0001", notes: "", lot_number: "LOT-A", username: "tester", from_location_name: "", to_location_name: "Bin A" },
+            ],
+            outgoing: [
+              { id: 2, created_at: "2026-01-02T10:00:00", movement_type: "ship", quantity_change: -3, reference_type: "shipment", reference: "SHP-0001", notes: "", lot_number: "LOT-A", username: "tester", from_location_name: "Shipping", to_location_name: "" },
+            ],
+            work_orders: [],
+          },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    expect(await screen.findByText("Inbound Movements")).toBeInTheDocument();
+    expect(screen.getByText("Outbound Movements")).toBeInTheDocument();
+    expect(screen.getByText("Received")).toBeInTheDocument();
+    expect(screen.getByText("Shipped")).toBeInTheDocument();
+    expect(screen.getByText("+10")).toBeInTheDocument();
+    expect(screen.getByText("-3")).toBeInTheDocument();
+  });
+
   it("shows an Unallocated badge when stock exists without a location", async () => {
     const product = makeProduct({ id: 8, sku: "SKU-8", name: "Widget", location: "A1" });
     getMock.mockImplementation((url: string) => {
@@ -177,5 +211,51 @@ describe("ProductDetail", () => {
         notes: "",
       })
     );
+  });
+
+  it("shows the product status as a badge and toggles it directly from the detail view", async () => {
+    const product = makeProduct({ id: 5, sku: "SKU-5", name: "Widget", location: "A1" });
+    const putMock = api.put as ReturnType<typeof vi.fn>;
+    putMock.mockResolvedValue({ data: { ...product, is_active: false } });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/stock-movements/locations") {
+        return Promise.resolve({
+          data: { locations: [{ location_id: 1, path: "Aisle A", is_active: true, quantity: 5 }], unallocated: 0 },
+        });
+      }
+      if (url === "/products/5/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    const statusButton = await screen.findByRole("button", { name: "Toggle status for Widget" });
+    expect(statusButton).toHaveTextContent("Active");
+
+    fireEvent.click(statusButton);
+    expect(await screen.findByRole("dialog", { name: "Deactivate Product" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Deactivate" }));
+
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/products/5", { is_active: false }));
+    expect(screen.getByRole("button", { name: "Toggle status for Widget" })).toHaveTextContent("Inactive");
+  });
+
+  it("shows a non-interactive status badge for users without the update permission", async () => {
+    const product = makeProduct({ id: 12, sku: "SKU-12", name: "Widget" });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/products/12/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />, { role: "worker" });
+
+    expect(await screen.findByText("Active")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle status for Widget" })).not.toBeInTheDocument();
   });
 });

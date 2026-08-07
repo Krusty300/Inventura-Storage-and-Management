@@ -1,15 +1,18 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import Modal from "./Modal";
 import { PackagePlus, PackageOpen, MapPin } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Product, ProductTrace } from "../types";
-import { parseLocalDate } from "../utils/date";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { hasVariants } from "../utils/variants";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+import ConfirmDialog from "./ConfirmDialog";
 import MoveUnallocatedModal from "./MoveUnallocatedModal";
 
 interface Props {
@@ -30,17 +33,39 @@ const MOVEMENT_LABELS: Record<string, string> = {
   count: "Cycle count",
   deactivate: "Deactivated",
   activate: "Activated",
+  in: "Stock in",
+  out: "Stock out",
+  return: "Returned",
+  ship: "Shipped",
+  scrap: "Scrapped",
 };
 
 export default function ProductDetail({ product, onClose, onAddVariant }: Props) {
+  const formatDate = useDateFormat();
   const { data: settings } = useSettings();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const { addToast } = useToast();
   const [showMoveUnallocated, setShowMoveUnallocated] = useState(false);
+  const [confirmStatus, setConfirmStatus] = useState(false);
+  const [isActive, setIsActive] = useState(product.is_active);
   const currencySymbol = settings?.currency_symbol || "$";
   const totalQty = hasVariants(product) ? product.total_quantity : product.quantity;
   const qty = hasVariants(product) ? product.total_quantity : product.quantity;
   const { locations, unallocated } = useProductStockLocations(product.id, product.is_serialized);
+
+  const toggleStatus = useMutation({
+    mutationFn: () => api.put(`/products/${product.id}`, { is_active: !isActive }),
+    onSuccess: () => {
+      setIsActive((prev) => !prev);
+      addToast("Product status updated", "success");
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });
+      queryClient.invalidateQueries({ queryKey: ["trace", product.id] });
+    },
+    onError: () => addToast("Failed to update product status", "error"),
+  });
 
   return (
     <Modal open onClose={onClose} title={product.display_name} wide>
@@ -94,11 +119,22 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           </div>
           <div>
             <span className="text-muted">Expiry Date:</span>
-            <p className="font-medium">{product.expiry_date ? parseLocalDate(product.expiry_date).toLocaleDateString() : "—"}</p>
+            <p className="font-medium">{product.expiry_date ? formatDate(product.expiry_date) : "—"}</p>
           </div>
           <div>
             <span className="text-muted">Status:</span>
-            <p className="font-medium">{product.is_active ? "Active" : "Inactive"}</p>
+            {can("products.update") ? (
+              <button
+                onClick={() => setConfirmStatus(true)}
+                className={`badge cursor-pointer border ${isActive ? "badge-success" : "badge-danger"}`}
+                title={isActive ? "Click to deactivate" : "Click to activate"}
+                aria-label={`Toggle status for ${product.display_name}`}
+              >
+                {isActive ? "Active" : "Inactive"}
+              </button>
+            ) : (
+              <span className={`badge ${isActive ? "badge-success" : "badge-danger"}`}>{isActive ? "Active" : "Inactive"}</span>
+            )}
           </div>
           {product.is_serialized && (
             <div>
@@ -218,25 +254,35 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmStatus}
+        title={isActive ? "Deactivate Product" : "Activate Product"}
+        message={isActive
+          ? `Deactivate "${product.display_name}"? Inactive products can no longer be sold.`
+          : `Reactivate "${product.display_name}"? It will become available for sale again.`}
+        confirmLabel={isActive ? "Deactivate" : "Activate"}
+        confirmClass={isActive ? "btn-danger" : "btn-primary"}
+        onConfirm={() => { toggleStatus.mutate(); setConfirmStatus(false); }}
+        onCancel={() => setConfirmStatus(false)}
+      />
     </Modal>
   );
 }
 
 function TraceSection({ product }: { product: Product }) {
+  const formatDate = useDateFormat();
   const { data: trace, isLoading } = useQuery({
     queryKey: ["trace", product.id],
     queryFn: async () => {
       const { data } = await api.get(`/products/${product.id}/trace`);
       return data as ProductTrace;
     },
-    enabled: !product.is_variant,
   });
-
-  if (product.is_variant) return null;
 
   const movementRows = (m: ProductTrace["incoming"][number]) => (
     <tr key={m.id}>
-      <td className="px-3 py-2">{new Date(m.created_at).toLocaleDateString()}</td>
+      <td className="px-3 py-2">{formatDate(m.created_at)}</td>
       <td className="px-3 py-2"><span className="badge badge-info">{MOVEMENT_LABELS[m.movement_type] || m.movement_type}</span></td>
       <td className={`px-3 py-2 font-medium ${m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
         {m.quantity_change > 0 ? "+" : ""}{m.quantity_change}
@@ -282,7 +328,7 @@ function TraceSection({ product }: { product: Product }) {
                         </td>
                         <td className="px-3 py-2">{w.quantity}</td>
                         <td className="px-3 py-2 capitalize">{w.status}</td>
-                        <td className="px-3 py-2 text-muted">{new Date(w.created_at).toLocaleDateString()}</td>
+                        <td className="px-3 py-2 text-muted">{formatDate(w.created_at)}</td>
                       </tr>
                     ))}
                   </tbody>

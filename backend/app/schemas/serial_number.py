@@ -10,11 +10,13 @@ class SerialNumberOut(BaseModel):
     serial_number: str
     lot_id: Optional[int] = None
     location_id: Optional[int] = None
+    lpn_id: Optional[int] = None
     status: str
     sold_at: Optional[datetime] = None
     created_at: datetime
     product_name: str = ""
     lot_number: str = ""
+    lot_status: str = ""
     location_name: str = ""
 
     class Config:

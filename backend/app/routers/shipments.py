@@ -26,7 +26,9 @@ SHIPPABLE_STATUSES = ("picking", "packed")
 def _load_shipment(db: Session, shipment_id: int) -> Shipment:
     return get_or_404(Shipment, shipment_id, db, options=[
         joinedload(Shipment.customer), joinedload(Shipment.creator), joinedload(Shipment.staging_location),
-        joinedload(Shipment.sale), joinedload(Shipment.items).joinedload(ShipmentItem.product),
+        joinedload(Shipment.sale),
+        joinedload(Shipment.items).joinedload(ShipmentItem.product),
+        joinedload(Shipment.items).joinedload(ShipmentItem.location),
     ])
 
 
@@ -52,8 +54,8 @@ def _staging_location(db: Session) -> Location:
     return loc
 
 
-def _validate_items(db: Session, items) -> dict[int, int]:
-    qty_by_product: dict[int, int] = {}
+def _validate_items(db: Session, items) -> dict[tuple[int, int | None], int]:
+    qty_by_key: dict[tuple[int, int | None], int] = {}
     for item in items:
         product = get_or_404(Product, item.product_id, db)
         if not product.is_active:
@@ -62,13 +64,22 @@ def _validate_items(db: Session, items) -> dict[int, int]:
             Product.parent_id == product.id, Product.is_active == True  # noqa: E712
         ).first():
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - ship a specific variant")
-        qty_by_product[item.product_id] = qty_by_product.get(item.product_id, 0) + item.quantity
-    for pid, qty in qty_by_product.items():
-        on_hand = inventory.on_hand(db, product_id=pid, sellable_only=True)
+        if item.location_id is not None:
+            location = get_or_404(Location, item.location_id, db)
+            if not location.is_active:
+                raise HTTPException(status_code=400, detail=f"Location '{location.path}' is inactive")
+        key = (item.product_id, item.location_id)
+        qty_by_key[key] = qty_by_key.get(key, 0) + item.quantity
+    for (pid, location_id), qty in qty_by_key.items():
+        on_hand = inventory.on_hand(db, product_id=pid, location_id=location_id, sellable_only=True)
         if on_hand < qty:
             product = get_or_404(Product, pid, db)
-            raise HTTPException(status_code=400, detail=f"Insufficient stock for '{product.display_name}': have {on_hand}, need {qty}")
-    return qty_by_product
+            scope = "" if location_id is None else f" at '{get_or_404(Location, location_id, db).path}'"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient stock for '{product.display_name}'{scope}: have {on_hand}, need {qty}",
+            )
+    return qty_by_key
 
 
 def _ensure_products_active(shipment: Shipment, action: str) -> None:
@@ -111,6 +122,43 @@ def _qc_blocker(db: Session, shipment: Shipment) -> QualityCheck | None:
     return None
 
 
+def _pick_shipment_items(db: Session, shipment: Shipment, user) -> Location:
+    """Allocate the shipment's outstanding items and move them to the shipping
+    staging location, marking each item as picked. Used by the manual ``pick``
+    flow and, when ``auto_allocate_stock`` is enabled, at shipment creation.
+    Raises ``inventory.InventoryError`` on failure; the caller is responsible
+    for committing / rolling back."""
+    staging = _staging_location(db)
+    for item in shipment.items:
+        remaining = item.quantity_ordered - item.quantity_picked
+        if remaining <= 0:
+            continue
+        product = item.product
+        if product and product.is_serialized:
+            serials = inventory.allocate_serials(db, product_id=item.product_id, quantity=remaining, location_id=item.location_id)
+            for serial in serials:
+                source = serial.location_id
+                inventory.transfer_stock(
+                    db, product_id=item.product_id, user_id=user.id, quantity=1,
+                    from_location_id=source, to_location_id=staging.id,
+                    lot_id=serial.lot_id, serial_id=serial.id,
+                    transfer_id=shipment.id, reference_type="shipment", reference=shipment.shipment_number,
+                    notes=f"Picked to {shipment.shipment_number}",
+                )
+        else:
+            allocation = inventory.allocate_lots(db, product_id=item.product_id, quantity=remaining, location_id=item.location_id)
+            for lot_id, take, source_location, lpn_id in allocation:
+                inventory.transfer_stock(
+                    db, product_id=item.product_id, user_id=user.id, quantity=take,
+                    from_location_id=source_location, to_location_id=staging.id,
+                    lot_id=lot_id, lpn_id=lpn_id,
+                    transfer_id=shipment.id, reference_type="shipment", reference=shipment.shipment_number,
+                    notes=f"Picked to {shipment.shipment_number}",
+                )
+        item.quantity_picked = item.quantity_ordered
+    return staging
+
+
 @router.get("")
 def list_shipments(
     status: str | None = None,
@@ -120,7 +168,10 @@ def list_shipments(
     db: Session = Depends(get_db),
 ):
     q = db.query(Shipment).options(
-        joinedload(Shipment.customer), joinedload(Shipment.items), joinedload(Shipment.sale)
+        joinedload(Shipment.customer),
+        joinedload(Shipment.items).joinedload(ShipmentItem.product),
+        joinedload(Shipment.items).joinedload(ShipmentItem.location),
+        joinedload(Shipment.sale),
     )
     if status:
         q = q.filter(Shipment.status == status)
@@ -155,7 +206,7 @@ def create_shipment(data: ShipmentCreate, db: Session = Depends(get_db), user=De
         get_or_404(Customer, data.customer_id, db)
     if data.sale_id is not None:
         _validate_sale(db, data.sale_id)
-    qty_by_product = _validate_items(db, data.items)
+    qty_by_key = _validate_items(db, data.items)
     shipment = Shipment(
         shipment_number=next_document_number(db, "shipment", "SHP-"),
         customer_id=data.customer_id,
@@ -167,14 +218,36 @@ def create_shipment(data: ShipmentCreate, db: Session = Depends(get_db), user=De
     )
     db.add(shipment)
     db.flush()
-    for product_id, qty in qty_by_product.items():
-        db.add(ShipmentItem(shipment_id=shipment.id, product_id=product_id, quantity_ordered=qty))
+    for (product_id, location_id), qty in qty_by_key.items():
+        db.add(ShipmentItem(
+            shipment_id=shipment.id, product_id=product_id,
+            location_id=location_id, quantity_ordered=qty,
+        ))
     db.commit()
     shipment = _load_shipment(db, shipment.id)
+
+    auto_allocated = False
+    s = db.query(Settings).first()
+    if s and s.auto_allocate_stock:
+        try:
+            staging = _pick_shipment_items(db, shipment, user)
+            shipment.staging_location_id = staging.id
+            shipment.status = "picking"
+            auto_allocated = True
+            db.commit()
+            shipment = _load_shipment(db, shipment.id)
+        except inventory.InventoryError as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
+
     log_activity(db, user.id, user.username, "create", "shipment", shipment.id,
-                 f"Created shipment '{shipment.shipment_number}' ({shipment.total_quantity} units)")
+                 f"Created shipment '{shipment.shipment_number}' ({shipment.total_quantity} units)"
+                 + (" - stock auto-allocated" if auto_allocated else ""))
     db.commit()
     broadcast_change("shipment", "created")
+    if auto_allocated:
+        broadcast_change("stock_movement", "created")
+        broadcast_change("product", "updated")
     return shipment
 
 
@@ -208,35 +281,8 @@ def pick_shipment(shipment_id: int, db: Session = Depends(get_db), user=Depends(
             status_code=400,
             detail=f"Quality check '{qc.qc_number}' is {qc.result} for '{qc.product_name}'. Resolve QC before picking.",
         )
-    staging = _staging_location(db)
     try:
-        for item in shipment.items:
-            remaining = item.quantity_ordered - item.quantity_picked
-            if remaining <= 0:
-                continue
-            product = item.product
-            if product and product.is_serialized:
-                serials = inventory.allocate_serials(db, product_id=item.product_id, quantity=remaining)
-                for serial in serials:
-                    source = serial.location_id
-                    inventory.transfer_stock(
-                        db, product_id=item.product_id, user_id=user.id, quantity=1,
-                        from_location_id=source, to_location_id=staging.id,
-                        lot_id=serial.lot_id, serial_id=serial.id,
-                        transfer_id=shipment.id, reference_type="shipment", reference=shipment.shipment_number,
-                        notes=f"Picked to {shipment.shipment_number}",
-                    )
-            else:
-                allocation = inventory.allocate_lots(db, product_id=item.product_id, quantity=remaining)
-                for lot_id, take, source_location, lpn_id in allocation:
-                    inventory.transfer_stock(
-                        db, product_id=item.product_id, user_id=user.id, quantity=take,
-                        from_location_id=source_location, to_location_id=staging.id,
-                        lot_id=lot_id, lpn_id=lpn_id,
-                        transfer_id=shipment.id, reference_type="shipment", reference=shipment.shipment_number,
-                        notes=f"Picked to {shipment.shipment_number}",
-                    )
-            item.quantity_picked = item.quantity_ordered
+        staging = _pick_shipment_items(db, shipment, user)
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))

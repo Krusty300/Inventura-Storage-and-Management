@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -244,6 +245,7 @@ export default function Reports() {
 }
 
 function ManufacturingCostTab({ data, symbol }: { data: ManufacturingCostReport; symbol: string }) {
+  const formatDate = useDateFormat();
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -278,7 +280,7 @@ function ManufacturingCostTab({ data, symbol }: { data: ManufacturingCostReport;
                   <td className="px-4 py-3 font-medium">{row.wo_number}</td>
                   <td className="px-4 py-3 text-muted">{row.product_name}</td>
                   <td className="px-4 py-3">{row.quantity}</td>
-                  <td className="px-4 py-3 text-muted">{row.completed_at ? new Date(row.completed_at).toLocaleDateString() : "—"}</td>
+                  <td className="px-4 py-3 text-muted">{row.completed_at ? formatDate(row.completed_at) : "—"}</td>
                   <td className="px-4 py-3 text-right">{formatCurrency(row.material_cost, symbol)}</td>
                   <td className="px-4 py-3 text-right">{formatCurrency(row.standard_unit_cost, symbol)}</td>
                   <td className="px-4 py-3 text-right">{formatCurrency(row.actual_unit_cost, symbol)}</td>
@@ -294,6 +296,7 @@ function ManufacturingCostTab({ data, symbol }: { data: ManufacturingCostReport;
 }
 
 function AgingTab({ data }: { data: InventoryAging }) {
+  const formatDate = useDateFormat();
   const maxAge = Math.max(...data.items.map((i) => i.age_days), 0);
   const buckets = [
     { label: "< 30 days", min: 0, max: 29 },
@@ -350,7 +353,7 @@ function AgingTab({ data }: { data: InventoryAging }) {
                         <span className="text-xs">{row.age_days}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted">{row.last_movement_at ? new Date(row.last_movement_at).toLocaleDateString() : "Never"}</td>
+                    <td className="px-4 py-3 text-muted">{row.last_movement_at ? formatDate(row.last_movement_at) : "Never"}</td>
                     <td className="px-4 py-3 text-muted">{row.avg_daily_demand.toFixed(2)}</td>
                     <td className="px-4 py-3">{row.days_of_stock != null ? row.days_of_stock.toFixed(1) : "—"}</td>
                   </tr>
@@ -760,6 +763,7 @@ function CustomersTab({ data, symbol, days, onDaysChange }: {
   days: number | "all";
   onDaysChange: (d: number | "all") => void;
 }) {
+  const formatDate = useDateFormat();
   const maxSpent = Math.max(...data.items.map((c) => c.total_spent), 0);
   return (
     <div className="space-y-6">
@@ -810,7 +814,7 @@ function CustomersTab({ data, symbol, days, onDaysChange }: {
                       <span>{formatCurrency(c.total_spent, symbol)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted">{c.last_purchase_at ? new Date(c.last_purchase_at).toLocaleDateString() : "Never"}</td>
+                  <td className="px-4 py-3 text-muted">{c.last_purchase_at ? formatDate(c.last_purchase_at) : "Never"}</td>
                 </tr>
               ))}
             </tbody>
@@ -827,6 +831,7 @@ function SuppliersTab({ data, symbol, days, onDaysChange }: {
   days: number | "all";
   onDaysChange: (d: number | "all") => void;
 }) {
+  const formatDate = useDateFormat();
   const maxSpent = Math.max(...data.items.map((s) => s.total_spent), 0);
   return (
     <div className="space-y-6">
@@ -877,7 +882,7 @@ function SuppliersTab({ data, symbol, days, onDaysChange }: {
                       <span>{formatCurrency(s.total_spent, symbol)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted">{s.last_order_at ? new Date(s.last_order_at).toLocaleDateString() : "Never"}</td>
+                  <td className="px-4 py-3 text-muted">{s.last_order_at ? formatDate(s.last_order_at) : "Never"}</td>
                 </tr>
               ))}
             </tbody>

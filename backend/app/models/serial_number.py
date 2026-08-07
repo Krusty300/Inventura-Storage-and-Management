@@ -38,5 +38,9 @@ class SerialNumber(Base):
         return self.lot.lot_number if self.lot else ""
 
     @property
+    def lot_status(self) -> str:
+        return self.lot.status if self.lot else ""
+
+    @property
     def location_name(self) -> str:
         return self.location.path if self.location else ""

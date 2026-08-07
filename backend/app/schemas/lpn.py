@@ -15,6 +15,22 @@ class LPNUpdate(BaseModel):
     status: Optional[str] = None
 
 
+class LPNLoadIn(BaseModel):
+    product_id: int
+    from_location_id: int
+    quantity: Optional[int] = None
+    lot_id: Optional[int] = None
+    serial_ids: Optional[list[int]] = None
+
+
+class LPNUnloadIn(BaseModel):
+    product_id: int
+    to_location_id: int
+    quantity: Optional[int] = None
+    lot_id: Optional[int] = None
+    serial_ids: Optional[list[int]] = None
+
+
 class LPNContentOut(BaseModel):
     product_id: int
     product_name: str = ""

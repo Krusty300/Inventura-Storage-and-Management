@@ -29,6 +29,7 @@ interface LocationSummary {
   inactive: number;
   total_stock_lines: number;
   total_lpns: number;
+  total_lots: number;
   total_quantity: number;
   total_value: number;
   total_serials: number;
@@ -142,7 +143,7 @@ export default function Locations() {
 
   const handleExport = () => {
     exportCSV(
-      ["Name", "Path", "Code", "Type", "Status", "Stock Lines", "Quantity", "Stock Value", "LPNs"],
+      ["Name", "Path", "Code", "Type", "Status", "Stock Lines", "Quantity", "Stock Value", "LPNs", "Lots"],
       (all || []).map((l) => [
         l.name,
         l.path,
@@ -153,6 +154,7 @@ export default function Locations() {
         l.total_quantity,
         formatCurrency(l.stock_value, currencySymbol),
         l.lpn_count,
+        l.lot_count ?? 0,
       ]),
       "locations"
     );
@@ -187,6 +189,7 @@ export default function Locations() {
             <span>{node.total_quantity} units</span>
             <span>{formatCurrency(node.stock_value, currencySymbol)}</span>
             <span>{node.lpn_count} LPNs</span>
+            <span>{node.lot_count ?? 0} lots</span>
           </span>
           <div className="flex gap-1">
             <button onClick={() => openDetail(node)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${node.path}`}>
@@ -215,6 +218,7 @@ export default function Locations() {
     { label: "Inactive", value: summary?.inactive ?? 0 },
     { label: "Stock Lines", value: summary?.total_stock_lines ?? 0 },
     { label: "LPNs", value: summary?.total_lpns ?? 0 },
+    { label: "Lots", value: summary?.total_lots ?? 0 },
     { label: "Serialized Units", value: summary?.total_serials ?? 0 },
     { label: "Stock Value", value: formatCurrency(summary?.total_value ?? 0, currencySymbol, 0) },
   ];
@@ -273,8 +277,10 @@ export default function Locations() {
         />
       ) : (
         <div className="card overflow-hidden p-0">
-          <div className="px-4 py-3 bg-app border-b text-sm text-muted">Warehouse tree</div>
-          {visibleTree.map((node) => renderNode(node, 0, isSearching))}
+          <div className="overflow-x-auto">
+            <div className="px-4 py-3 bg-app border-b text-sm text-muted">Warehouse tree</div>
+            {visibleTree.map((node) => renderNode(node, 0, isSearching))}
+          </div>
         </div>
       )}
 

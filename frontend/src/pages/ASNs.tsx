@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { Eye, PackagePlus, Plus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,12 +17,13 @@ import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function ASNs() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState<ASN | null>(null);
   const [receiving, setReceiving] = useState<ASN | null>(null);
@@ -62,6 +64,7 @@ export default function ASNs() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="ASNs table">
           <thead>
             <tr className="bg-app text-left">
@@ -82,7 +85,7 @@ export default function ASNs() {
               <tr key={a.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{a.asn_number}</td>
                 <td className="px-4 py-3 text-muted">{a.supplier_name || "—"}</td>
-                <td className="px-4 py-3 text-muted">{a.expected_arrival ? new Date(a.expected_arrival).toLocaleDateString() : "—"}</td>
+                <td className="px-4 py-3 text-muted">{a.expected_arrival ? formatDate(a.expected_arrival) : "—"}</td>
                 <td className="px-4 py-3"><span className={`badge ${statusBadge(a.status)}`}>{a.status}</span></td>
                 <td className="px-4 py-3 text-muted">{a.total_received}/{a.total_expected}</td>
                 <td className="px-4 py-3">
@@ -97,6 +100,7 @@ export default function ASNs() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
@@ -145,23 +149,23 @@ function AsnFormRow({ row, idx, productList, onChange }: {
   }, [stockLocations]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="p-4 grid grid-cols-12 gap-2 items-end">
-      <div className="col-span-5">
+    <div className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
+      <div className="sm:col-span-5">
         <label className="block text-xs font-medium text-muted mb-1">Product</label>
         <select className="select" aria-label="Product" value={row.product_id} onChange={(e) => onChange(idx, "product_id", e.target.value)}>
           <option value="">Select...</option>
           {productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
         </select>
       </div>
-      <div className="col-span-2">
+      <div className="sm:col-span-2">
         <label className="block text-xs font-medium text-muted mb-1">Expected Qty</label>
         <input type="number" min={1} className="input" value={row.expected_qty} onChange={(e) => onChange(idx, "expected_qty", e.target.value)} />
       </div>
-      <div className="col-span-2">
+      <div className="sm:col-span-2">
         <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
         <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => onChange(idx, "unit_cost", e.target.value)} />
       </div>
-      <div className="col-span-3">
+      <div className="sm:col-span-3">
         <label className="block text-xs font-medium text-muted mb-1">Location</label>
         <LocationPicker value={row.location} onChange={(v) => onChange(idx, "location", v)} />
         {product && (
@@ -230,7 +234,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
   return (
     <Modal open onClose={onClose} title="New ASN" wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
             <select className="select" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
@@ -272,6 +276,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
 }
 
 function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
+  const formatDate = useDateFormat();
   return (
     <Modal open onClose={onClose} title={`ASN ${asn.asn_number}`} wide>
       <div className="space-y-4">
@@ -282,7 +287,7 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
           </div>
           <div>
             <p className="text-muted">Expected Arrival</p>
-            <p className="font-medium">{asn.expected_arrival ? new Date(asn.expected_arrival).toLocaleDateString() : "—"}</p>
+            <p className="font-medium">{asn.expected_arrival ? formatDate(asn.expected_arrival) : "—"}</p>
           </div>
           <div>
             <p className="text-muted">Status</p>
@@ -354,7 +359,7 @@ function AsnReceiveRow({ row, idx, productList, onChange }: {
   return (
     <div className="p-4 space-y-2">
       <p className="text-sm font-medium">{row.product_name}</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Qty Received</label>
           <input type="number" min={1} className="input" value={row.received_qty} onChange={(e) => onChange(idx, "received_qty", e.target.value)} />

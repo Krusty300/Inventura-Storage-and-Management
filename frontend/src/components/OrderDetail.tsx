@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
@@ -41,6 +42,7 @@ function ReceiveLocationHints({
 }
 
 export default function OrderDetail({ order, onClose, onUpdated }: Props) {
+  const formatDate = useDateFormat();
   const [confirming, setConfirming] = useState<string | null>(null);
   const [receiving, setReceiving] = useState(false);
   const [serials, setSerials] = useState<Record<number, string>>({});
@@ -139,7 +141,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
           </div>
           <div>
             <span className="text-muted">Date:</span>
-            <p className="font-medium">{new Date(order.created_at).toLocaleDateString()}</p>
+            <p className="font-medium">{formatDate(order.created_at)}</p>
           </div>
           <div>
             <span className="text-muted">Created by:</span>

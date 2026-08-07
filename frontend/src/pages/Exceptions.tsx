@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { AlertTriangle, PackageX, ShieldAlert, ClipboardList, Truck, Search, Undo2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +8,7 @@ import Skeleton from "../components/Skeleton";
 import Modal from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { parseLocalDate } from "../utils/date";
+
 
 type Section = "low_stock" | "zero_stock" | "quarantined_lots" | "open_cycle_counts" | "pending_asns";
 
@@ -59,7 +60,7 @@ export default function Exceptions() {
 
       <div className="card overflow-hidden p-0">
         <div className="px-4 py-3 bg-app border-b font-medium text-ink capitalize">{section.replace(/_/g, " ")}</div>
-        <div className="p-4">
+        <div className="p-4 overflow-x-auto">
           {section === "low_stock" && <LowStockTable data={data} />}
           {section === "zero_stock" && <ZeroStockTable data={data} />}
           {section === "quarantined_lots" && <QuarantineTable data={data} />}
@@ -110,6 +111,7 @@ function ZeroStockTable({ data }: { data: ExceptionsReport }) {
 }
 
 function QuarantineTable({ data }: { data: ExceptionsReport }) {
+  const formatDate = useDateFormat();
   const [recallLot, setRecallLot] = useState<(typeof data.quarantined_lots)[number] | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
@@ -141,8 +143,8 @@ function QuarantineTable({ data }: { data: ExceptionsReport }) {
               <td className="py-2 font-medium">{l.lot_number}</td>
               <td className="py-2 text-muted">{l.product_name}</td>
               <td className="py-2 text-orange-600 dark:text-orange-400 font-medium">{l.on_hand}</td>
-              <td className="py-2 text-muted">{l.expiry_date ? parseLocalDate(l.expiry_date).toLocaleDateString() : "—"}</td>
-              <td className="py-2 text-muted">{parseLocalDate(l.received_date).toLocaleDateString()}</td>
+              <td className="py-2 text-muted">{l.expiry_date ? formatDate(l.expiry_date) : "—"}</td>
+              <td className="py-2 text-muted">{formatDate(l.received_date)}</td>
               <td className="py-2">
                 <div className="flex gap-2">
                   <button onClick={() => setRecallLot(l)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
@@ -238,6 +240,7 @@ function RecallModal({ lot, onClose }: { lot: { id: number; lot_number: string; 
 }
 
 function CycleCountTable({ data }: { data: ExceptionsReport }) {
+  const formatDate = useDateFormat();
   if (data.open_cycle_counts.length === 0) return <p className="text-sm text-muted">No open cycle counts.</p>;
   return (
     <table className="w-full text-sm">
@@ -250,7 +253,7 @@ function CycleCountTable({ data }: { data: ExceptionsReport }) {
             <td className="py-2"><span className="badge badge-info">{c.status}</span></td>
             <td className="py-2">{c.total_expected}</td>
             <td className={`py-2 font-medium ${c.total_variance !== 0 ? "text-orange-600 dark:text-orange-400" : "text-faint"}`}>{c.total_variance > 0 ? "+" : ""}{c.total_variance}</td>
-            <td className="py-2 text-muted">{new Date(c.created_at).toLocaleDateString()}</td>
+            <td className="py-2 text-muted">{formatDate(c.created_at)}</td>
           </tr>
         ))}
       </tbody>
@@ -259,6 +262,7 @@ function CycleCountTable({ data }: { data: ExceptionsReport }) {
 }
 
 function AsnTable({ data }: { data: ExceptionsReport }) {
+  const formatDate = useDateFormat();
   if (data.pending_asns.length === 0) return <p className="text-sm text-muted">No pending ASNs.</p>;
   return (
     <table className="w-full text-sm">
@@ -268,7 +272,7 @@ function AsnTable({ data }: { data: ExceptionsReport }) {
           <tr key={a.id}>
             <td className="py-2 font-medium">{a.asn_number}</td>
             <td className="py-2 text-muted">{a.supplier || "—"}</td>
-            <td className="py-2 text-muted">{a.expected_arrival ? new Date(a.expected_arrival).toLocaleDateString() : "—"}</td>
+            <td className="py-2 text-muted">{a.expected_arrival ? formatDate(a.expected_arrival) : "—"}</td>
             <td className="py-2">{a.items_pending}</td>
           </tr>
         ))}

@@ -55,8 +55,8 @@ function ReceiptItemRow({ row, idx, productList, onChange, onRemove }: ItemRowPr
 
   return (
     <div className="p-4 space-y-3">
-      <div className="grid grid-cols-12 gap-2 items-end">
-        <div className="col-span-5">
+      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
+        <div className="sm:col-span-5">
           <label className="block text-xs font-medium text-muted mb-1">Product</label>
           <select className="select" value={row.product_id} onChange={(e) => {
             const id = e.target.value;
@@ -69,25 +69,25 @@ function ReceiptItemRow({ row, idx, productList, onChange, onRemove }: ItemRowPr
             ))}
           </select>
         </div>
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-muted mb-1">Qty</label>
           <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => onChange(idx, "quantity", e.target.value)} />
         </div>
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
           <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => onChange(idx, "unit_cost", e.target.value)} />
         </div>
-        <div className="col-span-3 flex gap-2">
-          <input className="input" placeholder="Lot #" value={row.lot_number} onChange={(e) => onChange(idx, "lot_number", e.target.value)} aria-label="Lot number" />
+        <div className="sm:col-span-3 flex gap-2">
+          <input className="input flex-1" placeholder="Lot #" value={row.lot_number} onChange={(e) => onChange(idx, "lot_number", e.target.value)} aria-label="Lot number" />
           <button type="button" onClick={() => onRemove(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
             <Trash2 size={16} />
           </button>
         </div>
-        <div className="col-span-5">
+        <div className="sm:col-span-5">
           <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
           <input type="date" className="input" value={row.expiry_date} onChange={(e) => onChange(idx, "expiry_date", e.target.value)} />
         </div>
-        <div className="col-span-4">
+        <div className="sm:col-span-4">
           <label className="block text-xs font-medium text-muted mb-1">Location</label>
           <LocationPicker value={row.location} onChange={(v) => onChange(idx, "location", v)} />
           {product && (
@@ -100,7 +100,7 @@ function ReceiptItemRow({ row, idx, productList, onChange, onRemove }: ItemRowPr
             />
           )}
         </div>
-        <div className="col-span-3">
+        <div className="sm:col-span-3">
           <label className="block text-xs font-medium text-muted mb-1">LPN (pallet)</label>
           <input className="input" placeholder="e.g. LPN-1001" value={row.lpn_number} onChange={(e) => onChange(idx, "lpn_number", e.target.value)} />
         </div>
@@ -203,7 +203,7 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
   return (
     <Modal open onClose={onClose} title="Record Receipt" wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
             <select className="select" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>

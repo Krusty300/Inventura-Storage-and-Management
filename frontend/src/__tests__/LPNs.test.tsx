@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -111,5 +111,38 @@ describe("LPNs Page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(await screen.findByText("LPN deleted")).toBeInTheDocument();
     expect(deleteMock).toHaveBeenCalledWith("/lpns/1");
+  });
+
+  it("loads stock into an LPN from the detail view", async () => {
+    const postMock = api.post as ReturnType<typeof vi.fn>;
+    postMock.mockResolvedValue({ data: {} });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/lpns") return Promise.resolve({ data: { items: [mockLPN({ contents: [] })], total: 1, page: 1, pages: 1 } });
+      if (url === "/lpns/1") return Promise.resolve({ data: mockLPN({ contents: [] }) });
+      if (url === "/products") return Promise.resolve({ data: { items: [{ id: 1, sku: "W", name: "Widget", display_name: "Widget", is_active: true, is_serialized: false, is_variant: false, parent_id: null, location_id: 2 }] } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 2, name: "Aisle A", path: "Aisle A", is_active: true }] } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [{ location_id: 2, path: "Aisle A", is_active: true, quantity: 5, lots: [] }] } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<LPNs />);
+    fireEvent.click(await screen.findByLabelText("View LPN-0001"));
+    fireEvent.click(await screen.findByRole("button", { name: "Load Stock" }));
+
+    await screen.findByRole("option", { name: "Widget (W)" });
+    const productSelect = screen.getAllByRole("combobox").find((c) =>
+      c.querySelector('option[value="1"]')
+    )!;
+    fireEvent.change(productSelect, { target: { value: "1" } });
+    expect(productSelect).toHaveValue("1");
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load Stock" }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/lpns/1/items", expect.objectContaining({
+      product_id: 1,
+      quantity: 3,
+      from_location_id: 2,
+      lot_id: null,
+    })));
   });
 });

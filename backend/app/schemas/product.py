@@ -84,6 +84,7 @@ class ProductOut(BaseModel):
     variant_label: str = ""
     display_name: str = ""
     total_quantity: int = 0
+    quarantined_qty: int = 0
     variants: list["ProductOut"] = []
 
     class Config:

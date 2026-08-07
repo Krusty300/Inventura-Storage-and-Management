@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Eye, RotateCcw, FileText } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -19,12 +20,13 @@ import { formatCurrency } from "../utils/currency";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function Sales() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState<Sale | null>(null);
   const [refunding, setRefunding] = useState<Sale | null>(null);
@@ -66,7 +68,7 @@ export default function Sales() {
   const handleExport = () => {
     exportCSV(
       ["Invoice #", "Customer", "Date", "Status", "Payment", "Total"],
-      sales.map((s) => [s.invoice_number, s.customer_name, new Date(s.created_at).toLocaleDateString(), s.status, s.payment_method, s.total_amount]),
+      sales.map((s) => [s.invoice_number, s.customer_name, formatDate(s.created_at), s.status, s.payment_method, s.total_amount]),
       "sales"
     );
     addToast("Sales exported to CSV", "success");
@@ -99,6 +101,7 @@ export default function Sales() {
       <BulkActionBar count={selectedIds.size} canEdit={can("sales.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Sales table">
           <thead>
             <tr className="bg-app text-left">
@@ -126,7 +129,7 @@ export default function Sales() {
                 </td>
                 <td className="px-4 py-3 font-medium">{s.invoice_number}</td>
                 <td className="px-4 py-3 text-muted">{s.customer_name}</td>
-                <td className="px-4 py-3 text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                 <td className="px-4 py-3">
                   <span className={`badge ${s.status === "completed" ? "badge-success" : "badge-danger"}`}>{s.status}</span>
                 </td>
@@ -151,6 +154,7 @@ export default function Sales() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />

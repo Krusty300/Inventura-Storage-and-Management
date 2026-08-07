@@ -131,4 +131,15 @@ describe("Users Page", () => {
     expect(await screen.findByText("Recent Activity")).toBeInTheDocument();
     expect(await screen.findByText(/Updated user 'alice'/)).toBeInTheDocument();
   });
+
+  it("formats dates according to the saved date format setting", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { date_format: "DD/MM/YYYY" } });
+      if (url === "/users") return Promise.resolve({ data: { items: [{ id: 2, username: "alice", email: "alice@example.com", role: "worker", last_login_at: "2026-02-01T00:00:00", created_at: "2026-01-01T00:00:00" }], total: 1, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Users />);
+    expect(await screen.findByText("01/01/2026")).toBeInTheDocument();
+    expect(screen.getByText("01/02/2026")).toBeInTheDocument();
+  });
 });

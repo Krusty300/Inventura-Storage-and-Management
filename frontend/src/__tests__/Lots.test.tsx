@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -26,6 +26,7 @@ function mockLot(overrides: Record<string, unknown> = {}) {
     supplier_name: "Acme",
     on_hand: 12,
     serial_count: 0,
+    locations: [],
     ...overrides,
   };
 }
@@ -55,6 +56,16 @@ describe("Lots Page", () => {
     expect(screen.getByText("Acme")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("in stock")).toBeInTheDocument();
+  });
+
+  it("renders lot locations in the table and detail modal", async () => {
+    mockLots([mockLot({ locations: ["Aisle A / Bin A-01"] })]);
+    renderWithProviders(<Lots />);
+    expect(await screen.findByText("Aisle A / Bin A-01")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("View LOT-0001"));
+    expect(await screen.findByText("Lot LOT-0001")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByText("Location")).toBeInTheDocument();
+    expect(screen.getAllByText("Aisle A / Bin A-01")).toHaveLength(2);
   });
 
   it("shows status actions for admins", async () => {

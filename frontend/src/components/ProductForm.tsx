@@ -152,7 +152,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   );
 
   const inheritedInfo = (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
         <label className="block text-sm font-medium text-ink mb-1">Category</label>
         <div className="input bg-app">{product?.category_name || parent?.category_name || "—"}</div>
@@ -171,7 +171,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   return (
     <Modal open onClose={onClose} title={product ? "Edit Product" : parent ? `Add Variant: ${parent.name}` : "Add Product"} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {field("SKU *", "sku", "text", true)}
           {field("Name *", "name", "text", true)}
         </div>
@@ -186,7 +186,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         )}
 
         {!isVariantMode && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Category</label>
               <select className="select" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
@@ -227,7 +227,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
           </div>
         )}
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {field("Unit Price", "unit_price", "number")}
           {field("Cost Price", "cost_price", "number")}
           {isParentWithVariants ? (
@@ -262,7 +262,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Location *</label>
             <LocationPicker value={form.location} onChange={(v) => setForm({ ...form, location: v })} placeholder="e.g. A-01-B" />
@@ -270,11 +270,11 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
           </div>
           {field("Barcode", "barcode")}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {field("Batch Number", "batch_number")}
           {field("Expiry Date", "expiry_date", "date")}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {!isVariantMode && (
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Serialized (tracked per unit)</label>

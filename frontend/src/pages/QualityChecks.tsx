@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,12 +15,13 @@ import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function QualityChecks() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<QualityCheck | null>(null);
   const [viewing, setViewing] = useState<QualityCheck | null>(null);
@@ -78,6 +80,7 @@ export default function QualityChecks() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Quality checks table">
           <thead>
             <tr className="bg-app text-left">
@@ -104,7 +107,7 @@ export default function QualityChecks() {
                 <td className="px-4 py-3 text-muted">{qc.lot_number || "—"}</td>
                 <td className="px-4 py-3"><span className={`badge ${resultBadge(qc.result)}`}>{qc.result}</span></td>
                 <td className="px-4 py-3 text-muted">{qc.checker_username}</td>
-                <td className="px-4 py-3 text-muted">{qc.checked_at ? new Date(qc.checked_at).toLocaleDateString() : new Date(qc.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{qc.checked_at ? formatDate(qc.checked_at) : formatDate(qc.created_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => setViewing(qc)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${qc.qc_number}`}><Eye size={16} /></button>
@@ -120,6 +123,7 @@ export default function QualityChecks() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
@@ -199,7 +203,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
   return (
     <Modal open onClose={onClose} title={qc ? `Edit ${qc.qc_number}` : "New Quality Check"} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Product</label>
             <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!qc} required>
@@ -215,7 +219,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
             </select>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Batch Number</label>
             <input className="input" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} disabled={!!qc} placeholder="e.g. B-2026-01" />
@@ -253,7 +257,7 @@ function QualityCheckDetail({ qc, onClose }: { qc: QualityCheck; onClose: () => 
   return (
     <Modal open onClose={onClose} title={qc.qc_number}>
       <div className="space-y-4 text-sm">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <p className="text-muted">Product</p>
             <p className="font-medium">{qc.product_name}</p>

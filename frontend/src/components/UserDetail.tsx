@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
 import { Shield, ShieldOff } from "lucide-react";
 import api from "../api/client";
@@ -38,6 +39,7 @@ const actionColors: Record<string, string> = {
 };
 
 export default function UserDetail({ user, onClose }: Props) {
+  const formatDate = useDateFormat();
   const { data, isLoading } = useQuery({
     queryKey: ["activity-logs", "user", user.id],
     queryFn: async () => {
@@ -71,7 +73,7 @@ export default function UserDetail({ user, onClose }: Props) {
           </div>
           <div>
             <span className="text-muted">Created:</span>
-            <p className="font-medium">{new Date(user.created_at).toLocaleDateString()}</p>
+            <p className="font-medium">{formatDate(user.created_at)}</p>
           </div>
           <div>
             <span className="text-muted">Last Login:</span>

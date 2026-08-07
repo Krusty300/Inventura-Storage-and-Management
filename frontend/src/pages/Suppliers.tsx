@@ -19,13 +19,13 @@ import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 import { formatCurrency } from "../utils/currency";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function Suppliers() {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);

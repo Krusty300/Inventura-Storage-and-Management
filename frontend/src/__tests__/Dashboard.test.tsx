@@ -17,6 +17,7 @@ const stats = {
   total_categories: 3,
   total_suppliers: 2,
   total_orders: 5,
+  total_lots: 3,
   low_stock_count: 1,
   expiring_soon_count: 2,
   total_inventory_value: 2500,
@@ -109,6 +110,23 @@ describe("Dashboard Page", () => {
     expect(screen.getByText("$1,200")).toBeInTheDocument();
   });
 
+  it("shows the Lots card and navigates to the lots page", async () => {
+    mockDashboard();
+    renderWithProviders(
+      <>
+        <Dashboard />
+        <LocationProbe />
+      </>
+    );
+    expect(await screen.findByText("Lots")).toBeInTheDocument();
+    const card = screen.getByText("Lots").closest(".card") as HTMLElement;
+    expect(within(card).getByText("3")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Lots"));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/lots");
+    });
+  });
+
   it("renders recent movements and low stock alerts", async () => {
     mockDashboard();
     renderWithProviders(<Dashboard />);
@@ -119,8 +137,7 @@ describe("Dashboard Page", () => {
     expect(screen.getByText(/(SKU-1)/)).toBeInTheDocument();
   });
 
-  it("renders the new operational panels from exceptions, lpns and receipts", async () => {
-    mockDashboard({
+  it("renders the new operational panels from exceptions, lpns and receipts", async () => {    mockDashboard({
       exceptions: {
         summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 0, open_cycle_counts: 1, pending_asns: 1 },
         pending_asns: [{ id: 1, asn_number: "ASN-100", supplier: "Acme", expected_arrival: "2026-01-15", items_pending: 40, created_at: "2026-01-01T00:00:00" }],

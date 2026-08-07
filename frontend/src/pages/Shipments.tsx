@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Box, PackageCheck, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,13 +11,15 @@ import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { productLabel } from "../utils/variants";
+import type { Product } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function Shipments() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
@@ -25,6 +28,7 @@ export default function Shipments() {
   const [viewing, setViewing] = useState<Shipment | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
+  const { pageSize, setPageSize } = usePageSize();
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
 
@@ -40,9 +44,9 @@ export default function Shipments() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["shipments", debouncedSearch, page],
+    queryKey: ["shipments", debouncedSearch, page, pageSize],
     queryFn: async () => {
-      const params: Record<string, string> = { skip: ((page - 1) * PAGE_SIZE).toString(), limit: PAGE_SIZE.toString() };
+      const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
       const { data } = await api.get("/shipments", { params });
       return data as PaginatedResponse<Shipment>;
@@ -129,7 +133,7 @@ export default function Shipments() {
                     <td className="px-4 py-3">{s.total_quantity}</td>
                     <td className="px-4 py-3 text-muted">{s.invoice_number || "—"}</td>
                     <td className="px-4 py-3 text-muted">{s.carrier || "—"}{s.tracking_number ? ` / ${s.tracking_number}` : ""}</td>
-                    <td className="px-4 py-3 text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         <button onClick={() => setViewing(s)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
@@ -156,7 +160,7 @@ export default function Shipments() {
       )}
 
       {data && data.pages > 1 && (
-        <Pagination page={page} totalPages={data.pages} pageSize={PAGE_SIZE} onPageChange={setPage} />
+        <Pagination page={page} totalPages={data.pages} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
       )}
 
       {showForm && <ShipmentForm onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); refresh(); }} />}
@@ -182,7 +186,7 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
   const [carrier, setCarrier] = useState(shipment?.carrier || "");
   const [trackingNumber, setTrackingNumber] = useState(shipment?.tracking_number || "");
   const [notes, setNotes] = useState(shipment?.notes || "");
-  const [rows, setRows] = useState([{ product_id: "", quantity: "1" }]);
+  const [rows, setRows] = useState([{ product_id: "", quantity: "1", location_id: "" }]);
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const isEdit = !!shipment;
@@ -194,7 +198,7 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
   const customers = customersData?.items || [];
 
   const setRow = (idx: number, key: string, value: string) => {
-    setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+    setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: value, ...(key === "product_id" ? { location_id: "" } : {}) } : r)));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -208,7 +212,11 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
     if (!isEdit) {
       const items = rows
         .filter((r) => r.product_id)
-        .map((r) => ({ product_id: Number(r.product_id), quantity: parseInt(r.quantity) || 0 }))
+        .map((r) => ({
+          product_id: Number(r.product_id),
+          quantity: parseInt(r.quantity) || 0,
+          location_id: r.location_id ? Number(r.location_id) : null,
+        }))
         .filter((r) => r.quantity > 0);
       if (items.length === 0) {
         addToast("Add at least one line item", "error");
@@ -233,9 +241,9 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
   };
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? `Edit ${shipment!.shipment_number}` : "New Shipment"} wide>
+    <Modal open onClose={onClose} title={isEdit ? `Edit ${shipment!.shipment_number}` : "New Shipment"} xwide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Carrier</label>
             <input className="input" value={carrier} onChange={(e) => setCarrier(e.target.value)} placeholder="UPS" />
@@ -258,30 +266,11 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
         {!isEdit && (
           <>
             <div className="space-y-2">
-              {rows.map((row, idx) => {
-                return (
-                  <div key={idx} className="flex items-end gap-3">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-ink mb-1">Product</label>
-                      <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
-                        <option value="">Select product...</option>
-                        {products.sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
-                          <option key={p.id} value={p.id}>{productLabel(p)}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="w-28">
-                      <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
-                      <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
-                    </div>
-                    <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400 mb-1" aria-label="Remove line">
-                      <XCircle size={16} />
-                    </button>
-                  </div>
-                );
-              })}
+              {rows.map((row, idx) => (
+                <ShipmentLineRow key={idx} index={idx} row={row} products={products} onChange={setRow} onRemove={(i) => setRows(rows.filter((_, n) => n !== i))} />
+              ))}
             </div>
-            <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400">
+            <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1", location_id: "" }])} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400">
               Add line
             </button>
           </>
@@ -301,7 +290,66 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
   );
 }
 
+function ShipmentLineRow({
+  index,
+  row,
+  products,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  row: { product_id: string; quantity: string; location_id: string };
+  products: Product[];
+  onChange: (idx: number, key: string, value: string) => void;
+  onRemove: (idx: number) => void;
+}) {
+  const selectedProduct = products.find((p) => String(p.id) === row.product_id);
+  const { locations, unallocated, isLoading } = useProductStockLocations(
+    selectedProduct?.id,
+    selectedProduct?.is_serialized ?? false
+  );
+
+  return (
+    <div className="grid grid-cols-12 gap-3 items-end">
+      <div className="col-span-12 sm:col-span-5">
+        <label className="block text-sm font-medium text-ink mb-1">Product</label>
+        <select className="select w-full" aria-label="Product" value={row.product_id} onChange={(e) => onChange(index, "product_id", e.target.value)}>
+          <option value="">Select product...</option>
+          {products.sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
+            <option key={p.id} value={p.id}>{productLabel(p)}</option>
+          ))}
+        </select>
+      </div>
+      <div className="col-span-4 sm:col-span-2">
+        <label className="block text-sm font-medium text-ink mb-1">Qty</label>
+        <input type="number" min={1} className="input w-full" value={row.quantity} onChange={(e) => onChange(index, "quantity", e.target.value)} />
+      </div>
+      <div className="col-span-7 sm:col-span-4">
+        <label className="block text-sm font-medium text-ink mb-1">Source location</label>
+        <select className="select w-full" value={row.location_id} onChange={(e) => onChange(index, "location_id", e.target.value)} aria-label="Source location">
+          <option value="">Any location (auto)</option>
+          {locations.map((l) => (
+            <option key={l.location_id} value={String(l.location_id)}>{l.path} ({l.count})</option>
+          ))}
+        </select>
+        {isLoading && <p className="text-xs text-faint mt-1">Loading locations...</p>}
+        {!isLoading && unallocated > 0 && (
+          <p className="text-xs text-faint mt-1">
+            Plus {unallocated} unallocated unit{unallocated === 1 ? "" : "s"} - pick with "Any location"
+          </p>
+        )}
+      </div>
+      <div className="col-span-1 flex justify-end">
+        <button type="button" onClick={() => onRemove(index)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove line">
+          <XCircle size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; onClose: () => void; onChanged: () => void }) {
+  const formatDate = useDateFormat();
   const [carrier, setCarrier] = useState(shipment.carrier);
   const [tracking, setTracking] = useState(shipment.tracking_number);
   const [busy, setBusy] = useState<string | null>(null);
@@ -375,7 +423,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
           <div><p className="text-muted">Invoice</p><p className="font-medium">{current.invoice_number || "—"}</p></div>
           <div><p className="text-muted">Amount</p><p className="font-medium">{current.total_amount ? `$${current.total_amount.toFixed(2)}` : "—"}</p></div>
           <div><p className="text-muted">Created By</p><p className="font-medium">{current.username}</p></div>
-          <div><p className="text-muted">Created</p><p className="font-medium">{new Date(current.created_at).toLocaleDateString()}</p></div>
+          <div><p className="text-muted">Created</p><p className="font-medium">{formatDate(current.created_at)}</p></div>
         </div>
 
         <div className="border border-border rounded-lg overflow-hidden">
@@ -383,6 +431,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             <thead>
               <tr className="bg-app text-left">
                 <th className="px-4 py-2 font-medium text-muted">Product</th>
+                <th className="px-4 py-2 font-medium text-muted">Source</th>
                 <th className="px-4 py-2 font-medium text-muted">Ordered</th>
                 <th className="px-4 py-2 font-medium text-muted">Picked</th>
                 <th className="px-4 py-2 font-medium text-muted">Packed</th>
@@ -393,6 +442,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
               {current.items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-4 py-2 font-medium">{item.product_name}{item.is_serialized && <span className="ml-2 badge-info">serialized</span>}</td>
+                  <td className="px-4 py-2 text-muted">{item.location_name || "—"}</td>
                   <td className="px-4 py-2">{item.quantity_ordered}</td>
                   <td className="px-4 py-2">{item.quantity_picked}</td>
                   <td className="px-4 py-2">{item.quantity_packed}</td>

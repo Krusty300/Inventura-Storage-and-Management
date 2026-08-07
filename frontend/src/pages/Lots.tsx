@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Eye, FlaskConical, ShieldCheck, ShieldX, CalendarX } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -11,9 +12,9 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { parseLocalDate } from "../utils/date";
 
-const PAGE_SIZE = 25;
+
+import { usePageSize } from "../hooks/usePageSize";
 
 const STATUS_FILTERS = [
   { value: "", label: "All" },
@@ -32,10 +33,11 @@ function statusBadge(status: string) {
 }
 
 export default function Lots() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [viewing, setViewing] = useState<Lot | null>(null);
   const [expiring, setExpiring] = useState<Lot | null>(null);
   const queryClient = useQueryClient();
@@ -96,12 +98,14 @@ export default function Lots() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Lots table">
           <thead>
             <tr className="bg-app text-left">
               <th className="px-4 py-3 font-medium text-muted">Lot #</th>
               <th className="px-4 py-3 font-medium text-muted">Product</th>
               <th className="px-4 py-3 font-medium text-muted">Supplier</th>
+              <th className="px-4 py-3 font-medium text-muted">Location</th>
               <th className="px-4 py-3 font-medium text-muted">On Hand</th>
               <th className="px-4 py-3 font-medium text-muted">Expiry</th>
               <th className="px-4 py-3 font-medium text-muted">Received</th>
@@ -111,7 +115,7 @@ export default function Lots() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={8} />
+              <Skeleton rows={5} cols={9} />
             ) : lots.length === 0 ? (
               <EmptyState title="No lots yet" message="Lots are created automatically when you record a receipt or finish a work order with a lot number." />
             ) : lots.map((l) => (
@@ -119,12 +123,13 @@ export default function Lots() {
                 <td className="px-4 py-3 font-medium">{l.lot_number}</td>
                 <td className="px-4 py-3 text-muted">{l.product_name}</td>
                 <td className="px-4 py-3 text-muted">{l.supplier_name || "—"}</td>
+                <td className="px-4 py-3 text-muted">{l.locations?.length ? l.locations.join(", ") : "—"}</td>
                 <td className="px-4 py-3">
                   {l.on_hand}
                   {l.serial_count > 0 && <span className="ml-1 text-xs text-muted">({l.serial_count} serial)</span>}
                 </td>
-                <td className="px-4 py-3 text-muted">{l.expiry_date ? parseLocalDate(l.expiry_date).toLocaleDateString() : "—"}</td>
-                <td className="px-4 py-3 text-muted">{parseLocalDate(l.received_date).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{l.expiry_date ? formatDate(l.expiry_date) : "—"}</td>
+                <td className="px-4 py-3 text-muted">{formatDate(l.received_date)}</td>
                 <td className="px-4 py-3"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
@@ -144,6 +149,7 @@ export default function Lots() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
@@ -164,6 +170,7 @@ export default function Lots() {
 }
 
 function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
+  const formatDate = useDateFormat();
   const { data: movements, isLoading } = useQuery({
     queryKey: ["lot-movements", lot.id],
     queryFn: async () => {
@@ -185,6 +192,10 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
             <p className="font-medium">{lot.supplier_name || "—"}</p>
           </div>
           <div>
+            <p className="text-muted">Location</p>
+            <p className="font-medium">{lot.locations?.length ? lot.locations.join(", ") : "—"}</p>
+          </div>
+          <div>
             <p className="text-muted">On Hand</p>
             <p className="font-medium">{lot.on_hand}</p>
           </div>
@@ -194,11 +205,11 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
           </div>
           <div>
             <p className="text-muted">Expiry</p>
-            <p className="font-medium">{lot.expiry_date ? parseLocalDate(lot.expiry_date).toLocaleDateString() : "—"}</p>
+            <p className="font-medium">{lot.expiry_date ? formatDate(lot.expiry_date) : "—"}</p>
           </div>
           <div>
             <p className="text-muted">Received</p>
-            <p className="font-medium">{parseLocalDate(lot.received_date).toLocaleDateString()}</p>
+            <p className="font-medium">{formatDate(lot.received_date)}</p>
           </div>
           <div>
             <p className="text-muted">Serial numbers</p>

@@ -34,6 +34,7 @@ class LotOut(BaseModel):
     supplier_name: str = ""
     on_hand: int = 0
     serial_count: int = 0
+    locations: list[str] = []
 
     class Config:
         from_attributes = True

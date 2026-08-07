@@ -120,4 +120,21 @@ describe("StockMovements Page", () => {
     expect(within(dialog).getByText("Route:")).toBeInTheDocument();
     expect(within(dialog).getByText("Bin C")).toBeInTheDocument();
   });
+
+  it("hides edit and delete for shipped movements", async () => {
+    mockMovements([mockMovement({
+      id: 9,
+      quantity_change: -4,
+      movement_type: "ship",
+      from_location_name: "Shipping",
+      to_location_name: "",
+      reference: "SHP-0001",
+      notes: "Shipped on SHP-0001",
+    })]);
+    renderWithProviders(<StockMovements />);
+    expect(await screen.findByText("SHP-0001")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit movement 9")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Delete movement 9")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("View movement 9")).toBeInTheDocument();
+  });
 });

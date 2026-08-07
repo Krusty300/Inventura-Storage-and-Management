@@ -298,3 +298,44 @@ def test_move_unallocated_stock_inactive_location_rejected(auth_headers):
     }, headers=auth_headers)
     assert resp.status_code == 400
     assert "inactive" in resp.json()["detail"].lower()
+
+
+def _shipment_product(auth_headers, sku):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": sku, "name": sku, "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc = client.post("/api/locations", json={"name": f"{sku}-loc", "code": sku, "location_type": "bin"}, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 8, "location_id": loc["id"]}],
+    }, headers=auth_headers).status_code == 201
+    shipment = client.post("/api/shipments", json={
+        "items": [{"product_id": prod["id"], "quantity": 3}],
+    }, headers=auth_headers).json()
+    client.post(f"/api/shipments/{shipment['id']}/pick", headers=auth_headers)
+    client.post(f"/api/shipments/{shipment['id']}/pack", headers=auth_headers)
+    assert client.post(f"/api/shipments/{shipment['id']}/ship", headers=auth_headers).status_code == 200
+    return prod
+
+
+def _shipped_movement(auth_headers, product_id):
+    items = client.get("/api/stock-movements", headers=auth_headers).json()["items"]
+    return next(m for m in items if m["movement_type"] == "ship" and m["product_id"] == product_id)
+
+
+def test_shipped_movement_cannot_be_edited(auth_headers):
+    prod = _shipment_product(auth_headers, "STK-SHIPED")
+    sm = _shipped_movement(auth_headers, prod["id"])
+    resp = client.put(f"/api/stock-movements/{sm['id']}", json={"notes": "tampered"}, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "shipped" in resp.json()["detail"].lower()
+
+
+def test_shipped_movement_cannot_be_deleted(auth_headers):
+    prod = _shipment_product(auth_headers, "STK-SHIPDEL")
+    sm = _shipped_movement(auth_headers, prod["id"])
+    resp = client.delete(f"/api/stock-movements/{sm['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "shipped" in resp.json()["detail"].lower()
+    # the movement is still there and stock is untouched
+    assert client.get("/api/stock-movements", headers=auth_headers).status_code == 200
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 5

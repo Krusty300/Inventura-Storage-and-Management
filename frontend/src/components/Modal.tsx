@@ -7,9 +7,10 @@ interface Props {
   title: string;
   children: ReactNode;
   wide?: boolean;
+  xwide?: boolean;
 }
 
-export default function Modal({ open, onClose, title, children, wide }: Props) {
+export default function Modal({ open, onClose, title, children, wide, xwide }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export default function Modal({ open, onClose, title, children, wide }: Props) {
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className={`bg-surface rounded-xl shadow-xl w-full max-h-[90vh] overflow-auto m-4 ${wide ? "max-w-2xl" : "max-w-lg"}`}
+        className={`bg-surface rounded-xl shadow-xl w-full max-h-[90vh] overflow-auto m-4 ${xwide ? "max-w-3xl" : wide ? "max-w-2xl" : "max-w-lg"}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-6 border-b">

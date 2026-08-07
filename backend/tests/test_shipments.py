@@ -124,6 +124,63 @@ def test_shipment_serialized_flow(auth_headers):
     assert len(in_stock) == 1
 
 
+def test_shipment_auto_allocate_reserves_stock_on_create(auth_headers):
+    client.put("/api/settings", json={"auto_allocate_stock": True}, headers=auth_headers)
+    p = _make_product(auth_headers, "SHP-AUTO")
+    loc = _make_location(auth_headers, "SHP-AUTO-LOC")
+    assert _receive(auth_headers, p["id"], 10, loc["id"], lot_number="LOT-AUTO").status_code == 201
+
+    created = _create_shipment(auth_headers, [(p["id"], 4)])
+    assert created.status_code == 201
+    shipment = created.json()
+    assert shipment["status"] == "picking"
+    assert shipment["total_picked"] == 4
+    assert shipment["staging_location_id"] is not None
+    assert all(i["quantity_picked"] == i["quantity_ordered"] for i in shipment["items"])
+
+    # stock is reserved immediately: moved out of the source location to staging
+    assert client.get(f"/api/locations/{loc['id']}", headers=auth_headers).json()["total_quantity"] == 6
+
+    # re-picking is a no-op (nothing outstanding)
+    picked = client.post(f"/api/shipments/{shipment['id']}/pick", headers=auth_headers)
+    assert picked.status_code == 200
+    assert picked.json()["total_picked"] == 4
+
+    # shipping decrements on-hand as usual
+    shipped = client.post(f"/api/shipments/{shipment['id']}/ship", headers=auth_headers)
+    assert shipped.status_code == 200
+    assert client.get(f"/api/products/{p['id']}", headers=auth_headers).json()["quantity"] == 6
+
+
+def test_shipment_auto_allocate_returns_stock_on_cancel(auth_headers):
+    client.put("/api/settings", json={"auto_allocate_stock": True}, headers=auth_headers)
+    p = _make_product(auth_headers, "SHP-AUTO-RET")
+    loc = _make_location(auth_headers, "SHP-AUTO-RET-LOC")
+    assert _receive(auth_headers, p["id"], 10, loc["id"]).status_code == 201
+    created = _create_shipment(auth_headers, [(p["id"], 4)]).json()
+
+    cancelled = client.post(f"/api/shipments/{created['id']}/cancel", headers=auth_headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["staging_location_id"] is None
+    assert all(i["quantity_picked"] == 0 for i in cancelled.json()["items"])
+    assert client.get(f"/api/locations/{loc['id']}", headers=auth_headers).json()["total_quantity"] == 10
+
+
+def test_shipment_auto_allocate_disabled_keeps_draft(auth_headers):
+    client.put("/api/settings", json={"auto_allocate_stock": False}, headers=auth_headers)
+    p = _make_product(auth_headers, "SHP-NOAU")
+    loc = _make_location(auth_headers, "SHP-NOAU-LOC")
+    assert _receive(auth_headers, p["id"], 10, loc["id"]).status_code == 201
+    created = _create_shipment(auth_headers, [(p["id"], 4)])
+    assert created.status_code == 201
+    shipment = created.json()
+    assert shipment["status"] == "draft"
+    assert shipment["total_picked"] == 0
+    assert shipment["staging_location_id"] is None
+    assert client.get(f"/api/locations/{loc['id']}", headers=auth_headers).json()["total_quantity"] == 10
+
+
 def test_pick_rejects_deactivated_serialized_product(auth_headers):
     p = _make_product(auth_headers, "SHP-DEACT", serialized=True)
     loc = _make_location(auth_headers, "SHP-DEACT-LOC")
@@ -425,3 +482,78 @@ def test_shipment_sale_id_linking(auth_headers):
     # attaching an already-linked invoice via PUT also rejected
     s2 = _create_shipment(auth_headers, [(p["id"], 1)]).json()
     assert client.put(f"/api/shipments/{s2['id']}", json={"sale_id": sale["id"]}, headers=auth_headers).status_code == 400
+
+
+def _create_shipment_with_location(auth_headers, items):
+    return client.post("/api/shipments", json={
+        "items": [
+            {"product_id": pid, "quantity": qty, "location_id": loc_id}
+            for pid, qty, loc_id in items
+        ],
+    }, headers=auth_headers)
+
+
+def test_shipment_location_picker_picks_from_specified_location(auth_headers):
+    p = _make_product(auth_headers, "SHP-LOCPICK")
+    loc_a = _make_location(auth_headers, "SHP-LOCPICK-A")
+    loc_b = _make_location(auth_headers, "SHP-LOCPICK-B")
+    assert _receive(auth_headers, p["id"], 5, loc_a["id"], lot_number="LOT-A").status_code == 201
+    assert _receive(auth_headers, p["id"], 5, loc_b["id"], lot_number="LOT-B").status_code == 201
+
+    created = _create_shipment_with_location(auth_headers, [(p["id"], 3, loc_a["id"])])
+    assert created.status_code == 201
+    item = created.json()["items"][0]
+    assert item["location_id"] == loc_a["id"]
+    assert item["location_name"] == loc_a["name"]
+
+    picked = client.post(f"/api/shipments/{created.json()['id']}/pick", headers=auth_headers)
+    assert picked.status_code == 200
+    # only location A was consumed
+    assert client.get(f"/api/locations/{loc_a['id']}", headers=auth_headers).json()["total_quantity"] == 2
+    assert client.get(f"/api/locations/{loc_b['id']}", headers=auth_headers).json()["total_quantity"] == 5
+
+    shipped = client.post(f"/api/shipments/{created.json()['id']}/ship", headers=auth_headers)
+    assert shipped.status_code == 200
+    assert client.get(f"/api/products/{p['id']}", headers=auth_headers).json()["quantity"] == 7
+
+
+def test_shipment_location_picker_rejects_insufficient_stock_at_location(auth_headers):
+    p = _make_product(auth_headers, "SHP-LOCINSUF")
+    loc_a = _make_location(auth_headers, "SHP-LOCINSUF-A")
+    loc_b = _make_location(auth_headers, "SHP-LOCINSUF-B")
+    assert _receive(auth_headers, p["id"], 5, loc_a["id"]).status_code == 201
+
+    # enough stock exists globally but not at the requested location
+    resp = _create_shipment_with_location(auth_headers, [(p["id"], 6, loc_a["id"])])
+    assert resp.status_code == 400
+    assert "insufficient" in resp.json()["detail"].lower()
+
+    # location with no stock at all
+    resp = _create_shipment_with_location(auth_headers, [(p["id"], 1, loc_b["id"])])
+    assert resp.status_code == 400
+    assert "insufficient" in resp.json()["detail"].lower()
+
+    # an unknown location id is rejected
+    resp = _create_shipment_with_location(auth_headers, [(p["id"], 1, 99999)])
+    assert resp.status_code == 404
+
+
+def test_shipment_location_picker_serialized(auth_headers):
+    p = _make_product(auth_headers, "SHP-LOCSER", serialized=True)
+    loc_a = _make_location(auth_headers, "SHP-LOCSER-A")
+    loc_b = _make_location(auth_headers, "SHP-LOCSER-B")
+    assert _receive_serials(auth_headers, p["id"], loc_a["id"], ["SA1", "SA2"]).status_code == 201
+    assert _receive_serials(auth_headers, p["id"], loc_b["id"], ["SB1", "SB2"]).status_code == 201
+
+    created = _create_shipment_with_location(auth_headers, [(p["id"], 2, loc_a["id"])])
+    assert created.status_code == 201
+    assert created.json()["items"][0]["location_id"] == loc_a["id"]
+
+    picked = client.post(f"/api/shipments/{created.json()['id']}/pick", headers=auth_headers)
+    assert picked.status_code == 200
+
+    serials = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"]
+    at_a = {s["serial_number"] for s in serials if s["location_id"] == loc_a["id"]}
+    at_b = {s["serial_number"] for s in serials if s["location_id"] == loc_b["id"]}
+    assert at_a == set()
+    assert at_b == {"SB1", "SB2"}

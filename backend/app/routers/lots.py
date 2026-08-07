@@ -8,11 +8,14 @@ from app.database import get_db
 from app.models.lot import Lot
 from app.models.lot_link import LotLink
 from app.models.product import Product
+from app.models.serial_number import SerialNumber
+from app.models.stock_line import StockLine
 from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.schemas.lot import LOT_STATUSES, LotOut, LotUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services.auth import get_current_user, require_permission
+from app.services.inventory import expire_overdue_lots
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/lots", tags=["lots"], dependencies=[Depends(get_current_user)])
@@ -29,7 +32,8 @@ ALLOWED_LOT_TRANSITIONS = {
 def _load_lot(db: Session, lot_id: int) -> Lot:
     return get_or_404(Lot, lot_id, db, options=[
         joinedload(Lot.product), joinedload(Lot.supplier),
-        joinedload(Lot.stock_lines), joinedload(Lot.serial_numbers),
+        joinedload(Lot.stock_lines).joinedload(StockLine.location),
+        joinedload(Lot.serial_numbers).joinedload(SerialNumber.location),
     ])
 
 
@@ -42,9 +46,11 @@ def list_lots(
     limit: int = Query(100, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
+    expire_overdue_lots(db)
     q = db.query(Lot).options(
         joinedload(Lot.product), joinedload(Lot.supplier),
-        joinedload(Lot.stock_lines), joinedload(Lot.serial_numbers),
+        joinedload(Lot.stock_lines).joinedload(StockLine.location),
+        joinedload(Lot.serial_numbers).joinedload(SerialNumber.location),
     )
     if product_id:
         q = q.filter(Lot.product_id == product_id)

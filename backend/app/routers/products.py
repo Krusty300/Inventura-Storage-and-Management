@@ -101,6 +101,7 @@ def list_products(
     include_variants: bool = False,
     db: Session = Depends(get_db),
 ):
+    inventory.expire_overdue_lots(db)
     options = [joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.default_location), joinedload(Product.stock_lines).joinedload(StockLine.location)]
     if include_variants:
         options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location))
@@ -173,6 +174,17 @@ def list_products(
             for v_orm, v_out in zip(p.variants, out.variants):
                 v_out.location = _effective_location(v_orm)
         results.append(out)
+    ids = set()
+    for p in items:
+        ids.add(p.id)
+        if include_variants and p.variants:
+            ids.update(v.id for v in p.variants)
+    quarantined = inventory.quarantined_qty_by_product(db, list(ids)) if ids else {}
+    for p in results:
+        p.quarantined_qty = quarantined.get(p.id, 0)
+        if include_variants and p.variants:
+            for v in p.variants:
+                v.quarantined_qty = quarantined.get(v.id, 0)
     return {"items": results, "total": total, "page": (skip // limit) + 1 if limit else 1, "pages": max(ceil(total / limit), 1) if limit else 1}
 
 

@@ -34,7 +34,7 @@ const baseShipment = (status: string): Shipment => ({
   total_quantity: 3,
   total_picked: 0,
   items: [
-    { id: 1, shipment_id: 1, product_id: 1, quantity_ordered: 3, quantity_picked: 0, quantity_packed: 0, quantity_shipped: 0, product_name: "Widget", is_serialized: false },
+    { id: 1, shipment_id: 1, product_id: 1, location_id: null, quantity_ordered: 3, quantity_picked: 0, quantity_packed: 0, quantity_shipped: 0, product_name: "Widget", location_name: "", is_serialized: false },
   ],
 });
 
@@ -116,6 +116,34 @@ describe("Shipments", () => {
     fireEvent.change(screen.getByLabelText("Search shipments"), { target: { value: "SHP" } });
     await waitFor(() =>
       expect(getMock).toHaveBeenCalledWith("/shipments", expect.objectContaining({ params: expect.objectContaining({ search: "SHP" }) }))
+    );
+  });
+
+  it("sends the selected source location with each line item", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/shipments") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 0, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 0 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [{ id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] }], total: 1, page: 1, pages: 1 } });
+      if (url === "/customers") return Promise.resolve({ data: { items: [{ id: 5, name: "Acme" }], total: 1, page: 1, pages: 1 } });
+      if (url === "/stock-movements/locations")
+        return Promise.resolve({ data: { locations: [
+          { location_id: 10, path: "A", is_active: true, quantity: 3 },
+          { location_id: 20, path: "B", is_active: true, quantity: 2 },
+        ], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Shipments />);
+    fireEvent.click(await screen.findByRole("button", { name: "New Shipment" }));
+    fireEvent.change(await screen.findByRole("combobox", { name: /Product/ }), { target: { value: "1" } });
+    await screen.findByRole("option", { name: "A (3)" });
+    fireEvent.change(screen.getByLabelText("Source location"), { target: { value: "10" } });
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Shipment" }));
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/shipments", expect.objectContaining({
+        items: [{ product_id: 1, quantity: 2, location_id: 10 }],
+      }))
     );
   });
 });

@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import LPN, Location, Product, SerialNumber, StockLine
+from app.models import LPN, Location, Lot, Product, SerialNumber, StockLine, StockMovement
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
@@ -24,7 +24,7 @@ def _validate_type(location_type: str):
         )
 
 
-def _stats_map(db: Session) -> tuple[dict, dict, dict, dict, dict, dict]:
+def _stats_map(db: Session) -> tuple[dict, dict, dict, dict, dict, dict, dict]:
     line_counts = dict(
         db.query(StockLine.location_id, func.count(StockLine.id)).group_by(StockLine.location_id).all()
     )
@@ -61,11 +61,26 @@ def _stats_map(db: Session) -> tuple[dict, dict, dict, dict, dict, dict]:
         .group_by(SerialNumber.location_id)
         .all()
     )
-    return line_counts, qty, value, lpn_counts, serial_counts, serial_value
+    lot_locs: dict[int, set] = {}
+    for loc_id, lot_id in (
+        db.query(StockLine.location_id, StockLine.lot_id).filter(StockLine.lot_id.isnot(None)).all()
+    ) + (
+        db.query(SerialNumber.location_id, SerialNumber.lot_id)
+        .filter(
+            SerialNumber.lot_id.isnot(None),
+            SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK,
+        )
+        .all()
+    ):
+        if loc_id is None or lot_id is None:
+            continue
+        lot_locs.setdefault(loc_id, set()).add(lot_id)
+    lot_counts = {k: len(v) for k, v in lot_locs.items()}
+    return line_counts, qty, value, lpn_counts, serial_counts, serial_value, lot_counts
 
 
 def _with_counts(locations: list[Location], db: Session) -> list[dict]:
-    line_counts, qty, value, lpn_counts, serial_counts, serial_value = _stats_map(db)
+    line_counts, qty, value, lpn_counts, serial_counts, serial_value, lot_counts = _stats_map(db)
     return [{
         "id": l.id,
         "name": l.name,
@@ -77,6 +92,7 @@ def _with_counts(locations: list[Location], db: Session) -> list[dict]:
         "path": l.path,
         "stock_line_count": line_counts.get(l.id, 0),
         "lpn_count": lpn_counts.get(l.id, 0),
+        "lot_count": lot_counts.get(l.id, 0),
         "serial_count": serial_counts.get(l.id, 0),
         "total_quantity": qty.get(l.id, 0) + serial_counts.get(l.id, 0),
         "stock_value": float(value.get(l.id, 0.0)) + float(serial_value.get(l.id, 0.0)),
@@ -120,12 +136,13 @@ def list_locations(
 @router.get("/tree")
 def location_tree(db: Session = Depends(get_db)):
     locations = db.query(Location).options(joinedload(Location.parent)).all()
-    line_counts, qty, value, lpn_counts, serial_counts, serial_value = _stats_map(db)
+    line_counts, qty, value, lpn_counts, serial_counts, serial_value, lot_counts = _stats_map(db)
     nodes = {l.id: {**dict(
         id=l.id, name=l.name, code=l.code, location_type=l.location_type,
         parent_id=l.parent_id, is_active=l.is_active, created_at=l.created_at,
         path=l.path,
     ), "stock_line_count": line_counts.get(l.id, 0), "lpn_count": lpn_counts.get(l.id, 0),
+        "lot_count": lot_counts.get(l.id, 0),
         "serial_count": serial_counts.get(l.id, 0),
         "total_quantity": qty.get(l.id, 0) + serial_counts.get(l.id, 0),
         "stock_value": float(value.get(l.id, 0.0)) + float(serial_value.get(l.id, 0.0)),
@@ -145,6 +162,7 @@ def location_summary(db: Session = Depends(get_db)):
     active = db.query(func.count(Location.id)).filter(Location.is_active == True).scalar() or 0
     total_stock_lines = db.query(func.count(StockLine.id)).scalar() or 0
     total_lpns = db.query(func.count(LPN.id)).scalar() or 0
+    total_lots = db.query(func.count(Lot.id)).scalar() or 0
     total_quantity = db.query(func.coalesce(func.sum(StockLine.quantity), 0)).scalar() or 0
     total_value = db.query(
         func.coalesce(func.sum(StockLine.quantity * Product.cost_price), 0)
@@ -163,6 +181,7 @@ def location_summary(db: Session = Depends(get_db)):
         "inactive": total - active,
         "total_stock_lines": total_stock_lines,
         "total_lpns": total_lpns,
+        "total_lots": total_lots,
         "total_quantity": total_quantity + total_serial_qty,
         "total_value": float(total_value) + float(total_serial_value),
         "total_serials": total_serial_qty,
@@ -212,6 +231,23 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
         .order_by(SerialNumber.serial_number)
         .all()
     )
+    movements = (
+        db.query(StockMovement)
+        .options(
+            joinedload(StockMovement.product),
+            joinedload(StockMovement.user),
+            joinedload(StockMovement.from_location),
+            joinedload(StockMovement.to_location),
+            joinedload(StockMovement.lot),
+        )
+        .filter(
+            (StockMovement.from_location_id == location_id)
+            | (StockMovement.to_location_id == location_id)
+        )
+        .order_by(StockMovement.created_at.desc())
+        .limit(50)
+        .all()
+    )
 
     def _serial_payload(s: SerialNumber) -> dict:
         return {
@@ -221,6 +257,7 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
             "sku": s.product.sku if s.product else "",
             "serial_number": s.serial_number,
             "lot_number": s.lot.lot_number if s.lot else "",
+            "lot_status": s.lot.status if s.lot else "",
             "status": s.status,
             "unit_cost": float(s.product.cost_price) if s.product and s.product.cost_price else 0.0,
             "value": float(s.product.cost_price or 0) if s.product else 0.0,
@@ -234,6 +271,7 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
             "product_name": sl.product.display_name if sl.product else "",
             "sku": sl.product.sku if sl.product else "",
             "lot_number": sl.lot.lot_number if sl.lot else "",
+            "lot_status": sl.lot.status if sl.lot else "",
             "lpn_number": sl.lpn.lpn_number if sl.lpn else "",
             "quantity": sl.quantity,
             "unit_cost": float(sl.product.cost_price) if sl.product and sl.product.cost_price else 0.0,
@@ -248,6 +286,17 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
         } for l in lpns],
         "serials": [_serial_payload(s) for s in serials],
         "scrapped_serials": [_serial_payload(s) for s in scrapped],
+        "movements": [{
+            "id": m.id,
+            "product_name": m.product_name,
+            "quantity_change": m.quantity_change,
+            "movement_type": m.movement_type,
+            "username": m.username,
+            "from_location": m.from_location.path if m.from_location else "",
+            "to_location": m.to_location.path if m.to_location else "",
+            "lot_number": m.lot.lot_number if m.lot else "",
+            "created_at": m.created_at.isoformat(),
+        } for m in movements],
     }
 
 

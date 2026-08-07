@@ -64,7 +64,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Product *</label>
           {!isEdit && <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />}
-          <select className="select mt-2" value={productId} onChange={(e) => setProductId(e.target.value)} required>
+          <select className={!isEdit ? "select mt-2" : "select"} value={productId} onChange={(e) => setProductId(e.target.value)} required>
             <option value="">Select product</option>
             {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
           </select>

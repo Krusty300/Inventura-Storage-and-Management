@@ -153,6 +153,124 @@ def test_delete_lpn_with_stock_rejected(auth_headers):
     assert "stock on hand" in resp.json()["detail"]
 
 
+def test_load_and_unload_lpn_quantity(auth_headers):
+    loc = _loc(auth_headers, "LPN-LD1")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-LD1", "location_id": loc["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-LD1", "name": "LPN Load 1", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 7, "location_id": loc["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/items", json={
+        "product_id": prod["id"], "quantity": 4, "from_location_id": loc["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["total_quantity"] == 4
+
+    # Location on-hand still counts the LPN-held stock.
+    locs = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()["locations"]
+    assert {l["location_id"]: l["quantity"] for l in locs}.get(loc["id"]) == 7
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/unload", json={
+        "product_id": prod["id"], "quantity": 3, "to_location_id": loc["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["total_quantity"] == 1
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 7
+
+
+def test_unload_lpn_to_other_location(auth_headers):
+    src = _loc(auth_headers, "LPN-UL1")
+    dst = _loc(auth_headers, "LPN-UL2")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-UL1", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-UL1", "name": "LPN Unload 1", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 5, "location_id": src["id"], "lpn_id": lpn["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/unload", json={
+        "product_id": prod["id"], "quantity": 2, "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["total_quantity"] == 3
+
+    locs = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()["locations"]
+    by_id = {l["location_id"]: l["quantity"] for l in locs}
+    assert by_id.get(src["id"]) == 3
+    assert by_id.get(dst["id"]) == 2
+
+
+def test_load_lpn_wrong_location_rejected(auth_headers):
+    other = _loc(auth_headers, "LPN-WR")
+    loc = _loc(auth_headers, "LPN-WL")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-WR", "location_id": loc["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-WR", "name": "LPN Wrong Loc", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 4, "location_id": other["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/items", json={
+        "product_id": prod["id"], "quantity": 2, "from_location_id": other["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "at" in resp.json()["detail"].lower()
+
+
+def test_unload_lpn_over_available_rejected(auth_headers):
+    loc = _loc(auth_headers, "LPN-OV")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-OV", "location_id": loc["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-OV", "name": "LPN Over", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "location_id": loc["id"], "lpn_id": lpn["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/unload", json={
+        "product_id": prod["id"], "quantity": 3, "to_location_id": loc["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_load_and_unload_serialized_lpn(auth_headers):
+    src = _loc(auth_headers, "LPN-SL1")
+    dst = _loc(auth_headers, "LPN-SL2")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-SL1", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-SL1", "name": "LPN Ser Load", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "serial_numbers": ["S-LD-A", "S-LD-B"],
+                   "location_id": src["id"]}],
+    }, headers=auth_headers).status_code == 201
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert all(s["lpn_id"] is None for s in serials)
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/items", json={
+        "product_id": prod["id"], "serial_ids": [s["id"] for s in serials], "from_location_id": src["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["content_count"] == 2
+    after = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert all(s["lpn_id"] == lpn["id"] for s in after)
+    assert all(s["location_id"] == src["id"] for s in after)
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/unload", json={
+        "product_id": prod["id"], "serial_ids": [s["id"] for s in serials], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["content_count"] == 0
+    after = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert all(s["lpn_id"] is None for s in after)
+    assert all(s["location_id"] == dst["id"] for s in after)
+
+
 def test_delete_lpn_detaches_historical_movements(auth_headers):
     loc = _loc(auth_headers, "LPN-I")
     lpn = client.post("/api/lpns", json={"lpn_number": "PAL-HIST", "location_id": loc["id"]}, headers=auth_headers).json()

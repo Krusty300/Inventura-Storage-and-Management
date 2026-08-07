@@ -62,6 +62,7 @@ class ShipmentItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     shipment_id: Mapped[int] = mapped_column(ForeignKey("shipments.id"), nullable=False, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True)
     quantity_ordered: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     quantity_picked: Mapped[int] = mapped_column(Integer, default=0)
     quantity_packed: Mapped[int] = mapped_column(Integer, default=0)
@@ -69,10 +70,15 @@ class ShipmentItem(Base):
 
     shipment = relationship("Shipment", back_populates="items")
     product = relationship("Product")
+    location = relationship("Location")
 
     @property
     def product_name(self) -> str:
         return self.product.display_name if self.product else ""
+
+    @property
+    def location_name(self) -> str:
+        return self.location.path if self.location else ""
 
     @property
     def is_serialized(self) -> bool:

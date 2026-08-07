@@ -6,8 +6,9 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.database import Base, backfill_stock_lines, engine, run_migrations
+from app.database import Base, SessionLocal, backfill_stock_lines, engine, run_migrations
 from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, dashboard, labels, locations, lots, lpns, notifications, orders, planning, products, quality_checks, receipts, reports, sales, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
+from app.services.inventory import expire_overdue_lots
 from app.ws_manager import manager
 
 
@@ -16,6 +17,11 @@ async def lifespan(app: FastAPI):
     run_migrations()
     Base.metadata.create_all(bind=engine)
     backfill_stock_lines()
+    db = SessionLocal()
+    try:
+        expire_overdue_lots(db)
+    finally:
+        db.close()
     manager.init(asyncio.get_running_loop())
     yield
 

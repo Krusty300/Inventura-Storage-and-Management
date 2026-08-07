@@ -58,7 +58,12 @@ def product_stock_locations(product_id: int = Query(...), db: Session = Depends(
             StockLine.lot_id,
             func.coalesce(func.sum(StockLine.quantity), 0).label("quantity"),
         )
-        .filter(StockLine.product_id == product_id, StockLine.quantity > 0)
+        .outerjoin(Lot, StockLine.lot_id == Lot.id)
+        .filter(
+            StockLine.product_id == product_id,
+            StockLine.quantity > 0,
+            (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+        )
         .group_by(StockLine.location_id, StockLine.lot_id)
         .all()
     )
@@ -154,40 +159,92 @@ def transfer_stock(data: StockMovementTransfer, db: Session = Depends(get_db), u
     reference = next_document_number(db, "transfer", "TRF-")
     if data.lot_id is not None:
         lot = get_or_404(Lot, data.lot_id, db)
-        line = db.query(StockLine).filter(
-            StockLine.product_id == product.id,
-            StockLine.location_id == from_loc.id,
-            StockLine.lot_id == lot.id,
-            StockLine.lpn_id == data.lpn_id,
-        ).first()
-        available = int(line.quantity) if line else 0
+        if lot.status != "in_stock":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lot '{lot.lot_number}' is {lot.status} and cannot be transferred. "
+                "Release it (if quarantined) or dispose of it via a scrap/adjustment instead.",
+            )
+        if data.lpn_id is not None:
+            line = db.query(StockLine).filter(
+                StockLine.product_id == product.id,
+                StockLine.location_id == from_loc.id,
+                StockLine.lot_id == lot.id,
+                StockLine.lpn_id == data.lpn_id,
+            ).first()
+            available = int(line.quantity) if line else 0
+        else:
+            available = db.query(func.coalesce(func.sum(StockLine.quantity), 0)).filter(
+                StockLine.product_id == product.id,
+                StockLine.location_id == from_loc.id,
+                StockLine.lot_id == lot.id,
+            ).scalar() or 0
         if available < data.quantity:
             raise HTTPException(
                 status_code=400,
                 detail=f"Lot '{lot.lot_number}' only has {available} on hand at '{from_loc.path}'",
             )
     else:
-        available = db.query(func.coalesce(func.sum(StockLine.quantity), 0)).filter(
-            StockLine.product_id == product.id,
-            StockLine.location_id == from_loc.id,
-            StockLine.lpn_id == data.lpn_id,
-        ).scalar() or 0
+        if data.lpn_id is not None:
+            available = db.query(func.coalesce(func.sum(StockLine.quantity), 0)).outerjoin(
+                Lot, StockLine.lot_id == Lot.id
+            ).filter(
+                StockLine.product_id == product.id,
+                StockLine.location_id == from_loc.id,
+                StockLine.lpn_id == data.lpn_id,
+                (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+            ).scalar() or 0
+        else:
+            available = db.query(func.coalesce(func.sum(StockLine.quantity), 0)).outerjoin(
+                Lot, StockLine.lot_id == Lot.id
+            ).filter(
+                StockLine.product_id == product.id,
+                StockLine.location_id == from_loc.id,
+                (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+            ).scalar() or 0
         if available < data.quantity:
+            blocked = inventory._blocked_lot_stock(
+                db,
+                product_id=product.id,
+                location_id=None if data.lpn_id is not None else from_loc.id,
+                lpn_id=data.lpn_id if data.lpn_id is not None else None,
+            )
+            if blocked:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Only {int(available)} sellable unit(s) on hand at '{from_loc.path}'. {inventory._blocked_lot_message(blocked)}",
+                )
             raise HTTPException(
                 status_code=400,
-                detail=f"Only {int(available)} on hand at '{from_loc.path}'",
+                detail=f"Only {int(available)} sellable unit(s) on hand at '{from_loc.path}'",
             )
     try:
-        out, inbound = inventory.transfer_stock(
-            db, product_id=product.id, user_id=user.id,
-            quantity=data.quantity,
-            from_location_id=data.from_location_id,
-            to_location_id=data.to_location_id,
-            lot_id=data.lot_id,
-            lpn_id=data.lpn_id,
-            reference_type="transfer", reference=reference,
-            notes=data.notes,
-        )
+        if data.lpn_id is not None:
+            out, inbound = inventory.transfer_stock(
+                db, product_id=product.id, user_id=user.id,
+                quantity=data.quantity,
+                from_location_id=data.from_location_id,
+                to_location_id=data.to_location_id,
+                lot_id=data.lot_id,
+                lpn_id=data.lpn_id,
+                reference_type="transfer", reference=reference,
+                notes=data.notes,
+            )
+            movements = [out, inbound]
+        else:
+            # No LPN constraint: drain the location's stock across all LPN
+            # identities (non-LPN first, then LPN-held) so the on-hand shown
+            # in the transfer modal is fully moveable.
+            movements = inventory.transfer_from_location(
+                db, product_id=product.id, user_id=user.id,
+                quantity=data.quantity,
+                from_location_id=data.from_location_id,
+                to_location_id=data.to_location_id,
+                lot_id=data.lot_id,
+                reference_type="transfer", reference=reference,
+                notes=data.notes,
+            )
+            out, inbound = movements[0], movements[1]
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -203,7 +260,7 @@ def transfer_stock(data: StockMovementTransfer, db: Session = Depends(get_db), u
         "reference": reference,
         "outbound_id": out.id,
         "inbound_id": inbound.id,
-        "movements": [StockMovementOut.model_validate(out), StockMovementOut.model_validate(inbound)],
+        "movements": [StockMovementOut.model_validate(m) for m in movements],
     }
 
 
@@ -232,6 +289,11 @@ def transfer_serialized_stock(data: StockMovementSerialTransfer, db: Session = D
             raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
         if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
             raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
+        if serial.lot is not None and serial.lot.status != "in_stock":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be transferred",
+            )
         if serial.location_id != from_loc.id:
             raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not at '{from_loc.path}'")
 
@@ -287,14 +349,21 @@ def move_unallocated_stock(data: StockMovementUnallocatedMove, db: Session = Dep
     if not to_loc.is_active:
         raise HTTPException(status_code=400, detail=f"Destination location '{to_loc.path}' is inactive")
     if data.lot_id is not None:
-        get_or_404(Lot, data.lot_id, db)
+        lot = get_or_404(Lot, data.lot_id, db)
+        if lot.status != "in_stock":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lot '{lot.lot_number}' is {lot.status} and cannot be moved. Release it (if quarantined) or dispose of it via a scrap/adjustment instead.",
+            )
 
     lines = (
         db.query(StockLine)
+        .outerjoin(Lot, StockLine.lot_id == Lot.id)
         .filter(
             StockLine.product_id == product.id,
             StockLine.location_id.is_(None),
             StockLine.quantity > 0,
+            (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
         )
         .order_by(StockLine.id)
         .all()
@@ -303,6 +372,12 @@ def move_unallocated_stock(data: StockMovementUnallocatedMove, db: Session = Dep
         lines = [l for l in lines if l.lot_id == data.lot_id]
     total = sum(l.quantity for l in lines)
     if data.quantity > total:
+        blocked = inventory._blocked_lot_stock(db, product_id=product.id)
+        if blocked:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only {total} sellable unallocated unit(s) on hand for '{product.display_name}'. {inventory._blocked_lot_message(blocked)}",
+            )
         raise HTTPException(status_code=400, detail=f"Only {total} unallocated unit(s) on hand for '{product.display_name}'")
 
     reference = next_document_number(db, "unallocated_move", "UNL-")
@@ -382,6 +457,8 @@ def adjust_stock(data: StockMovementAdjust, db: Session = Depends(get_db), user=
 @router.put("/{movement_id}", response_model=StockMovementOut)
 def update_movement(movement_id: int, data: StockMovementUpdate, db: Session = Depends(get_db), user=Depends(require_permission("stock.update"))):
     sm = get_or_404(StockMovement, movement_id, db)
+    if sm.movement_type == inventory.SHIP:
+        raise HTTPException(status_code=400, detail="Shipped stock movements cannot be edited - stock was already shipped to the customer")
     updates = data.model_dump(exclude_unset=True)
     if sm.movement_type in (inventory.TRANSFER_OUT, inventory.TRANSFER_IN):
         new_qty_change = updates.get("quantity_change", sm.quantity_change)
@@ -432,6 +509,8 @@ def update_movement(movement_id: int, data: StockMovementUpdate, db: Session = D
 @router.delete("/{movement_id}")
 def delete_movement(movement_id: int, db: Session = Depends(get_db), user=Depends(require_permission("stock.delete"))):
     sm = get_or_404(StockMovement, movement_id, db)
+    if sm.movement_type == inventory.SHIP:
+        raise HTTPException(status_code=400, detail="Shipped stock movements cannot be deleted - stock was already shipped to the customer")
     legs = [sm]
     if sm.movement_type in (inventory.TRANSFER_OUT, inventory.TRANSFER_IN):
         other = db.get(StockMovement, sm.transfer_id) if sm.transfer_id else None

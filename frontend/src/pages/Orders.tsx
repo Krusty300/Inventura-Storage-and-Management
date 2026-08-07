@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Pencil, Eye, Trash2, Printer } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,12 +26,13 @@ const statusColors: Record<string, string> = {
   cancelled: "badge-danger",
 };
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function Orders() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Order | null>(null);
   const [viewing, setViewing] = useState<Order | null>(null);
@@ -92,7 +94,7 @@ export default function Orders() {
   const handleExport = () => {
     exportCSV(
       ["Order #", "Supplier", "Date", "Status", "Total"],
-      orders.map((o) => [o.order_number, o.supplier_name || "", new Date(o.created_at).toLocaleDateString(), o.status, o.total_amount]),
+      orders.map((o) => [o.order_number, o.supplier_name || "", formatDate(o.created_at), o.status, o.total_amount]),
       "orders"
     );
     addToast("Orders exported to CSV", "success");
@@ -137,6 +139,7 @@ export default function Orders() {
       <BulkActionBar count={selectedIds.size} canEdit={can("orders.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Orders table">
           <thead>
             <tr className="bg-app text-left">
@@ -164,7 +167,7 @@ export default function Orders() {
                 <td className="px-4 py-3 font-medium">{o.order_number}</td>
                 <td className="px-4 py-3 text-muted">{o.supplier_name || "—"}</td>
                 <td className="px-4 py-3 text-muted">
-                  {new Date(o.created_at).toLocaleDateString()}
+                  {formatDate(o.created_at)}
                 </td>
                 <td className="px-4 py-3">
                   <span className={statusColors[o.status] || "badge-info"}>{o.status}</span>
@@ -192,6 +195,7 @@ export default function Orders() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />

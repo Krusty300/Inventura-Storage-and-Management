@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Eye, PackagePlus, FileText, ArrowLeftRight, Trash2 } from "lucide-react";
+import { Eye, PackagePlus, FileText, ArrowLeftRight, Trash2, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { LPN, Location, PaginatedResponse } from "../types";
+import type { LPN, Location, LPNSerialItem, PaginatedResponse, SerialNumber, StockLocation } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
@@ -11,13 +11,15 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useSelectableProducts } from "../hooks/useSelectableProducts";
+import { productLabel } from "../utils/variants";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function LPNs() {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState<LPN | null>(null);
   const [moving, setMoving] = useState<LPN | null>(null);
@@ -75,6 +77,7 @@ export default function LPNs() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="LPNs table">
           <thead>
             <tr className="bg-app text-left">
@@ -116,6 +119,7 @@ export default function LPNs() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
@@ -211,8 +215,22 @@ function LpnCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 }
 
 function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
-  const contents = lpn.contents || [];
-  const serials = lpn.serials || [];
+  const { can } = useAuth();
+  const queryClient = useQueryClient();
+  const [action, setAction] = useState<"load" | "unload" | null>(null);
+
+  const { data: live } = useQuery({
+    queryKey: ["lpn", lpn.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/lpns/${lpn.id}`);
+      return data as LPN;
+    },
+    initialData: lpn,
+  });
+
+  const current = live || lpn;
+  const contents = current.contents || [];
+  const serials = current.serials || [];
   const hasContents = contents.length > 0 || serials.length > 0;
 
   function statusBadge(status: string) {
@@ -226,88 +244,331 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
       default: return "";
     }
   }
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["lpn", lpn.id] });
+    queryClient.invalidateQueries({ queryKey: ["lpns"] });
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    setAction(null);
+  };
+
   return (
-    <Modal open onClose={onClose} title={`LPN ${lpn.lpn_number}`} wide>
-      <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <p className="text-muted">Type</p>
-            <p className="font-medium capitalize">{lpn.lpn_type}</p>
+    <Modal open onClose={onClose} title={`LPN ${current.lpn_number}`} wide>
+      {action ? (
+        <LpnStockModal
+          lpn={current}
+          mode={action}
+          onClose={() => setAction(null)}
+          onSaved={refresh}
+        />
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="text-muted">Type</p>
+              <p className="font-medium capitalize">{current.lpn_type}</p>
+            </div>
+            <div>
+              <p className="text-muted">Location</p>
+              <p className="font-medium">{current.location_name || "—"}</p>
+            </div>
+            <div>
+              <p className="text-muted">Status</p>
+              <p className="font-medium capitalize">{current.status}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-muted">Location</p>
-            <p className="font-medium">{lpn.location_name || "—"}</p>
-          </div>
-          <div>
-            <p className="text-muted">Status</p>
-            <p className="font-medium capitalize">{lpn.status}</p>
+          {!hasContents ? (
+            <p className="text-sm text-muted">This LPN has no contents yet. Use "Load Stock" to add stock from a location, or receive into it via a receipt.</p>
+          ) : (
+            <>
+              {contents.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-muted mb-2">Products</p>
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-app text-left">
+                          <th className="px-4 py-2 font-medium text-muted">Product</th>
+                          <th className="px-4 py-2 font-medium text-muted">Lot</th>
+                          <th className="px-4 py-2 font-medium text-muted">Qty</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {contents.map((c, i) => (
+                          <tr key={i}>
+                            <td className="px-4 py-2 font-medium">{c.product_name}</td>
+                            <td className="px-4 py-2 text-muted">{c.lot_number || "—"}</td>
+                            <td className="px-4 py-2">{c.quantity}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {serials.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-muted mb-2">Serialized Items</p>
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-app text-left">
+                          <th className="px-4 py-2 font-medium text-muted">Product</th>
+                          <th className="px-4 py-2 font-medium text-muted">Serial #</th>
+                          <th className="px-4 py-2 font-medium text-muted">Lot</th>
+                          <th className="px-4 py-2 font-medium text-muted">Status</th>
+                          <th className="px-4 py-2 font-medium text-muted">Location</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {serials.map((s) => (
+                          <tr key={s.serial_id}>
+                            <td className="px-4 py-2 font-medium">{s.product_name}</td>
+                            <td className="px-4 py-2">{s.serial_number}</td>
+                            <td className="px-4 py-2 text-muted">{s.lot_number || "—"}</td>
+                            <td className="px-4 py-2">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
+                            <td className="px-4 py-2 text-muted">{s.location_name || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          {can("lpns.update") && current.status === "active" && (
+            <div className="flex flex-wrap gap-3 pt-2">
+              <button onClick={() => setAction("load")} className="btn-secondary">
+                <ArrowDownToLine size={16} className="inline mr-1" />Load Stock
+              </button>
+              <button onClick={() => setAction("unload")} className="btn-secondary">
+                <ArrowUpFromLine size={16} className="inline mr-1" />Unload Stock
+              </button>
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <button onClick={onClose} className="btn-secondary">Close</button>
           </div>
         </div>
-        {!hasContents ? (
-          <p className="text-sm text-muted">This LPN has no contents yet. Receive stock into it via a receipt or move stock to it.</p>
-        ) : (
-          <>
-            {contents.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-muted mb-2">Products</p>
-                <div className="border border-border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-app text-left">
-                        <th className="px-4 py-2 font-medium text-muted">Product</th>
-                        <th className="px-4 py-2 font-medium text-muted">Lot</th>
-                        <th className="px-4 py-2 font-medium text-muted">Qty</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {contents.map((c, i) => (
-                        <tr key={i}>
-                          <td className="px-4 py-2 font-medium">{c.product_name}</td>
-                          <td className="px-4 py-2 text-muted">{c.lot_number || "—"}</td>
-                          <td className="px-4 py-2">{c.quantity}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-            {serials.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-muted mb-2">Serialized Items</p>
-                <div className="border border-border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-app text-left">
-                        <th className="px-4 py-2 font-medium text-muted">Product</th>
-                        <th className="px-4 py-2 font-medium text-muted">Serial #</th>
-                        <th className="px-4 py-2 font-medium text-muted">Lot</th>
-                        <th className="px-4 py-2 font-medium text-muted">Status</th>
-                        <th className="px-4 py-2 font-medium text-muted">Location</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {serials.map((s) => (
-                        <tr key={s.serial_id}>
-                          <td className="px-4 py-2 font-medium">{s.product_name}</td>
-                          <td className="px-4 py-2">{s.serial_number}</td>
-                          <td className="px-4 py-2 text-muted">{s.lot_number || "—"}</td>
-                          <td className="px-4 py-2">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
-                          <td className="px-4 py-2 text-muted">{s.location_name || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="btn-secondary">Close</button>
-        </div>
-      </div>
+      )}
     </Modal>
+  );
+}
+
+type StockMode = "load" | "unload";
+
+function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockMode; onClose: () => void; onSaved: () => void }) {
+  const { addToast } = useToast();
+  const queryClient = useQueryClient();
+  const isLoad = mode === "load";
+  const productList = useSelectableProducts();
+
+  const contentProducts = lpn.contents.map((c) => c.product_id);
+  const serialProducts = lpn.serials.map((s) => s.product_id);
+  const lpnProductIds = new Set([...contentProducts, ...serialProducts]);
+  const candidateProducts = (productList || []).filter((p) => (isLoad ? true : lpnProductIds.has(p.id)));
+
+  const [product_id, setProductId] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [lot_id, setLotId] = useState("");
+  const [to_location_id, setToLocationId] = useState("");
+  const [serialIds, setSerialIds] = useState<number[]>([]);
+  const [sourceOverride, setSourceOverride] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const selectedProduct = candidateProducts.find((p) => p.id === Number(product_id));
+  const isSerialized = !!selectedProduct?.is_serialized;
+  const from_location_id = isLoad ? (lpn.location_id ?? (sourceOverride ? Number(sourceOverride) : null)) : lpn.location_id;
+
+  const { data: locations } = useQuery({
+    queryKey: ["locations", "lpn-stock"],
+    queryFn: async () => {
+      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      return data.items as Location[];
+    },
+  });
+  const activeLocations = (locations || []).filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path));
+
+  const { data: stockLocations } = useQuery({
+    queryKey: ["stock-locations", "lpn-load", product_id],
+    queryFn: async () => {
+      const { data } = await api.get("/stock-movements/locations", { params: { product_id } });
+      return (data?.locations || []) as StockLocation[];
+    },
+    enabled: !!product_id && !isSerialized && isLoad,
+  });
+
+  const { data: looseSerials } = useQuery({
+    queryKey: ["serial-numbers", "lpn-load", product_id, from_location_id],
+    queryFn: async () => {
+      const { data } = await api.get("/serial-numbers", {
+        params: { product_id, location_id: from_location_id, status: "in_stock", limit: 500 },
+      });
+      return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && (!s.lot_status || s.lot_status === "in_stock"));
+    },
+    enabled: !!product_id && isSerialized && isLoad && from_location_id != null,
+  });
+
+  const loadLocation = stockLocations?.find((l) => l.location_id === from_location_id);
+  const loadAvailable = loadLocation?.quantity ?? 0;
+  const unloadMax = (() => {
+    if (!selectedProduct) return 0;
+    const qty = lpn.contents.filter((c) => c.product_id === selectedProduct.id).reduce((sum, c) => sum + c.quantity, 0);
+    const serialQty = lpn.serials.filter((s) => s.product_id === selectedProduct.id).length;
+    return qty + serialQty;
+  })();
+  const maxQuantity = isSerialized ? 0 : isLoad ? loadAvailable : unloadMax;
+
+  const unloadSerials = lpn.serials.filter((s) => s.product_id === Number(product_id));
+  const loadSerialPool = (looseSerials || []).filter((s) => !serialIds.includes(s.id));
+  const unloadSerialPool = unloadSerials.filter((s) => !serialIds.includes(s.serial_id));
+
+  const toggleSerial = (id: number) => {
+    setSerialIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!product_id) return addToast("Select a product", "error");
+    if (isLoad && from_location_id == null) return addToast("Select a source location", "error");
+    if (!isLoad && !to_location_id) return addToast("Select a destination location", "error");
+    if (isSerialized) {
+      if (serialIds.length === 0) return addToast("Select at least one serial number", "error");
+    } else {
+      const qty = parseInt(quantity) || 0;
+      if (qty <= 0) return addToast("Enter a valid quantity", "error");
+      if (maxQuantity > 0 && qty > maxQuantity) {
+        return addToast(`Only ${maxQuantity} available`, "error");
+      }
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        product_id: Number(product_id),
+        lot_id: lot_id ? Number(lot_id) : null,
+        ...(isSerialized ? { serial_ids: serialIds } : { quantity: parseInt(quantity) }),
+        ...(isLoad ? { from_location_id: from_location_id } : { to_location_id: Number(to_location_id) }),
+      };
+      await api.post(`/lpns/${lpn.id}/${isLoad ? "items" : "unload"}`, payload);
+      addToast(`Stock ${isLoad ? "loaded into" : "unloaded from"} ${lpn.lpn_number}`, "success");
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      onSaved();
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Operation failed", "error");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted">
+        {isLoad
+          ? `Move stock into ${lpn.lpn_number} from ${lpn.location_name || "a location"}.`
+          : `Move stock out of ${lpn.lpn_number} to loose stock at a location.`}
+      </p>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Product *</label>
+            <select className="select" value={product_id} onChange={(e) => { setProductId(e.target.value); setLotId(""); setSerialIds([]); }}>
+              <option value="">Select...</option>
+              {candidateProducts.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""}</option>)}
+            </select>
+          </div>
+          {isSerialized ? (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Serial Numbers ({serialIds.length} selected)</label>
+              <div className="input h-auto min-h-10 bg-app font-mono text-sm">{serialIds.length > 0 ? `${serialIds.length} selected` : "Click serials below to add them"}</div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
+              <input type="number" min={1} max={maxQuantity || undefined} className="input" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              <p className="text-xs text-muted mt-1">
+                {isLoad ? `${loadAvailable} available at ${lpn.location_name || "the source"}` : `${unloadMax} in this LPN`}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {isLoad ? (
+            lpn.location_id == null ? (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Source Location *</label>
+                <select className="select" value={sourceOverride} onChange={(e) => setSourceOverride(e.target.value)} required>
+                  <option value="">Select...</option>
+                  {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Source Location</label>
+                <div className="input bg-app">{lpn.location_name || "—"}</div>
+              </div>
+            )
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Destination Location *</label>
+              <select className="select" value={to_location_id} onChange={(e) => setToLocationId(e.target.value)} required>
+                <option value="">Select...</option>
+                {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
+              </select>
+            </div>
+          )}
+          {!isSerialized && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Lot (optional)</label>
+              <select className="select" value={lot_id} onChange={(e) => setLotId(e.target.value)}>
+                <option value="">Any lot</option>
+                {isLoad
+                  ? (loadLocation?.lots || []).map((l) => <option key={l.lot_id} value={l.lot_id}>{l.lot_number} ({l.quantity})</option>)
+                  : lpn.contents.filter((c) => c.product_id === Number(product_id)).map((c, i) => (
+                      <option key={`${c.lot_id ?? "nolot"}-${i}`} value={c.lot_id ?? ""}>{c.lot_number || "No lot"} ({c.quantity})</option>
+                    ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {isSerialized && (
+          <div>
+            <p className="text-sm font-medium text-muted mb-2">{isLoad ? "Available serials" : "Serials in this LPN"}</p>
+            {(() => {
+              const pool = (isLoad ? loadSerialPool : unloadSerialPool).map((s) => ({
+                key: isLoad ? (s as SerialNumber).id : (s as LPNSerialItem).serial_id,
+                serial_number: s.serial_number,
+              }));
+              if ((isLoad && !from_location_id) || pool.length === 0) {
+                return <p className="text-xs text-muted">{isLoad ? "No loose serials available at the source." : "No serials for this product in the LPN."}</p>;
+              }
+              return (
+                <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+                  {pool.map((s) => (
+                    <button
+                      type="button"
+                      key={s.key}
+                      onClick={() => toggleSerial(s.key)}
+                      className="text-xs font-mono px-2 py-1 rounded border border-border-strong bg-subtle text-ink hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                    >
+                      {s.serial_number}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 pt-4">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" disabled={saving} className="btn-primary">
+            {saving ? "Saving..." : isLoad ? "Load Stock" : "Unload Stock"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

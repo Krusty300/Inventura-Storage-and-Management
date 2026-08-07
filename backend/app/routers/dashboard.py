@@ -19,13 +19,14 @@ from app.models.stock_line import StockLine
 from app.models.lot import Lot
 from app.schemas.dashboard import DashboardStats
 from app.services.auth import get_current_user
-from app.services.inventory import TRANSFER_OUT, quarantined_qty_subquery
+from app.services.inventory import TRANSFER_OUT, expire_overdue_lots, quarantined_qty_subquery
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats", response_model=DashboardStats)
 def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    expire_overdue_lots(db)
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     quarantined = quarantined_qty_subquery()
     sellable = Product.quantity - func.coalesce(quarantined, 0)
@@ -36,6 +37,7 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
     total_categories = db.query(func.count(Category.id)).scalar() or 0
     total_suppliers = db.query(func.count(Supplier.id)).scalar() or 0
     total_orders = db.query(func.count(Order.id)).scalar() or 0
+    total_lots = db.query(func.count(Lot.id)).scalar() or 0
     low_stock_count = db.query(func.count(Product.id)).filter(
         Product.is_active == True, sellable <= Product.reorder_level,
         Product.id.notin_(Product.variant_parent_id_subquery()),
@@ -134,6 +136,7 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         total_categories=total_categories,
         total_suppliers=total_suppliers,
         total_orders=total_orders,
+        total_lots=total_lots,
         low_stock_count=low_stock_count,
         expiring_soon_count=expiring_soon_count,
         total_inventory_value=total_value,

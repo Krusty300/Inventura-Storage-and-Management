@@ -263,3 +263,85 @@ def test_transfer_over_lot_available_rejected_with_lot_detail(auth_headers):
     detail = resp.json()["detail"]
     assert "LOT-X" in detail
     assert "3" in detail
+
+
+def test_transfer_drains_lpn_held_stock(auth_headers):
+    src = _loc(auth_headers, "TRF-LPNSRC")
+    dst = _loc(auth_headers, "TRF-LPNDST")
+    lpn = client.post("/api/lpns", json={"lpn_number": "TRF-PAL", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-LPNPR", "name": "LPN Drain", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    # 3 loose + 2 in an LPN at src -> 5 on hand at the location
+    assert _receive(auth_headers, prod["id"], 3, src["id"]).status_code == 201
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "location_id": src["id"], "lpn_id": lpn["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    locs = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()["locations"]
+    by_id = {l["location_id"]: l["quantity"] for l in locs}
+    assert by_id.get(src["id"]) == 5
+
+    resp = client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 5, "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+
+    contents = client.get(f"/api/lpns/{lpn['id']}/contents", headers=auth_headers).json()
+    assert contents["total_quantity"] == 0
+
+    locs = client.get("/api/stock-movements/locations", params={"product_id": prod["id"]}, headers=auth_headers).json()["locations"]
+    by_id = {l["location_id"]: l["quantity"] for l in locs}
+    assert by_id.get(dst["id"]) == 5
+    assert src["id"] not in by_id
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 5
+
+
+def test_transfer_lpn_constrained_availability(auth_headers):
+    src = _loc(auth_headers, "TRF-LPNCA")
+    dst = _loc(auth_headers, "TRF-LPNCD")
+    lpn = client.post("/api/lpns", json={"lpn_number": "TRF-LPNCA", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-LPNCA", "name": "LPN Constrained", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert _receive(auth_headers, prod["id"], 2, src["id"]).status_code == 201
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 3, "location_id": src["id"], "lpn_id": lpn["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    # Even though 5 are on hand at src, the LPN only holds 3.
+    resp = client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 4, "from_location_id": src["id"], "to_location_id": dst["id"], "lpn_id": lpn["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+
+    resp = client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 3, "from_location_id": src["id"], "to_location_id": dst["id"], "lpn_id": lpn["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 5
+
+
+def test_transfer_serial_clears_lpn_assignment(auth_headers):
+    src = _loc(auth_headers, "TRF-SLNSRC")
+    dst = _loc(auth_headers, "TRF-SLNDST")
+    lpn = client.post("/api/lpns", json={"lpn_number": "TRF-SPAL", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "TRF-SLNP", "name": "Ser LPN", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "serial_numbers": ["S-LPN-DRIFT"],
+                   "location_id": src["id"], "lpn_id": lpn["id"]}],
+    }, headers=auth_headers).status_code == 201
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+    assert serial["lpn_id"] == lpn["id"]
+
+    resp = client.post("/api/stock-movements/transfer-serial", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]],
+        "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+
+    after = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+    assert after["lpn_id"] is None
+    assert after["location_id"] == dst["id"]

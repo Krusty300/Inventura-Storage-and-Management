@@ -47,3 +47,15 @@ class Lot(Base):
     @property
     def serial_count(self) -> int:
         return sum(1 for s in self.serial_numbers if s.status == "in_stock")
+
+    @property
+    def locations(self) -> list[str]:
+        """Distinct location paths holding this lot's stock (bulk lines and serials)."""
+        locs: list[str] = []
+        for sl in self.stock_lines:
+            if sl.location and sl.location.path and sl.location.path not in locs:
+                locs.append(sl.location.path)
+        for s in self.serial_numbers:
+            if s.location and s.location.path and s.location.path not in locs:
+                locs.append(s.location.path)
+        return locs

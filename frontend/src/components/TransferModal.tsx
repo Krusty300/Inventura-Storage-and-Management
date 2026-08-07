@@ -59,6 +59,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
   const serialLocations = useMemo(() => {
     const map = new Map<number, { location_id: number; path: string; serials: SerialNumber[] }>();
     for (const s of serialsData || []) {
+      if (s.lot_status && s.lot_status !== "in_stock") continue;
       if (!s.location_id) continue;
       const entry = map.get(s.location_id) || { location_id: s.location_id, path: s.location_name || "Location", serials: [] };
       entry.serials.push(s);
@@ -171,7 +172,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
   return (
     <Modal open onClose={onClose} title="Transfer Stock Between Locations" wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Product *</label>
             <select className="select" value={product_id} onChange={(e) => handleProductChange(e.target.value)}>
@@ -201,7 +202,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">From Location *</label>
             {isSerialized ? (
@@ -239,7 +240,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             {isSerialized ? (
               <div>

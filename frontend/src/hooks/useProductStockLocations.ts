@@ -25,6 +25,7 @@ export function useProductStockLocations(productId: number | null | undefined, i
         const map = new Map<number, StockLocationSummary>();
         let unallocated = 0;
         for (const s of serials) {
+          if (s.lot_status && s.lot_status !== "in_stock") continue;
           if (!s.location_id) {
             unallocated += 1;
             continue;

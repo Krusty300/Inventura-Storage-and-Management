@@ -34,6 +34,7 @@ class DashboardStats(BaseModel):
     total_categories: int
     total_suppliers: int
     total_orders: int
+    total_lots: int = 0
     low_stock_count: int
     expiring_soon_count: int
     total_inventory_value: float

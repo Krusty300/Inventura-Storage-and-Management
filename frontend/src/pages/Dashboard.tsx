@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowUpRight,
@@ -29,7 +30,6 @@ import type {
   ManufacturingCostReport,
   PaginatedResponse,
 } from "../types";
-import { parseLocalDate } from "../utils/date";
 import { formatCurrency } from "../utils/currency";
 import { can } from "../utils/permissions";
 import { useSettings } from "../hooks/useSettings";
@@ -41,6 +41,7 @@ import GlobalSearch from "../components/GlobalSearch";
 const TREND_OPTIONS = [7, 30, 90];
 
 export default function Dashboard() {
+  const formatDate = useDateFormat();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -187,6 +188,7 @@ export default function Dashboard() {
     { label: "Serial Numbers in Stock", value: stats.serial_numbers_in_stock ?? 0, link: "/serial-numbers" },
     { label: "Movements Today", value: stats.total_stock_movements_today, link: "/stock-movements" },
     { label: "LPNs", value: lpns?.total ?? 0, link: "/lpns" },
+    { label: "Lots", value: stats.total_lots ?? 0, link: "/lots" },
     { label: "Receipts", value: receipts?.total ?? 0, link: "/receiving" },
   ];
 
@@ -456,7 +458,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-3">
                     {a.expected_arrival && (
-                      <span className="text-muted">{parseLocalDate(a.expected_arrival).toLocaleDateString()}</span>
+                      <span className="text-muted">{formatDate(a.expected_arrival)}</span>
                     )}
                     <span className="text-amber-600 dark:text-amber-400 font-medium">{a.items_pending} pending</span>
                   </div>
@@ -577,7 +579,7 @@ export default function Dashboard() {
                   {p.batch_number && <span className="text-muted ml-2">({p.batch_number})</span>}
                 </div>
                 <span className={p.expiry_date < new Date().toISOString().slice(0, 10) ? "text-red-600 dark:text-red-400 font-medium" : "text-amber-600 dark:text-amber-400 font-medium"}>
-                  {parseLocalDate(p.expiry_date).toLocaleDateString()}
+                  {formatDate(p.expiry_date)}
                 </span>
               </div>
             ))}
@@ -599,7 +601,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-muted">{r.total_quantity} units</span>
-                    <span className="text-faint">{parseLocalDate(r.created_at).toLocaleDateString()}</span>
+                    <span className="text-faint">{formatDate(r.created_at)}</span>
                   </div>
                 </div>
               ))}

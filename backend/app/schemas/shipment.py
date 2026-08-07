@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class ShipmentItemIn(BaseModel):
     product_id: int
     quantity: int = Field(gt=0)
+    location_id: Optional[int] = None
 
 
 class ShipmentCreate(BaseModel):
@@ -30,11 +31,13 @@ class ShipmentItemOut(BaseModel):
     id: int
     shipment_id: int
     product_id: int
+    location_id: Optional[int] = None
     quantity_ordered: int
     quantity_picked: int
     quantity_packed: int
     quantity_shipped: int
     product_name: str = ""
+    location_name: str = ""
     is_serialized: bool = False
 
     class Config:

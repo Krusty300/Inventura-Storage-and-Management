@@ -65,6 +65,7 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     variant_label: "",
     display_name: name,
     total_quantity: 20,
+    quarantined_qty: 0,
     variants: [],
     ...overrides,
   };

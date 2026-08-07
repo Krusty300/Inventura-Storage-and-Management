@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import api from "../api/client";
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function SupplierDetail({ supplier, onClose }: Props) {
+  const formatDate = useDateFormat();
   const { data: stats } = useQuery({
     queryKey: ["supplier-stats", supplier.id],
     queryFn: async () => (await api.get(`/suppliers/${supplier.id}/stats`)).data as SupplierStats,
@@ -114,7 +116,7 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
                   {history.map((o) => (
                     <tr key={o.id}>
                       <td className="px-3 py-2 font-medium">{o.order_number}</td>
-                      <td className="px-3 py-2 text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
+                      <td className="px-3 py-2 text-muted">{formatDate(o.created_at)}</td>
                       <td className="px-3 py-2">{formatCurrency(o.total_amount)}</td>
                       <td className="px-3 py-2">
                         <span className={`badge ${o.status === "received" ? "badge-success" : o.status === "cancelled" ? "badge-warning" : "badge-info"}`}>

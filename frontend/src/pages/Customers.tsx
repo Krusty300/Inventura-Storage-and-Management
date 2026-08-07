@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Pencil, Trash2, Eye, RefreshCw } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -19,14 +20,15 @@ import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 import { formatCurrency } from "../utils/currency";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function Customers() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [typeFilter, setTypeFilter] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
@@ -202,7 +204,7 @@ export default function Customers() {
                   <td className="px-4 py-3 text-muted">{c.total_sales ?? 0}</td>
                   <td className="px-4 py-3 text-muted">{formatCurrency(c.total_spent ?? 0)}</td>
                   <td className="px-4 py-3 text-muted">
-                    {c.last_purchase_at ? new Date(c.last_purchase_at).toLocaleDateString() : "Never"}
+                    {c.last_purchase_at ? formatDate(c.last_purchase_at) : "Never"}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">

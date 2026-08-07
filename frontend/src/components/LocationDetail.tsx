@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Package, MapPin, ClipboardList } from "lucide-react";
@@ -15,6 +16,7 @@ interface LocationDetailData {
     product_name: string;
     sku: string;
     lot_number: string;
+    lot_status: string;
     lpn_number: string;
     quantity: number;
     unit_cost: number;
@@ -34,6 +36,7 @@ interface LocationDetailData {
     sku: string;
     serial_number: string;
     lot_number: string;
+    lot_status: string;
     status: string;
     unit_cost: number;
     value: number;
@@ -45,9 +48,21 @@ interface LocationDetailData {
     sku: string;
     serial_number: string;
     lot_number: string;
+    lot_status: string;
     status: string;
     unit_cost: number;
     value: number;
+  }[];
+  movements: {
+    id: number;
+    product_name: string;
+    quantity_change: number;
+    movement_type: string;
+    username: string;
+    from_location: string;
+    to_location: string;
+    lot_number: string;
+    created_at: string;
   }[];
 }
 
@@ -77,6 +92,7 @@ const actionColors: Record<string, string> = {
 type Tab = "stock" | "lpns" | "activity";
 
 export default function LocationDetail({ location, onClose }: Props) {
+  const formatDate = useDateFormat();
   const [tab, setTab] = useState<Tab>("stock");
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
@@ -103,6 +119,7 @@ export default function LocationDetail({ location, onClose }: Props) {
   const lpns = detail?.lpns || [];
   const serials = detail?.serials || [];
   const scrappedSerials = detail?.scrapped_serials || [];
+  const movements = detail?.movements || [];
   const logs = activity?.items || [];
 
   return (
@@ -133,7 +150,7 @@ export default function LocationDetail({ location, onClose }: Props) {
           </div>
           <div>
             <span className="text-muted">Created:</span>
-            <p className="font-medium">{new Date(location.created_at).toLocaleDateString()}</p>
+            <p className="font-medium">{formatDate(location.created_at)}</p>
           </div>
           <div>
             <span className="text-muted">Stock value:</span>
@@ -149,7 +166,7 @@ export default function LocationDetail({ location, onClose }: Props) {
             <MapPin size={14} /> LPNs ({lpns.length})
           </TabButton>
           <TabButton active={tab === "activity"} onClick={() => setTab("activity")}>
-            <ClipboardList size={14} /> Activity ({logs.length})
+            <ClipboardList size={14} /> Activity ({logs.length + movements.length})
           </TabButton>
         </div>
 
@@ -177,7 +194,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                       <tr key={sl.id}>
                         <td className="px-3 py-2 font-medium">{sl.product_name}</td>
                         <td className="px-3 py-2 text-muted">{sl.sku}</td>
-                        <td className="px-3 py-2 text-muted">{sl.lot_number || "—"}</td>
+                        <td className="px-3 py-2 text-muted">{sl.lot_number || "—"}{sl.lot_status && sl.lot_status !== "in_stock" ? <LotStatusBadge status={sl.lot_status} /> : null}</td>
                         <td className="px-3 py-2 text-muted">{sl.lpn_number || "—"}</td>
                         <td className="px-3 py-2 text-right">{sl.quantity}</td>
                         <td className="px-3 py-2 text-right">{formatCurrency(sl.value, currencySymbol)}</td>
@@ -208,7 +225,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                           <td className="px-3 py-2 font-medium font-mono">{s.serial_number}</td>
                           <td className="px-3 py-2 text-muted">{s.product_name}</td>
                           <td className="px-3 py-2 text-muted">{s.sku}</td>
-                          <td className="px-3 py-2 text-muted">{s.lot_number || "—"}</td>
+                          <td className="px-3 py-2 text-muted">{s.lot_number || "—"}{s.lot_status && s.lot_status !== "in_stock" ? <LotStatusBadge status={s.lot_status} /> : null}</td>
                           <td className="px-3 py-2"><span className="badge badge-success">{s.status}</span></td>
                           <td className="px-3 py-2 text-right">{formatCurrency(s.value, currencySymbol)}</td>
                         </tr>
@@ -279,22 +296,63 @@ export default function LocationDetail({ location, onClose }: Props) {
               </table>
             </div>
           )
-        ) : logs.length === 0 ? (
+        ) : movements.length === 0 && logs.length === 0 ? (
           <p className="text-muted py-4">No activity recorded for this location.</p>
         ) : (
-          <ul className="divide-y divide-border max-h-72 overflow-y-auto">
-            {logs.map((log) => (
-              <li key={log.id} className="py-2 flex items-start gap-2">
-                <span className={`badge shrink-0 ${actionColors[log.action] || "badge-info"}`}>{log.action}</span>
-                <div className="min-w-0">
-                  <p className="text-ink">{log.description}</p>
-                  <p className="text-xs text-muted">
-                    by {log.username || `User #${log.user_id}`} · {new Date(log.created_at).toLocaleString()}
-                  </p>
+          <>
+            {movements.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-ink mb-2">Stock movements ({movements.length})</p>
+                <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                  <table className="w-full text-sm" role="grid" aria-label="Stock movements at location">
+                    <thead>
+                      <tr className="bg-app text-left text-muted">
+                        <th className="px-3 py-2 font-medium">Date</th>
+                        <th className="px-3 py-2 font-medium">Type</th>
+                        <th className="px-3 py-2 font-medium">Product</th>
+                        <th className="px-3 py-2 font-medium">From → To</th>
+                        <th className="px-3 py-2 font-medium">Lot</th>
+                        <th className="px-3 py-2 font-medium text-right">Qty</th>
+                        <th className="px-3 py-2 font-medium">User</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {movements.map((m) => (
+                        <tr key={m.id}>
+                          <td className="px-3 py-2 text-muted">{new Date(m.created_at).toLocaleString()}</td>
+                          <td className="px-3 py-2 capitalize">{m.movement_type}</td>
+                          <td className="px-3 py-2 font-medium">{m.product_name}</td>
+                          <td className="px-3 py-2 text-muted">
+                            {m.from_location || "—"} → {m.to_location || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-muted">{m.lot_number || "—"}</td>
+                          <td className={`px-3 py-2 text-right ${m.quantity_change < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                            {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}
+                          </td>
+                          <td className="px-3 py-2 text-muted">{m.username}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+            )}
+            {logs.length > 0 && (
+              <ul className="divide-y divide-border max-h-72 overflow-y-auto">
+                {logs.map((log) => (
+                  <li key={log.id} className="py-2 flex items-start gap-2">
+                    <span className={`badge shrink-0 ${actionColors[log.action] || "badge-info"}`}>{log.action}</span>
+                    <div className="min-w-0">
+                      <p className="text-ink">{log.description}</p>
+                      <p className="text-xs text-muted">
+                        by {log.username || `User #${log.user_id}`} · {new Date(log.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </Modal>
@@ -312,4 +370,9 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       {children}
     </button>
   );
+}
+
+function LotStatusBadge({ status }: { status: string }) {
+  const cls = status === "quarantined" ? "badge-warning" : "badge-danger";
+  return <span className={`badge ${cls} ml-1.5`}>{status}</span>;
 }

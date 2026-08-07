@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Eye } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,12 +16,13 @@ import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 import { useToast } from "../context/ToastContext";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function StockMovements() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [editing, setEditing] = useState<StockMovement | null>(null);
@@ -64,7 +66,7 @@ export default function StockMovements() {
   const handleExport = () => {
     exportCSV(
       ["Date", "Product", "Type", "Route", "Qty Change", "Reference", "User", "Notes"],
-      movements.map((m) => [new Date(m.created_at).toLocaleDateString(), m.product_name, m.movement_type, routeLabel(m), m.quantity_change, m.reference, m.username, m.notes]),
+      movements.map((m) => [formatDate(m.created_at), m.product_name, m.movement_type, routeLabel(m), m.quantity_change, m.reference, m.username, m.notes]),
       "stock-movements"
     );
     addToast("Movements exported to CSV", "success");
@@ -100,7 +102,8 @@ export default function StockMovements() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <table className="w-full text-sm" role="grid" aria-label="Stock movements table">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm" role="grid" aria-label="Stock movements table">
           <thead>
             <tr className="bg-app text-left">
               <th className="px-4 py-3 font-medium text-muted">Date</th>
@@ -122,7 +125,7 @@ export default function StockMovements() {
             ) : movements.map((m) => (
               <tr key={m.id} className="hover:bg-app">
                 <td className="px-4 py-3 text-muted">
-                  {new Date(m.created_at).toLocaleDateString()}
+                  {formatDate(m.created_at)}
                 </td>
                 <td className="px-4 py-3 font-medium">{m.product_name}</td>
                 <td className="px-4 py-3">
@@ -170,13 +173,13 @@ export default function StockMovements() {
                 <td className="px-4 py-3 text-muted max-w-50 truncate">{m.notes}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    {can("stock.update") && !isTransfer(m) && (
+                    {can("stock.update") && !isTransfer(m) && m.movement_type !== "ship" && (
                       <button onClick={() => { setEditing(m); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit movement ${m.id}`}>
                         <Pencil size={16} />
                       </button>
                     )}
                     <button onClick={() => setViewing(m)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View movement ${m.id}`}><Eye size={16} /></button>
-                    {can("stock.delete") && (
+                    {can("stock.delete") && m.movement_type !== "ship" && (
                       <button onClick={() => setDeleting(m)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete movement ${m.id}`}>
                         <Trash2 size={16} />
                       </button>
@@ -186,7 +189,8 @@ export default function StockMovements() {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />

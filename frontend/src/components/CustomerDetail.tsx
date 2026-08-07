@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import api from "../api/client";
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function CustomerDetail({ customer, onClose }: Props) {
+  const formatDate = useDateFormat();
   const { data: stats } = useQuery({
     queryKey: ["customer-stats", customer.id],
     queryFn: async () => (await api.get(`/customers/${customer.id}/stats`)).data as CustomerStats,
@@ -53,7 +55,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
           </div>
           <div>
             <span className="text-muted">Created:</span>
-            <p className="font-medium">{new Date(customer.created_at).toLocaleDateString()}</p>
+            <p className="font-medium">{formatDate(customer.created_at)}</p>
           </div>
         </div>
 
@@ -87,7 +89,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
             </div>
             <div className="bg-app rounded-lg p-3">
               <p className="text-muted text-xs">Last Purchase</p>
-              <p className="font-semibold text-lg">{s?.last_purchase_at ? new Date(s.last_purchase_at).toLocaleDateString() : (customer.last_purchase_at ? new Date(customer.last_purchase_at).toLocaleDateString() : "Never")}</p>
+              <p className="font-semibold text-lg">{s?.last_purchase_at ? formatDate(s.last_purchase_at) : (customer.last_purchase_at ? formatDate(customer.last_purchase_at) : "Never")}</p>
             </div>
           </div>
         </div>
@@ -146,7 +148,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
                   {history.map((sale) => (
                     <tr key={sale.id}>
                       <td className="px-3 py-2 font-medium">{sale.invoice_number}</td>
-                      <td className="px-3 py-2 text-muted">{new Date(sale.created_at).toLocaleDateString()}</td>
+                      <td className="px-3 py-2 text-muted">{formatDate(sale.created_at)}</td>
                       <td className="px-3 py-2 text-muted">{sale.payment_method}</td>
                       <td className="px-3 py-2">{formatCurrency(sale.total_amount)}</td>
                       <td className="px-3 py-2">

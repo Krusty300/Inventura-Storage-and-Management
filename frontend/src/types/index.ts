@@ -28,6 +28,7 @@ export interface Product {
   variant_label: string;
   display_name: string;
   total_quantity: number;
+  quarantined_qty: number;
   variants: Product[];
 }
 
@@ -164,6 +165,7 @@ export interface DashboardStats {
   total_categories: number;
   total_suppliers: number;
   total_orders: number;
+  total_lots: number;
   low_stock_count: number;
   expiring_soon_count: number;
   total_inventory_value: number;
@@ -279,10 +281,12 @@ export interface SerialNumber {
   serial_number: string;
   lot_id: number | null;
   location_id: number | null;
+  lpn_id: number | null;
   status: string;
   sold_at: string | null;
   location_name: string;
   lot_number: string;
+  lot_status: string;
   product_name: string;
   created_at: string;
 }
@@ -300,6 +304,7 @@ export interface Lot {
   supplier_name: string;
   product_name: string;
   created_at: string;
+  locations: string[];
 }
 
 export interface ReceiptItem {
@@ -474,6 +479,7 @@ export interface Location {
   updated_at: string;
   stock_line_count: number;
   lpn_count: number;
+  lot_count: number;
   serial_count: number;
   total_quantity: number;
   stock_value: number;
@@ -883,11 +889,13 @@ export interface ShipmentItem {
   id: number;
   shipment_id: number;
   product_id: number;
+  location_id: number | null;
   quantity_ordered: number;
   quantity_picked: number;
   quantity_packed: number;
   quantity_shipped: number;
   product_name: string;
+  location_name: string;
   is_serialized: boolean;
 }
 

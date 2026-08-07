@@ -84,3 +84,31 @@ def notify_expiring(db: Session, product: Product) -> list[Notification]:
             link="/products",
         )
     return []
+
+
+def notify_lot_expired(db: Session, lot) -> list[Notification]:
+    """Warn admins that a lot was auto-marked expired by the expiry sweep."""
+    s = _get_settings(db)
+    if not s.expiry_alerts:
+        return []
+    product_name = lot.product.display_name if lot.product else "Unknown product"
+    title = f"Expired stock: {product_name}"
+    message = (
+        f"Lot {lot.lot_number} expired on {lot.expiry_date.isoformat() if lot.expiry_date else '—'} "
+        f"and was marked expired."
+    )
+    created = []
+    for admin in db.query(User).filter(User.role == "admin").all():
+        already = db.query(Notification).filter(
+            Notification.user_id == admin.id,
+            Notification.type == "warning",
+            Notification.title == title,
+            Notification.is_read == False,  # noqa: E712
+        ).first()
+        if already:
+            continue
+        created.append(create_notification(
+            db, admin.id, title, message,
+            type="warning", link="/lots",
+        ))
+    return created

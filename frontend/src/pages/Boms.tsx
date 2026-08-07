@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,12 +14,13 @@ import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function Boms() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<BOM | null>(null);
   const [viewing, setViewing] = useState<BOM | null>(null);
@@ -58,6 +60,7 @@ export default function Boms() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="BOMs table">
           <thead>
             <tr className="bg-app text-left">
@@ -82,7 +85,7 @@ export default function Boms() {
                 <td className="px-4 py-3">{b.item_count}</td>
                 <td className="px-4 py-3">{b.total_cost.toFixed(2)}</td>
                 <td className="px-4 py-3"><span className={`badge ${b.is_active ? "badge-success" : "badge-danger"}`}>{b.is_active ? "Active" : "Inactive"}</span></td>
-                <td className="px-4 py-3 text-muted">{new Date(b.updated_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{formatDate(b.updated_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => setViewing(b)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${b.name}`}><Eye size={16} /></button>
@@ -98,6 +101,7 @@ export default function Boms() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
@@ -179,7 +183,7 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
   return (
     <Modal open onClose={onClose} title={bom ? "Edit BOM" : "New BOM"} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Output Product</label>
             <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!bom} required>
@@ -207,19 +211,19 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
           </div>
           <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (
-              <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-8">
+              <div key={idx} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
+                <div className="sm:col-span-8">
                   <label className="block text-xs font-medium text-muted mb-1">Product</label>
                   <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                     <option value="">Select...</option>
                     {products.filter((p) => p.id !== Number(productId)).map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
                   </select>
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-muted mb-1">Qty</label>
                   <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove component">
                     <Trash2 size={16} />
                   </button>

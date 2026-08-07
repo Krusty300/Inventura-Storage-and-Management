@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Eye, Fingerprint } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +12,7 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 const STATUS_FILTERS = [
   { value: "", label: "All" },
@@ -36,10 +37,11 @@ function statusBadge(status: string) {
 }
 
 export default function SerialNumbers() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [viewing, setViewing] = useState<SerialNumber | null>(null);
   const debouncedSearch = useDebounce(search, 300);
 
@@ -80,6 +82,7 @@ export default function SerialNumbers() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Serial numbers table">
           <thead>
             <tr className="bg-app text-left">
@@ -104,7 +107,7 @@ export default function SerialNumbers() {
                 <td className="px-4 py-3 text-muted">{s.lot_number || "—"}</td>
                 <td className="px-4 py-3 text-muted">{s.location_name || "—"}</td>
                 <td className="px-4 py-3">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
-                <td className="px-4 py-3 text-muted">{s.sold_at ? new Date(s.sold_at).toLocaleDateString() : "—"}</td>
+                <td className="px-4 py-3 text-muted">{s.sold_at ? formatDate(s.sold_at) : "—"}</td>
                 <td className="px-4 py-3">
                   <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${s.serial_number}`}><Eye size={16} /></button>
                 </td>
@@ -112,6 +115,7 @@ export default function SerialNumbers() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />

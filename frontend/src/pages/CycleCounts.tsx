@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { Eye, ClipboardCheck, Plus, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,12 +14,13 @@ import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function CycleCounts() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [viewing, setViewing] = useState<CycleCount | null>(null);
   const [counting, setCounting] = useState<CycleCount | null>(null);
@@ -59,6 +61,7 @@ export default function CycleCounts() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Cycle counts table">
           <thead>
             <tr className="bg-app text-left">
@@ -87,7 +90,7 @@ export default function CycleCounts() {
                     {c.total_variance > 0 ? "+" : ""}{c.total_variance}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-muted">{new Date(c.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{formatDate(c.created_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${c.cc_number}`}><Eye size={16} /></button>
@@ -100,6 +103,7 @@ export default function CycleCounts() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
@@ -214,7 +218,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   return (
     <Modal open onClose={onClose} title="New Cycle Count" wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1" htmlFor="cc-location">Location</label>
             <select id="cc-location" className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)} required>
@@ -237,8 +241,8 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           </div>
           <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (
-              <div key={idx} className="p-4 grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-7">
+              <div key={idx} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
+                <div className="sm:col-span-7">
                   <label className="block text-xs font-medium text-muted mb-1" htmlFor={`cc-product-${idx}`}>Product</label>
                   <select id={`cc-product-${idx}`} className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
                     <option value="">Select...</option>
@@ -247,11 +251,11 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
                       : productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
                   </select>
                 </div>
-                <div className="col-span-3">
+                <div className="sm:col-span-3">
                   <label className="block text-xs font-medium text-muted mb-1">Expected (system)</label>
                   <input type="number" className="input bg-subtle" value={expectedQty(row.product_id)} readOnly />
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
                     <Trash2 size={16} />
                   </button>
@@ -272,6 +276,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 }
 
 function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () => void }) {
+  const formatDate = useDateFormat();
   return (
     <Modal open onClose={onClose} title={`Cycle Count ${count.cc_number}`} wide>
       <div className="space-y-4">
@@ -286,7 +291,7 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
           </div>
           <div>
             <p className="text-muted">Completed</p>
-            <p className="font-medium">{count.completed_at ? new Date(count.completed_at).toLocaleDateString() : "—"}</p>
+            <p className="font-medium">{count.completed_at ? formatDate(count.completed_at) : "—"}</p>
           </div>
         </div>
         <div className="border border-border rounded-lg overflow-hidden">
@@ -397,11 +402,11 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
             const now = onHandNow[item.product_id];
             const onHandChanged = now != null && now !== item.expected_qty;
             return (
-              <div key={item.id} className="p-4 grid grid-cols-12 gap-2 items-center">
-                <div className="col-span-5">
+              <div key={item.id} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-center">
+                <div className="sm:col-span-5">
                   <p className="text-sm font-medium">{item.product_name}</p>
                 </div>
-                <div className="col-span-2 text-sm text-muted">
+                <div className="sm:col-span-2 text-sm text-muted">
                   Expected: {item.expected_qty}
                   {onHandChanged && (
                     <span className={`block text-xs font-medium ${onHandChanged ? "text-amber-600 dark:text-amber-400" : ""}`}>
@@ -409,7 +414,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
                     </span>
                   )}
                 </div>
-                <div className="col-span-3">
+                <div className="sm:col-span-3">
                   <input
                     type="number"
                     min={0}
@@ -419,7 +424,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
                     aria-label={`Counted quantity for ${item.product_name}`}
                   />
                 </div>
-                <div className="col-span-2 text-sm">
+                <div className="sm:col-span-2 text-sm">
                   {variance !== 0 && (
                     <span className={variance > 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
                       {variance > 0 ? "+" : ""}{variance}

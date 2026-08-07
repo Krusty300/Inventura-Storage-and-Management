@@ -81,4 +81,16 @@ describe("Customers Page", () => {
     expect(await screen.findByText("Frequently Purchased")).toBeInTheDocument();
     expect(await screen.findByText("No purchase history yet.")).toBeInTheDocument();
   });
+
+  it("uses the default items per page from settings", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { default_items_per_page: 10 } });
+      if (url === "/customers") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Customers />);
+    await vi.waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith("/customers", expect.objectContaining({ params: expect.objectContaining({ limit: "10" }) }))
+    );
+  });
 });

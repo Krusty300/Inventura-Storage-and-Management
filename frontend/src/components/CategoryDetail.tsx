@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function CategoryDetail({ category, onClose }: Props) {
+  const formatDate = useDateFormat();
   const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
   const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
 
@@ -52,7 +54,7 @@ export default function CategoryDetail({ category, onClose }: Props) {
           </div>
           <div>
             <span className="text-muted">Created:</span>
-            <p className="font-medium mt-1">{new Date(category.created_at).toLocaleDateString()}</p>
+            <p className="font-medium mt-1">{formatDate(category.created_at)}</p>
           </div>
         </div>
 

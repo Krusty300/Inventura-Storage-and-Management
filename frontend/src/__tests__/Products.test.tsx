@@ -85,4 +85,33 @@ describe("Products Page", () => {
     renderWithProviders(<Products />);
     expect(await screen.findByText("No products found")).toBeInTheDocument();
   });
+
+  it("shows a quarantine badge when a product holds quarantined units", async () => {
+    mockProducts([makeProduct({ id: 5, sku: "Q-1", name: "Quarantined Item", quantity: 10, reorder_level: 5, quarantined_qty: 4 })]);
+    renderWithProviders(<Products />);
+    expect(await screen.findByText("Quarantined Item")).toBeInTheDocument();
+    expect(screen.getByText("Q4")).toBeInTheDocument();
+    expect(screen.queryByText("Q5")).not.toBeInTheDocument();
+  });
+
+  it("sums quarantined units across a variant group on the parent row", async () => {
+    const parent = makeProduct({ id: 6, sku: "PG-6", name: "Group Item" });
+    const v1 = makeVariant(parent, { quarantined_qty: 2 });
+    const v2 = makeVariant(parent, { id: 61, quarantined_qty: 3 });
+    mockProducts([{ ...parent, variants: [v1, v2] }]);
+    renderWithProviders(<Products />);
+    await screen.findByText("Group Item");
+    expect(screen.getByText("Q5")).toBeInTheDocument();
+  });
+
+  it("flags low stock based on sellable quantity excluding quarantined units", async () => {
+    const items = [
+      makeProduct({ id: 7, sku: "LS-1", name: "Sellable Low", quantity: 10, reorder_level: 8, quarantined_qty: 4 }),
+      makeProduct({ id: 8, sku: "LS-2", name: "Sellable Fine", quantity: 10, reorder_level: 8, quarantined_qty: 1 }),
+    ];
+    mockProducts(items);
+    renderWithProviders(<Products />);
+    await screen.findByText("Sellable Low");
+    expect(screen.getByLabelText("Low stock")).toBeInTheDocument();
+  });
 });

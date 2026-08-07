@@ -86,7 +86,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   return (
     <Modal open onClose={onClose} title="New Sale" wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Customer</label>
             <select className="select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
@@ -128,10 +128,10 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     ))}
                   </select>
                 </div>
-                <div className="w-20">
+                <div className="w-16 sm:w-20">
                   <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", e.target.value)} min="1" required />
                 </div>
-                <div className="w-24">
+                <div className="w-20 sm:w-24">
                   <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price} onChange={(e) => updateItem(idx, "unit_price", e.target.value)} step="0.01" required />
                 </div>
                 {items.length > 1 && (

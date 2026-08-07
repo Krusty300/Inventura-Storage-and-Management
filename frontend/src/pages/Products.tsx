@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, PackagePlus } from "lucide-react";
@@ -24,7 +25,7 @@ import { formatCurrency } from "../utils/currency";
 import { parseLocalDate } from "../utils/date";
 import { hasVariants } from "../utils/variants";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 interface DisplayRow {
   kind: "parent" | "variant";
@@ -32,6 +33,7 @@ interface DisplayRow {
 }
 
 export default function Products() {
+  const formatDate = useDateFormat();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -40,7 +42,7 @@ export default function Products() {
   const [sortKey, setSortKey] = useState<string>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -165,8 +167,8 @@ export default function Products() {
     if (!p.expiry_date) return <span className="text-faint">—</span>;
     const days = Math.ceil((parseLocalDate(p.expiry_date).getTime() - Date.now()) / 86400000);
     if (days < 0) return <span className="badge badge-danger">Expired</span>;
-    if (days <= 30) return <span className="badge badge-warning">Expires {parseLocalDate(p.expiry_date).toLocaleDateString()}</span>;
-    return <span className="text-muted text-xs">{parseLocalDate(p.expiry_date).toLocaleDateString()}</span>;
+    if (days <= 30) return <span className="badge badge-warning">Expires {formatDate(p.expiry_date)}</span>;
+    return <span className="text-muted text-xs">{formatDate(p.expiry_date)}</span>;
   };
 
   const allSelected = parents.length > 0 && parents.every((p) => selectedIds.has(p.id));
@@ -183,6 +185,13 @@ export default function Products() {
   };
 
   const qtyOf = (r: DisplayRow) => (r.kind === "parent" && hasVariants(r.product) ? r.product.total_quantity : r.product.quantity);
+  const quarantinedQtyOf = (r: DisplayRow) => {
+    if (r.kind === "parent" && hasVariants(r.product)) {
+      return (r.product.quarantined_qty || 0) + r.product.variants.reduce((sum, v) => sum + (v.quarantined_qty || 0), 0);
+    }
+    return r.product.quarantined_qty || 0;
+  };
+  const sellableQtyOf = (r: DisplayRow) => qtyOf(r) - quarantinedQtyOf(r);
 
   return (
     <div className="space-y-6">
@@ -286,8 +295,11 @@ export default function Products() {
                 <EmptyState title="No products found" message="Add your first product to start building inventory." actionLabel="Add Product" onAction={() => { setEditing(null); setVariantParent(null); setShowForm(true); }} />
               ) : rows.map((r) => {
                 const p = r.product;
-                const qty = qtyOf(r);
                 const isGroup = r.kind === "parent" && hasVariants(p);
+                const qty = qtyOf(r);
+                const quarantined = quarantinedQtyOf(r);
+                const sellable = sellableQtyOf(r);
+                const isLowStock = sellable <= p.reorder_level && !isGroup;
                 const isCollapsed = isGroup && collapsed.has(p.id);
                 return (
                   <tr key={`${r.kind}-${p.id}`} className={r.kind === "variant" ? "bg-app/60 hover:bg-subtle" : "hover:bg-app"}>
@@ -324,7 +336,7 @@ export default function Products() {
                         {p.is_serialized && (
                           <span className="badge bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">Serialized</span>
                         )}
-                        {qty <= p.reorder_level && !isGroup && (
+                        {isLowStock && (
                           <AlertTriangle size={14} className="text-red-500" aria-label="Low stock" />
                         )}
                       </div>
@@ -334,9 +346,16 @@ export default function Products() {
                     <td className="px-4 py-3">{formatCurrency(p.unit_price, currencySymbol)}</td>
                     <td className="px-4 py-3">{formatCurrency(p.cost_price, currencySymbol)}</td>
                     <td className="px-4 py-3">
-                      <span className={qty <= p.reorder_level && !isGroup ? "text-red-600 dark:text-red-400 font-medium" : ""}>
-                        {qty}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={isLowStock ? "text-red-600 dark:text-red-400 font-medium" : ""}>
+                          {qty}
+                        </span>
+                        {quarantined > 0 && (
+                          <span className="badge badge-warning" title={`${quarantined} unit(s) in quarantined lots`}>
+                            Q{quarantined}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-muted">{p.location}</td>
                     <td className="px-4 py-3 text-muted">{p.batch_number || "—"}</td>
@@ -463,7 +482,7 @@ export default function Products() {
             <tbody className="divide-y divide-border">
               {movements.map((m) => (
                 <tr key={m.id}>
-                  <td className="px-3 py-2 text-muted">{new Date(m.created_at).toLocaleDateString()}</td>
+                  <td className="px-3 py-2 text-muted">{formatDate(m.created_at)}</td>
                   <td className="px-3 py-2"><span className={`badge ${m.movement_type === "in" ? "badge-success" : "badge-danger"}`}>{m.movement_type}</span></td>
                   <td className="px-3 py-2"><span className={m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{m.quantity_change > 0 ? "+" : ""}{m.quantity_change}</span></td>
                   <td className="px-3 py-2 text-muted">{m.reference}</td>

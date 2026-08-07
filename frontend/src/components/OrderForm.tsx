@@ -214,11 +214,11 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
                     ))}
                   </select>
                 </div>
-                <div className="w-20">
+                <div className="w-16 sm:w-20">
                   <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity}
                     onChange={(e) => updateItem(idx, "quantity", e.target.value)} min="1" required />
                 </div>
-                <div className="w-24">
+                <div className="w-20 sm:w-24">
                   <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price}
                     onChange={(e) => updateItem(idx, "unit_price", e.target.value)} step="0.01" required />
                 </div>

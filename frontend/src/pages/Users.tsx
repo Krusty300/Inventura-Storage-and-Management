@@ -1,3 +1,4 @@
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Shield, ShieldOff, Eye, KeyRound, Trash2, Download } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,12 +26,13 @@ interface User {
 
 const PASSWORD_HINT = "At least 8 characters.";
 
-const PAGE_SIZE = 25;
+import { usePageSize } from "../hooks/usePageSize";
 
 export default function Users() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { pageSize, setPageSize } = usePageSize();
   const [sortBy, setSortBy] = useState("username");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -69,8 +71,8 @@ export default function Users() {
         u.username,
         u.email,
         u.role,
-        u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : "",
-        new Date(u.created_at).toLocaleDateString(),
+        u.last_login_at ? formatDate(u.last_login_at) : "",
+        formatDate(u.created_at),
       ]),
       "users"
     );
@@ -146,6 +148,7 @@ export default function Users() {
       </div>
 
       <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Users table">
           <thead>
             <tr className="bg-app text-left">
@@ -191,8 +194,8 @@ export default function Users() {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-muted">{u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : "Never"}</td>
-                <td className="px-4 py-3 text-muted">{new Date(u.created_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted">{u.last_login_at ? formatDate(u.last_login_at) : "Never"}</td>
+                <td className="px-4 py-3 text-muted">{formatDate(u.created_at)}</td>
                 <td className="px-4 py-3">
                   {editingId === u.id ? (
                     <div className="flex gap-2">
@@ -218,6 +221,7 @@ export default function Users() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {viewing && <UserDetail user={viewing} onClose={() => setViewing(null)} />}

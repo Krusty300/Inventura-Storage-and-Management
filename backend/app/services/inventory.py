@@ -1,9 +1,11 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Location, Lot, Product, SerialNumber, StockLine, StockMovement
+from app.services.notify import notify_lot_expired
+from app.utils import broadcast_change
 
 
 class InventoryError(Exception):
@@ -149,17 +151,49 @@ def quarantined_qty_subquery():
     )
 
 
-def quarantined_qty_by_product(db: Session) -> dict[int, int]:
-    """Map of product_id -> quantity held in quarantined lots."""
-    rows = (
-        db.execute(
-            select(StockLine.product_id, func.sum(StockLine.quantity))
-            .join(Lot, StockLine.lot_id == Lot.id)
-            .where(Lot.status == "quarantined")
-            .group_by(StockLine.product_id)
-        ).all()
+def quarantined_qty_by_product(db: Session, product_ids: list[int] | None = None) -> dict[int, int]:
+    """Map of product_id -> quantity held in quarantined lots.
+
+    Optionally restricted to ``product_ids`` so a page of products can be
+    annotated without scanning the whole stock_lines table.
+    """
+    stmt = (
+        select(StockLine.product_id, func.sum(StockLine.quantity))
+        .join(Lot, StockLine.lot_id == Lot.id)
+        .where(Lot.status == "quarantined")
     )
+    if product_ids:
+        stmt = stmt.where(StockLine.product_id.in_(product_ids))
+    rows = db.execute(stmt.group_by(StockLine.product_id)).all()
     return {int(r[0]): int(r[1] or 0) for r in rows}
+
+
+def expire_overdue_lots(db: Session) -> int:
+    """Flip ``in_stock`` lots whose expiry date has passed to ``expired``.
+
+    Runs on startup and on the read endpoints that surface lot or sellable
+    stock, so overdue lots are reflected without waiting for a manual status
+    change. Quarantined lots are intentionally left as-is for manual resolution.
+    """
+    overdue = (
+        db.query(Lot)
+        .filter(
+            Lot.expiry_date.isnot(None),
+            Lot.expiry_date < date.today(),
+            Lot.status == "in_stock",
+        )
+        .all()
+    )
+    for lot in overdue:
+        lot.status = "expired"
+    if not overdue:
+        return 0
+    db.commit()
+    broadcast_change("lot", "updated")
+    for lot in overdue:
+        notify_lot_expired(db, lot)
+    db.commit()
+    return len(overdue)
 
 
 def allocate_lots(
@@ -314,6 +348,8 @@ def post_journal_entry(
             serial.sold_at = None
             if to_location_id is not None:
                 serial.location_id = to_location_id
+            if lpn_id is not None or movement_type == TRANSFER_IN:
+                serial.lpn_id = lpn_id
         else:
             if movement_type == SALE or movement_type == SHIP:
                 serial.status = SERIAL_STATUS_SOLD
@@ -596,3 +632,244 @@ def transfer_stock(
     out.transfer_id = inbound.id
     inbound.transfer_id = out.id
     return [out, inbound]
+
+
+def _location_lines(
+    db: Session,
+    *,
+    product_id: int,
+    location_id: int,
+    lot_id: int | None = None,
+    sellable_only: bool = False,
+) -> list[StockLine]:
+    """Positive stock lines for a product at a location, loose (non-LPN) first.
+
+    With ``sellable_only=True``, lines held in non-``in_stock`` lots (quarantined
+    or expired) are excluded so manual movements mirror what allocations can use.
+    """
+    stmt = (
+        select(StockLine)
+        .where(
+            StockLine.product_id == product_id,
+            StockLine.location_id == location_id,
+            StockLine.quantity > 0,
+        )
+        .order_by(StockLine.lpn_id.is_(None).desc(), StockLine.id.asc())
+    )
+    if sellable_only:
+        stmt = stmt.outerjoin(Lot, StockLine.lot_id == Lot.id).where(
+            (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock")
+        )
+    if lot_id is not None:
+        stmt = stmt.where(StockLine.lot_id == lot_id)
+    return list(db.execute(stmt).scalars().all())
+
+
+def _blocked_lot_stock(
+    db: Session,
+    *,
+    product_id: int,
+    location_id: int | None = None,
+    lpn_id: int | None = None,
+) -> list[tuple[str, str, int]]:
+    """Non-sellable lot stock (quarantined/expired) at the given scope, returned
+    as ``(lot_number, status, quantity)`` rows for error reporting."""
+    stmt = (
+        select(StockLine, Lot)
+        .join(Lot, StockLine.lot_id == Lot.id)
+        .where(
+            StockLine.product_id == product_id,
+            StockLine.quantity > 0,
+            Lot.status != "in_stock",
+        )
+    )
+    if location_id is not None:
+        stmt = stmt.where(StockLine.location_id == location_id)
+    if lpn_id is not None:
+        stmt = stmt.where(StockLine.lpn_id == lpn_id)
+    rows = db.execute(stmt).all()
+    return [(lot.lot_number, lot.status, int(line.quantity)) for line, lot in rows]
+
+
+def _blocked_lot_message(rows: list[tuple[str, str, int]]) -> str:
+    if not rows:
+        return ""
+    details = ", ".join(f"'{num}' ({status}, {qty})" for num, status, qty in rows)
+    return f"stock in quarantined or expired lots cannot be transferred or moved: {details}"
+
+
+def _post_line_transfer_pairs(
+    db: Session,
+    *,
+    product_id: int,
+    user_id: int,
+    lines: list[StockLine],
+    quantity: int,
+    from_location_id: int,
+    to_location_id: int,
+    inbound_lpn_id: int | None,
+    reference_type: str = "",
+    reference: str = "",
+    notes: str = "",
+) -> list[StockMovement]:
+    """Consume `quantity` across the given stock lines, posting a matched
+    transfer_out / transfer_in pair per line. Inbound legs land with
+    `inbound_lpn_id` (None = loose stock at the destination)."""
+    movements: list[StockMovement] = []
+    remaining = quantity
+    for line in lines:
+        if remaining <= 0:
+            break
+        take = min(line.quantity, remaining)
+        if take <= 0:
+            continue
+        out = post_journal_entry(
+            db, product_id=product_id, user_id=user_id,
+            quantity_change=-take, movement_type=TRANSFER_OUT,
+            from_location_id=from_location_id, to_location_id=to_location_id,
+            lot_id=line.lot_id, lpn_id=line.lpn_id,
+            reference_type=reference_type, reference=reference, notes=notes,
+        )
+        inbound = post_journal_entry(
+            db, product_id=product_id, user_id=user_id,
+            quantity_change=take, movement_type=TRANSFER_IN,
+            from_location_id=from_location_id, to_location_id=to_location_id,
+            lot_id=line.lot_id, lpn_id=inbound_lpn_id,
+            reference_type=reference_type, reference=reference, notes=notes,
+        )
+        out.transfer_id = inbound.id
+        inbound.transfer_id = out.id
+        movements.extend([out, inbound])
+        remaining -= take
+    if remaining > 0:
+        raise InventoryError(f"Insufficient stock to satisfy transfer of {quantity}")
+    return movements
+
+
+def transfer_from_location(
+    db: Session,
+    *,
+    product_id: int,
+    user_id: int,
+    quantity: int,
+    from_location_id: int,
+    to_location_id: int,
+    lot_id: int | None = None,
+    transfer_id: int | None = None,
+    reference_type: str = "",
+    reference: str = "",
+    notes: str = "",
+) -> list[StockMovement]:
+    """Move `quantity` of a non-serialized product between locations.
+
+    Consumes from the source location's stock lines across every LPN identity
+    (non-LPN lines first, then LPN-held lines) so the full on-hand shown in the
+    transfer modal is actually moveable. Inbound legs land as non-LPN stock at
+    the destination, so partial LPN contents are unloaded rather than dragged to
+    the new location against the LPN's real location.
+    """
+    if quantity <= 0:
+        raise InventoryError("Transfer quantity must be positive")
+    if from_location_id == to_location_id:
+        raise InventoryError("Source and destination locations must differ")
+    lines = _location_lines(db, product_id=product_id, location_id=from_location_id, lot_id=lot_id, sellable_only=True)
+    sellable_total = sum(line.quantity for line in lines)
+    if quantity > sellable_total:
+        blocked = _blocked_lot_stock(db, product_id=product_id, location_id=from_location_id)
+        if blocked:
+            raise InventoryError(
+                f"Insufficient sellable stock: need {quantity}, on hand {sellable_total}. {_blocked_lot_message(blocked)}"
+            )
+        raise InventoryError(f"Insufficient stock: need {quantity}, on hand {sellable_total}")
+    return _post_line_transfer_pairs(
+        db, product_id=product_id, user_id=user_id, lines=lines, quantity=quantity,
+        from_location_id=from_location_id, to_location_id=to_location_id,
+        inbound_lpn_id=None, reference_type=reference_type, reference=reference, notes=notes,
+    )
+
+
+def load_into_lpn(
+    db: Session,
+    *,
+    product_id: int,
+    user_id: int,
+    quantity: int,
+    location_id: int,
+    lpn_id: int,
+    lot_id: int | None = None,
+    reference: str = "",
+    notes: str = "",
+) -> list[StockMovement]:
+    """Move `quantity` of loose stock at a location into the LPN's stock line.
+
+    Consumes the location's stock across every LPN identity (loose first, then
+    LPN-held) and re-lands it on the LPN, so partial contents of other LPNs at
+    the same location can also be consolidated. Posts a transfer pair per source
+    line, with the inbound leg carrying the destination LPN.
+    """
+    if quantity <= 0:
+        raise InventoryError("Load quantity must be positive")
+    lines = _location_lines(db, product_id=product_id, location_id=location_id, lot_id=lot_id, sellable_only=True)
+    sellable_total = sum(line.quantity for line in lines)
+    if quantity > sellable_total:
+        blocked = _blocked_lot_stock(db, product_id=product_id, location_id=location_id)
+        if blocked:
+            raise InventoryError(
+                f"Insufficient sellable stock: need {quantity}, on hand {sellable_total}. {_blocked_lot_message(blocked)}"
+            )
+        raise InventoryError(f"Insufficient stock: need {quantity}, on hand {sellable_total}")
+    return _post_line_transfer_pairs(
+        db, product_id=product_id, user_id=user_id, lines=lines, quantity=quantity,
+        from_location_id=location_id, to_location_id=location_id,
+        inbound_lpn_id=lpn_id, reference_type="lpn_load", reference=reference, notes=notes,
+    )
+
+
+def unload_from_lpn(
+    db: Session,
+    *,
+    product_id: int,
+    user_id: int,
+    quantity: int,
+    location_id: int,
+    lpn_id: int,
+    to_location_id: int,
+    lot_id: int | None = None,
+    reference: str = "",
+    notes: str = "",
+) -> list[StockMovement]:
+    """Move `quantity` out of an LPN to loose stock at the destination location.
+
+    Consumes the LPN's stock lines (lot-aware when `lot_id` is given) and lands
+    the quantity as non-LPN stock at the destination. Posts a transfer pair per
+    source line so the ledger stays consistent and reversible.
+    """
+    if quantity <= 0:
+        raise InventoryError("Unload quantity must be positive")
+    stmt = (
+        select(StockLine)
+        .where(
+            StockLine.product_id == product_id,
+            StockLine.lpn_id == lpn_id,
+            StockLine.quantity > 0,
+        )
+        .outerjoin(Lot, StockLine.lot_id == Lot.id)
+        .where((StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"))
+        .order_by(StockLine.id.asc())
+    )
+    if lot_id is not None:
+        stmt = stmt.where(StockLine.lot_id == lot_id)
+    lines = list(db.execute(stmt).scalars().all())
+    sellable_total = sum(line.quantity for line in lines)
+    if quantity > sellable_total:
+        blocked = _blocked_lot_stock(db, product_id=product_id, lpn_id=lpn_id)
+        if blocked:
+            raise InventoryError(
+                f"Insufficient sellable stock: need {quantity}, on hand {sellable_total}. {_blocked_lot_message(blocked)}"
+            )
+        raise InventoryError(f"Insufficient stock: need {quantity}, on hand {sellable_total}")
+    return _post_line_transfer_pairs(
+        db, product_id=product_id, user_id=user_id, lines=lines, quantity=quantity,
+        from_location_id=location_id, to_location_id=to_location_id,
+        inbound_lpn_id=None, reference_type="lpn_unload", reference=reference, notes=notes,
+    )
