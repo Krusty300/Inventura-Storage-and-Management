@@ -12,8 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
-from sqlalchemy import String, cast, func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import String, case, cast, exists, func, select
+from sqlalchemy.orm import Session, joinedload, aliased
 from app.database import get_db
 from app.models.category import Category
 from app.models.location import Location
@@ -163,8 +163,17 @@ def list_products(
         else:
             q = q.order_by(label_col.desc().nulls_last())
     else:
-        col = getattr(Product, sort_by, Product.name)
-        q = q.order_by(col.asc() if sort_dir == "asc" else col.desc())
+        if sort_by == "quantity" and include_variants:
+            V = aliased(Product)
+            variant_sum = select(func.coalesce(func.sum(V.quantity), 0)).where(
+                V.parent_id == Product.id, V.is_active == True
+            )
+            has_variants = exists().where(V.parent_id == Product.id, V.is_active == True)
+            total = case((has_variants, variant_sum), else_=Product.quantity)
+            q = q.order_by(total.asc() if sort_dir == "asc" else total.desc())
+        else:
+            col = getattr(Product, sort_by, Product.name)
+            q = q.order_by(col.asc() if sort_dir == "asc" else col.desc())
     items = q.offset(skip).limit(limit).all()
     results = []
     for p in items:
@@ -198,7 +207,7 @@ class BulkEditRequest(BaseModel):
 @router.patch("/bulk-edit")
 def bulk_edit_products(data: BulkEditRequest, db: Session = Depends(get_db), user=Depends(require_permission("products.bulk"))):
     validate_refs(db, data.category_id, data.supplier_id)
-    products = db.query(Product).filter(Product.id.in_(data.ids), Product.is_active == True).all()
+    products = db.query(Product).filter(Product.id.in_(data.ids)).all()
     if not products:
         raise HTTPException(status_code=404, detail="No products found")
     updates = {}
@@ -622,14 +631,17 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
     for row_idx, row in enumerate(reader, start=2):
         sku = (row.get("sku") or "").strip()
         name = (row.get("name") or "").strip()
-        if not sku or not name:
-            result.errors.append(f"Row {row_idx}: missing required field 'sku' or 'name'")
+        parent_sku = (row.get("parent_sku") or "").strip()
+        if not sku:
+            result.errors.append(f"Row {row_idx}: missing required field 'sku'")
+            continue
+        if not name and not parent_sku:
+            result.errors.append(f"Row {row_idx}: missing required field 'name' (or 'parent_sku' for a variant)")
             continue
         if db.query(Product).filter(Product.sku == sku).first():
             result.skipped += 1
             continue
         try:
-            parent_sku = (row.get("parent_sku") or "").strip()
             attrs_raw = (row.get("attributes") or "").strip()
             parent = None
             attrs = None
@@ -637,6 +649,11 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
                 parent = db.query(Product).filter(Product.sku == parent_sku).first()
                 if not parent:
                     result.errors.append(f"Row {row_idx} ({sku}): parent_sku '{parent_sku}' not found")
+                    continue
+                if parent.parent_id is not None:
+                    result.errors.append(
+                        f"Row {row_idx} ({sku}): parent_sku '{parent_sku}' is itself a variant - variants can only be created from a top-level product"
+                    )
                     continue
                 if parent.is_serialized:
                     result.errors.append(f"Row {row_idx} ({sku}): cannot create variants for serialized parent '{parent.sku}'")
@@ -649,11 +666,31 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
                 except Exception as e:
                     result.errors.append(f"Row {row_idx} ({sku}): invalid attributes JSON: {e}")
                     continue
+            if parent is not None and attrs is not None:
+                duplicate = any(
+                    (v.attributes or {}) == attrs
+                    for v in db.query(Product).filter(Product.parent_id == parent.id, Product.is_active == True).all()
+                )
+                if duplicate:
+                    result.errors.append(
+                        f"Row {row_idx} ({sku}): a variant of '{parent.sku}' with these attributes already exists"
+                    )
+                    continue
             is_serialized = (row.get("is_serialized") or "").strip().lower() in ("1", "true", "yes", "y")
             qty = int(row.get("quantity") or 0)
             if is_serialized and qty != 0:
                 result.errors.append(f"Row {row_idx} ({sku}): serialized products cannot have opening quantity")
                 continue
+            expiry_raw = (row.get("expiry_date") or "").strip()
+            expiry_date = None
+            if expiry_raw:
+                try:
+                    expiry_date = date.fromisoformat(expiry_raw)
+                except ValueError:
+                    result.errors.append(f"Row {row_idx} ({sku}): invalid expiry_date '{expiry_raw}' (expected YYYY-MM-DD)")
+                    continue
+            active_raw = (row.get("is_active") or "").strip()
+            is_active = True if not active_raw else active_raw.lower() in ("1", "true", "yes", "y")
             loc_text = (row.get("location") or "").strip()
             if parent is not None:
                 loc_id = parent.location_id
@@ -685,6 +722,9 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
                 location=(row.get("location") or "").strip(),
                 location_id=loc_id,
                 barcode=(row.get("barcode") or "").strip(),
+                batch_number=(row.get("batch_number") or "").strip(),
+                expiry_date=expiry_date,
+                is_active=is_active,
                 is_serialized=is_serialized,
             )
             db.add(p)

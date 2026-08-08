@@ -63,8 +63,18 @@ export default function Products() {
   const debouncedSearch = useDebounce(search, 300);
 
   useEffect(() => {
-    setLowStock(searchParams.get("low_stock") === "1");
+    const s = searchParams.get("search");
+    if (s != null) setSearch(s);
+    const nextLowStock = searchParams.get("low_stock") === "1";
+    setLowStock((prev) => {
+      if (prev !== nextLowStock) setPage(1);
+      return nextLowStock;
+    });
   }, [searchParams]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [debouncedSearch, categoryFilter, expiryFilter, lowStock]);
 
   const { data: categories } = useQuery({
     queryKey: ["categories", 1],
@@ -88,7 +98,7 @@ export default function Products() {
     },
   });
 
-  const { data: movements } = useQuery({
+  const { data: movements, isLoading: movementsLoading, isError: movementsError } = useQuery({
     queryKey: ["product-movements", movementProduct?.id],
     queryFn: async () => {
       const { data } = await api.get(`/products/${movementProduct!.id}/movements`);
@@ -99,8 +109,9 @@ export default function Products() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/products/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       addToast("Product deleted", "success");
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
     onError: () => addToast("Failed to delete product", "error"),
@@ -138,7 +149,12 @@ export default function Products() {
 
   const handleExport = async () => {
     try {
-      const { data } = await api.get("/reports/export/products", { responseType: "blob" });
+      const params: Record<string, string> = {};
+      if (debouncedSearch) params.search = debouncedSearch;
+      if (categoryFilter) params.category_id = categoryFilter;
+      if (expiryFilter) params.expiry = expiryFilter;
+      if (lowStock) params.low_stock = "1";
+      const { data } = await api.get("/reports/export/products", { params, responseType: "blob" });
       downloadBlob(data, "products_report.csv");
       addToast("Products exported to CSV", "success");
     } catch {
@@ -187,11 +203,18 @@ export default function Products() {
   const qtyOf = (r: DisplayRow) => (r.kind === "parent" && hasVariants(r.product) ? r.product.total_quantity : r.product.quantity);
   const quarantinedQtyOf = (r: DisplayRow) => {
     if (r.kind === "parent" && hasVariants(r.product)) {
-      return (r.product.quarantined_qty || 0) + r.product.variants.reduce((sum, v) => sum + (v.quarantined_qty || 0), 0);
+      return (r.product.quarantined_qty || 0) + r.product.variants.filter((v) => v.is_active).reduce((sum, v) => sum + (v.quarantined_qty || 0), 0);
     }
     return r.product.quarantined_qty || 0;
   };
   const sellableQtyOf = (r: DisplayRow) => qtyOf(r) - quarantinedQtyOf(r);
+
+  const movementBadgeClass = (t: string) => {
+    if (["in", "receive", "transfer_in", "sale_return", "count"].includes(t)) return "badge-success";
+    if (["out", "sale", "transfer_out", "issue", "backflush", "return"].includes(t)) return "badge-danger";
+    if (t === "adjustment") return "badge-info";
+    return "badge-neutral";
+  };
 
   return (
     <div className="space-y-6">
@@ -467,8 +490,10 @@ export default function Products() {
       />
 
       <Modal open={!!movementProduct} onClose={() => setMovementProduct(null)} title={`Movements: ${movementProduct?.display_name || ""}`} wide>
-        {movements && movements.length === 0 && <p className="text-muted text-sm">No movements recorded for this product.</p>}
-        {movements && movements.length > 0 && (
+        {movementsLoading && <p className="text-muted text-sm">Loading movements...</p>}
+        {movementsError && <p className="text-red-600 dark:text-red-400 text-sm">Failed to load movements.</p>}
+        {!movementsLoading && !movementsError && movements && movements.length === 0 && <p className="text-muted text-sm">No movements recorded for this product.</p>}
+        {!movementsLoading && !movementsError && movements && movements.length > 0 && (
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
@@ -483,7 +508,7 @@ export default function Products() {
               {movements.map((m) => (
                 <tr key={m.id}>
                   <td className="px-3 py-2 text-muted">{formatDate(m.created_at)}</td>
-                  <td className="px-3 py-2"><span className={`badge ${m.movement_type === "in" ? "badge-success" : "badge-danger"}`}>{m.movement_type}</span></td>
+                  <td className="px-3 py-2"><span className={`badge ${movementBadgeClass(m.movement_type)}`}>{m.movement_type}</span></td>
                   <td className="px-3 py-2"><span className={m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{m.quantity_change > 0 ? "+" : ""}{m.quantity_change}</span></td>
                   <td className="px-3 py-2 text-muted">{m.reference}</td>
                   <td className="px-3 py-2 text-muted">{m.username}</td>

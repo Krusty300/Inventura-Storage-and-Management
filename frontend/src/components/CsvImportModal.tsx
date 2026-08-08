@@ -3,6 +3,7 @@ import { Upload, FileText, CheckCircle, XCircle, AlertTriangle } from "lucide-re
 import api from "../api/client";
 import Modal from "./Modal";
 import { useToast } from "../context/ToastContext";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   onClose: () => void;
@@ -29,14 +30,11 @@ export default function CsvImportModal({ onClose, onImported }: Props) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const { data } = await api.post("/products/import-csv", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const { data } = await api.post("/products/import-csv", form);
       setResult(data);
       if (data.created > 0) addToast(`${data.created} products imported`, "success");
-      if (data.created > 0) onImported();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || "Import failed", "error");
+      addToast(errorMessage(err, "Import failed"), "error");
     }
     setImporting(false);
   };
@@ -87,7 +85,7 @@ export default function CsvImportModal({ onClose, onImported }: Props) {
               </div>
             )}
             <div className="flex justify-end">
-              <button onClick={onClose} className="btn-primary">Done</button>
+              <button onClick={() => { onImported(); onClose(); }} className="btn-primary">Done</button>
             </div>
           </>
         )}

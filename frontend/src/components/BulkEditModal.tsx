@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import api from "../api/client";
 import type { Supplier, Category } from "../types";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   ids: number[];
@@ -41,7 +42,7 @@ export default function BulkEditModal({ ids, onClose, onSaved }: Props) {
       await api.patch("/products/bulk-edit", body);
       onSaved();
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Bulk edit failed");
+      setError(errorMessage(err, "Bulk edit failed"));
     }
     setSubmitting(false);
   };

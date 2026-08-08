@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 import csv
 
@@ -585,16 +585,37 @@ def top_suppliers(limit: int = Query(10, ge=1, le=100), days: int | None = Query
 
 
 @router.get("/export/products")
-def export_products(db: Session = Depends(get_db)):
-    products = db.query(Product).options(
+def export_products(
+    search: str = "",
+    category_id: int | None = None,
+    expiry: str = "",
+    low_stock: bool = False,
+    db: Session = Depends(get_db),
+):
+    q = db.query(Product).options(
         joinedload(Product.category), joinedload(Product.supplier)
-    ).filter(Product.is_active == True).order_by(Product.name).all()  # noqa: E712
+    )
+    if search:
+        like = f"%{search}%"
+        q = q.filter(Product.name.ilike(like) | Product.sku.ilike(like))
+    if category_id:
+        q = q.filter(Product.category_id == category_id)
+    today = date.today()
+    if expiry == "expired":
+        q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date < today)
+    elif expiry == "expiring":
+        soon = today + timedelta(days=30)
+        q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date >= today, Product.expiry_date <= soon)
+    if low_stock:
+        sellable = Product.quantity - func.coalesce(quarantined_qty_subquery(), 0)
+        q = q.filter(Product.is_active == True, Product.id.notin_(Product.variant_parent_id_subquery()), sellable <= Product.reorder_level)  # noqa: E712
+    products = q.order_by(Product.name).all()
     return _csv_response(
         "products_report",
-        ["SKU", "Name", "Category", "Supplier", "Quantity", "Unit Cost", "Unit Price", "Margin %", "Stock Value (Cost)", "Stock Value (Retail)"],
+        ["SKU", "Name", "Category", "Supplier", "Quantity", "Unit Cost", "Unit Price", "Margin %", "Stock Value (Cost)", "Stock Value (Retail)", "Batch", "Expiry"],
         [[p.sku, p.display_name, p.category_name, p.supplier_name, p.quantity, p.cost_price, p.unit_price,
           round(((p.unit_price - p.cost_price) / p.cost_price * 100), 1) if p.cost_price else 0,
-          p.quantity * p.cost_price, p.quantity * p.unit_price] for p in products],
+          p.quantity * p.cost_price, p.quantity * p.unit_price, p.batch_number, p.expiry_date.isoformat() if p.expiry_date else ""] for p in products],
     )
 
 

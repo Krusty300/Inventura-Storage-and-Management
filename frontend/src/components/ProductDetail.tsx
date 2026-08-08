@@ -51,7 +51,6 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   const [confirmStatus, setConfirmStatus] = useState(false);
   const [isActive, setIsActive] = useState(product.is_active);
   const currencySymbol = settings?.currency_symbol || "$";
-  const totalQty = hasVariants(product) ? product.total_quantity : product.quantity;
   const qty = hasVariants(product) ? product.total_quantity : product.quantity;
   const { locations, unallocated } = useProductStockLocations(product.id, product.is_serialized);
 
@@ -103,7 +102,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           </div>
           <div>
             <span className="text-muted">{hasVariants(product) ? "Total Quantity:" : "Quantity:"}</span>
-            <p className={`font-medium ${qty <= product.reorder_level ? "text-red-600 dark:text-red-400" : ""}`}>{totalQty}</p>
+            <p className={`font-medium ${qty <= product.reorder_level ? "text-red-600 dark:text-red-400" : ""}`}>{qty}</p>
           </div>
           <div>
             <span className="text-muted">Reorder Level:</span>
@@ -273,7 +272,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
 
 function TraceSection({ product }: { product: Product }) {
   const formatDate = useDateFormat();
-  const { data: trace, isLoading } = useQuery({
+  const { data: trace, isLoading, isError } = useQuery({
     queryKey: ["trace", product.id],
     queryFn: async () => {
       const { data } = await api.get(`/products/${product.id}/trace`);
@@ -300,6 +299,8 @@ function TraceSection({ product }: { product: Product }) {
       <span className="text-sm text-muted">Traceability:</span>
       {isLoading ? (
         <div className="mt-2 text-sm text-faint">Loading trace...</div>
+      ) : isError ? (
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">Failed to load trace.</p>
       ) : !trace || (trace.incoming.length === 0 && trace.outgoing.length === 0 && trace.work_orders.length === 0) ? (
         <p className="mt-2 text-sm text-muted">No movements or work orders recorded for this product yet.</p>
       ) : (

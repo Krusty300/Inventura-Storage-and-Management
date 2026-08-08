@@ -7,6 +7,7 @@ import { useSettings } from "../hooks/useSettings";
 import Modal from "./Modal";
 import LocationPicker from "./LocationPicker";
 import { hasVariants } from "../utils/variants";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   product: Product | null;
@@ -77,7 +78,12 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
     setSaving(true);
     setError("");
     const locationMatch = locations.find((l) => l.path === form.location.trim());
-    const locationId = locationMatch ? locationMatch.id : (product ? product.location_id ?? null : null);
+    let locationId: number | null = null;
+    if (locationMatch) {
+      locationId = locationMatch.id;
+    } else if (product && form.location.trim() === (product.location || "").trim()) {
+      locationId = product.location_id ?? null;
+    }
     if (!locationId) {
       setError("Every product must be assigned to an active location.");
       setSaving(false);
@@ -91,7 +97,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
       unit_price: parseFloat(form.unit_price) || 0,
       cost_price: parseFloat(form.cost_price) || 0,
       quantity: parseInt(form.quantity) || 0,
-      reorder_level: form.reorder_level === "" ? undefined : parseInt(form.reorder_level) || 10,
+      reorder_level: form.reorder_level === "" ? undefined : Math.max(0, parseInt(form.reorder_level) || 0),
       expiry_date: form.expiry_date || null,
     };
     if (isVariantMode) {
@@ -105,7 +111,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         unit_price: parseFloat(form.unit_price) || 0,
         cost_price: parseFloat(form.cost_price) || 0,
         quantity: parseInt(form.quantity) || 0,
-        reorder_level: form.reorder_level === "" ? undefined : parseInt(form.reorder_level) || 10,
+        reorder_level: form.reorder_level === "" ? undefined : Math.max(0, parseInt(form.reorder_level) || 0),
         location: form.location, barcode: form.barcode,
         batch_number: form.batch_number || "",
         expiry_date: form.expiry_date || null,
@@ -133,7 +139,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
       }
       onSaved();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving product", "error");
+      addToast(errorMessage(err, "Error saving product"), "error");
     }
     setSaving(false);
   };
