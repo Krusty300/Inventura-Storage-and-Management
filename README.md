@@ -4,7 +4,7 @@ A full-stack warehouse and inventory management application covering products (w
 
 - **Backend:** Python 3.11+ / FastAPI / SQLAlchemy 2.0 / SQLite (`backend/`)
 - **Frontend:** React 19 / TypeScript / Vite 8 / Tailwind CSS 4 / React Query (`frontend/`)
-- **Tests:** pytest (377 backend), Vitest + Testing Library (123 frontend)
+- **Tests:** pytest (546 backend), Vitest + Testing Library (236 frontend)
 
 ---
 
@@ -94,7 +94,7 @@ variants and BOMs, 40+ stock lines across multiple locations and lots, ASNs with
 ASN items and receipts, purchase orders (including a received serialized order),
 sales, work orders (with component lot allocations and serialized manufacturing),
 shipments (with pick/pack/ship flow and a shipment-linked sale/invoice), and
-quality checks.
+quality checks (including checks tied to locations).
 
 | Username  | Password    | Role   |
 | --------- | ----------- | ------ |
@@ -127,8 +127,8 @@ inventory-app/
       main.py              # FastAPI app, lifespan, WebSocket, router registration
       config.py            # pydantic-settings (SECRET_KEY, DATABASE_URL)
       database.py          # SQLAlchemy engine, session, run_migrations(), Base
-      models/              # 26 SQLAlchemy 2.0 mapped tables
-      routers/             # 28 APIRouters under /api/*
+      models/              # 27 SQLAlchemy 2.0 mapped model files
+      routers/             # 29 APIRouters under /api/*
       schemas/             # Pydantic request/response models
       services/
         auth.py            # JWT creation, password hashing, get_current_user
@@ -142,18 +142,18 @@ inventory-app/
         password_policy.py # Enforced password complexity
         ratelimit.py       # Login rate-limiting
       ws_manager.py        # WebSocket broadcast manager
-    tests/                 # 35 test files, 377 tests
+    tests/                 # 41 test files, 546 tests
     seed.py                # Wipes + repopulates demo data
   frontend/
     src/
-      pages/               # 25 page components (one per route)
-      components/          # 34 shared components
+      pages/               # 28 page components (one per route)
+      components/          # 41 shared components
       context/             # AuthContext, ToastContext
       hooks/               # useSettings, useDebounce, useSelectableProducts
       utils/               # permissions, currency, date, csv, download, variants
       api/client.ts        # Axios instance with auth interceptor
       types/index.ts       # Shared TypeScript interfaces
-    __tests__/             # 28 test files, 123 tests
+    __tests__/             # 37 test files, 236 tests
 ```
 
 ### Inventory ledger
@@ -227,6 +227,9 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 - **ASNs (Advanced Shipping Notices):** supplier shipment tracking with expected
   arrival, carrier, and item-level quantities. Receiving an ASN creates a
   receipt, adds stock, and logs movements.
+- **Receipt form auto-fill:** picking a supplier filters the product list and
+  auto-fills a single product plus its cost; selecting a location populates an
+  LPN datalist and auto-selects a single LPN.
 - PDF invoice generation for purchase orders.
 
 ### Sales
@@ -235,6 +238,9 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
   tax. Completing a sale decrements stock (FEFO allocation) and marks serials
   as sold.
 - **Refunds:** restore stock and mark serials as in-stock again.
+- **Source locations:** each sale surfaces the stock location(s) each line item
+  was fulfilled from (derived from the "out" movements), shown on the list,
+  detail view, and invoice.
 - **Shipment linkage:** a sale can be linked to a shipment (`Shipment.sale_id`).
   Create Invoice from the shipment detail creates a sale.
 - PDF invoice generation.
@@ -256,9 +262,13 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 ### Quality control
 
 - **Quality checks (QC-xxxx):** create checks per product/lot/work order with
-  result (pending / pass / fail). Dashboard shows pending and failed QC count.
-- **Quarantine management:** quarantined lots are excluded from sellable
-  on-hand. Dashboard tracks quarantined units.
+  result (pending / pass / fail) and an optional **stock location** scope.
+  Dashboard shows pending and failed QC count.
+- **Quarantine management:** failing a check quarantines its lot; quarantined
+  lots are excluded from sellable on-hand and blocked from sales allocation.
+  Dashboard tracks quarantined units.
+- **Location awareness:** QCs can be scoped to a specific location, and the
+  Quality Checks page/detail view show the related location.
 
 ### Shipments (Phase 3, M5)
 
@@ -319,7 +329,7 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 
 ## Data model overview
 
-26 SQLAlchemy 2.0 mapped tables in `backend/app/models/`:
+34 SQLAlchemy 2.0 mapped tables in `backend/app/models/`:
 
 | Model                | Description                                      |
 | -------------------- | ------------------------------------------------ |
@@ -343,6 +353,7 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 | QualityCheck         | QC inspections per product/lot/work order          |
 | CycleCount / CycleCountItem | Warehouse cycle count sessions and lines  |
 | User                 | Accounts with role (admin / worker)               |
+| UserSession          | Login session tracking / revocation                |
 | Notification         | System-generated alerts (low stock, expiry, QC)   |
 | ActivityLog          | Audit trail for all mutations                     |
 | DocumentSequence     | Auto-incrementing document number generators      |
@@ -352,7 +363,7 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 
 ## API overview
 
-All endpoints are under `/api/`. 28 routers in `backend/app/routers/`:
+All endpoints are under `/api/`. 29 routers in `backend/app/routers/`:
 
 | Router           | Prefix             | Key endpoints                                        |
 | ---------------- | ------------------ | ---------------------------------------------------- |
@@ -363,8 +374,8 @@ All endpoints are under `/api/`. 28 routers in `backend/app/routers/`:
 | `customers`      | `/api/customers`   | CRUD, CSV import                                     |
 | `suppliers`      | `/api/suppliers`   | CRUD, CSV import                                     |
 | `locations`      | `/api/locations`   | CRUD, tree, detail (stock + LPN summary)              |
-| `stock`          | `/api/stock`       | Stock movements and adjustments                       |
-| `stock-movements`| `/api/stock-movements` | Movement list with filters                        |
+| `stock-movements`| `/api/stock-movements` | Movement list, transfers, adjustments            |
+| `search`         | `/api/search`      | Global search across entities                         |
 | `receipts`       | `/api/receipts`    | Create receipts (standalone or from PO)               |
 | `orders`         | `/api/orders`      | Purchase orders, receive, auto-reorder, PDF           |
 | `sales`          | `/api/sales`       | Sales CRUD, stats, refund, PDF                        |
@@ -395,7 +406,7 @@ order, sale) to all connected clients.
 
 ## Frontend pages
 
-25 pages in `frontend/src/pages/`:
+28 pages in `frontend/src/pages/`:
 
 | Page             | Route               | Description                                   |
 | ---------------- | ------------------- | --------------------------------------------- |
@@ -407,6 +418,8 @@ order, sale) to all connected clients.
 | Locations        | `/locations`        | Hierarchical tree with search, stock/LPN view |
 | Stock Movements  | `/stock-movements`  | Movement journal with filters                 |
 | Receipts         | `/receiving`        | Goods-received records                        |
+| Lots             | `/lots`             | Lot tracking, quarantine/expiry, genealogy    |
+| Serial Numbers   | `/serial-numbers`   | Individual serialized unit tracking           |
 | ASNs             | `/asns`             | Advanced shipping notices and receiving       |
 | LPNs             | `/lpns`             | License plate numbers and moves               |
 | Cycle Counts     | `/cycle-counts`     | Count sessions and variance posting           |
@@ -423,8 +436,9 @@ order, sale) to all connected clients.
 | Settings         | `/settings`         | Store configuration                           |
 | Activity Log     | `/activity-log`     | Audit trail                                   |
 | Login / Register | `/login`, `/register` | Authentication                             |
+| Profile          | `/profile`           | Current user's profile and preferences       |
 
-34 shared components in `frontend/src/components/` including forms, detail views,
+41 shared components in `frontend/src/components/` including forms, detail views,
 modals, pagination, barcode scanner, location picker, CSV import, skeleton, and
 error boundary.
 
