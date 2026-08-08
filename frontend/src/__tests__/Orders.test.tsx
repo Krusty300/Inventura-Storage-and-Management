@@ -61,7 +61,7 @@ describe("Orders Page", () => {
 
   it("runs auto-reorder through the confirm dialog", async () => {
     mockOrders([mockOrder()]);
-    postMock.mockResolvedValue({ data: { order_number: "PO-2000", items: [{ product_id: 1 }] } });
+    postMock.mockResolvedValue({ data: [{ order_number: "PO-2000", items: [{ product_id: 1 }] }] });
     renderWithProviders(<Orders />);
     fireEvent.click(await screen.findByRole("button", { name: "Auto-reorder low stock" }));
     expect(screen.getByText(/Generate a purchase order for all products/)).toBeInTheDocument();

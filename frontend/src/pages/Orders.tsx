@@ -60,7 +60,10 @@ export default function Orders() {
   const reorderMutation = useMutation({
     mutationFn: () => api.post("/orders/auto-reorder"),
     onSuccess: (res) => {
-      addToast(`Reorder PO #${res.data.order_number} created for ${res.data.items.length} product(s)`, "success");
+      const orders = res.data as { order_number: string; items: unknown[] }[];
+      const totalProducts = orders.reduce((n, o) => n + o.items.length, 0);
+      const numbers = orders.map((o) => `#${o.order_number}`).join(", ");
+      addToast(`Reorder PO ${numbers} created for ${totalProducts} product(s)`, "success");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
     onError: (err: any) => {

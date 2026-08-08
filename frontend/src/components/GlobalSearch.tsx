@@ -95,7 +95,7 @@ export default function GlobalSearch() {
   };
 
   return (
-    <div className="relative z-50">
+    <div className="relative z-10">
       {showPanel && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
 
       <div className="relative flex-1 max-w-2xl">

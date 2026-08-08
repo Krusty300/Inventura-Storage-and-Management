@@ -237,7 +237,10 @@ def test_auto_reorder_skips_above_threshold_and_optouts(auth_headers):
     optout = client.post("/api/products", json={"location_id": 1, "sku": "ORD-OFF", "name": "Opt Out", "cost_price": 5.00, "quantity": 0, "reorder_level": 0}, headers=auth_headers).json()
     resp = client.post("/api/orders/auto-reorder", headers=auth_headers)
     assert resp.status_code == 200
-    items = resp.json()["items"]
+    orders = resp.json()
+    assert isinstance(orders, list)
+    assert len(orders) == 1
+    items = orders[0]["items"]
     assert len(items) == 1
     assert items[0]["product_id"] == low["id"]
     # No demand history: top stock back up to the reorder level.

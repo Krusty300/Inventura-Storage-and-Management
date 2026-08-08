@@ -176,7 +176,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           </div>
         )}
 
-        {!product.is_variant && onAddVariant && (
+        {!product.is_variant && !product.is_serialized && onAddVariant && (
           <div>
             <button onClick={() => onAddVariant(product)} className="btn-secondary w-full inline-flex items-center justify-center gap-2">
               <PackagePlus size={16} /> Add Variant

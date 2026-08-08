@@ -206,11 +206,53 @@ def test_auto_reorder_uses_forecast(auth_headers):
 
     resp = client.post("/api/orders/auto-reorder", headers=auth_headers)
     assert resp.status_code == 200, resp.text
-    order = resp.json()
+    orders = resp.json()
+    assert isinstance(orders, list)
+    assert len(orders) == 1
+    order = orders[0]
     assert order["status"] == "pending"
     assert any(i["product_id"] == prod["id"] for i in order["items"])
     item = next(i for i in order["items"] if i["product_id"] == prod["id"])
     assert item["quantity"] >= 1
+
+
+def test_auto_reorder_places_supplier_on_po(auth_headers):
+    # Create a supplier, a serialized-free product linked to it, sell everything,
+    # and confirm the generated PO carries the product's default supplier.
+    supplier = client.post("/api/suppliers", json={"name": "FC Suppliers Inc."}, headers=auth_headers).json()
+    prod = _make_product(auth_headers, "FC-SUP", "Supplier Item", quantity=5, supplier_id=supplier["id"])
+    client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 5, "unit_price": 10.0}],
+    }, headers=auth_headers)
+
+    resp = client.post("/api/orders/auto-reorder", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    order = resp.json()[0]
+    assert order["supplier_id"] == supplier["id"]
+    assert order["supplier_name"] == "FC Suppliers Inc."
+
+
+def test_auto_reorder_groups_by_supplier(auth_headers):
+    sup_a = client.post("/api/suppliers", json={"name": "Supplier A" }, headers=auth_headers).json()
+    sup_b = client.post("/api/suppliers", json={"name": "Supplier B" }, headers=auth_headers).json()
+    prod_a = _make_product(auth_headers, "FC-GA", "Group A Item", quantity=5, supplier_id=sup_a["id"])
+    prod_b = _make_product(auth_headers, "FC-GB", "Group B Item", quantity=5, supplier_id=sup_b["id"])
+    client.post("/api/sales", json={
+        "items": [
+            {"product_id": prod_a["id"], "quantity": 5, "unit_price": 10.0},
+            {"product_id": prod_b["id"], "quantity": 5, "unit_price": 10.0},
+        ],
+    }, headers=auth_headers)
+
+    resp = client.post("/api/orders/auto-reorder", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    orders = resp.json()
+    assert len(orders) == 2
+    by_supplier = {o["supplier_id"]: o for o in orders}
+    assert by_supplier[sup_a["id"]]["supplier_name"] == "Supplier A"
+    assert by_supplier[sup_b["id"]]["supplier_name"] == "Supplier B"
+    assert any(i["product_id"] == prod_a["id"] for i in by_supplier[sup_a["id"]]["items"])
+    assert any(i["product_id"] == prod_b["id"] for i in by_supplier[sup_b["id"]]["items"])
 
 
 def test_auto_reorder_none_needed(auth_headers):

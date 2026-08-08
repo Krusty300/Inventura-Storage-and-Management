@@ -128,7 +128,7 @@ describe("Forecasting", () => {
 
   it("creates a purchase order via auto-reorder", async () => {
     mockReplenishment();
-    postMock.mockResolvedValue({ data: { order_number: "PO-1001", items: [1] } });
+    postMock.mockResolvedValue({ data: [{ order_number: "PO-1001", items: [1] }] });
     renderWithProviders(<Forecasting />);
     fireEvent.click(await screen.findByLabelText("Auto-reorder based on forecast"));
     fireEvent.click(screen.getByText("Generate PO"));

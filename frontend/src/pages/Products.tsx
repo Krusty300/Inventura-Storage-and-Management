@@ -376,7 +376,7 @@ export default function Products() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2 items-center">
-                        {!p.is_variant && (
+                        {!p.is_variant && !p.is_serialized && (
                           <button onClick={() => { setVariantParent(p); setEditing(null); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`Add variant to ${p.name}`} aria-label={`Add variant to ${p.name}`}>
                             <PackagePlus size={16} />
                           </button>

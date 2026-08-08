@@ -344,6 +344,17 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depe
             raise HTTPException(status_code=400, detail="Cannot create variants for a serialized product")
     if data.is_serialized and data.quantity > 0:
         raise HTTPException(status_code=400, detail="Serialized products cannot have an opening quantity - use receipts to receive stock")
+    if data.is_serialized and parent is not None:
+        parent_has_stock = (
+            db.query(StockLine)
+            .filter(StockLine.product_id == parent.id, StockLine.quantity > 0)
+            .first()
+        )
+        if parent_has_stock is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot create a serialized variant for a product with existing stock - serials must be registered individually, so clear the parent's stock first",
+            )
     payload = data.model_dump()
     payload["location_id"] = resolve_location(db, payload.get("location_id"), payload.get("location"))
     if payload.get("reorder_level") is None:

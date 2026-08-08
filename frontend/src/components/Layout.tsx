@@ -179,7 +179,7 @@ export default function Layout() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-surface border-b border-border px-6 py-3 flex items-center justify-between">
+        <header className="bg-surface border-b border-border px-6 py-3 flex items-center justify-between relative z-20">
           <button onClick={() => setSidebarOpen(true)} className="text-muted lg:hidden">
             <Menu size={24} />
           </button>

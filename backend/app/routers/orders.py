@@ -9,6 +9,7 @@ from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
+from app.models.supplier import Supplier
 from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate
 from app.services import forecasting, inventory
 from app.services.auth import get_current_user, require_permission
@@ -31,7 +32,7 @@ ORDER_TRANSITIONS = {
 }
 
 
-@router.post("/auto-reorder", response_model=OrderOut)
+@router.post("/auto-reorder", response_model=list[OrderOut])
 def auto_reorder(
     service_level: float = Query(0.95, gt=0.5, lt=1.0),
     days: int = Query(90, ge=7, le=365),
@@ -51,32 +52,43 @@ def auto_reorder(
     ]
     if not to_reorder:
         raise HTTPException(status_code=400, detail="No products need reordering based on forecast demand")
-    items = []
-    total = 0.0
+    # Group products by their default supplier so each purchase order is
+    # placed with the right supplier (a PO belongs to a single supplier).
+    groups: dict[int | None, list[dict]] = {}
     for r in to_reorder:
-        p = db.get(Product, r["product_id"])
-        qty = r["suggested_order_qty"]
-        price = float(p.cost_price) if p.cost_price else 0.0
-        items.append({"product_id": p.id, "quantity": qty, "unit_price": price})
-        total += qty * price
-    order = Order(
-        order_number=generate_po_number(db), user_id=user.id,
-        notes=f"Auto-generated reorder for {len(to_reorder)} product(s) based on forecast demand",
-    )
-    db.add(order)
-    db.flush()
-    for item in items:
-        db.execute(OrderItem.__table__.insert().values(order_id=order.id, **item))
-    order.total_amount = total
-    db.commit()
-    o = get_or_404(Order, order.id, db, options=[
-        joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
-    ])
-    log_activity(db, user.id, user.username, "create", "order", order.id,
-                 f"Auto-reorder '{o.order_number}' for {len(to_reorder)} product(s) (${total:.2f})")
-    db.commit()
+        groups.setdefault(r["supplier_id"], []).append(r)
+    orders: list[Order] = []
+    for supplier_id, group in groups.items():
+        items = []
+        total = 0.0
+        for r in group:
+            p = db.get(Product, r["product_id"])
+            qty = r["suggested_order_qty"]
+            price = float(p.cost_price) if p.cost_price else 0.0
+            items.append({"product_id": p.id, "quantity": qty, "unit_price": price})
+            total += qty * price
+        supplier = db.get(Supplier, supplier_id) if supplier_id is not None else None
+        order = Order(
+            order_number=generate_po_number(db), user_id=user.id,
+            supplier_id=supplier_id,
+            notes=f"Auto-generated reorder for {len(group)} product(s) based on forecast demand",
+        )
+        db.add(order)
+        db.flush()
+        for item in items:
+            db.execute(OrderItem.__table__.insert().values(order_id=order.id, **item))
+        order.total_amount = total
+        db.commit()
+        o = get_or_404(Order, order.id, db, options=[
+            joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
+        ])
+        supplier_tag = f" for {supplier.name}" if supplier else ""
+        log_activity(db, user.id, user.username, "create", "order", order.id,
+                     f"Auto-reorder '{o.order_number}'{supplier_tag} for {len(group)} product(s) (${total:.2f})")
+        db.commit()
+        orders.append(o)
     broadcast_change("order", "created")
-    return o
+    return orders
 
 
 def _has_active_location(db: Session, product_id: int) -> bool:
