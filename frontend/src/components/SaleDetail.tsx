@@ -4,6 +4,7 @@ import type { Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import Modal from "./Modal";
+import { useToast } from "../context/ToastContext";
 
 interface Props {
   sale: Sale;
@@ -19,12 +20,13 @@ const statusColors: Record<string, string> = {
 export default function SaleDetail({ sale, onClose }: Props) {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const { addToast } = useToast();
   const printInvoice = () => {
     api.get(`/sales/${sale.id}/pdf`, { responseType: "blob" }).then(({ data }) => {
       const url = URL.createObjectURL(data);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    });
+    }).catch(() => addToast("Failed to generate PDF", "error"));
   };
 
   return (

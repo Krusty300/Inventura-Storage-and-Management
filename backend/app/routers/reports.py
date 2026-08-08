@@ -315,9 +315,11 @@ def _csv_response(filename: str, headers: list[str], rows: list[list]) -> Respon
 
 
 @router.get("/export/sales")
-def export_sales(start_date: str | None = None, end_date: str | None = None, db: Session = Depends(get_db)):
+def export_sales(search: str = Query(""), start_date: str | None = None, end_date: str | None = None, db: Session = Depends(get_db)):
     start, end = parse_range(start_date, end_date)
     q = db.query(Sale).options(joinedload(Sale.customer))
+    if search:
+        q = q.filter(Sale.invoice_number.ilike(f"%{search}%"))
     if start:
         q = q.filter(Sale.created_at >= start)
     if end:

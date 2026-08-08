@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import api from "../api/client";
 import type { Customer, Product, QualityCheck, Settings } from "../types";
@@ -7,6 +7,7 @@ import BarcodeScanner from "./BarcodeScanner";
 import Modal from "./Modal";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { formatCurrency } from "../utils/currency";
+import { errorMessage } from "../utils/errors";
 import { isSelectable, selectableProducts, productLabel } from "../utils/variants";
 
 interface Props {
@@ -32,11 +33,28 @@ interface SaleItemRowProps {
   blocked: boolean;
   onChange: (idx: number, field: string, value: string) => void;
   onRemove: (idx: number) => void;
+  onStockShort: (idx: number, short: boolean) => void;
 }
 
-function SaleItemRow({ item, idx, sellable, currency, canRemove, blocked, onChange, onRemove }: SaleItemRowProps) {
+function SaleItemRow({ item, idx, sellable, currency, canRemove, blocked, onChange, onRemove, onStockShort }: SaleItemRowProps) {
   const product = sellable.find((p) => p.id === parseInt(item.product_id));
-  const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(product?.id, false);
+  const { locations: stockLocations, unallocated, isLoading: stockLoading } = useProductStockLocations(product?.id, false);
+
+  const qty = parseInt(item.quantity);
+  const locationId = item.location_id ? parseInt(item.location_id) : null;
+  let available: number | undefined;
+  if (product && !stockLoading) {
+    if (locationId) {
+      available = stockLocations.find((l) => l.location_id === locationId)?.count ?? 0;
+    } else {
+      available = stockLocations.reduce((sum, l) => sum + l.count, 0) + unallocated;
+    }
+  }
+  const short = !!product && !stockLoading && available !== undefined && !Number.isNaN(qty) && qty > 0 && qty > available;
+
+  useEffect(() => {
+    onStockShort(idx, short);
+  }, [idx, short, onStockShort]);
 
   return (
     <div className="border border-border rounded-lg p-3 space-y-2">
@@ -90,6 +108,16 @@ function SaleItemRow({ item, idx, sellable, currency, canRemove, blocked, onChan
           <span>This product has a pending quality check and can't be sold until it's resolved.</span>
         </div>
       )}
+      {short && available !== undefined && (
+        <div className="flex items-start gap-2 rounded-md bg-red-500/10 border border-red-500/30 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <span>
+            {locationId
+              ? `Only ${available} available at this location.`
+              : `Only ${available} total available.`}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -103,8 +131,18 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<LineItem[]>([{ ...EMPTY_ITEM }]);
+  const [stockShort, setStockShort] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+
+  const handleStockShort = useCallback((idx: number, short: boolean) => {
+    setStockShort((prev) => {
+      const next = new Set(prev);
+      if (short) next.add(idx);
+      else next.delete(idx);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     api.get("/customers", { params: { limit: 1000 } }).then(({ data }) => setCustomers(data.items));
@@ -151,6 +189,18 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       addToast("All line items must have a product selected", "error");
       return;
     }
+    if (items.some((i) => {
+      if (!i.product_id) return false;
+      const q = parseInt(i.quantity);
+      return Number.isNaN(q) || q <= 0;
+    })) {
+      addToast("Line item quantities must be at least 1", "error");
+      return;
+    }
+    if (items.some((_, idx) => stockShort.has(idx))) {
+      addToast("One or more line items exceed the available stock", "error");
+      return;
+    }
     if (items.some(isBlocked)) {
       addToast("A line item has a pending quality check and can't be sold yet", "error");
       return;
@@ -163,7 +213,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         notes,
         items: items.map((i) => ({
           product_id: parseInt(i.product_id),
-          quantity: parseInt(i.quantity) || 1,
+          quantity: parseInt(i.quantity),
           unit_price: parseFloat(i.unit_price) || 0,
           location_id: i.location_id ? parseInt(i.location_id) : null,
         })),
@@ -171,7 +221,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       addToast("Sale completed", "success");
       onSaved();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error processing sale", "error");
+      addToast(errorMessage(err, "Error processing sale"), "error");
     }
     setSaving(false);
   };
@@ -222,6 +272,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 blocked={isBlocked(item)}
                 onChange={updateItem}
                 onRemove={removeItem}
+                onStockShort={handleStockShort}
               />
             ))}
           </div>

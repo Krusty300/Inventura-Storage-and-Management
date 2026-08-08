@@ -25,7 +25,9 @@ describe("SaleForm", () => {
       if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
       if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
-      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
+        { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
+      ], unallocated: 0 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     postMock.mockResolvedValue({ data: {} });
@@ -172,6 +174,9 @@ describe("SaleForm", () => {
         checked_by: 1, checked_at: null, created_at: "", product_name: "Other",
         lot_number: "", location_name: "", wo_number: "", checker_username: "",
       }], total: 1, page: 1, pages: 1 } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
+        { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
+      ], unallocated: 0 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     postMock.mockResolvedValue({ data: {} });
@@ -183,5 +188,28 @@ describe("SaleForm", () => {
     await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
       items: [{ product_id: 7, quantity: 1, unit_price: 10, location_id: null }],
     })));
+  });
+
+  it("warns and blocks submission when a line item exceeds available stock", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
+      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
+        { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
+      ], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    postMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
+    const productSelect = screen.getAllByRole("combobox")[2];
+    fireEvent.change(productSelect, { target: { value: "7" } });
+    fireEvent.change(screen.getByPlaceholderText("Qty"), { target: { value: "99" } });
+    expect(await screen.findByText(/Only 12 total available/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    await vi.waitFor(() => expect(postMock).not.toHaveBeenCalled());
   });
 });

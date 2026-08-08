@@ -15,7 +15,7 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
-import { exportCSV } from "../utils/csv";
+import { downloadBlob } from "../utils/download";
 import { formatCurrency } from "../utils/currency";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -65,13 +65,17 @@ export default function Sales() {
     { name: "notes", label: "Notes", type: "text" },
   ];
 
-  const handleExport = () => {
-    exportCSV(
-      ["Invoice #", "Customer", "Date", "Status", "Payment", "Location", "Total"],
-      sales.map((s) => [s.invoice_number, s.customer_name, formatDate(s.created_at), s.status, s.payment_method, (s.locations ?? []).join(", "), s.total_amount]),
-      "sales"
-    );
-    addToast("Sales exported to CSV", "success");
+  const handleExport = async () => {
+    try {
+      const { data } = await api.get("/reports/export/sales", {
+        params: debouncedSearch ? { search: debouncedSearch } : {},
+        responseType: "blob",
+      });
+      downloadBlob(data, "sales_report.csv");
+      addToast("Sales exported to CSV", "success");
+    } catch {
+      addToast("Failed to export sales", "error");
+    }
   };
 
   const printPdf = (id: number) => {
@@ -79,7 +83,7 @@ export default function Sales() {
       const url = URL.createObjectURL(data);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    });
+    }).catch(() => addToast("Failed to generate PDF", "error"));
   };
 
   return (

@@ -48,6 +48,29 @@ def test_sale_negative_price_rejected(auth_headers):
     assert resp.status_code == 422
 
 
+def test_sale_unknown_customer_rejected(auth_headers):
+    prod = _make_product(auth_headers)
+    resp = client.post("/api/sales", json={
+        "customer_id": 99999,
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "not found" in resp.json()["detail"].lower()
+    updated = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert updated["quantity"] == 10
+
+
+def test_sale_with_valid_customer_succeeds(auth_headers):
+    cust = client.post("/api/customers", json={"name": "Acme Corp"}, headers=auth_headers).json()
+    prod = _make_product(auth_headers)
+    resp = client.post("/api/sales", json={
+        "customer_id": cust["id"],
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["customer_name"] == "Acme Corp"
+
+
 def test_sale_insufficient_stock_rejected(auth_headers):
     prod = _make_product(auth_headers, quantity=5)
     resp = _make_sale(auth_headers, [{"product_id": prod["id"], "quantity": 6, "unit_price": 20.00}])
@@ -165,6 +188,46 @@ def test_refund_restores_stock(auth_headers):
     assert any(m["movement_type"] == "return" and m["quantity_change"] == 4 for m in movements)
 
 
+def test_refund_restores_stock_to_original_location(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "REFUND-LOC", "name": "Refund Loc Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc_a = _make_location("REFUND-A")
+    loc_b = _make_location("REFUND-B")
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        _receive_to_locations(db, user, prod["id"], [(loc_a, 5), (loc_b, 5)])
+        db.commit()
+        path_a = db.get(Location, loc_a).path
+    finally:
+        db.close()
+
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 3, "unit_price": 10.0, "location_id": loc_a}],
+    }, headers=auth_headers)
+    assert sale.status_code == 201
+    assert sale.json()["locations"] == [path_a]
+
+    refund = client.put(f"/api/sales/{sale.json()['id']}/refund", headers=auth_headers)
+    assert refund.status_code == 200
+
+    db = TestingSessionLocal()
+    try:
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_a) == 5
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_b) == 5
+        assert inventory.on_hand(db, product_id=prod["id"]) == 10
+        returns = db.query(StockMovement).filter(
+            StockMovement.product_id == prod["id"],
+            StockMovement.movement_type == "return",
+        ).all()
+        assert returns and all(m.from_location_id == loc_a for m in returns)
+        assert db.get(Product, prod["id"]).quantity == 10
+    finally:
+        db.close()
+
+
 def test_refund_twice_rejected(auth_headers):
     prod = _make_product(auth_headers, quantity=10)
     sale = _make_sale(auth_headers, [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}]).json()
@@ -194,7 +257,8 @@ def test_refund_serialized_invoice_restores_serials(auth_headers):
     assert client.post(f"/api/shipments/{sid}/pick", headers=auth_headers).status_code == 200
     assert client.post(f"/api/shipments/{sid}/pack", headers=auth_headers).status_code == 200
     assert client.post(f"/api/shipments/{sid}/ship", headers=auth_headers).status_code == 200
-    sale = client.post(f"/api/shipments/{sid}/create-sale", headers=auth_headers).json()
+    sale = client.post(f"/api/shipments/{sid}/create-sale", params={"payment_method": "card"}, headers=auth_headers).json()
+    assert sale["payment_method"] == "card"
 
     serials = client.get(f"/api/serial-numbers?product_id={prod['id']}&limit=10", headers=auth_headers).json()["items"]
     assert sum(1 for s in serials if s["status"] == "sold") == 2
@@ -530,3 +594,39 @@ def test_sale_response_includes_source_locations(auth_headers):
     by_invoice = {s["invoice_number"]: s["locations"] for s in listing["items"]}
     assert by_invoice[pinned.json()["invoice_number"]] == [path_a]
     assert by_invoice[auto.json()["invoice_number"]] == sorted([path_a, path_b])
+
+
+def test_shipment_invoice_lists_source_location(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "SHP-LOC", "name": "Shipment Loc Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc = _make_location("SHP-LOC-BIN")
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        _receive_to_locations(db, user, prod["id"], [(loc, 5)])
+        db.commit()
+        path = db.get(Location, loc).path
+    finally:
+        db.close()
+
+    shipment = client.post("/api/shipments", json={
+        "items": [{"product_id": prod["id"], "quantity": 2}],
+    }, headers=auth_headers).json()
+    sid = shipment["id"]
+    assert client.post(f"/api/shipments/{sid}/pick", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{sid}/pack", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{sid}/ship", headers=auth_headers).status_code == 200
+    sale = client.post(f"/api/shipments/{sid}/create-sale", headers=auth_headers).json()
+    assert sale["locations"] == [path]
+    item = sale["items"][0]
+    assert item["locations"] == [path]
+    assert item["location"] == path
+
+    detail = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
+    assert detail["locations"] == [path]
+
+    listing = client.get("/api/sales", headers=auth_headers).json()
+    by_invoice = {s["invoice_number"]: s["locations"] for s in listing["items"]}
+    assert by_invoice[sale["invoice_number"]] == [path]

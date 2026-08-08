@@ -12,7 +12,7 @@ from app.schemas.sale import SaleOut
 from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentPickRequest, ShipmentUpdate
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
-from app.routers.sales import generate_invoice_number, get_tax_rate
+from app.routers.sales import _apply_sale_locations, generate_invoice_number, get_tax_rate
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change
 
@@ -433,7 +433,12 @@ def ship_shipment(
 
 
 @router.post("/{shipment_id}/create-sale", response_model=SaleOut, status_code=201)
-def create_sale_from_shipment(shipment_id: int, db: Session = Depends(get_db), user=Depends(require_permission("sales.create"))):
+def create_sale_from_shipment(
+    shipment_id: int,
+    payment_method: str = Query("cash"),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("sales.create")),
+):
     shipment = _load_shipment(db, shipment_id)
     if shipment.status != "shipped":
         raise HTTPException(status_code=400, detail="Only shipped shipments can generate an invoice")
@@ -460,7 +465,7 @@ def create_sale_from_shipment(shipment_id: int, db: Session = Depends(get_db), u
         tax_amount=round(tax_amount, 2),
         total_amount=round(subtotal + tax_amount, 2),
         status="completed",
-        payment_method="cash",
+        payment_method=payment_method,
         notes=f"Invoice created from shipment {shipment.shipment_number}",
     )
     db.add(sale)
@@ -478,7 +483,7 @@ def create_sale_from_shipment(shipment_id: int, db: Session = Depends(get_db), u
     db.commit()
     broadcast_change("sale", "created")
     broadcast_change("shipment", "updated")
-    return sale
+    return _apply_sale_locations(db, SaleOut.model_validate(sale))
 
 
 @router.post("/{shipment_id}/cancel", response_model=ShipmentOut)

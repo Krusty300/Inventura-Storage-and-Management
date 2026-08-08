@@ -5,6 +5,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
+from app.models.customer import Customer
 from app.models.location import Location
 from app.models.product import Product
 from app.models.sale import Sale, SaleItem
@@ -64,12 +65,20 @@ def _pending_qc_blockers(db: Session, product_id: int, location_id: int | None) 
 def _movement_location_map(db: Session, invoices: list[str]) -> dict[str, dict[int, list[str]]]:
     """Map invoice number -> {product_id -> sorted location paths} for sale movements.
 
-    Sale items are fulfilled from the stock locations recorded on the sale's
-    "out" movements, so the source location per product can be surfaced on the
-    sales list, detail, and invoice without storing an extra column.
+    Direct checkout sales are fulfilled from the stock locations recorded on the
+    sale's "out" movements. Invoices generated from a shipment never post their
+    own movements, so their source locations come from the shipment's transfer-out
+    (pick) legs, matched through the shipment -> invoice link. This lets the sales
+    list, detail, and invoice surface the source location without an extra column.
     """
     result: dict[str, dict[int, list[str]]] = {}
-    movements = (
+    invoice_by_shipment = dict(
+        db.query(Sale.invoice_number, Shipment.shipment_number)
+        .join(Shipment, Shipment.sale_id == Sale.id)
+        .filter(Sale.invoice_number.in_(invoices))
+        .all()
+    )
+    sale_movements = (
         db.query(StockMovement)
         .filter(
             StockMovement.reference_type == "sale",
@@ -78,6 +87,20 @@ def _movement_location_map(db: Session, invoices: list[str]) -> dict[str, dict[i
         )
         .all()
     )
+    shipment_movements: list[StockMovement] = []
+    if invoice_by_shipment:
+        shipment_movements = (
+            db.query(StockMovement)
+            .filter(
+                StockMovement.reference_type == "shipment",
+                StockMovement.reference.in_(set(invoice_by_shipment.values())),
+                StockMovement.movement_type == inventory.TRANSFER_OUT,
+                StockMovement.from_location_id.isnot(None),
+            )
+            .all()
+        )
+    shipment_to_invoice = {num: inv for inv, num in invoice_by_shipment.items()}
+    movements = sale_movements + shipment_movements
     loc_ids = {m.from_location_id for m in movements}
     paths: dict[int, str] = {}
     if loc_ids:
@@ -86,7 +109,8 @@ def _movement_location_map(db: Session, invoices: list[str]) -> dict[str, dict[i
         path = paths.get(m.from_location_id)
         if not path:
             continue
-        per_product = result.setdefault(m.reference, {})
+        ref = shipment_to_invoice.get(m.reference, m.reference)
+        per_product = result.setdefault(ref, {})
         per_product.setdefault(m.product_id, [])
         if path not in per_product[m.product_id]:
             per_product[m.product_id].append(path)
@@ -198,6 +222,10 @@ def get_sale(sale_id: int, db: Session = Depends(get_db)):
 def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if not data.items:
         raise HTTPException(status_code=400, detail="Sale must contain at least one item")
+    if data.customer_id is not None:
+        customer = db.get(Customer, data.customer_id)
+        if customer is None:
+            raise HTTPException(status_code=400, detail=f"Customer {data.customer_id} not found")
 
     qty_needed: dict[tuple[int, int | None], int] = {}
     for item_data in data.items:
@@ -253,23 +281,27 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
     db.add(sale)
     db.flush()
 
-    for item_data in data.items:
-        product = products[item_data.product_id]
-        db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item_data.quantity, unit_price=item_data.unit_price))
-        allocation = inventory.allocate_lots(
-            db, product_id=product.id, quantity=item_data.quantity,
-            location_id=item_data.location_id,
-        )
-        for lot_id, take, location_id, lpn_id in allocation:
-            inventory.post_journal_entry(
-                db, product_id=product.id, user_id=user.id,
-                quantity_change=-take, movement_type="out",
-                lot_id=lot_id,
-                from_location_id=location_id,
-                lpn_id=lpn_id,
-                reference_type="sale", reference=sale.invoice_number,
-                notes=f"Sale to {data.customer_id and 'customer' or 'walk-in customer'}",
+    try:
+        for item_data in data.items:
+            product = products[item_data.product_id]
+            db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item_data.quantity, unit_price=item_data.unit_price))
+            allocation = inventory.allocate_lots(
+                db, product_id=product.id, quantity=item_data.quantity,
+                location_id=item_data.location_id,
             )
+            for lot_id, take, location_id, lpn_id in allocation:
+                inventory.post_journal_entry(
+                    db, product_id=product.id, user_id=user.id,
+                    quantity_change=-take, movement_type="out",
+                    lot_id=lot_id,
+                    from_location_id=location_id,
+                    lpn_id=lpn_id,
+                    reference_type="sale", reference=sale.invoice_number,
+                    notes=f"Sale to {data.customer_id and 'customer' or 'walk-in customer'}",
+                )
+    except inventory.InventoryError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Insufficient stock - stock levels changed while processing the sale")
 
     db.commit()
     sale = load_sale(db, sale.id)
@@ -312,23 +344,56 @@ def refund_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
                     StockMovement.quantity_change < 0,
                 ).all()
             ]
+            pick_legs = db.query(StockMovement).filter(
+                StockMovement.product_id == product.id,
+                StockMovement.serial_id.isnot(None),
+                StockMovement.reference_type == "shipment",
+                StockMovement.reference == shipment.shipment_number,
+                StockMovement.movement_type == inventory.TRANSFER_OUT,
+            ).all()
+            original_location = {m.serial_id: m.from_location_id for m in pick_legs}
             for serial_id in serial_ids:
                 inventory.post_journal_entry(
                     db, product_id=product.id, user_id=user.id,
                     quantity_change=1, movement_type=inventory.SALE_RETURN,
                     serial_id=serial_id,
+                    to_location_id=original_location.get(serial_id),
                     reference_type="sale_return",
                     reference=f"Refund {sale.invoice_number}",
                     notes="Sale refund",
                 )
             continue
-        inventory.post_journal_entry(
-            db, product_id=product.id, user_id=user.id,
-            quantity_change=item.quantity, movement_type="return",
-            reference_type="sale_return",
-            reference=f"Refund {sale.invoice_number}",
-            notes="Sale refund",
-        )
+        originals = db.query(StockMovement).filter(
+            StockMovement.reference_type == "sale",
+            StockMovement.reference == sale.invoice_number,
+            StockMovement.product_id == product.id,
+            StockMovement.quantity_change < 0,
+        ).order_by(StockMovement.id).all()
+        restored = 0
+        for m in originals:
+            if restored >= item.quantity:
+                break
+            take = min(-m.quantity_change, item.quantity - restored)
+            if take <= 0:
+                continue
+            inventory.post_journal_entry(
+                db, product_id=product.id, user_id=user.id,
+                quantity_change=take, movement_type="return",
+                from_location_id=m.from_location_id,
+                lot_id=m.lot_id, lpn_id=m.lpn_id,
+                reference_type="sale_return",
+                reference=f"Refund {sale.invoice_number}",
+                notes="Sale refund",
+            )
+            restored += take
+        if restored < item.quantity:
+            inventory.post_journal_entry(
+                db, product_id=product.id, user_id=user.id,
+                quantity_change=item.quantity - restored, movement_type="return",
+                reference_type="sale_return",
+                reference=f"Refund {sale.invoice_number}",
+                notes="Sale refund",
+            )
 
     sale.status = "refunded"
     db.commit()
