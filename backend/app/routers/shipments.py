@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import Customer, Location, Product, QualityCheck, Sale, SaleItem, Shipment, ShipmentItem
+from app.models import Customer, Location, Product, QualityCheck, Sale, SaleItem, SerialNumber, Shipment, ShipmentItem
 from app.models.stock_movement import StockMovement
 from app.models.settings import Settings
 from app.schemas.sale import SaleOut
-from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentUpdate
+from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentPickRequest, ShipmentUpdate
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.routers.sales import generate_invoice_number, get_tax_rate
@@ -122,10 +122,45 @@ def _qc_blocker(db: Session, shipment: Shipment) -> QualityCheck | None:
     return None
 
 
-def _pick_shipment_items(db: Session, shipment: Shipment, user) -> Location:
+def _validate_manual_serials(db: Session, product: Product, serial_ids: list[int], location_id: int | None, quantity: int) -> list[SerialNumber]:
+    """Validate a user-chosen set of serial numbers for a shipment pick.
+
+    Mirrors the guarantees ``allocate_serials`` provides (belongs to product,
+    in stock, lot not quarantined, optional location scope) while letting the
+    operator choose exactly which units to pick."""
+    if len(serial_ids) != quantity:
+        raise inventory.InventoryError(
+            f"'{product.display_name}' requires exactly {quantity} serial number(s) to pick, got {len(serial_ids)}"
+        )
+    seen: set[int] = set()
+    serials: list[SerialNumber] = []
+    for serial_id in serial_ids:
+        if serial_id in seen:
+            raise inventory.InventoryError("Duplicate serial selected in this pick")
+        seen.add(serial_id)
+        serial = db.query(SerialNumber).filter(SerialNumber.id == serial_id).first()
+        if serial is None:
+            raise inventory.InventoryError("One or more selected serial numbers were not found")
+        if serial.product_id != product.id:
+            raise inventory.InventoryError(f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
+        if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
+            raise inventory.InventoryError(f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
+        if serial.lot is not None and serial.lot.status != "in_stock":
+            raise inventory.InventoryError(
+                f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status}"
+            )
+        if location_id is not None and serial.location_id != location_id:
+            raise inventory.InventoryError(f"Serial '{serial.serial_number}' is not at the item's source location")
+        serials.append(serial)
+    return serials
+
+
+def _pick_shipment_items(db: Session, shipment: Shipment, user, serial_ids_by_product: dict[int, list[int]] | None = None) -> Location:
     """Allocate the shipment's outstanding items and move them to the shipping
     staging location, marking each item as picked. Used by the manual ``pick``
     flow and, when ``auto_allocate_stock`` is enabled, at shipment creation.
+    Serialized items pick the exact serials in ``serial_ids_by_product`` when
+    provided for the product, otherwise they fall back to FEFO auto-allocation.
     Raises ``inventory.InventoryError`` on failure; the caller is responsible
     for committing / rolling back."""
     staging = _staging_location(db)
@@ -135,7 +170,11 @@ def _pick_shipment_items(db: Session, shipment: Shipment, user) -> Location:
             continue
         product = item.product
         if product and product.is_serialized:
-            serials = inventory.allocate_serials(db, product_id=item.product_id, quantity=remaining, location_id=item.location_id)
+            manual = (serial_ids_by_product or {}).get(item.product_id)
+            if manual:
+                serials = _validate_manual_serials(db, product, manual, item.location_id, remaining)
+            else:
+                serials = inventory.allocate_serials(db, product_id=item.product_id, quantity=remaining, location_id=item.location_id)
             for serial in serials:
                 source = serial.location_id
                 inventory.transfer_stock(
@@ -270,7 +309,7 @@ def update_shipment(shipment_id: int, data: ShipmentUpdate, db: Session = Depend
 
 
 @router.post("/{shipment_id}/pick", response_model=ShipmentOut)
-def pick_shipment(shipment_id: int, db: Session = Depends(get_db), user=Depends(require_permission("shipments.pick"))):
+def pick_shipment(shipment_id: int, data: ShipmentPickRequest | None = None, db: Session = Depends(get_db), user=Depends(require_permission("shipments.pick"))):
     shipment = _load_shipment(db, shipment_id)
     if shipment.status not in PICKABLE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Only {'/'.join(PICKABLE_STATUSES)} shipments can be picked")
@@ -281,8 +320,13 @@ def pick_shipment(shipment_id: int, db: Session = Depends(get_db), user=Depends(
             status_code=400,
             detail=f"Quality check '{qc.qc_number}' is {qc.result} for '{qc.product_name}'. Resolve QC before picking.",
         )
+    serial_ids_by_product: dict[int, list[int]] = {}
+    if data:
+        for pi in data.items:
+            if pi.serial_ids:
+                serial_ids_by_product[pi.product_id] = pi.serial_ids
     try:
-        staging = _pick_shipment_items(db, shipment, user)
+        staging = _pick_shipment_items(db, shipment, user, serial_ids_by_product=serial_ids_by_product)
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))

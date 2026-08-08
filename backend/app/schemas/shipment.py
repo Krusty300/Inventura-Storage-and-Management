@@ -27,6 +27,15 @@ class ShipmentUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class ShipmentPickItem(BaseModel):
+    product_id: int
+    serial_ids: Optional[list[int]] = None
+
+
+class ShipmentPickRequest(BaseModel):
+    items: list[ShipmentPickItem] = Field(default_factory=list)
+
+
 class ShipmentItemOut(BaseModel):
     id: int
     shipment_id: int

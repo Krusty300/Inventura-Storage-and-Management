@@ -157,10 +157,37 @@ describe("ASNs Page", () => {
         return Promise.resolve({ data: { items: [
           { id: 1, product_id: 1, serial_number: "SN-1", lot_id: null, location_id: 10, status: "in_stock", sold_at: null, location_name: "Warehouse B", lot_number: "", product_name: "Widget" },
         ], total: 1, page: 1, pages: 1 } });
+      if (url === "/lpns") return Promise.resolve({ data: { items: [] } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByRole("button", { name: "Receive" }));
     await waitFor(() => expect(screen.getByLabelText("Location")).toHaveValue("Warehouse B"));
+  });
+
+  it("sends lpn_id when receiving an ASN into an LPN", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [mockASN()], total: 1, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [{ id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] }], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations")
+        return Promise.resolve({ data: { items: [{ id: 10, name: "A", path: "A", is_active: true }] } });
+      if (url === "/lpns")
+        return Promise.resolve({ data: { items: [{ id: 5, lpn_number: "PAL-001", lpn_type: "pallet", location_id: 10, status: "active", created_at: "2026-01-01T10:00:00", location_name: "A", content_count: 0, total_quantity: 0, contents: [], serials: [] }] } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "Receive" }));
+    expect(await screen.findByLabelText("LPN number")).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("10"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("LPN number"), { target: { value: "PAL-001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Stock" }));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith("/asns/1/receive", expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ product_id: 1, received_qty: 2, lpn_id: 5 }),
+        ]),
+      }));
+    });
   });
 });

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Box, PackageCheck, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Customer, PaginatedResponse, Shipment, ShipmentStats } from "../types";
+import type { Customer, PaginatedResponse, SerialNumber, Shipment, ShipmentItem, ShipmentStats } from "../types";
 import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -353,6 +353,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   const [carrier, setCarrier] = useState(shipment.carrier);
   const [tracking, setTracking] = useState(shipment.tracking_number);
   const [busy, setBusy] = useState<string | null>(null);
+  const [pickingSerials, setPickingSerials] = useState(false);
   const { addToast } = useToast();
   const { can } = useAuth();
   const queryClient = useQueryClient();
@@ -380,6 +381,17 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
       addToast(err.response?.data?.detail || "Action failed", "error");
     }
     setBusy(null);
+  };
+
+  const handlePick = () => {
+    const needsSerials = current.items.some(
+      (i) => i.is_serialized && i.quantity_picked < i.quantity_ordered
+    );
+    if (needsSerials) {
+      setPickingSerials(true);
+    } else {
+      run("pick", `/shipments/${current.id}/pick`, "Picked");
+    }
   };
 
   const ship = async () => {
@@ -469,7 +481,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             )}
             <div className="ml-auto flex gap-2">
               {canPick && (
-                <button onClick={() => run("pick", `/shipments/${current.id}/pick`, "Picked")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
+                <button onClick={handlePick} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
                   <PackageCheck size={14} /> Pick
                 </button>
               )}
@@ -503,6 +515,144 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
 
         <div className="flex justify-end pt-2">
           <button onClick={onClose} className="btn-secondary">Close</button>
+        </div>
+      </div>
+      {pickingSerials && (
+        <PickSerialsModal
+          shipment={current}
+          onClose={() => setPickingSerials(false)}
+          onPicked={() => { setPickingSerials(false); refresh(); }}
+        />
+      )}
+    </Modal>
+  );
+}
+
+function SerializedPickRow({ item, selected, onSelect }: {
+  item: ShipmentItem;
+  selected: Set<number>;
+  onSelect: (serialIds: number[]) => void;
+}) {
+  const remaining = item.quantity_ordered - item.quantity_picked;
+  const locationId = item.location_id ?? undefined;
+
+  const { data: serials = [] } = useQuery({
+    queryKey: ["serial-numbers", "shipment-pick", item.product_id, locationId ?? "any"],
+    queryFn: async () => {
+      const { data } = await api.get("/serial-numbers", {
+        params: { product_id: item.product_id, status: "in_stock", limit: 200, ...(locationId ? { location_id: locationId } : {}) },
+      });
+      return data.items as SerialNumber[];
+    },
+  });
+
+  const toggle = (serialId: number) => {
+    const next = new Set(selected);
+    if (next.has(serialId)) next.delete(serialId);
+    else next.add(serialId);
+    onSelect([...next]);
+  };
+
+  const allSelected = selected.size === serials.length && serials.length > 0;
+
+  return (
+    <div className="border border-border rounded-lg p-3">
+      <p className="text-sm font-medium mb-1">
+        {item.product_name} <span className="text-muted font-normal">- pick {remaining}</span>
+      </p>
+      {serials.length === 0 ? (
+        <p className="text-sm text-faint">No in-stock serials found.</p>
+      ) : (
+        <>
+          <div className="border border-border rounded-lg divide-y divide-border max-h-40 overflow-y-auto">
+            {serials.map((s) => (
+              <label key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-indigo-600"
+                  checked={selected.has(s.id)}
+                  onChange={() => toggle(s.id)}
+                />
+                <span className="text-ink">{s.serial_number}</span>
+                {s.lot_number && <span className="text-muted text-xs">Lot {s.lot_number}</span>}
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-between items-center mt-2 text-sm">
+            <span className="text-muted">{selected.size} of {remaining} selected</span>
+            <button
+              type="button"
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+              onClick={() => onSelect(allSelected ? [] : serials.map((s) => s.id))}
+            >
+              {allSelected ? "Clear all" : "Select all"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PickSerialsModal({ shipment, onClose, onPicked }: {
+  shipment: Shipment;
+  onClose: () => void;
+  onPicked: () => void;
+}) {
+  const { addToast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<Record<number, Set<number>>>({});
+
+  const serializedItems = shipment.items.filter(
+    (i) => i.is_serialized && i.quantity_picked < i.quantity_ordered
+  );
+
+  const setSerialIds = (productId: number, serialIds: number[]) => {
+    setSelected((prev) => ({ ...prev, [productId]: new Set(serialIds) }));
+  };
+
+  const allFilled = serializedItems.every((item) => {
+    const remaining = item.quantity_ordered - item.quantity_picked;
+    return (selected[item.product_id]?.size ?? 0) === remaining;
+  });
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const items = serializedItems.map((item) => ({
+        product_id: item.product_id,
+        serial_ids: [...(selected[item.product_id] ?? [])],
+      }));
+      await api.post(`/shipments/${shipment.id}/pick`, { items });
+      addToast("Picked", "success");
+      onPicked();
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Error picking shipment", "error");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Select Serial Numbers" wide>
+      <div className="space-y-4">
+        <p className="text-sm text-muted">
+          Choose the exact serial numbers to pick for each serialized line. Lines you don't touch are auto-allocated.
+        </p>
+        <div className="space-y-3 max-h-[50vh] overflow-auto">
+          {serializedItems.map((item) => (
+            <SerializedPickRow
+              key={item.id}
+              item={item}
+              selected={selected[item.product_id] ?? new Set()}
+              onSelect={(ids) => setSerialIds(item.product_id, ids)}
+            />
+          ))}
+        </div>
+        <div className="flex justify-end gap-3 pt-4">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="button" disabled={!allFilled || busy} onClick={submit} className="btn-primary">
+            {busy ? "Picking..." : "Pick Selected"}
+          </button>
         </div>
       </div>
     </Modal>

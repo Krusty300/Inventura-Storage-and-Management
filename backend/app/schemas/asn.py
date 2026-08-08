@@ -31,6 +31,7 @@ class ASNReceiveItem(BaseModel):
     lot_number: str = ""
     expiry_date: Optional[date] = None
     location_id: Optional[int] = None
+    lpn_id: Optional[int] = None
     serial_numbers: list[str] = []
 
     @model_validator(mode="after")

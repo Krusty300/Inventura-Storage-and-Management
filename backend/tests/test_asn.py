@@ -87,6 +87,58 @@ def test_asn_cancel_and_delete(auth_headers):
     assert client.get(f"/api/asns/{asn2['id']}", headers=auth_headers).status_code == 404
 
 
+def test_asn_receive_into_lpn(auth_headers):
+    prod = _make_product(auth_headers, sku="ASN-LPN")
+    loc = _make_location(auth_headers)
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-ASN", "lpn_type": "pallet", "location_id": loc["id"]}, headers=auth_headers).json()
+    asn = client.post("/api/asns", json={
+        "items": [{"product_id": prod["id"], "expected_qty": 5, "location_id": loc["id"]}],
+    }, headers=auth_headers).json()
+
+    received = client.post(f"/api/asns/{asn['id']}/receive", json={
+        "items": [{"product_id": prod["id"], "received_qty": 5, "location_id": loc["id"], "lpn_id": lpn["id"]}],
+    }, headers=auth_headers)
+    assert received.status_code == 200
+
+    contents = client.get(f"/api/lpns/{lpn['id']}/contents", headers=auth_headers).json()
+    assert contents["total_quantity"] == 5
+    assert contents["contents"][0]["product_name"] == prod["name"]
+    assert contents["contents"][0]["quantity"] == 5
+
+
+def test_asn_receive_serialized_into_lpn(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "ASN-LPNS", "name": "ASN LPN Ser", "unit_price": 10.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    loc = _make_location(auth_headers)
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-ASNS", "lpn_type": "pallet", "location_id": loc["id"]}, headers=auth_headers).json()
+    asn = client.post("/api/asns", json={
+        "items": [{"product_id": prod["id"], "expected_qty": 2, "location_id": loc["id"]}],
+    }, headers=auth_headers).json()
+
+    received = client.post(f"/api/asns/{asn['id']}/receive", json={
+        "items": [{"product_id": prod["id"], "received_qty": 2, "location_id": loc["id"], "lpn_id": lpn["id"],
+                   "serial_numbers": ["S-ASN-LPN-1", "S-ASN-LPN-2"]}],
+    }, headers=auth_headers)
+    assert received.status_code == 200
+
+    contents = client.get(f"/api/lpns/{lpn['id']}/contents", headers=auth_headers).json()
+    assert contents["content_count"] == 2
+    assert {s["serial_number"] for s in contents["serials"]} == {"S-ASN-LPN-1", "S-ASN-LPN-2"}
+    assert all(s["location_name"] == loc["name"] for s in contents["serials"])
+
+
+def test_asn_receive_into_unknown_lpn_rejected(auth_headers):
+    prod = _make_product(auth_headers, sku="ASN-LPNX")
+    asn = client.post("/api/asns", json={
+        "items": [{"product_id": prod["id"], "expected_qty": 2}],
+    }, headers=auth_headers).json()
+    resp = client.post(f"/api/asns/{asn['id']}/receive", json={
+        "items": [{"product_id": prod["id"], "received_qty": 2, "lpn_id": 99999}],
+    }, headers=auth_headers)
+    assert resp.status_code == 404
+
+
 def test_asn_receive_rejects_unknown_product(auth_headers):
     prod = _make_product(auth_headers, sku="ASN-UNK")
     asn = client.post("/api/asns", json={

@@ -484,6 +484,80 @@ def test_shipment_sale_id_linking(auth_headers):
     assert client.put(f"/api/shipments/{s2['id']}", json={"sale_id": sale["id"]}, headers=auth_headers).status_code == 400
 
 
+def test_shipment_pick_manual_serials_selects_exact_units(auth_headers):
+    p = _make_product(auth_headers, "SHP-MAN", serialized=True)
+    loc_a = _make_location(auth_headers, "SHP-MAN-A")
+    loc_b = _make_location(auth_headers, "SHP-MAN-B")
+    assert _receive_serials(auth_headers, p["id"], loc_a["id"], ["MA1", "MA2", "MA3"]).status_code == 201
+    assert _receive_serials(auth_headers, p["id"], loc_b["id"], ["MB1"]).status_code == 201
+
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    serials = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"]
+    ma1 = next(s for s in serials if s["serial_number"] == "MA1")
+    mb1 = next(s for s in serials if s["serial_number"] == "MB1")
+
+    picked = client.post(f"/api/shipments/{created['id']}/pick", json={
+        "items": [{"product_id": p["id"], "serial_ids": [ma1["id"], mb1["id"]]}],
+    }, headers=auth_headers)
+    assert picked.status_code == 200
+    picked = picked.json()
+    assert picked["total_picked"] == 2
+
+    staged = picked["staging_location_id"]
+    serials = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"]
+    assert {s["serial_number"] for s in serials if s["location_id"] == staged} == {"MA1", "MB1"}
+    assert {s["serial_number"] for s in serials if s["location_id"] == loc_a["id"]} == {"MA2", "MA3"}
+    assert {s["serial_number"] for s in serials if s["location_id"] == loc_b["id"]} == set()
+
+
+def test_shipment_pick_manual_serials_rejects_wrong_product(auth_headers):
+    p1 = _make_product(auth_headers, "SHP-MAN-W1", serialized=True)
+    p2 = _make_product(auth_headers, "SHP-MAN-W2", serialized=True)
+    loc = _make_location(auth_headers, "SHP-MAN-W-LOC")
+    assert _receive_serials(auth_headers, p1["id"], loc["id"], ["W1A"]).status_code == 201
+    assert _receive_serials(auth_headers, p2["id"], loc["id"], ["W2A"]).status_code == 201
+    w2a = client.get(f"/api/serial-numbers?product_id={p2['id']}&limit=10", headers=auth_headers).json()["items"][0]
+
+    created = _create_shipment(auth_headers, [(p1["id"], 1)]).json()
+    resp = client.post(f"/api/shipments/{created['id']}/pick", json={
+        "items": [{"product_id": p1["id"], "serial_ids": [w2a["id"]]}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "does not belong" in resp.json()["detail"]
+
+
+def test_shipment_pick_manual_serials_requires_exact_count(auth_headers):
+    p = _make_product(auth_headers, "SHP-MAN-CNT", serialized=True)
+    loc = _make_location(auth_headers, "SHP-MAN-CNT-LOC")
+    assert _receive_serials(auth_headers, p["id"], loc["id"], ["CNT1", "CNT2"]).status_code == 201
+    cnt1 = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"][0]
+
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    resp = client.post(f"/api/shipments/{created['id']}/pick", json={
+        "items": [{"product_id": p["id"], "serial_ids": [cnt1["id"]]}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "exactly 2" in resp.json()["detail"]
+
+
+def test_shipment_pick_manual_serials_rejects_non_stock_serial(auth_headers):
+    p = _make_product(auth_headers, "SHP-MAN-OOS", serialized=True)
+    loc = _make_location(auth_headers, "SHP-MAN-OOS-LOC")
+    assert _receive_serials(auth_headers, p["id"], loc["id"], ["OOS1", "OOS2"]).status_code == 201
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+
+    serials = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"]
+    oos1 = next(s for s in serials if s["serial_number"] == "OOS1")
+    oos2 = next(s for s in serials if s["serial_number"] == "OOS2")
+    assert client.put(f"/api/serial-numbers/{oos1['id']}/status", json={"status": "inactive"}, headers=auth_headers).status_code == 200
+
+    resp = client.post(f"/api/shipments/{created['id']}/pick", json={
+        "items": [{"product_id": p["id"], "serial_ids": [oos1["id"], oos2["id"]]}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "not in stock" in resp.json()["detail"]
+
+
 def _create_shipment_with_location(auth_headers, items):
     return client.post("/api/shipments", json={
         "items": [

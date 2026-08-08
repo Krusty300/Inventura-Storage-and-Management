@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import ASN, ASNItem, Location, Lot, Product, SerialNumber, Supplier
+from app.models import ASN, ASNItem, LPN, Location, Lot, Product, SerialNumber, Supplier
 from app.models.settings import Settings
 from app.schemas.asn import ASNCreate, ASNOut, ASNReceiveRequest, ASNUpdate
 from app.services import inventory
@@ -218,6 +218,8 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                 if not line_loc.is_active:
                     raise HTTPException(status_code=400, detail=f"Location '{line_loc.path}' is inactive")
             require_active_location(db, product)
+            if line.lpn_id is not None:
+                get_or_404(LPN, line.lpn_id, db)
 
             lot = None
             if line.lot_number:
@@ -254,6 +256,7 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                         serial_number=sn,
                         lot_id=lot.id if lot else None,
                         location_id=line.location_id or product.location_id,
+                        lpn_id=line.lpn_id,
                     )
                     db.add(serial)
                     db.flush()
@@ -263,6 +266,7 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                         to_location_id=line.location_id or product.location_id,
                         lot_id=lot.id if lot else None,
                         serial_id=serial.id,
+                        lpn_id=line.lpn_id,
                         reference_type="asn", reference=asn.asn_number,
                         notes=data.notes or asn.notes,
                     )
@@ -275,6 +279,7 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                     quantity_change=line.received_qty, movement_type=inventory.RECEIVE,
                     to_location_id=line.location_id or product.location_id,
                     lot_id=lot.id if lot else None,
+                    lpn_id=line.lpn_id,
                     reference_type="asn", reference=asn.asn_number,
                     notes=data.notes or asn.notes,
                 )

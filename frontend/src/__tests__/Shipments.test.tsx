@@ -146,4 +146,45 @@ describe("Shipments", () => {
       }))
     );
   });
+
+  it("opens a serial picker and sends the chosen serial_ids when picking serialized items", async () => {
+    const serialized: Shipment = {
+      ...baseShipment("draft"),
+      items: [
+        { id: 2, shipment_id: 1, product_id: 2, location_id: null, quantity_ordered: 2, quantity_picked: 0, quantity_packed: 0, quantity_shipped: 0, product_name: "Serial Widget", location_name: "", is_serialized: true },
+      ],
+    };
+    getMock.mockImplementation((url: string) => {
+      if (url === "/shipments") return Promise.resolve({ data: { items: [serialized], total: 1, page: 1, pages: 1 } });
+      if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 1, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 1 } });
+      if (url === "/shipments/1") return Promise.resolve({ data: serialized });
+      if (url === "/serial-numbers")
+        return Promise.resolve({ data: { items: [
+          { id: 11, product_id: 2, serial_number: "S-1", lot_id: null, location_id: null, lpn_id: null, status: "in_stock", sold_at: null, location_name: "", lot_number: "", lot_status: "in_stock", product_name: "Serial Widget", created_at: "2026-01-01T00:00:00" },
+          { id: 12, product_id: 2, serial_number: "S-2", lot_id: null, location_id: null, lpn_id: null, status: "in_stock", sold_at: null, location_name: "", lot_number: "", lot_status: "in_stock", product_name: "Serial Widget", created_at: "2026-01-01T00:00:00" },
+        ], total: 2, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    postMock.mockImplementation((url: string) => {
+      if (url === "/shipments/1/pick") return Promise.resolve({ data: { ...serialized, status: "picking" } });
+      return Promise.reject(new Error(`Unexpected post: ${url}`));
+    });
+
+    renderWithProviders(<Shipments />);
+    fireEvent.click(await screen.findByRole("button", { name: "View" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
+
+    expect(await screen.findByText("Select Serial Numbers")).toBeInTheDocument();
+    const checkboxes = await screen.findAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(2);
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Pick Selected" }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/shipments/1/pick", expect.objectContaining({
+        items: [{ product_id: 2, serial_ids: [11, 12] }],
+      }))
+    );
+  });
 });

@@ -1,9 +1,9 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Eye, PackagePlus, Plus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { ASN, PaginatedResponse, Product } from "../types";
+import type { ASN, LPN, PaginatedResponse, Product } from "../types";
 import Modal from "../components/Modal";
 import LocationPicker from "../components/LocationPicker";
 import StockLocationHints from "../components/StockLocationHints";
@@ -347,13 +347,32 @@ interface AsnRowData {
   lot_number: string;
   expiry_date: string;
   location: string;
+  lpn_number: string;
   serial_numbers: string;
 }
 
-function AsnReceiveRow({ row, idx, productList, onChange }: {
+function useLocationLpns(locationPath: string, locations: { id: number; path: string }[]) {
+  const locationId = useMemo(() => {
+    if (!locationPath) return undefined;
+    return locations.find((l) => l.path === locationPath)?.id;
+  }, [locationPath, locations]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["lpns", "by-location", locationId],
+    queryFn: async () => {
+      const { data } = await api.get("/lpns", { params: { location_id: locationId, limit: 500 } });
+      return data.items as LPN[];
+    },
+    enabled: !!locationId,
+  });
+  return { lpns: data ?? [], isLoading };
+}
+
+function AsnReceiveRow({ row, idx, productList, locations, onChange }: {
   row: AsnRowData;
   idx: number;
   productList: Product[];
+  locations: { id: number; path: string }[];
   onChange: (idx: number, key: keyof AsnRowData, value: string) => void;
 }) {
   const product = productList.find((p) => p.id === row.product_id);
@@ -361,6 +380,7 @@ function AsnReceiveRow({ row, idx, productList, onChange }: {
     product?.id,
     !!product?.is_serialized
   );
+  const { lpns, isLoading: lpnsLoading } = useLocationLpns(row.location, locations);
 
   useEffect(() => {
     if (!product || row.location) return;
@@ -368,6 +388,18 @@ function AsnReceiveRow({ row, idx, productList, onChange }: {
       onChange(idx, "location", stockLocations[0].path);
     }
   }, [stockLocations]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!row.location || row.lpn_number) return;
+    if (lpns.length === 1) {
+      onChange(idx, "lpn_number", lpns[0].lpn_number);
+    }
+  }, [lpns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLocationChange = (v: string) => {
+    onChange(idx, "location", v);
+    onChange(idx, "lpn_number", "");
+  };
 
   return (
     <div className="p-4 space-y-2">
@@ -387,16 +419,28 @@ function AsnReceiveRow({ row, idx, productList, onChange }: {
         </div>
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Location</label>
-          <LocationPicker value={row.location} onChange={(v) => onChange(idx, "location", v)} />
+          <LocationPicker value={row.location} onChange={handleLocationChange} />
           {product && (
             <StockLocationHints
               locations={stockLocations}
               isSerialized={!!product.is_serialized}
               selectedPath={row.location}
-              onSelect={(path) => onChange(idx, "location", path)}
+              onSelect={handleLocationChange}
               isLoading={stockLoading}
             />
           )}
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-muted mb-1">LPN (pallet)</label>
+          <input className="input" list={`asn-lpn-options-${idx}`} placeholder="e.g. LPN-1001" aria-label="LPN number" value={row.lpn_number} onChange={(e) => onChange(idx, "lpn_number", e.target.value)} />
+          <datalist id={`asn-lpn-options-${idx}`}>
+            {lpns.map((l) => (
+              <option key={l.id} value={l.lpn_number}>
+                {l.content_count === 0 ? "empty pallet" : `${l.total_quantity} units`}
+              </option>
+            ))}
+          </datalist>
+          {lpnsLoading && <p className="text-xs text-faint mt-1">Loading LPNs...</p>}
         </div>
       </div>
       {product?.is_serialized && (
@@ -418,6 +462,7 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
       lot_number: "",
       expiry_date: "",
       location: "",
+      lpn_number: "",
       serial_numbers: "",
     }))
   );
@@ -426,9 +471,11 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
   const { addToast } = useToast();
   const productList = useSelectableProducts();
   const [locations, setLocations] = useState<{ id: number; path: string }[]>([]);
+  const [lpns, setLpns] = useState<{ id: number; lpn_number: string }[]>([]);
 
   useEffect(() => {
     api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
+    api.get("/lpns", { params: { limit: 500 } }).then(({ data }) => setLpns(data.items));
   }, []);
 
   const setRow = (idx: number, key: keyof AsnRowData, value: string) => {
@@ -441,12 +488,15 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
       const product = productList.find((p) => p.id === r.product_id);
       const loc = r.location.trim();
       const locMatch = loc ? locations.find((l) => l.path === loc) : undefined;
+      const lpnNum = r.lpn_number.trim();
+      const lpnMatch = lpnNum ? lpns.find((l) => l.lpn_number === lpnNum) : undefined;
       return {
         product_id: r.product_id,
         received_qty: parseInt(r.received_qty) || 0,
         lot_number: r.lot_number.trim(),
         expiry_date: r.expiry_date || null,
         location_id: loc ? locMatch?.id ?? -1 : null,
+        lpn_id: lpnNum ? lpnMatch?.id ?? -1 : null,
         serial_numbers: product?.is_serialized
           ? r.serial_numbers.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
           : [],
@@ -458,6 +508,10 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
     }
     if (items.some((i) => i.location_id === -1)) {
       addToast("Unknown location - pick a location from the dropdown", "error");
+      return;
+    }
+    if (items.some((i) => i.lpn_id === -1)) {
+      addToast("Unknown LPN number - create the LPN first or clear the field", "error");
       return;
     }
     setSaving(true);
@@ -476,7 +530,7 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="divide-y divide-border max-h-[50vh] overflow-auto border border-border rounded-lg">
           {rows.map((row, idx) => (
-            <AsnReceiveRow key={idx} row={row} idx={idx} productList={productList} onChange={setRow} />
+            <AsnReceiveRow key={idx} row={row} idx={idx} productList={productList} locations={locations} onChange={setRow} />
           ))}
         </div>
         <div>

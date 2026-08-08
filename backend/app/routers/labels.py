@@ -94,6 +94,13 @@ def pallet_label(lpn_id: int, db: Session = Depends(get_db)):
     lines = [f"Type: {lpn.lpn_type}", f"Location: {lpn.location_name or 'N/A'}"]
     for sl in lpn.stock_lines:
         lines.append(f"{sl.product.display_name}: {sl.quantity}")
+    serials_by_product: dict[str, list[str]] = {}
+    for serial in sorted(lpn.serial_numbers, key=lambda s: s.serial_number):
+        serials_by_product.setdefault(serial.product_name or f"Product #{serial.product_id}", []).append(serial.serial_number)
+    for name, serials in serials_by_product.items():
+        joined = ", ".join(serials)
+        label = f"{name} (serials x{len(serials)}): {joined}"
+        lines.append(label[:100] + ("\u2026" if len(label) > 100 else ""))
     return _render_label(
         c, buf,
         f"PALLET {lpn.lpn_number}",
