@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import api from "../api/client";
-import type { Customer, Product, Settings } from "../types";
+import type { Customer, Product, QualityCheck, Settings } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import Modal from "./Modal";
@@ -29,58 +29,67 @@ interface SaleItemRowProps {
   sellable: Product[];
   currency: string;
   canRemove: boolean;
+  blocked: boolean;
   onChange: (idx: number, field: string, value: string) => void;
   onRemove: (idx: number) => void;
 }
 
-function SaleItemRow({ item, idx, sellable, currency, canRemove, onChange, onRemove }: SaleItemRowProps) {
+function SaleItemRow({ item, idx, sellable, currency, canRemove, blocked, onChange, onRemove }: SaleItemRowProps) {
   const product = sellable.find((p) => p.id === parseInt(item.product_id));
   const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(product?.id, false);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end border border-border rounded-lg p-3">
-      <div className="sm:col-span-4">
-        <label className="block text-xs font-medium text-muted mb-1.5">Product</label>
-        <select className="select text-sm" value={item.product_id} onChange={(e) => onChange(idx, "product_id", e.target.value)} required>
-          <option value="">Select product</option>
-          {sellable.map((p) => (
-            <option key={p.id} value={p.id}>{productLabel(p)} ({formatCurrency(p.unit_price, currency)})</option>
-          ))}
-        </select>
+    <div className="border border-border rounded-lg p-3 space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+        <div className="sm:col-span-4">
+          <label className="block text-xs font-medium text-muted mb-1.5">Product</label>
+          <select className="select text-sm" value={item.product_id} onChange={(e) => onChange(idx, "product_id", e.target.value)} required>
+            <option value="">Select product</option>
+            {sellable.map((p) => (
+              <option key={p.id} value={p.id}>{productLabel(p)} ({formatCurrency(p.unit_price, currency)})</option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:col-span-3">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-muted mb-1.5">
+            Fulfill from
+            {stockLoading && <Loader2 size={10} className="animate-spin" />}
+          </label>
+          <select
+            className="select text-sm"
+            value={item.location_id}
+            onChange={(e) => onChange(idx, "location_id", e.target.value)}
+            disabled={!product}
+            aria-label="Fulfill from location"
+          >
+            <option value="">Auto (any location)</option>
+            {stockLocations.map((l) => (
+              <option key={l.location_id} value={l.location_id.toString()}>{l.path} ({l.count})</option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-muted mb-1.5">Qty</label>
+          <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity} onChange={(e) => onChange(idx, "quantity", e.target.value)} min="1" required />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-muted mb-1.5">Price</label>
+          <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price} onChange={(e) => onChange(idx, "unit_price", e.target.value)} step="0.01" required />
+        </div>
+        <div className="sm:col-span-1 flex justify-end">
+          {canRemove && (
+            <button type="button" onClick={() => onRemove(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
       </div>
-      <div className="sm:col-span-3">
-        <label className="flex items-center gap-1.5 text-xs font-medium text-muted mb-1.5">
-          Fulfill from
-          {stockLoading && <Loader2 size={10} className="animate-spin" />}
-        </label>
-        <select
-          className="select text-sm"
-          value={item.location_id}
-          onChange={(e) => onChange(idx, "location_id", e.target.value)}
-          disabled={!product}
-          aria-label="Fulfill from location"
-        >
-          <option value="">Auto (any location)</option>
-          {stockLocations.map((l) => (
-            <option key={l.location_id} value={l.location_id.toString()}>{l.path} ({l.count})</option>
-          ))}
-        </select>
-      </div>
-      <div className="sm:col-span-2">
-        <label className="block text-xs font-medium text-muted mb-1.5">Qty</label>
-        <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity} onChange={(e) => onChange(idx, "quantity", e.target.value)} min="1" required />
-      </div>
-      <div className="sm:col-span-2">
-        <label className="block text-xs font-medium text-muted mb-1.5">Price</label>
-        <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price} onChange={(e) => onChange(idx, "unit_price", e.target.value)} step="0.01" required />
-      </div>
-      <div className="sm:col-span-1 flex justify-end">
-        {canRemove && (
-          <button type="button" onClick={() => onRemove(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
-            <Trash2 size={16} />
-          </button>
-        )}
-      </div>
+      {blocked && (
+        <div className="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <span>This product has a pending quality check and can't be sold until it's resolved.</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -89,6 +98,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [pendingQcs, setPendingQcs] = useState<QualityCheck[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [notes, setNotes] = useState("");
@@ -100,10 +110,21 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     api.get("/customers", { params: { limit: 1000 } }).then(({ data }) => setCustomers(data.items));
     api.get("/products", { params: { active_only: true, limit: 1000, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
     api.get("/settings").then(({ data }) => setSettings(data));
+    api.get("/quality-checks", { params: { result: "pending", limit: 200 } }).then(({ data }) => setPendingQcs(data.items));
   }, []);
 
   const selectable = selectableProducts(products);
   const sellable = selectable.filter((p) => !p.is_serialized);
+
+  const isBlocked = (item: LineItem) => {
+    const productId = parseInt(item.product_id);
+    if (!productId) return false;
+    const locationId = item.location_id ? parseInt(item.location_id) : null;
+    return pendingQcs.some(
+      (qc) => qc.product_id === productId &&
+        (qc.location_id === null || locationId === null || qc.location_id === locationId),
+    );
+  };
 
   const addItem = () => setItems([...items, { ...EMPTY_ITEM }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
@@ -128,6 +149,10 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     e.preventDefault();
     if (items.some((i) => !i.product_id)) {
       addToast("All line items must have a product selected", "error");
+      return;
+    }
+    if (items.some(isBlocked)) {
+      addToast("A line item has a pending quality check and can't be sold yet", "error");
       return;
     }
     setSaving(true);
@@ -194,6 +219,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 sellable={sellable}
                 currency={currency}
                 canRemove={items.length > 1}
+                blocked={isBlocked(item)}
                 onChange={updateItem}
                 onRemove={removeItem}
               />

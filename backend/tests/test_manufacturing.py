@@ -364,3 +364,23 @@ def test_trace_returns_movements_and_work_orders(auth_headers):
     comp_trace = client.get(f"/api/products/{comp['id']}/trace", headers=auth_headers).json()
     assert any(m["movement_type"] == "issue" and m["reference"] == wo["wo_number"] for m in comp_trace["outgoing"])
     assert any(wo_["role"] == "consumed" and wo_["wo_number"] == wo["wo_number"] for wo_ in comp_trace["work_orders"])
+
+
+# ---------------------------------------------------------------- PDF
+
+def test_work_order_pdf_generated(auth_headers):
+    fg = _make_product(auth_headers, "WO-PDF-FG")
+    comp = _make_product(auth_headers, "WO-PDF-COMP")
+    loc = _make_location(auth_headers, "WO-PDF-LOC")
+    assert _receive(auth_headers, comp["id"], 10, loc["id"]).status_code == 201
+    wo = _create_wo(auth_headers, fg["id"], 2, items=[
+        {"product_id": comp["id"], "quantity_required": 3},
+    ]).json()
+    resp = client.get(f"/api/work-orders/{wo['id']}/pdf", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert wo["wo_number"] in resp.headers["content-disposition"]
+
+
+def test_work_order_pdf_not_found(auth_headers):
+    assert client.get("/api/work-orders/99999/pdf", headers=auth_headers).status_code == 404

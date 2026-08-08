@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Eye, PackagePlus } from "lucide-react";
+import { Eye, PackagePlus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Receipt } from "../types";
@@ -49,6 +49,17 @@ export default function Receipts() {
     addToast("Receipts exported to CSV", "success");
   };
 
+  const printPdf = async (r: Receipt) => {
+    try {
+      const { data } = await api.get(`/receipts/${r.id}/pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(data);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      addToast("Failed to generate PDF", "error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -95,9 +106,14 @@ export default function Receipts() {
                 <td className="px-4 py-3">{r.total_quantity}</td>
                 <td className="px-4 py-3">{r.total_cost.toFixed(2)}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setViewing(r)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View receipt ${r.receipt_number}`}>
-                    <Eye size={16} />
-                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => printPdf(r)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print receipt ${r.receipt_number}`}>
+                      <Printer size={16} />
+                    </button>
+                    <button onClick={() => setViewing(r)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View receipt ${r.receipt_number}`}>
+                      <Eye size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

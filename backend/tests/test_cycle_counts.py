@@ -290,3 +290,18 @@ def test_cycle_count_resubmit_posts_delta(auth_headers):
     assert r["status"] == "completed" and r["total_variance"] == 1, r
     assert client.get(f"/api/products/{p1['id']}", headers=auth_headers).json()["quantity"] == 11
     assert client.get(f"/api/products/{p2['id']}", headers=auth_headers).json()["quantity"] == 10
+
+
+def test_cycle_count_pdf_generated(auth_headers):
+    prod = _make_product(auth_headers, "CC-PDF")
+    loc = _make_location(auth_headers, "CC-PDF-LOC")
+    assert _receive(auth_headers, prod["id"], 4, loc["id"]).status_code == 201
+    cc = _create_cc(auth_headers, prod["id"], location_id=loc["id"], expected=4).json()
+    resp = client.get(f"/api/cycle-counts/{cc['id']}/pdf", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert cc["cc_number"] in resp.headers["content-disposition"]
+
+
+def test_cycle_count_pdf_not_found(auth_headers):
+    assert client.get("/api/cycle-counts/99999/pdf", headers=auth_headers).status_code == 404

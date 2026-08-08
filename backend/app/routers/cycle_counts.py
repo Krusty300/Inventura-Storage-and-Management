@@ -2,15 +2,21 @@ from datetime import datetime, timezone
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import CycleCount, CycleCountItem, Location, Product
+from app.models.settings import Settings
 from app.schemas.cycle_count import CycleCountCreate, CycleCountOut, CycleCountSubmit, CycleCountUpdate
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
+from app.services.pdf_helpers import (
+    BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
+    draw_notes, draw_signoff, draw_totals, new_canvas, render_pdf,
+)
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/cycle-counts", tags=["cycle-counts"], dependencies=[Depends(get_current_user)])
@@ -55,6 +61,63 @@ def list_cycle_counts(
 @router.get("/{cc_id}", response_model=CycleCountOut)
 def get_cycle_count(cc_id: int, db: Session = Depends(get_db)):
     return _load_cc(db, cc_id)
+
+
+@router.get("/{cc_id}/pdf")
+def cycle_count_pdf(cc_id: int, db: Session = Depends(get_db)):
+    cc = _load_cc(db, cc_id)
+    s = db.query(Settings).first()
+
+    store_name = (s.store_name if s else None) or "My Store"
+    store_lines = [store_name] + [ln for ln in (
+        (s.address if s else None),
+        (s.phone if s else None),
+        (s.email if s else None),
+    ) if ln]
+
+    c, buf = new_canvas(f"Cycle Count {cc.cc_number}")
+    meta = [
+        ("CC #:", cc.cc_number),
+        ("Date:", cc.created_at.strftime("%b %d, %Y")),
+        ("Status:", cc.status),
+        ("Created by:", cc.username or "\u2014"),
+    ]
+    body_y = draw_header(c, "CYCLE COUNT", meta, store_lines)
+
+    info_y = draw_info_block(c, MARGIN, body_y, "Location", [cc.location_name or "\u2014"])
+
+    headers = ["Product", "Expected", "Counted", "Variance", "Status"]
+    aligns = ["l", "r", "r", "r", "l"]
+    col_widths = [224.0, 70.0, 70.0, 70.0, 70.0]
+    rows = []
+    for item in cc.items:
+        name = item.product_name or f"Product #{item.product_id}"
+        rows.append([
+            (name[:52] + "\u2026") if len(name) > 52 else name,
+            str(item.expected_qty),
+            str(item.counted_qty) if item.counted_qty is not None else "\u2014",
+            f"{item.variance:+d}",
+            item.status,
+        ])
+
+    y = draw_item_table(
+        c, MARGIN, info_y, headers, aligns, col_widths, rows,
+        on_page_break=lambda c: draw_header(c, "CYCLE COUNT", meta, store_lines),
+    )
+
+    y = draw_totals(c, BODY_RIGHT, y, [
+        ("Total Expected", f"{cc.total_expected} unit(s)"),
+        ("Total Variance", f"{cc.total_variance:+d}"),
+    ])
+
+    if cc.notes:
+        draw_notes(c, MARGIN, y, cc.notes)
+        y -= 18
+
+    draw_signoff(c, y, "Inventory count sheet")
+    return Response(render_pdf(c, buf), media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename={cc.cc_number}.pdf"
+    })
 
 
 @router.post("", response_model=CycleCountOut, status_code=201)

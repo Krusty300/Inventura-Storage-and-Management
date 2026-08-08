@@ -9,6 +9,7 @@ from app.models.location import Location
 from app.models.product import Product
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
+from app.models.quality_check import QualityCheck
 from app.models.shipment import Shipment
 from app.models.stock_movement import StockMovement
 from app.schemas.sale import SaleBulkEdit, SaleCreate, SaleOut
@@ -39,6 +40,25 @@ def load_sale(db: Session, sale_id: int) -> Sale:
         joinedload(Sale.items).joinedload(SaleItem.product),
         joinedload(Sale.customer), joinedload(Sale.user),
     ])
+
+
+def _pending_qc_blockers(db: Session, product_id: int, location_id: int | None) -> list[QualityCheck]:
+    """Return pending quality checks that block selling ``product_id``.
+
+    A pending check blocks when it is not scoped to a location (product- or
+    lot-wide) or when it covers the location the sale item is drawn from.
+    """
+    pending = db.query(QualityCheck).filter(
+        QualityCheck.product_id == product_id,
+        QualityCheck.result == "pending",
+    ).all()
+    blockers = []
+    for qc in pending:
+        if qc.location_id is None:
+            blockers.append(qc)
+        elif location_id is None or qc.location_id == location_id:
+            blockers.append(qc)
+    return blockers
 
 
 def _movement_location_map(db: Session, invoices: list[str]) -> dict[str, dict[int, list[str]]]:
@@ -199,6 +219,14 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
                 raise HTTPException(status_code=400, detail=f"Location {item_data.location_id} not found")
             if not loc.is_active:
                 raise HTTPException(status_code=400, detail=f"Location '{loc.path}' is inactive")
+        blockers = _pending_qc_blockers(db, product.id, item_data.location_id)
+        if blockers:
+            qc_nums = ", ".join(qc.qc_number for qc in blockers)
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{product.display_name}' has pending quality check(s) {qc_nums} - "
+                "complete or cancel them before selling",
+            )
         try:
             inventory.allocate_lots(
                 db, product_id=product.id, quantity=qty_needed[(item_data.product_id, item_data.location_id)],

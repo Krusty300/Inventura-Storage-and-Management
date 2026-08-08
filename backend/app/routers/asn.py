@@ -2,15 +2,21 @@ from datetime import datetime, timezone
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import ASN, ASNItem, Location, Lot, Product, SerialNumber, Supplier
+from app.models.settings import Settings
 from app.schemas.asn import ASNCreate, ASNOut, ASNReceiveRequest, ASNUpdate
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
+from app.services.pdf_helpers import (
+    BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
+    draw_notes, draw_signoff, draw_totals, new_canvas, render_pdf,
+)
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
 router = APIRouter(prefix="/api/asns", tags=["asns"], dependencies=[Depends(get_current_user)])
@@ -50,6 +56,74 @@ def list_asns(
 @router.get("/{asn_id}", response_model=ASNOut)
 def get_asn(asn_id: int, db: Session = Depends(get_db)):
     return _load_asn(db, asn_id)
+
+
+@router.get("/{asn_id}/pdf")
+def asn_pdf(asn_id: int, db: Session = Depends(get_db)):
+    a = _load_asn(db, asn_id)
+    s = db.query(Settings).first()
+
+    store_name = (s.store_name if s else None) or "My Store"
+    currency = (s.currency_symbol if s else "$") or "$"
+    store_lines = [store_name] + [ln for ln in (
+        (s.address if s else None),
+        (s.phone if s else None),
+        (s.email if s else None),
+    ) if ln]
+
+    c, buf = new_canvas(f"Advance Shipping Notice {a.asn_number}")
+    meta = [
+        ("ASN #:", a.asn_number),
+        ("Date:", a.created_at.strftime("%b %d, %Y")),
+        ("Status:", a.status),
+        ("Expected Arrival:", a.expected_arrival.strftime("%b %d, %Y") if a.expected_arrival else "\u2014"),
+    ]
+    body_y = draw_header(c, "ADVANCE SHIPPING NOTICE", meta, store_lines)
+
+    supplier_lines = [a.supplier_name or "\u2014"]
+    if a.supplier:
+        if a.supplier.contact_person:
+            supplier_lines.append(f"Contact: {a.supplier.contact_person}")
+        if a.supplier.phone:
+            supplier_lines.append(f"Phone: {a.supplier.phone}")
+        if a.supplier.address:
+            supplier_lines.append(f"Address: {a.supplier.address}")
+    info_y = draw_info_block(c, MARGIN, body_y, "Supplier", supplier_lines)
+
+    headers = ["Item", "Location", "Expected", "Received", "Unit Cost", "Amount"]
+    aligns = ["l", "l", "r", "r", "r", "r"]
+    col_widths = [170.0, 100.0, 44.0, 44.0, 70.0, 76.0]
+    rows = []
+    for item in a.items:
+        name = item.product_name or f"Product #{item.product_id}"
+        rows.append([
+            (name[:38] + "\u2026") if len(name) > 38 else name,
+            item.location_name or "\u2014",
+            str(item.expected_qty),
+            str(item.received_qty),
+            f"{currency}{float(item.unit_cost):.2f}",
+            f"{currency}{float(item.unit_cost) * item.expected_qty:.2f}",
+        ])
+
+    y = draw_item_table(
+        c, MARGIN, info_y, headers, aligns, col_widths, rows,
+        on_page_break=lambda c: draw_header(c, "ADVANCE SHIPPING NOTICE", meta, store_lines),
+    )
+
+    total_value = sum(i.expected_qty * float(i.unit_cost) for i in a.items)
+    y = draw_totals(c, BODY_RIGHT, y, [
+        ("Total Expected", f"{a.total_expected} unit(s)"),
+        ("Total Received", f"{a.total_received} unit(s)"),
+    ], "Total Value", f"{currency}{total_value:.2f}")
+
+    if a.notes:
+        draw_notes(c, MARGIN, y, a.notes)
+        y -= 18
+
+    draw_signoff(c, y, "Awaiting receiving")
+    return Response(render_pdf(c, buf), media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename={a.asn_number}.pdf"
+    })
 
 
 @router.post("", response_model=ASNOut, status_code=201)

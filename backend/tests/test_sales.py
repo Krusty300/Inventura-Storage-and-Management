@@ -72,6 +72,87 @@ def test_sale_of_inactive_product_rejected(auth_headers):
     assert resp.status_code == 404
 
 
+def test_sale_blocked_by_pending_quality_check(auth_headers):
+    prod = _make_product(auth_headers, sku="QC-BLOCK", quantity=5)
+    qc = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "result": "pending",
+    }, headers=auth_headers)
+    assert qc.status_code == 201
+
+    resp = _make_sale(auth_headers, [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}])
+    assert resp.status_code == 400
+    assert "quality check" in resp.json()["detail"].lower()
+    updated = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert updated["quantity"] == 5
+
+
+def test_sale_allowed_after_pending_quality_check_resolved(auth_headers):
+    prod = _make_product(auth_headers, sku="QC-CLEAR", quantity=5)
+    qc = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "result": "pending",
+    }, headers=auth_headers).json()
+
+    resp = client.put(f"/api/quality-checks/{qc['id']}", json={"result": "pass"}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = _make_sale(auth_headers, [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}])
+    assert resp.status_code == 201
+
+
+def test_sale_allowed_when_only_non_pending_checks_exist(auth_headers):
+    prod = _make_product(auth_headers, sku="QC-PASS", quantity=5)
+    assert client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "result": "pass",
+    }, headers=auth_headers).status_code == 201
+
+    resp = _make_sale(auth_headers, [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}])
+    assert resp.status_code == 201
+
+
+def test_location_scoped_pending_qc_only_blocks_that_location(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "QC-LOC-BLK", "name": "QC Location Block", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc_a = _make_location("QC-LOC-BLK-A")
+    loc_b = _make_location("QC-LOC-BLK-B")
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        _receive_to_locations(db, user, prod["id"], [(loc_a, 5), (loc_b, 5)])
+        db.commit()
+    finally:
+        db.close()
+
+    assert client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "location_id": loc_a, "result": "pending",
+    }, headers=auth_headers).status_code == 201
+
+    blocked = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0, "location_id": loc_a}],
+    }, headers=auth_headers)
+    assert blocked.status_code == 400
+    assert "quality check" in blocked.json()["detail"].lower()
+
+    # auto-location sale may draw from the quarantined location, so it is blocked too
+    auto = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}],
+    }, headers=auth_headers)
+    assert auto.status_code == 400
+
+    ok = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0, "location_id": loc_b}],
+    }, headers=auth_headers)
+    assert ok.status_code == 201
+
+    db = TestingSessionLocal()
+    try:
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_a) == 5
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_b) == 4
+    finally:
+        db.close()
+
+
 def test_refund_restores_stock(auth_headers):
     prod = _make_product(auth_headers, quantity=10)
     sale = _make_sale(auth_headers, [{"product_id": prod["id"], "quantity": 4, "unit_price": 20.00}]).json()

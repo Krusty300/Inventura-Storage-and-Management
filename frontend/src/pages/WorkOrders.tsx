@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
-import { CheckCircle, Eye, Pencil, Play, Plus, Rocket, XCircle } from "lucide-react";
+import { CheckCircle, Eye, Pencil, Play, Plus, Printer, Rocket, XCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { BOM, Location, PaginatedResponse, WorkOrder, WorkOrderCost, WorkOrderGenealogy } from "../types";
@@ -63,6 +63,17 @@ export default function WorkOrders() {
     }
   };
 
+  const printPdf = async (w: WorkOrder) => {
+    try {
+      const { data } = await api.get(`/work-orders/${w.id}/pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(data);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      addToast("Failed to generate PDF", "error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -115,6 +126,7 @@ export default function WorkOrders() {
                 <td className="px-4 py-3 text-muted">{formatDate(w.created_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
+                    <button onClick={() => printPdf(w)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${w.wo_number}`}><Printer size={16} /></button>
                     <button onClick={() => setViewing(w)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${w.wo_number}`}><Eye size={16} /></button>
                     {w.status === "planned" && can("work_orders.update") && (
                       <>

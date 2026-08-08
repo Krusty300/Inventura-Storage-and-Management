@@ -2,15 +2,21 @@ from datetime import datetime, timezone
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import BOM, BOMItem, Location, Lot, LotLink, Product, SerialNumber, StockMovement, WorkOrder, WorkOrderItem
+from app.models.settings import Settings
 from app.schemas.work_order import WORK_ORDER_STATUSES, WorkOrderComplete, WorkOrderCreate, WorkOrderOut, WorkOrderUpdate
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.sequences import next_document_number
+from app.services.pdf_helpers import (
+    BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
+    draw_notes, draw_signoff, draw_totals, new_canvas, render_pdf,
+)
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/work-orders", tags=["work-orders"], dependencies=[Depends(get_current_user)])
@@ -200,6 +206,68 @@ def list_work_orders(
 @router.get("/{wo_id}", response_model=WorkOrderOut)
 def get_work_order(wo_id: int, db: Session = Depends(get_db)):
     return _load_wo(db, wo_id)
+
+
+@router.get("/{wo_id}/pdf")
+def work_order_pdf(wo_id: int, db: Session = Depends(get_db)):
+    wo = _load_wo(db, wo_id)
+    s = db.query(Settings).first()
+
+    store_name = (s.store_name if s else None) or "My Store"
+    store_lines = [store_name] + [ln for ln in (
+        (s.address if s else None),
+        (s.phone if s else None),
+        (s.email if s else None),
+    ) if ln]
+
+    c, buf = new_canvas(f"Work Order {wo.wo_number}")
+    meta = [
+        ("WO #:", wo.wo_number),
+        ("Date:", wo.created_at.strftime("%b %d, %Y")),
+        ("Status:", wo.status),
+        ("Priority:", wo.priority),
+    ]
+    body_y = draw_header(c, "WORK ORDER", meta, store_lines)
+
+    product_lines = [wo.product_name or f"Product #{wo.product_id}"]
+    product_lines.append(f"Quantity: {wo.quantity}")
+    if wo.username:
+        product_lines.append(f"Created by: {wo.username}")
+    if wo.bom_name:
+        product_lines.append(f"BOM: {wo.bom_name}")
+    info_y = draw_info_block(c, MARGIN, body_y, "Product", product_lines)
+
+    headers = ["Component", "Required", "Issued", "Remaining"]
+    aligns = ["l", "r", "r", "r"]
+    col_widths = [294.0, 70.0, 70.0, 70.0]
+    rows = []
+    for item in wo.items:
+        name = item.product_name or f"Product #{item.product_id}"
+        rows.append([
+            (name[:64] + "\u2026") if len(name) > 64 else name,
+            str(item.quantity_required),
+            str(item.quantity_issued),
+            str(item.quantity_required - item.quantity_issued),
+        ])
+
+    y = draw_item_table(
+        c, MARGIN, info_y, headers, aligns, col_widths, rows,
+        on_page_break=lambda c: draw_header(c, "WORK ORDER", meta, store_lines),
+    )
+
+    y = draw_totals(c, BODY_RIGHT, y, [
+        ("Total Required", f"{wo.total_required} unit(s)"),
+        ("Total Issued", f"{wo.total_issued} unit(s)"),
+    ])
+
+    if wo.notes:
+        draw_notes(c, MARGIN, y, wo.notes)
+        y -= 18
+
+    draw_signoff(c, y, "Manufacturing order")
+    return Response(render_pdf(c, buf), media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename={wo.wo_number}.pdf"
+    })
 
 
 @router.get("/{wo_id}/genealogy")

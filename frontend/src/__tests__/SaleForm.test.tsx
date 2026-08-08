@@ -24,6 +24,7 @@ describe("SaleForm", () => {
       if (url === "/customers") return Promise.resolve({ data: { items: [] } });
       if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
@@ -44,6 +45,7 @@ describe("SaleForm", () => {
       if (url === "/customers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Corp", phone: "", email: "", address: "", customer_type: "wholesale", notes: "", is_active: true, created_at: "", updated_at: "" }] } });
       if (url === "/products") return Promise.resolve({ data: { items: [] } });
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
@@ -55,6 +57,7 @@ describe("SaleForm", () => {
       if (url === "/customers") return Promise.resolve({ data: { items: [] } });
       if (url === "/products") return Promise.resolve({ data: { items: [] } });
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
@@ -70,6 +73,7 @@ describe("SaleForm", () => {
       if (url === "/customers") return Promise.resolve({ data: { items: [] } });
       if (url === "/products") return Promise.resolve({ data: { items: [widget, serialized] } });
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
@@ -83,6 +87,7 @@ describe("SaleForm", () => {
       if (url === "/customers") return Promise.resolve({ data: { items: [] } });
       if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
         { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
         { location_id: 2, path: "Store B", is_active: true, quantity: 8, lots: [] },
@@ -111,6 +116,7 @@ describe("SaleForm", () => {
       if (url === "/customers") return Promise.resolve({ data: { items: [] } });
       if (url === "/products") return Promise.resolve({ data: { items: [widget, gadget] } });
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
         { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
       ], unallocated: 0 } });
@@ -128,6 +134,54 @@ describe("SaleForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
       items: [{ product_id: 9, quantity: 1, unit_price: 15, location_id: null }],
+    })));
+  });
+
+  it("warns and blocks submission when the product has a pending quality check", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
+      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [{
+        id: 1, qc_number: "QC-1", product_id: 7, lot_id: null, location_id: null,
+        work_order_id: null, batch_number: "", result: "pending", notes: "",
+        checked_by: 1, checked_at: null, created_at: "", product_name: "Widget",
+        lot_number: "", location_name: "", wo_number: "", checker_username: "",
+      }], total: 1, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
+    const productSelect = screen.getAllByRole("combobox")[2];
+    fireEvent.change(productSelect, { target: { value: "7" } });
+    expect(await screen.findByText(/pending quality check/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    await vi.waitFor(() => expect(postMock).not.toHaveBeenCalled());
+  });
+
+  it("allows a sale when the pending quality check belongs to a different product", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
+      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [{
+        id: 2, qc_number: "QC-2", product_id: 99, lot_id: null, location_id: null,
+        work_order_id: null, batch_number: "", result: "pending", notes: "",
+        checked_by: 1, checked_at: null, created_at: "", product_name: "Other",
+        lot_number: "", location_name: "", wo_number: "", checker_username: "",
+      }], total: 1, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    postMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
+    const productSelect = screen.getAllByRole("combobox")[2];
+    fireEvent.change(productSelect, { target: { value: "7" } });
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
+      items: [{ product_id: 7, quantity: 1, unit_price: 10, location_id: null }],
     })));
   });
 });

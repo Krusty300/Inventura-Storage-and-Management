@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
-import { Eye, PackagePlus, Plus } from "lucide-react";
+import { Eye, PackagePlus, Plus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { ASN, PaginatedResponse, Product } from "../types";
@@ -29,6 +29,7 @@ export default function ASNs() {
   const [receiving, setReceiving] = useState<ASN | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
+  const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading } = useQuery({
@@ -45,6 +46,17 @@ export default function ASNs() {
 
   const statusBadge = (s: string) =>
     s === "pending" ? "badge-info" : s === "received" ? "badge-success" : "badge-danger";
+
+  const printPdf = async (a: ASN) => {
+    try {
+      const { data } = await api.get(`/asns/${a.id}/pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(data);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      addToast("Failed to generate PDF", "error");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -90,6 +102,7 @@ export default function ASNs() {
                 <td className="px-4 py-3 text-muted">{a.total_received}/{a.total_expected}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
+                    <button onClick={() => printPdf(a)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${a.asn_number}`}><Printer size={16} /></button>
                     <button onClick={() => setViewing(a)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${a.asn_number}`}><Eye size={16} /></button>
                     {a.status === "pending" && can("asns.receive") && (
                       <button onClick={() => setReceiving(a)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 font-medium">Receive</button>

@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
-import { Eye, ClipboardCheck, Plus, Trash2 } from "lucide-react";
+import { Eye, ClipboardCheck, Plus, Printer, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { CycleCount, Location, PaginatedResponse } from "../types";
@@ -26,6 +26,7 @@ export default function CycleCounts() {
   const [counting, setCounting] = useState<CycleCount | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
+  const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading } = useQuery({
@@ -42,6 +43,17 @@ export default function CycleCounts() {
 
   const statusBadge = (s: string) =>
     s === "completed" ? "badge-success" : s === "in_progress" ? "badge-info" : s === "cancelled" ? "badge-danger" : "badge-warning";
+
+  const printPdf = async (c: CycleCount) => {
+    try {
+      const { data } = await api.get(`/cycle-counts/${c.id}/pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(data);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      addToast("Failed to generate PDF", "error");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -93,6 +105,7 @@ export default function CycleCounts() {
                 <td className="px-4 py-3 text-muted">{formatDate(c.created_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
+                    <button onClick={() => printPdf(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${c.cc_number}`}><Printer size={16} /></button>
                     <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${c.cc_number}`}><Eye size={16} /></button>
                     {c.status !== "completed" && c.status !== "cancelled" && can("cycle_counts.count") && (
                       <button onClick={() => setCounting(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Count ${c.cc_number}`}><ClipboardCheck size={16} /></button>

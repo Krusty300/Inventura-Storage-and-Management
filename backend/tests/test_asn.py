@@ -123,3 +123,19 @@ def test_lot_label_pdf(auth_headers):
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/pdf"
     assert resp.content[:4] == b"%PDF"
+
+
+def test_asn_pdf_generated(auth_headers):
+    prod = _make_product(auth_headers, sku="ASN-PDF")
+    asn = client.post("/api/asns", json={
+        "expected_arrival": "2026-08-15",
+        "items": [{"product_id": prod["id"], "expected_qty": 5}],
+    }, headers=auth_headers).json()
+    resp = client.get(f"/api/asns/{asn['id']}/pdf", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert asn["asn_number"] in resp.headers["content-disposition"]
+
+
+def test_asn_pdf_not_found(auth_headers):
+    assert client.get("/api/asns/99999/pdf", headers=auth_headers).status_code == 404

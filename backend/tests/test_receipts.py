@@ -180,3 +180,18 @@ def test_receipt_list_search_and_detail(auth_headers):
     detail = client.get(f"/api/receipts/{receipt['id']}", headers=auth_headers).json()
     assert detail["items"][0]["product_id"] == prod["id"]
     assert detail["items"][0]["quantity"] == 3
+
+
+def test_receipt_pdf_generated(auth_headers):
+    prod = _make_product(auth_headers, sku="RCP-PDF")
+    receipt = _post_receipt(auth_headers, [
+        {"product_id": prod["id"], "quantity": 3, "unit_cost": 10.0, "lot_number": "PDF-LOT"},
+    ]).json()
+    resp = client.get(f"/api/receipts/{receipt['id']}/pdf", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert receipt["receipt_number"] in resp.headers["content-disposition"]
+
+
+def test_receipt_pdf_not_found(auth_headers):
+    assert client.get("/api/receipts/99999/pdf", headers=auth_headers).status_code == 404
