@@ -9,6 +9,7 @@ QC_RESULTS = {"pending", "pass", "fail"}
 class QualityCheckCreate(BaseModel):
     product_id: int
     lot_id: Optional[int] = None
+    location_id: Optional[int] = None
     work_order_id: Optional[int] = None
     batch_number: str = ""
     result: str = "pass"
@@ -41,6 +42,7 @@ class QualityCheckOut(BaseModel):
     qc_number: str
     product_id: int
     lot_id: Optional[int] = None
+    location_id: Optional[int] = None
     work_order_id: Optional[int] = None
     batch_number: str
     result: str
@@ -50,6 +52,7 @@ class QualityCheckOut(BaseModel):
     created_at: datetime
     product_name: str = ""
     lot_number: str = ""
+    location_name: str = ""
     wo_number: str = ""
     checker_username: str = ""
 

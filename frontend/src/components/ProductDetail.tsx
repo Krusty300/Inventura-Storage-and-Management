@@ -247,6 +247,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           productId={product.id}
           productName={product.display_name}
           available={unallocated}
+          isSerialized={product.is_serialized}
           onClose={() => setShowMoveUnallocated(false)}
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });

@@ -29,6 +29,7 @@ function mockSale(overrides: Record<string, unknown> = {}) {
     customer_name: "Walk-in Customer",
     username: "tester",
     items: [],
+    locations: [],
     ...overrides,
   };
 }
@@ -52,6 +53,19 @@ describe("Sales Page", () => {
     expect(await screen.findByText("INV-0001")).toBeInTheDocument();
     expect(screen.getByText("$99.00")).toBeInTheDocument();
     expect(screen.getByText("Walk-in Customer")).toBeInTheDocument();
+  });
+
+  it("shows the source location column for each sale", async () => {
+    mockSales([
+      mockSale({ locations: ["Warehouse A", "Store B"] }),
+      mockSale({ id: 2, invoice_number: "INV-0002", locations: ["Warehouse A"] }),
+      mockSale({ id: 3, invoice_number: "INV-0003", locations: [] }),
+    ]);
+    renderWithProviders(<Sales />);
+    expect(await screen.findByText("INV-0001")).toBeInTheDocument();
+    expect(screen.getByText("Warehouse A, Store B")).toBeInTheDocument();
+    expect(screen.getByText("INV-0002").parentElement).toHaveTextContent("Warehouse A");
+    expect(screen.getByText("INV-0003").parentElement).toHaveTextContent("—");
   });
 
   it("shows refund button only for completed sales", async () => {

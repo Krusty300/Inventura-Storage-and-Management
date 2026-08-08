@@ -234,3 +234,218 @@ def test_sale_of_stock_located_in_a_bin_succeeds(auth_headers):
         assert db.get(Product, prod["id"]).quantity == 7
     finally:
         db.close()
+
+
+def _receive_to_locations(db, user, product_id, entries):
+    """Receive `quantity` of a product into each (location_id, quantity) entry."""
+    for loc_id, qty in entries:
+        inventory.post_journal_entry(
+            db, product_id=product_id, user_id=user.id,
+            quantity_change=qty, movement_type=inventory.RECEIVE,
+            to_location_id=loc_id, reference="Inbound",
+        )
+
+
+def _make_location(code):
+    db = TestingSessionLocal()
+    try:
+        loc = Location(name=code, code=code)
+        db.add(loc)
+        db.commit()
+        db.refresh(loc)
+        return loc.id
+    finally:
+        db.close()
+
+
+def test_sale_with_location_consumes_from_that_location_only(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LOC-AUTO", "name": "Multi-Loc Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc_a = _make_location("SALE-A")
+    loc_b = _make_location("SALE-B")
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        _receive_to_locations(db, user, prod["id"], [(loc_a, 5), (loc_b, 5)])
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 3, "unit_price": 10.0, "location_id": loc_a}],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+
+    db = TestingSessionLocal()
+    try:
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_a) == 2
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_b) == 5
+        assert inventory.on_hand(db, product_id=prod["id"]) == 7
+        out = db.query(StockMovement).filter(
+            StockMovement.product_id == prod["id"],
+            StockMovement.movement_type == "out",
+        ).all()
+        assert out and all(m.from_location_id == loc_a for m in out)
+    finally:
+        db.close()
+
+
+def test_sale_split_across_locations(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LOC-SPLIT", "name": "Split Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc_a = _make_location("SPLIT-A")
+    loc_b = _make_location("SPLIT-B")
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        _receive_to_locations(db, user, prod["id"], [(loc_a, 3), (loc_b, 4)])
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.post("/api/sales", json={
+        "items": [
+            {"product_id": prod["id"], "quantity": 2, "unit_price": 10.0, "location_id": loc_a},
+            {"product_id": prod["id"], "quantity": 3, "unit_price": 10.0, "location_id": loc_b},
+        ],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+
+    db = TestingSessionLocal()
+    try:
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_a) == 1
+        assert inventory.on_hand(db, product_id=prod["id"], location_id=loc_b) == 1
+        assert inventory.on_hand(db, product_id=prod["id"]) == 2
+    finally:
+        db.close()
+
+
+def test_sale_location_insufficient_stock_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LOC-SHORT", "name": "Short Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc_a = _make_location("SHORT-A")
+    loc_b = _make_location("SHORT-B")
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        _receive_to_locations(db, user, prod["id"], [(loc_a, 5)])
+        db.commit()
+    finally:
+        db.close()
+
+    over = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 6, "unit_price": 10.0, "location_id": loc_a}],
+    }, headers=auth_headers)
+    assert over.status_code == 400
+
+    empty = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0, "location_id": loc_b}],
+    }, headers=auth_headers)
+    assert empty.status_code == 400
+
+    db = TestingSessionLocal()
+    try:
+        assert inventory.on_hand(db, product_id=prod["id"]) == 5
+        assert db.get(Product, prod["id"]).quantity == 5
+    finally:
+        db.close()
+
+
+def test_sale_unknown_or_inactive_location_rejected(auth_headers):
+    prod = _make_product(auth_headers, sku="LOC-UNKNOWN", quantity=5)
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0, "location_id": 99999}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "not found" in resp.json()["detail"]
+
+    loc = client.post("/api/locations", json={
+        "code": "SALE-INACTIVE", "name": "Inactive Loc", "location_type": "bin",
+    }, headers=auth_headers).json()
+    client.put(f"/api/locations/{loc['id']}", json={"is_active": False}, headers=auth_headers)
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0, "location_id": loc["id"]}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "inactive" in resp.json()["detail"]
+
+
+def test_sale_location_excludes_quarantined_lots(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LOC-Q", "name": "Quarantined Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc_a = _make_location("Q-LOC")
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        lot = Lot(product_id=prod["id"], lot_number="Q-LOT-1", status="quarantined")
+        db.add(lot)
+        db.commit()
+        db.refresh(lot)
+        inventory.post_journal_entry(
+            db, product_id=prod["id"], user_id=user.id,
+            quantity_change=5, movement_type=inventory.RECEIVE,
+            to_location_id=loc_a, lot_id=lot.id, reference="Quarantined inbound",
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0, "location_id": loc_a}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+
+    auto = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}],
+    }, headers=auth_headers)
+    assert auto.status_code == 400
+
+
+def test_sale_response_includes_source_locations(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LOC-RESP", "name": "Located Response", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    loc_a = _make_location("RESP-A")
+    loc_b = _make_location("RESP-B")
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).first()
+        _receive_to_locations(db, user, prod["id"], [(loc_a, 5), (loc_b, 5)])
+        db.commit()
+        path_a = db.get(Location, loc_a).path
+        path_b = db.get(Location, loc_b).path
+    finally:
+        db.close()
+
+    pinned = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 10.0, "location_id": loc_a}],
+    }, headers=auth_headers)
+    assert pinned.status_code == 201
+    assert pinned.json()["locations"] == [path_a]
+    item = pinned.json()["items"][0]
+    assert item["locations"] == [path_a]
+    assert item["location"] == path_a
+
+    auto = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 10.0}],
+    }, headers=auth_headers)
+    assert auto.status_code == 201
+    assert auto.json()["locations"] == sorted([path_a, path_b])
+
+    detail = client.get(f"/api/sales/{pinned.json()['id']}", headers=auth_headers)
+    assert detail.status_code == 200
+    assert detail.json()["locations"] == [path_a]
+
+    listing = client.get("/api/sales", headers=auth_headers).json()
+    by_invoice = {s["invoice_number"]: s["locations"] for s in listing["items"]}
+    assert by_invoice[pinned.json()["invoice_number"]] == [path_a]
+    assert by_invoice[auto.json()["invoice_number"]] == sorted([path_a, path_b])

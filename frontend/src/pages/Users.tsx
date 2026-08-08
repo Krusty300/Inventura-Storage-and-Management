@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Shield, ShieldOff, Eye, KeyRound, Trash2, Download } from "lucide-react";
+import { Shield, ShieldOff, Eye, KeyRound, Trash2, UserCheck, Download } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse } from "../types";
@@ -20,6 +20,7 @@ interface User {
   username: string;
   email: string;
   role: string;
+  is_active: boolean;
   last_login_at: string | null;
   created_at: string;
 }
@@ -39,8 +40,10 @@ export default function Users() {
   const [editRole, setEditRole] = useState("");
   const [viewing, setViewing] = useState<User | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const [resetting, setResetting] = useState<User | null>(null);
   const [deleting, setDeleting] = useState<User | null>(null);
+  const [reactivating, setReactivating] = useState<User | null>(null);
   const [confirming, setConfirming] = useState<{ user: User; role: string } | null>(null);
   const queryClient = useQueryClient();
   const { can, user } = useAuth();
@@ -48,7 +51,7 @@ export default function Users() {
   const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["users", debouncedSearch, page, pageSize, sortBy, sortDir],
+    queryKey: ["users", debouncedSearch, page, pageSize, sortBy, sortDir, showInactive],
     queryFn: async () => {
       const params: Record<string, string> = {
         page: page.toString(),
@@ -57,6 +60,7 @@ export default function Users() {
         sort_dir: sortDir,
       };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (showInactive) params.include_inactive = "true";
       const { data } = await api.get("/users", { params });
       return data as PaginatedResponse<User>;
     },
@@ -119,6 +123,16 @@ export default function Users() {
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot deactivate user", "error"),
   });
 
+  const reactivateMutation = useMutation({
+    mutationFn: (id: number) => api.put(`/users/${id}`, { is_active: true }),
+    onSuccess: () => {
+      addToast("User reactivated", "success");
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setReactivating(null);
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Failed to reactivate user", "error"),
+  });
+
   const requestRoleChange = (user: User, role: string) => {
     setEditingId(null);
     if (role === user.role) return;
@@ -145,6 +159,16 @@ export default function Users() {
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by username or email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search users" />
         </div>
+        <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => { setShowInactive(e.target.checked); setPage(1); }}
+            className="accent-indigo-600"
+            aria-label="Show deactivated users"
+          />
+          Show deactivated
+        </label>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -177,6 +201,7 @@ export default function Users() {
                 <td className="px-4 py-3 font-medium">
                   <span className="inline-flex items-center gap-2">
                     {u.username}
+                    {!u.is_active && <span className="badge badge-danger">Inactive</span>}
                     {user && u.id === user.id && <span className="badge badge-success">You</span>}
                   </span>
                 </td>
@@ -205,13 +230,16 @@ export default function Users() {
                   ) : (
                     <div className="flex gap-2 items-center">
                       <button onClick={() => setViewing(u)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${u.username}`}><Eye size={16} /></button>
-                      {can("users.update") && (
+                      {!u.is_active && can("users.update") && (
+                        <button onClick={() => setReactivating(u)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Reactivate ${u.username}`}><UserCheck size={16} /></button>
+                      )}
+                      {u.is_active && can("users.update") && (
                         <button onClick={() => setResetting(u)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Reset password for ${u.username}`}><KeyRound size={16} /></button>
                       )}
-                      {can("users.delete") && (!user || u.id !== user.id) && (
+                      {u.is_active && can("users.delete") && (!user || u.id !== user.id) && (
                         <button onClick={() => setDeleting(u)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Deactivate ${u.username}`}><Trash2 size={16} /></button>
                       )}
-                      {can("users.update") && (!user || u.id !== user.id) && (
+                      {u.is_active && can("users.update") && (!user || u.id !== user.id) && (
                         <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400">Edit</button>
                       )}
                     </div>
@@ -248,6 +276,16 @@ export default function Users() {
         confirmLabel="Deactivate"
         onConfirm={() => deleteMutation.mutate(deleting!.id)}
         onCancel={() => setDeleting(null)}
+      />
+
+      <ConfirmDialog
+        open={!!reactivating}
+        title="Reactivate User"
+        message={`Reactivate "${reactivating?.username}"? They will be able to sign in again.`}
+        confirmLabel="Reactivate"
+        confirmClass="btn-primary"
+        onConfirm={() => reactivateMutation.mutate(reactivating!.id)}
+        onCancel={() => setReactivating(null)}
       />
 
       <ConfirmDialog

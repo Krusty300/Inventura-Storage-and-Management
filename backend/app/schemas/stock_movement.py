@@ -10,6 +10,7 @@ class StockMovementCreate(BaseModel):
     movement_type: str
     reference: str = ""
     notes: str = ""
+    location_id: Optional[int] = None
 
     @field_validator("movement_type")
     @classmethod
@@ -37,6 +38,7 @@ class StockMovementAdjust(BaseModel):
     new_quantity: int
     reason_code: str
     notes: str = ""
+    location_id: Optional[int] = None
 
 
 class StockMovementUpdate(BaseModel):
@@ -45,6 +47,7 @@ class StockMovementUpdate(BaseModel):
     movement_type: Optional[str] = None
     reference: Optional[str] = None
     notes: Optional[str] = None
+    location_id: Optional[int] = None
 
     @field_validator("movement_type")
     @classmethod
@@ -121,6 +124,7 @@ class StockMovementUnallocatedMove(BaseModel):
     quantity: int
     to_location_id: int
     lot_id: Optional[int] = None
+    serial_ids: Optional[list[int]] = None
     notes: str = ""
 
     @field_validator("quantity")
@@ -128,4 +132,14 @@ class StockMovementUnallocatedMove(BaseModel):
     def validate_quantity(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("quantity must be positive")
+        return v
+
+    @field_validator("serial_ids")
+    @classmethod
+    def validate_serial_ids(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        if v is not None:
+            if not v:
+                raise ValueError("serial_ids must not be empty")
+            if len(set(v)) != len(v):
+                raise ValueError("serial_ids must be unique")
         return v

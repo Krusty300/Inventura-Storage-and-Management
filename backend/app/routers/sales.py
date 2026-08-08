@@ -5,6 +5,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
+from app.models.location import Location
 from app.models.product import Product
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
@@ -40,6 +41,69 @@ def load_sale(db: Session, sale_id: int) -> Sale:
     ])
 
 
+def _movement_location_map(db: Session, invoices: list[str]) -> dict[str, dict[int, list[str]]]:
+    """Map invoice number -> {product_id -> sorted location paths} for sale movements.
+
+    Sale items are fulfilled from the stock locations recorded on the sale's
+    "out" movements, so the source location per product can be surfaced on the
+    sales list, detail, and invoice without storing an extra column.
+    """
+    result: dict[str, dict[int, list[str]]] = {}
+    movements = (
+        db.query(StockMovement)
+        .filter(
+            StockMovement.reference_type == "sale",
+            StockMovement.reference.in_(invoices),
+            StockMovement.from_location_id.isnot(None),
+        )
+        .all()
+    )
+    loc_ids = {m.from_location_id for m in movements}
+    paths: dict[int, str] = {}
+    if loc_ids:
+        paths = {loc.id: loc.path for loc in db.query(Location).filter(Location.id.in_(loc_ids)).all()}
+    for m in movements:
+        path = paths.get(m.from_location_id)
+        if not path:
+            continue
+        per_product = result.setdefault(m.reference, {})
+        per_product.setdefault(m.product_id, [])
+        if path not in per_product[m.product_id]:
+            per_product[m.product_id].append(path)
+    for per_product in result.values():
+        for paths_list in per_product.values():
+            paths_list.sort()
+    return result
+
+
+def _apply_sale_locations(db: Session, out: SaleOut) -> SaleOut:
+    per_product = _movement_location_map(db, [out.invoice_number]).get(out.invoice_number, {})
+    sale_locations: set[str] = set()
+    for item in out.items:
+        item_locs = per_product.get(item.product_id, [])
+        item.locations = item_locs
+        item.location = ", ".join(item_locs)
+        sale_locations.update(item_locs)
+    out.locations = sorted(sale_locations)
+    return out
+
+
+def _apply_sale_locations_batch(db: Session, outs: list[SaleOut]) -> list[SaleOut]:
+    if not outs:
+        return outs
+    loc_map = _movement_location_map(db, [o.invoice_number for o in outs])
+    for out in outs:
+        per_product = loc_map.get(out.invoice_number, {})
+        sale_locations: set[str] = set()
+        for item in out.items:
+            item_locs = per_product.get(item.product_id, [])
+            item.locations = item_locs
+            item.location = ", ".join(item_locs)
+            sale_locations.update(item_locs)
+        out.locations = sorted(sale_locations)
+    return outs
+
+
 @router.get("")
 def list_sales(
     search: str = Query(""),
@@ -57,7 +121,8 @@ def list_sales(
         q = q.filter(Sale.customer_id == customer_id)
     total = q.count()
     items = q.order_by(Sale.created_at.desc()).offset(skip).limit(limit).all()
-    return {"items": [SaleOut.model_validate(s) for s in items], "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+    outs = _apply_sale_locations_batch(db, [SaleOut.model_validate(s) for s in items])
+    return {"items": outs, "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 
 @router.patch("/bulk-edit")
@@ -106,7 +171,7 @@ def sales_stats(db: Session = Depends(get_db)):
 
 @router.get("/{sale_id}", response_model=SaleOut)
 def get_sale(sale_id: int, db: Session = Depends(get_db)):
-    return load_sale(db, sale_id)
+    return _apply_sale_locations(db, SaleOut.model_validate(load_sale(db, sale_id)))
 
 
 @router.post("", response_model=SaleOut, status_code=201)
@@ -114,9 +179,10 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
     if not data.items:
         raise HTTPException(status_code=400, detail="Sale must contain at least one item")
 
-    qty_needed: dict[int, int] = {}
+    qty_needed: dict[tuple[int, int | None], int] = {}
     for item_data in data.items:
-        qty_needed[item_data.product_id] = qty_needed.get(item_data.product_id, 0) + item_data.quantity
+        key = (item_data.product_id, item_data.location_id)
+        qty_needed[key] = qty_needed.get(key, 0) + item_data.quantity
 
     products = {}
     for item_data in data.items:
@@ -127,8 +193,17 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - select a specific variant")
         if product.is_serialized:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' is serialized - not supported at checkout")
+        if item_data.location_id is not None:
+            loc = db.get(Location, item_data.location_id)
+            if loc is None:
+                raise HTTPException(status_code=400, detail=f"Location {item_data.location_id} not found")
+            if not loc.is_active:
+                raise HTTPException(status_code=400, detail=f"Location '{loc.path}' is inactive")
         try:
-            inventory.allocate_lots(db, product_id=product.id, quantity=qty_needed[item_data.product_id])
+            inventory.allocate_lots(
+                db, product_id=product.id, quantity=qty_needed[(item_data.product_id, item_data.location_id)],
+                location_id=item_data.location_id,
+            )
         except inventory.InventoryError:
             raise HTTPException(status_code=400, detail=f"Insufficient stock for '{product.display_name}'")
         products[item_data.product_id] = product
@@ -153,7 +228,10 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
     for item_data in data.items:
         product = products[item_data.product_id]
         db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item_data.quantity, unit_price=item_data.unit_price))
-        allocation = inventory.allocate_lots(db, product_id=product.id, quantity=item_data.quantity)
+        allocation = inventory.allocate_lots(
+            db, product_id=product.id, quantity=item_data.quantity,
+            location_id=item_data.location_id,
+        )
         for lot_id, take, location_id, lpn_id in allocation:
             inventory.post_journal_entry(
                 db, product_id=product.id, user_id=user.id,
@@ -178,7 +256,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
     db.commit()
     broadcast_change("sale", "created")
     broadcast_change("stock_movement", "created")
-    return sale
+    return _apply_sale_locations(db, SaleOut.model_validate(sale))
 
 
 @router.put("/{sale_id}/refund", response_model=SaleOut)
@@ -235,7 +313,7 @@ def refund_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
     broadcast_change("sale", "updated")
     broadcast_change("stock_movement", "created")
     broadcast_change("product", "updated")
-    return sale
+    return _apply_sale_locations(db, SaleOut.model_validate(sale))
 
 
 @router.get("/{sale_id}/pdf")

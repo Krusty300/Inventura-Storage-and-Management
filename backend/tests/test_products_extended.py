@@ -44,6 +44,23 @@ def test_get_product_by_barcode_not_found(auth_headers):
     assert resp.status_code == 404
 
 
+def test_get_product_by_barcode_case_insensitive(auth_headers):
+    p = _make_product(auth_headers, "BAR-002", barcode="AbC-1234")
+    resp = client.get("/api/products/barcode/abc-1234", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["id"] == p["id"]
+    resp = client.get("/api/products/barcode/ABC-1234", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["id"] == p["id"]
+
+
+def test_get_product_by_barcode_excludes_inactive(auth_headers):
+    p = _make_product(auth_headers, "BAR-003", barcode="INACTIVE-BAR")
+    client.delete(f"/api/products/{p['id']}", headers=auth_headers)
+    resp = client.get("/api/products/barcode/INACTIVE-BAR", headers=auth_headers)
+    assert resp.status_code == 404
+
+
 def test_product_movements_endpoint(auth_headers):
     p = _make_product(auth_headers, "MOV-EXT", quantity=50)
     client.post("/api/stock-movements", json={

@@ -47,11 +47,13 @@ function mockProduct(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockGet(checks: ReturnType<typeof mockQC>[] = [], products: ReturnType<typeof mockProduct>[] = [], lots: Record<string, unknown>[] = []) {
+function mockGet(checks: ReturnType<typeof mockQC>[] = [], products: ReturnType<typeof mockProduct>[] = [], lots: Record<string, unknown>[] = [], stockLocations: Record<string, unknown>[] = []) {
   getMock.mockImplementation((url: string) => {
     if (url === "/quality-checks") return Promise.resolve({ data: { items: checks, total: checks.length, page: 1, pages: 1 } });
     if (url === "/products") return Promise.resolve({ data: { items: products, total: products.length, page: 1, pages: 1 } });
     if (url === "/lots") return Promise.resolve({ data: { items: lots, total: lots.length, page: 1, pages: 1 } });
+    if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: stockLocations, unallocated: 0 } });
+    if (url === "/serial-numbers") return Promise.resolve({ data: { items: [] } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
 }
@@ -114,11 +116,10 @@ describe("QualityChecks Page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New Check" }));
     expect(await screen.findByText("Widget (SKU-001)")).toBeInTheDocument();
 
-    const combos = screen.getAllByRole("combobox");
-    fireEvent.change(combos[1], { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("QC product"), { target: { value: "1" } });
     await waitFor(() => expect(screen.getByText(/LOT-5/)).toBeInTheDocument());
-    fireEvent.change(screen.getAllByRole("combobox")[2], { target: { value: "5" } });
-    fireEvent.change(screen.getAllByRole("combobox")[3], { target: { value: "fail" } });
+    fireEvent.change(screen.getByLabelText("QC lot"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("QC result"), { target: { value: "fail" } });
     expect(screen.getByText(/Failing this check will quarantine the linked lot/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save Check" }));
@@ -131,14 +132,53 @@ describe("QualityChecks Page", () => {
     }));
   });
 
+  it("records the selected stock location when creating a check", async () => {
+    mockGet(
+      [],
+      [mockProduct({ id: 2, display_name: "Gadget", sku: "SKU-2" })],
+      [
+        { id: 5, lot_number: "LOT-5", status: "in_stock", on_hand: 4, locations: ["Main / Aisle 1"] },
+        { id: 6, lot_number: "LOT-6", status: "in_stock", on_hand: 9, locations: ["Main / Aisle 2"] },
+      ],
+      [
+        { location_id: 10, path: "Main / Aisle 1", is_active: true, quantity: 4, lots: [] },
+        { location_id: 11, path: "Main / Aisle 2", is_active: true, quantity: 9, lots: [] },
+      ]
+    );
+    postMock.mockResolvedValue({ data: { qc_number: "QC-0003" } });
+    renderWithProviders(<QualityChecks />);
+    fireEvent.click(await screen.findByRole("button", { name: "New Check" }));
+    expect(await screen.findByText("Gadget (SKU-2)")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("QC product"), { target: { value: "2" } });
+    await waitFor(() => expect(screen.getByRole("option", { name: /Main \/ Aisle 1 \(4 on hand\)/ })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("QC location"), { target: { value: "10" } });
+    await waitFor(() => expect(screen.getByText(/Pick a location to narrow the lot list/)).toBeInTheDocument());
+    expect(screen.getByRole("option", { name: /LOT-5 \(4 on hand\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /LOT-6/ })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("QC lot"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("QC result"), { target: { value: "pass" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Check" }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/quality-checks", {
+      product_id: 2,
+      batch_number: "",
+      result: "pass",
+      notes: "",
+      lot_id: 5,
+      location_id: 10,
+    }));
+  });
+
   it("warns when failing without a linked lot", async () => {
     mockGet([], [mockProduct()], []);
     renderWithProviders(<QualityChecks />);
     fireEvent.click(await screen.findByRole("button", { name: "New Check" }));
     await screen.findByText("Widget (SKU-001)");
 
-    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "1" } });
-    fireEvent.change(screen.getAllByRole("combobox")[3], { target: { value: "fail" } });
+    fireEvent.change(screen.getByLabelText("QC product"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("QC result"), { target: { value: "fail" } });
     expect(screen.getByText(/Failing without a linked lot will block shipments/)).toBeInTheDocument();
   });
 
@@ -149,11 +189,11 @@ describe("QualityChecks Page", () => {
     fireEvent.click(await screen.findByLabelText("Edit QC-0001"));
     expect(await screen.findByText("Edit QC-0001")).toBeInTheDocument();
 
-    const combos = screen.getAllByRole("combobox");
-    expect((combos[1] as HTMLSelectElement).disabled).toBe(true);
-    expect((combos[2] as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("QC product") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("QC lot") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("QC location") as HTMLSelectElement).disabled).toBe(true);
 
-    fireEvent.change(screen.getAllByRole("combobox")[3], { target: { value: "pass" } });
+    fireEvent.change(screen.getByLabelText("QC result"), { target: { value: "pass" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Check" }));
     await waitFor(() => expect(putMock).toHaveBeenCalledWith("/quality-checks/1", { result: "pass", notes: "off spec" }));
   });
@@ -167,7 +207,7 @@ describe("QualityChecks Page", () => {
     renderWithProviders(<QualityChecks />);
     fireEvent.click(await screen.findByRole("button", { name: "New Check" }));
     expect(await screen.findByRole("option", { name: "Asset (SKU-7) (Serialized)" })).toBeInTheDocument();
-    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "7" } });
+    fireEvent.change(screen.getByLabelText("QC product"), { target: { value: "7" } });
     await waitFor(() => expect(screen.getByRole("option", { name: /LOT-9 \(5 on hand\)/ })).toBeInTheDocument());
   });
 

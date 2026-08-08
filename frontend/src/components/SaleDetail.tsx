@@ -46,6 +46,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
           <thead>
             <tr className="bg-app text-left">
               <th className="px-3 py-2 font-medium text-muted">Item</th>
+              <th className="px-3 py-2 font-medium text-muted">Location</th>
               <th className="px-3 py-2 font-medium text-muted">Qty</th>
               <th className="px-3 py-2 font-medium text-muted">Price</th>
               <th className="px-3 py-2 font-medium text-muted text-right">Amount</th>
@@ -55,6 +56,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
             {sale.items.map((item) => (
               <tr key={item.id}>
                 <td className="px-3 py-2">{item.product_name}</td>
+                <td className="px-3 py-2 text-muted">{item.location || (item.locations ?? []).join(", ") || "—"}</td>
                 <td className="px-3 py-2">{item.quantity}</td>
                 <td className="px-3 py-2">{formatCurrency(item.unit_price, currencySymbol)}</td>
                 <td className="px-3 py-2 text-right">{formatCurrency(item.line_total, currencySymbol)}</td>

@@ -10,6 +10,7 @@ interface User {
   username: string;
   email: string;
   role: string;
+  is_active: boolean;
   last_login_at: string | null;
   created_at: string;
 }
@@ -78,6 +79,12 @@ export default function UserDetail({ user, onClose }: Props) {
           <div>
             <span className="text-muted">Last Login:</span>
             <p className="font-medium">{user.last_login_at ? new Date(user.last_login_at).toLocaleString() : "Never"}</p>
+          </div>
+          <div>
+            <span className="text-muted">Status:</span>
+            <p className="font-medium mt-1">
+              {user.is_active ? <span className="badge badge-success">Active</span> : <span className="badge badge-danger">Inactive</span>}
+            </p>
           </div>
         </div>
 

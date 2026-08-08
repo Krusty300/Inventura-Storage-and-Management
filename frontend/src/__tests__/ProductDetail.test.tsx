@@ -213,6 +213,62 @@ describe("ProductDetail", () => {
     );
   });
 
+  it("moves unallocated serialized stock to a chosen location by selecting serial numbers", async () => {
+    const product = makeProduct({ id: 13, sku: "SKU-13", name: "Serial Widget", is_serialized: true });
+    (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { reference: "UNL-0002", count: 4, movements: [] },
+    });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/locations")
+        return Promise.resolve({ data: { items: [{ id: 10, path: "Shelf A", is_active: true }], total: 1, page: 1, pages: 1 } });
+      if (url === "/serial-numbers") {
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 1, product_id: 13, serial_number: "SN-U1", lot_id: null, location_id: null, status: "in_stock", location_name: "", sold_at: null, lot_number: "", product_name: "Serial Widget", created_at: "2026-01-01T00:00:00" },
+              { id: 2, product_id: 13, serial_number: "SN-U2", lot_id: null, location_id: null, status: "in_stock", location_name: "", sold_at: null, lot_number: "", product_name: "Serial Widget", created_at: "2026-01-01T00:00:00" },
+            ],
+            total: 2,
+            page: 1,
+            pages: 1,
+          },
+        });
+      }
+      if (url === "/products/13/trace")
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    const badge = await screen.findByRole("button", { name: "Move unallocated stock" });
+    expect(badge).toHaveTextContent("Unallocated (2)");
+    fireEvent.click(badge);
+
+    expect(await screen.findByText("Move Unallocated Stock")).toBeInTheDocument();
+    expect(await screen.findByText("SN-U1")).toBeInTheDocument();
+    expect(screen.getByText("SN-U2")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+    await screen.findByRole("option", { name: "Shelf A" });
+    fireEvent.change(screen.getByLabelText("Destination Location"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move Stock" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/stock-movements/unallocated-move", {
+        product_id: 13,
+        quantity: 2,
+        to_location_id: 10,
+        serial_ids: [1, 2],
+        notes: "",
+      })
+    );
+  });
+
   it("shows the product status as a badge and toggles it directly from the detail view", async () => {
     const product = makeProduct({ id: 5, sku: "SKU-5", name: "Widget", location: "A1" });
     const putMock = api.put as ReturnType<typeof vi.fn>;

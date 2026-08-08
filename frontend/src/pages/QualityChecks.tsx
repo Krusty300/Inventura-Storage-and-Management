@@ -11,6 +11,7 @@ import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -88,6 +89,7 @@ export default function QualityChecks() {
               <th className="px-4 py-3 font-medium text-muted">Product</th>
               <th className="px-4 py-3 font-medium text-muted">Batch</th>
               <th className="px-4 py-3 font-medium text-muted">Lot</th>
+              <th className="px-4 py-3 font-medium text-muted">Location</th>
               <th className="px-4 py-3 font-medium text-muted">Result</th>
               <th className="px-4 py-3 font-medium text-muted">Checked By</th>
               <th className="px-4 py-3 font-medium text-muted">Date</th>
@@ -96,7 +98,7 @@ export default function QualityChecks() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={8} />
+              <Skeleton rows={5} cols={9} />
             ) : checks.length === 0 ? (
               <EmptyState title="No quality checks yet" message="Record a QC result to keep lot quality controlled. Failing a check quarantines its lot." actionLabel={can("quality_checks.create") ? "New Check" : undefined} onAction={can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
             ) : checks.map((qc) => (
@@ -105,6 +107,7 @@ export default function QualityChecks() {
                 <td className="px-4 py-3 text-muted">{qc.product_name}</td>
                 <td className="px-4 py-3 text-muted">{qc.batch_number || "—"}</td>
                 <td className="px-4 py-3 text-muted">{qc.lot_number || "—"}</td>
+                <td className="px-4 py-3 text-muted">{qc.location_name || "—"}</td>
                 <td className="px-4 py-3"><span className={`badge ${resultBadge(qc.result)}`}>{qc.result}</span></td>
                 <td className="px-4 py-3 text-muted">{qc.checker_username}</td>
                 <td className="px-4 py-3 text-muted">{qc.checked_at ? formatDate(qc.checked_at) : formatDate(qc.created_at)}</td>
@@ -154,6 +157,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
   const products = useSelectableProducts();
   const [productId, setProductId] = useState(qc ? String(qc.product_id) : "");
   const [lotId, setLotId] = useState(qc?.lot_id ? String(qc.lot_id) : "");
+  const [locationId, setLocationId] = useState(qc?.location_id ? String(qc.location_id) : "");
   const [lots, setLots] = useState<Lot[]>([]);
   const [batchNumber, setBatchNumber] = useState(qc?.batch_number || "");
   const [result, setResult] = useState(qc?.result || "pass");
@@ -161,15 +165,21 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const selectedProduct = products.find((p) => p.id === Number(productId));
+  const stockLocations = useProductStockLocations(productId ? Number(productId) : null, selectedProduct?.is_serialized ?? false);
 
   useEffect(() => {
     if (!productId) {
       setLots([]);
       setLotId("");
+      setLocationId("");
       return;
     }
     api.get("/lots", { params: { product_id: productId, limit: 200 } }).then(({ data }) => setLots(data.items));
+    if (!qc) setLocationId("");
   }, [productId]);
+
+  const selectedLocation = stockLocations.locations.find((l) => l.location_id === Number(locationId));
+  const visibleLots = selectedLocation ? lots.filter((l) => l.locations?.includes(selectedLocation.path)) : lots;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,6 +196,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
         notes: notes.trim(),
       };
       if (lotId) payload.lot_id = Number(lotId);
+      if (locationId) payload.location_id = Number(locationId);
       if (qc) {
         await api.put(`/quality-checks/${qc.id}`, { result, notes: notes.trim() });
         addToast(`Quality check ${qc.qc_number} updated`, "success");
@@ -206,27 +217,41 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Product</label>
-            <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!qc} required>
+            <select className="select" aria-label="QC product" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!qc} required>
               <option value="">Select product...</option>
               {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Lot (optional)</label>
-            <select className="select" value={lotId} onChange={(e) => setLotId(e.target.value)} disabled={!!qc}>
+            <select className="select" aria-label="QC lot" value={lotId} onChange={(e) => setLotId(e.target.value)} disabled={!!qc}>
               <option value="">No lot / all lots</option>
-              {lots.map((l) => <option key={l.id} value={l.id}>{l.lot_number} ({(selectedProduct?.is_serialized ? l.serial_count : l.on_hand)} on hand){l.status !== "in_stock" ? ` [${l.status}]` : ""}</option>)}
+              {visibleLots.map((l) => <option key={l.id} value={l.id}>{l.lot_number} ({(selectedProduct?.is_serialized ? l.serial_count : l.on_hand)} on hand){l.status !== "in_stock" ? ` [${l.status}]` : ""}</option>)}
             </select>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
+            <label className="block text-sm font-medium text-ink mb-1">Location (optional)</label>
+            <select className="select" aria-label="QC location" value={locationId} onChange={(e) => { setLocationId(e.target.value); setLotId(""); }} disabled={!!qc}>
+              <option value="">All locations</option>
+              {stockLocations.locations.map((l) => <option key={l.location_id} value={l.location_id}>{l.path} ({l.count} on hand)</option>)}
+            </select>
+            <p className="text-xs text-faint mt-1">
+              {stockLocations.locations.length === 0
+                ? "No stock locations found for this product."
+                : "Pick a location to narrow the lot list to stock held there."}
+            </p>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-ink mb-1">Batch Number</label>
             <input className="input" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} disabled={!!qc} placeholder="e.g. B-2026-01" />
           </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Result</label>
-            <select className="select" value={result} onChange={(e) => setResult(e.target.value)}>
+            <select className="select" aria-label="QC result" value={result} onChange={(e) => setResult(e.target.value)}>
               <option value="pending">Pending</option>
               <option value="pass">Pass</option>
               <option value="fail">Fail</option>
@@ -273,6 +298,10 @@ function QualityCheckDetail({ qc, onClose }: { qc: QualityCheck; onClose: () => 
           <div>
             <p className="text-muted">Lot</p>
             <p className="font-medium">{qc.lot_number || "—"}</p>
+          </div>
+          <div>
+            <p className="text-muted">Location</p>
+            <p className="font-medium">{qc.location_name || "—"}</p>
           </div>
           <div>
             <p className="text-muted">Work Order</p>

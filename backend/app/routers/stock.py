@@ -10,6 +10,7 @@ from app.models.lot import Lot
 from app.models.serial_number import SerialNumber
 from app.models.stock_line import StockLine
 from app.models.stock_movement import StockMovement
+from app.models.user import User
 from app.schemas.stock_movement import (
     StockMovementAdjust,
     StockMovementCreate,
@@ -120,7 +121,7 @@ def record_movement(data: StockMovementCreate, db: Session = Depends(get_db), us
     if product.is_serialized:
         raise HTTPException(status_code=400, detail="Serialized products must be managed through receipts")
     try:
-        loc_id = require_active_location(db, product)
+        loc_id = require_active_location(db, product, data.location_id)
         sm = inventory.post_journal_entry(
             db, product_id=product.id, user_id=user.id,
             quantity_change=data.quantity_change, movement_type=data.movement_type,
@@ -331,6 +332,67 @@ def transfer_serialized_stock(data: StockMovementSerialTransfer, db: Session = D
     }
 
 
+def _move_unallocated_serialized(
+    db: Session, product: Product, to_loc: Location, serial_ids: list[int], notes: str, user: User
+) -> dict:
+    """Assign unallocated serialized units (no location) to a destination location.
+
+    Serialized stock moves one unit at a time, so each selected serial is
+    transferred individually and its location is set by the inbound leg.
+    """
+    if not serial_ids:
+        raise HTTPException(status_code=400, detail="Select at least one serial number to move")
+    serials = db.query(SerialNumber).filter(SerialNumber.id.in_(serial_ids)).all()
+    if len(serials) != len(serial_ids):
+        raise HTTPException(status_code=400, detail="One or more serial numbers were not found")
+    by_id = {s.id: s for s in serials}
+    for sid in serial_ids:
+        serial = by_id[sid]
+        if serial.product_id != product.id:
+            raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
+        if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
+            raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
+        if serial.lot is not None and serial.lot.status != "in_stock":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be moved",
+            )
+        if serial.location_id is not None:
+            raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' already has a location - transfer it instead")
+
+    reference = next_document_number(db, "unallocated_move", "UNL-")
+    movements: list[StockMovement] = []
+    try:
+        for sid in serial_ids:
+            serial = by_id[sid]
+            out, inbound = inventory.transfer_stock(
+                db, product_id=product.id, user_id=user.id,
+                quantity=1,
+                from_location_id=None,
+                to_location_id=to_loc.id,
+                lot_id=serial.lot_id,
+                serial_id=serial.id,
+                reference_type="unallocated_move", reference=reference,
+                notes=notes,
+            )
+            movements.extend([out, inbound])
+    except inventory.InventoryError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    log_activity(db, user.id, user.username, "create", "stock_movement", movements[0].id,
+                 f"Moved {len(serial_ids)} unallocated x '{product.display_name}' to '{to_loc.path}' ({reference})")
+    notify_low_stock(db, product)
+    db.commit()
+    broadcast_change("stock_movement", "created")
+    broadcast_change("product", "updated")
+    return {
+        "reference": reference,
+        "count": len(movements),
+        "movements": [StockMovementOut.model_validate(m) for m in movements],
+    }
+
+
 @router.post("/unallocated-move", status_code=201)
 def move_unallocated_stock(data: StockMovementUnallocatedMove, db: Session = Depends(get_db), user=Depends(require_permission("stock.record"))):
     """Move stock recorded with no location into a chosen destination location.
@@ -339,15 +401,21 @@ def move_unallocated_stock(data: StockMovementUnallocatedMove, db: Session = Dep
     location view, so this lets an operator assign them to a real location.
     The move posts a matched transfer_out / transfer_in pair so the ledger
     stays consistent and the movements can be reverted like any transfer.
+    Serialized units are moved individually by serial number.
     """
     product = get_or_404(Product, data.product_id, db)
     if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
         raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - move stock on a specific variant")
-    if product.is_serialized:
-        raise HTTPException(status_code=400, detail="Unallocated serialized stock must be moved by scanning serial numbers")
     to_loc = get_or_404(Location, data.to_location_id, db)
     if not to_loc.is_active:
         raise HTTPException(status_code=400, detail=f"Destination location '{to_loc.path}' is inactive")
+
+    if product.is_serialized:
+        return _move_unallocated_serialized(db, product, to_loc, data.serial_ids or [], data.notes, user)
+
+    if data.serial_ids:
+        raise HTTPException(status_code=400, detail=f"'{product.display_name}' is not serialized - serial_ids cannot be used")
+
     if data.lot_id is not None:
         lot = get_or_404(Lot, data.lot_id, db)
         if lot.status != "in_stock":
@@ -424,14 +492,18 @@ def adjust_stock(data: StockMovementAdjust, db: Session = Depends(get_db), user=
     product = get_or_404(Product, data.product_id, db)
     if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
         raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - adjust stock on a specific variant")
-    old_qty = product.quantity
+    if product.is_serialized:
+        raise HTTPException(status_code=400, detail="Serialized products are tracked per serial number and cannot be quantity-adjusted")
+    if data.location_id is not None:
+        loc_id = require_active_location(db, product, data.location_id)
+        old_qty = inventory.on_hand(db, product_id=product.id, location_id=loc_id)
+    else:
+        old_qty = product.quantity
+        loc_id = require_active_location(db, product)
     qty_change = data.new_quantity - old_qty
     if qty_change == 0:
         raise HTTPException(status_code=400, detail="New quantity is the same as current quantity")
-    if product.is_serialized:
-        raise HTTPException(status_code=400, detail="Serialized products are tracked per serial number and cannot be quantity-adjusted")
     try:
-        loc_id = require_active_location(db, product)
         sm = inventory.post_journal_entry(
             db, product_id=product.id, user_id=user.id,
             quantity_change=qty_change, movement_type="adjustment",
@@ -444,14 +516,18 @@ def adjust_stock(data: StockMovementAdjust, db: Session = Depends(get_db), user=
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     db.refresh(sm)
+    target = "the product default location"
+    if data.location_id is not None:
+        loc = db.get(Location, loc_id)
+        target = f"location '{loc.path}'" if loc else f"location #{loc_id}"
     log_activity(db, user.id, user.username, "create", "stock_movement", sm.id,
-                 f"Adjusted '{product.display_name}' from {old_qty} to {data.new_quantity} ({data.reason_code})")
+                 f"Adjusted '{product.display_name}' at {target} from {old_qty} to {data.new_quantity} ({data.reason_code})")
     notify_low_stock(db, product)
     db.commit()
     broadcast_change("stock_movement", "created")
     broadcast_change("product", "updated")
     return {"id": sm.id, "product_id": product.id, "product_name": product.display_name, "quantity_change": qty_change,
-            "new_quantity": data.new_quantity, "reason_code": data.reason_code}
+            "new_quantity": data.new_quantity, "reason_code": data.reason_code, "location_id": loc_id}
 
 
 @router.put("/{movement_id}", response_model=StockMovementOut)
@@ -476,9 +552,11 @@ def update_movement(movement_id: int, data: StockMovementUpdate, db: Session = D
     if new_product_id != old_product_id or new_qty_change != old_qty_change:
         old_product = get_or_404(Product, old_product_id, db)
         new_product = get_or_404(Product, new_product_id, db)
-        try:
+        old_loc = sm.to_location_id if old_qty_change > 0 else sm.from_location_id
+        if old_loc is None:
             old_loc = require_active_location(db, old_product)
-            new_loc = require_active_location(db, new_product)
+        new_loc = require_active_location(db, new_product, updates.get("location_id"))
+        try:
             inventory.post_journal_entry(
                 db, product_id=old_product_id, user_id=user.id,
                 quantity_change=-old_qty_change, movement_type="adjustment",

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import Lot, Product, QualityCheck
+from app.models import Lot, Location, Product, QualityCheck
 from app.schemas.quality_check import QC_RESULTS, QualityCheckCreate, QualityCheckOut, QualityCheckUpdate
 from app.services.auth import get_current_user, require_permission
 from app.services.sequences import next_document_number
@@ -17,7 +17,8 @@ router = APIRouter(prefix="/api/quality-checks", tags=["quality-checks"], depend
 def _load_qc(db: Session, qc_id: int) -> QualityCheck:
     return get_or_404(QualityCheck, qc_id, db, options=[
         joinedload(QualityCheck.product), joinedload(QualityCheck.lot),
-        joinedload(QualityCheck.work_order), joinedload(QualityCheck.checker),
+        joinedload(QualityCheck.location), joinedload(QualityCheck.work_order),
+        joinedload(QualityCheck.checker),
     ])
 
 
@@ -46,6 +47,7 @@ def list_quality_checks(
     product_id: int | None = None,
     result: str | None = None,
     lot_id: int | None = None,
+    location_id: int | None = None,
     search: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
@@ -53,7 +55,8 @@ def list_quality_checks(
 ):
     q = db.query(QualityCheck).options(
         joinedload(QualityCheck.product), joinedload(QualityCheck.lot),
-        joinedload(QualityCheck.work_order), joinedload(QualityCheck.checker),
+        joinedload(QualityCheck.location), joinedload(QualityCheck.work_order),
+        joinedload(QualityCheck.checker),
     )
     if product_id:
         q = q.filter(QualityCheck.product_id == product_id)
@@ -63,6 +66,8 @@ def list_quality_checks(
         q = q.filter(QualityCheck.result == result)
     if lot_id:
         q = q.filter(QualityCheck.lot_id == lot_id)
+    if location_id:
+        q = q.filter(QualityCheck.location_id == location_id)
     if search:
         like = f"%{search}%"
         q = q.join(QualityCheck.product, isouter=True).filter(
@@ -86,10 +91,15 @@ def create_quality_check(data: QualityCheckCreate, db: Session = Depends(get_db)
         lot = get_or_404(Lot, data.lot_id, db)
         if lot.product_id != data.product_id:
             raise HTTPException(status_code=400, detail="The selected lot does not belong to this product")
+    if data.location_id is not None:
+        loc = get_or_404(Location, data.location_id, db)
+        if not loc.is_active:
+            raise HTTPException(status_code=400, detail=f"Location '{loc.path}' is inactive")
     qc = QualityCheck(
         qc_number=next_document_number(db, "quality_check", "QC-"),
         product_id=data.product_id,
         lot_id=data.lot_id,
+        location_id=data.location_id,
         work_order_id=data.work_order_id,
         batch_number=data.batch_number,
         result=data.result,

@@ -114,3 +114,44 @@ def test_admin_actions_logged_to_activity(auth_headers):
     assert ("reset_password", "user") in actions
     assert ("delete", "user") in actions
     assert any("managed" in l["description"] for l in logs)
+
+
+def test_deactivated_user_can_be_reactivated(auth_headers):
+    created = client.post("/api/users", json={
+        "username": "revive", "email": "revive@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers)
+    assert created.status_code == 201
+    uid = created.json()["id"]
+
+    # Deactivate via delete -> leaves the active list
+    assert client.delete(f"/api/users/{uid}", headers=auth_headers).status_code == 200
+    active_ids = [u["id"] for u in client.get("/api/users", headers=auth_headers).json()["items"]]
+    assert uid not in active_ids
+
+    # Hidden by default but visible with include_inactive, marked inactive
+    incl = client.get("/api/users?include_inactive=true", headers=auth_headers).json()["items"]
+    row = next(u for u in incl if u["id"] == uid)
+    assert row["is_active"] is False
+
+    # Reactivate via update -> back in the active list and can sign in
+    resp = client.put(f"/api/users/{uid}", json={"is_active": True}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is True
+    active_ids = [u["id"] for u in client.get("/api/users", headers=auth_headers).json()["items"]]
+    assert uid in active_ids
+    assert client.post("/api/auth/login", json={"username": "revive", "password": "testpass123"}).status_code == 200
+
+
+def test_update_can_deactivate_but_not_self_or_last_admin(auth_headers):
+    me = client.get("/api/auth/me", headers=auth_headers).json()
+    # Cannot deactivate your own account via update
+    assert client.put(f"/api/users/{me['id']}", json={"is_active": False}, headers=auth_headers).status_code == 400
+
+    created = client.post("/api/users", json={
+        "username": "vanish", "email": "vanish@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/users/{created['id']}", json={"is_active": False}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is False
+    # Deactivated user can no longer log in
+    assert client.post("/api/auth/login", json={"username": "vanish", "password": "testpass123"}).status_code == 401

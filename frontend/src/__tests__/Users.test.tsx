@@ -16,7 +16,7 @@ const deleteMock = api.delete as ReturnType<typeof vi.fn>;
 
 function mockUsers(items: Record<string, unknown>[]) {
   getMock.mockImplementation((url: string) => {
-    if (url === "/users") return Promise.resolve({ data: { items, total: items.length, page: 1, pages: 1 } });
+    if (url === "/users") return Promise.resolve({ data: { items: items.map((u) => ({ is_active: true, ...u })), total: items.length, page: 1, pages: 1 } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
 }
@@ -122,7 +122,7 @@ describe("Users Page", () => {
   it("shows per-user activity in the detail modal", async () => {
     mockUsers([{ id: 2, username: "alice", email: "alice@example.com", role: "worker", last_login_at: null, created_at: "2026-01-01T00:00:00" }]);
     getMock.mockImplementation((url: string) => {
-      if (url === "/users") return Promise.resolve({ data: { items: [{ id: 2, username: "alice", email: "alice@example.com", role: "worker", last_login_at: null, created_at: "2026-01-01T00:00:00" }], total: 1, page: 1, pages: 1 } });
+      if (url === "/users") return Promise.resolve({ data: { items: [{ id: 2, username: "alice", email: "alice@example.com", role: "worker", is_active: true, last_login_at: null, created_at: "2026-01-01T00:00:00" }], total: 1, page: 1, pages: 1 } });
       if (url === "/activity-logs") return Promise.resolve({ data: { items: [{ id: 9, user_id: 1, username: "tester", action: "update", entity_type: "user", entity_id: 2, description: "Updated user 'alice' (role=admin)", details: "", created_at: "2026-01-02T00:00:00" }], total: 1, page: 1, pages: 1 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
@@ -135,11 +135,36 @@ describe("Users Page", () => {
   it("formats dates according to the saved date format setting", async () => {
     getMock.mockImplementation((url: string) => {
       if (url === "/settings") return Promise.resolve({ data: { date_format: "DD/MM/YYYY" } });
-      if (url === "/users") return Promise.resolve({ data: { items: [{ id: 2, username: "alice", email: "alice@example.com", role: "worker", last_login_at: "2026-02-01T00:00:00", created_at: "2026-01-01T00:00:00" }], total: 1, page: 1, pages: 1 } });
+      if (url === "/users") return Promise.resolve({ data: { items: [{ id: 2, username: "alice", email: "alice@example.com", role: "worker", is_active: true, last_login_at: "2026-02-01T00:00:00", created_at: "2026-01-01T00:00:00" }], total: 1, page: 1, pages: 1 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     renderWithProviders(<Users />);
     expect(await screen.findByText("01/01/2026")).toBeInTheDocument();
     expect(screen.getByText("01/02/2026")).toBeInTheDocument();
+  });
+
+  it("shows deactivated users when the toggle is on and reactivates them", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/users") return Promise.resolve({ data: { items: [{ id: 2, username: "alice", email: "alice@example.com", role: "worker", is_active: false, last_login_at: null, created_at: "2026-01-01T00:00:00" }], total: 1, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    putMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<Users />);
+    fireEvent.click(await screen.findByLabelText("Show deactivated users"));
+    expect(await screen.findByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("Inactive")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Reactivate alice"));
+    expect(screen.getByRole("dialog", { name: "Reactivate User" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reactivate" }));
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/users/2", { is_active: true }));
+  });
+
+  it("passes include_inactive when the toggle is enabled", async () => {
+    mockUsers([{ id: 2, username: "alice", email: "alice@example.com", role: "worker", created_at: "2026-01-01T00:00:00" }]);
+    renderWithProviders(<Users />);
+    fireEvent.click(await screen.findByLabelText("Show deactivated users"));
+    await vi.waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith("/users", expect.objectContaining({ params: expect.objectContaining({ include_inactive: "true" }) }))
+    );
   });
 });

@@ -51,3 +51,41 @@ def test_quality_check_serialized_exact_pass_keeps_lot_sellable(auth_headers):
 
     lot = client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()
     assert lot["status"] == "in_stock"
+
+
+def test_quality_check_records_location(auth_headers):
+    prod = _make_product(auth_headers, "QC-LOC")
+    qc = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "location_id": 1, "result": "pass",
+    }, headers=auth_headers)
+    assert qc.status_code == 201
+    body = qc.json()
+    assert body["location_id"] == 1
+    assert body["location_name"] == "Default Location"
+
+    # list endpoint filters by location
+    listed = client.get("/api/quality-checks?location_id=1", headers=auth_headers).json()["items"]
+    assert any(q["id"] == body["id"] for q in listed)
+    other = client.get("/api/quality-checks?location_id=999999", headers=auth_headers).json()["items"]
+    assert all(q["id"] != body["id"] for q in other)
+
+
+def test_quality_check_rejects_inactive_or_missing_location(auth_headers):
+    prod = _make_product(auth_headers, "QC-LOCBAD")
+    # missing location
+    assert client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "location_id": 999999, "result": "pass",
+    }, headers=auth_headers).status_code == 404
+
+    # inactive location
+    loc2 = client.post("/api/locations", json={
+        "name": "Inactive QC Loc", "code": "QCX", "location_type": "bin",
+    }, headers=auth_headers)
+    assert loc2.status_code == 201
+    loc2_id = loc2.json()["id"]
+    assert client.put(f"/api/locations/{loc2_id}", json={"is_active": False}, headers=auth_headers).status_code == 200
+    resp = client.post("/api/quality-checks", json={
+        "product_id": prod["id"], "location_id": loc2_id, "result": "pass",
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "inactive" in resp.json()["detail"]

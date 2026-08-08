@@ -54,7 +54,7 @@ def _product_count_query(db: Session):
             Product.supplier_id.label("supplier_id"),
             func.count(Product.id).label("product_count"),
         )
-        .filter(Product.supplier_id.isnot(None))
+        .filter(Product.supplier_id.isnot(None), Product.parent_id.is_(None))
         .group_by(Product.supplier_id)
         .subquery()
     )
@@ -186,7 +186,9 @@ def supplier_stats(supplier_id: int, db: Session = Depends(get_db)):
     ).filter(Order.supplier_id == supplier_id, Order.status == "received").first()
     total_orders = row[0] or 0
     total_spent = float(row[1] or 0)
-    product_count = db.query(func.count(Product.id)).filter(Product.supplier_id == supplier_id).scalar() or 0
+    product_count = db.query(func.count(Product.id)).filter(
+        Product.supplier_id == supplier_id, Product.parent_id.is_(None)
+    ).scalar() or 0
     return SupplierStats(
         total_orders=total_orders,
         total_spent=total_spent,

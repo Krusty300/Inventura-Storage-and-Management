@@ -36,15 +36,25 @@ function mockReceipts(items: ReturnType<typeof mockReceipt>[]) {
   });
 }
 
-const serializedAsset = { id: 2, name: "Asset", sku: "SKU-2", display_name: "Asset", is_active: true, is_variant: false, is_serialized: true, variants: [] };
-const plainWidget = { id: 3, name: "Widget", sku: "SKU-3", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] };
+const serializedAsset = { id: 2, name: "Asset", sku: "SKU-2", display_name: "Asset", is_active: true, is_variant: false, is_serialized: true, supplier_id: null, cost_price: 1.5, variants: [] };
+const plainWidget = { id: 3, name: "Widget", sku: "SKU-3", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, supplier_id: null, cost_price: 7, variants: [] };
 
-function mockReceiptForm({ serials = [] }: { serials?: Record<string, unknown>[] } = {}) {
+function mockReceiptForm({
+  serials = [],
+  suppliers = [],
+  lpns = [],
+  products = [serializedAsset, plainWidget],
+}: {
+  serials?: Record<string, unknown>[];
+  suppliers?: Record<string, unknown>[];
+  lpns?: Record<string, unknown>[];
+  products?: Record<string, unknown>[];
+} = {}) {
   getMock.mockImplementation((url: string) => {
     if (url === "/receipts") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
     if (url === "/products")
-      return Promise.resolve({ data: { items: [serializedAsset, plainWidget], total: 2, page: 1, pages: 1 } });
-    if (url === "/suppliers") return Promise.resolve({ data: { items: [] } });
+      return Promise.resolve({ data: { items: products, total: products.length, page: 1, pages: 1 } });
+    if (url === "/suppliers") return Promise.resolve({ data: { items: suppliers } });
     if (url === "/locations")
       return Promise.resolve({
         data: { items: [
@@ -52,9 +62,12 @@ function mockReceiptForm({ serials = [] }: { serials?: Record<string, unknown>[]
           { id: 11, name: "Warehouse A", path: "Warehouse A", is_active: true },
         ] },
       });
-    if (url === "/lpns") return Promise.resolve({ data: { items: [] } });
+    if (url === "/lpns")
+      return Promise.resolve({ data: { items: lpns, total: lpns.length, page: 1, pages: 1 } });
     if (url === "/serial-numbers")
       return Promise.resolve({ data: { items: serials, total: serials.length, page: 1, pages: 1 } });
+    if (url === "/stock-movements/locations")
+      return Promise.resolve({ data: { locations: [], unallocated: 0 } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
 }
@@ -129,5 +142,47 @@ describe("Receipts Page", () => {
     expect(screen.getByLabelText("Location")).toHaveValue("");
     fireEvent.click(screen.getByRole("button", { name: "Warehouse A (1)" }));
     await waitFor(() => expect(screen.getByLabelText("Location")).toHaveValue("Warehouse A"));
+  });
+
+  it("filters product options by supplier and auto-fills product + cost for a single-product supplier", async () => {
+    mockReceiptForm({
+      suppliers: [{ id: 5, name: "Fresh Farms" }],
+      products: [
+        { id: 20, name: "Milk", sku: "M-1", display_name: "Milk", is_active: true, is_variant: false, is_serialized: false, supplier_id: 5, cost_price: 2.5, variants: [] },
+        { id: 21, name: "Eggs", sku: "E-1", display_name: "Eggs", is_active: true, is_variant: false, is_serialized: false, supplier_id: null, cost_price: 3, variants: [] },
+      ],
+    });
+    openReceiptForm();
+    const supplier = await screen.findByLabelText("Supplier");
+    fireEvent.change(supplier, { target: { value: "5" } });
+    await waitFor(() => expect(screen.getByLabelText("Product")).toHaveValue("20"));
+    expect(screen.getByLabelText("Unit cost")).toHaveValue(2.5);
+    expect(screen.queryByRole("option", { name: "Eggs (E-1)" })).not.toBeInTheDocument();
+  });
+
+  it("auto-fills unit cost when a product is selected", async () => {
+    mockReceiptForm({
+      products: [
+        { id: 3, name: "Widget", sku: "SKU-3", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, supplier_id: null, cost_price: 7, variants: [] },
+      ],
+    });
+    openReceiptForm();
+    fireEvent.change(await screen.findByLabelText("Product"), { target: { value: "3" } });
+    await waitFor(() => expect(screen.getByLabelText("Unit cost")).toHaveValue(7));
+  });
+
+  it("auto-selects the single LPN at the selected location", async () => {
+    mockReceiptForm({
+      serials: [
+        { id: 1, product_id: 2, serial_number: "SN-1", lot_id: null, location_id: 10, status: "in_stock", sold_at: null, location_name: "Warehouse B", lot_number: "", product_name: "Asset" },
+      ],
+      lpns: [
+        { id: 30, lpn_number: "LPN-9001", lpn_type: "pallet", location_id: 10, status: "active", location_name: "Warehouse B", content_count: 0, total_quantity: 0, contents: [], serials: [] },
+      ],
+    });
+    openReceiptForm();
+    await selectProduct("2", "Asset (SKU-2)");
+    await waitFor(() => expect(screen.getByLabelText("Location")).toHaveValue("Warehouse B"));
+    await waitFor(() => expect(screen.getByLabelText("LPN number")).toHaveValue("LPN-9001"));
   });
 });

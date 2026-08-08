@@ -21,6 +21,7 @@ class UserUpdateAdmin(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     role: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class UserCreateAdmin(BaseModel):
@@ -39,8 +40,11 @@ class ResetPassword(BaseModel):
     new_password: str
 
 
-def _get_user_or_404(db: Session, user_id: int) -> User:
-    u = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+def _get_user_or_404(db: Session, user_id: int, include_inactive: bool = False) -> User:
+    q = db.query(User).filter(User.id == user_id)
+    if not include_inactive:
+        q = q.filter(User.is_active == True)
+    u = q.first()
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
     return u
@@ -55,12 +59,15 @@ def list_users(
     search: str = Query(""),
     sort_by: str = Query("username"),
     sort_dir: str = Query("asc"),
+    include_inactive: bool = Query(False),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("users.view")),
 ):
-    q = db.query(User).filter(User.is_active == True)
+    q = db.query(User)
+    if not include_inactive:
+        q = q.filter(User.is_active == True)
     if search:
         like = f"%{search}%"
         q = q.filter(User.username.ilike(like) | User.email.ilike(like))
@@ -123,7 +130,7 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("users.update")),
 ):
-    u = _get_user_or_404(db, user_id)
+    u = _get_user_or_404(db, user_id, include_inactive=True)
     updates = data.model_dump(exclude_unset=True)
     if "role" in updates:
         if updates["role"] not in VALID_ROLES:
@@ -132,6 +139,12 @@ def update_user(
             raise HTTPException(status_code=400, detail="You cannot change your own role")
         if u.role == "admin" and updates["role"] != "admin" and _admin_count(db) <= 1:
             raise HTTPException(status_code=400, detail="Cannot demote the last admin")
+    if "is_active" in updates and updates["is_active"] != u.is_active:
+        if not updates["is_active"]:
+            if u.id == current_user.id:
+                raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
+            if u.role == "admin" and _admin_count(db) <= 1:
+                raise HTTPException(status_code=400, detail="Cannot deactivate the last admin")
     for key, val in updates.items():
         setattr(u, key, val)
     db.commit()

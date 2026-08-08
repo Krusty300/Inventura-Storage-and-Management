@@ -104,6 +104,13 @@ def test_supplier_products_endpoint(auth_headers):
     assert [v["sku"] for v in by_sku["PSA-GRP"]["variants"]] == ["PSA-VAR"]
     assert all(p["supplier_id"] == sup_a["id"] for p in data["items"])
 
+    stats = client.get(f"/api/suppliers/{sup_a['id']}/stats", headers=auth_headers).json()
+    assert stats["product_count"] == 3
+    row = next(i for i in client.get("/api/suppliers", params={"limit": 50}, headers=auth_headers).json()["items"] if i["id"] == sup_a["id"])
+    assert row["product_count"] == 3
+    sup_b_row = next(i for i in client.get("/api/suppliers", params={"limit": 50}, headers=auth_headers).json()["items"] if i["id"] == sup_b["id"])
+    assert sup_b_row["product_count"] == 1
+
     assert client.get("/api/suppliers/999999/products", headers=auth_headers).status_code == 404
 
 

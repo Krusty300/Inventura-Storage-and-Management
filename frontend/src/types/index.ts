@@ -416,6 +416,8 @@ export interface SaleItem {
   unit_price: number;
   product_name: string;
   line_total: number;
+  location: string;
+  locations: string[];
 }
 
 export interface Sale {
@@ -434,6 +436,7 @@ export interface Sale {
   customer_name: string;
   username: string;
   items: SaleItem[];
+  locations: string[];
 }
 
 export interface SalesStats {
@@ -730,6 +733,7 @@ export interface QualityCheck {
   qc_number: string;
   product_id: number;
   lot_id: number | null;
+  location_id: number | null;
   work_order_id: number | null;
   batch_number: string;
   result: string;
@@ -739,6 +743,7 @@ export interface QualityCheck {
   created_at: string;
   product_name: string;
   lot_number: string;
+  location_name: string;
   wo_number: string;
   checker_username: string;
 }

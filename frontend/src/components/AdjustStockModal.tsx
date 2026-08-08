@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import api from "../api/client";
-import type { Product } from "../types";
+import type { Location, Product } from "../types";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 
 const REASON_CODES = ["damaged", "lost", "found", "recount"];
 
@@ -13,12 +15,28 @@ interface Props {
 
 export default function AdjustStockModal({ product, onClose, onAdjusted }: Props) {
   const [newQty, setNewQty] = useState(product.quantity.toString());
+  const [locationId, setLocationId] = useState("");
   const [reasonCode, setReasonCode] = useState("recount");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const qtyDelta = parseInt(newQty) - product.quantity;
+  const { data: allLocations = [] } = useQuery({
+    queryKey: ["locations", "adjust-form"],
+    queryFn: async () => {
+      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      return (data.items || []) as Location[];
+    },
+  });
+  const activeLocations = allLocations.filter((l) => l.is_active);
+
+  const stockLocations = useProductStockLocations(product.id, false);
+  const stockCountByLoc = new Map(stockLocations.locations.map((l) => [l.location_id, l.count]));
+
+  const locationOptions = [...activeLocations].sort((a, b) => a.path.localeCompare(b.path));
+  const currentQty = locationId ? stockCountByLoc.get(parseInt(locationId)) ?? 0 : product.quantity;
+
+  const qtyDelta = parseInt(newQty) - currentQty;
   const isValid = newQty !== "" && !isNaN(parseInt(newQty)) && parseInt(newQty) >= 0 && qtyDelta !== 0;
 
   const handleSubmit = async () => {
@@ -31,6 +49,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
         new_quantity: parseInt(newQty),
         reason_code: reasonCode,
         notes,
+        location_id: locationId ? parseInt(locationId) : null,
       });
       onAdjusted();
     } catch (err: any) {
@@ -47,10 +66,26 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
           <span className="text-muted ml-2">({product.sku})</span>
         </div>
 
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1">Location</label>
+          <select className="select" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+            <option value="">Default (product location)</option>
+            {locationOptions.map((l) => {
+              const count = stockCountByLoc.get(l.id);
+              return <option key={l.id} value={l.id}>{l.path}{count !== undefined ? ` (${count})` : ""}</option>;
+            })}
+          </select>
+          <p className="text-xs text-faint mt-1">
+            {locationId
+              ? `New quantity will be the target stock at this location (current: ${currentQty}).`
+              : "Applies to the product's default location. Pick a location to adjust stock there instead."}
+          </p>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Current Quantity</label>
-            <div className="input bg-app">{product.quantity}</div>
+            <div className="input bg-app">{currentQty}</div>
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">New Quantity</label>

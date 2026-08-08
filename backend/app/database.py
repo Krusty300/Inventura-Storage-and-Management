@@ -66,6 +66,11 @@ def run_migrations():
         if "settings" in table_names
         else None
     )
+    qc_cols = (
+        {c["name"] for c in insp.get_columns("quality_checks")}
+        if "quality_checks" in table_names
+        else None
+    )
     with engine.begin() as conn:
         if "parent_id" not in existing:
             conn.execute(text("ALTER TABLE products ADD COLUMN parent_id INTEGER"))
@@ -94,6 +99,8 @@ def run_migrations():
             conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500) DEFAULT ''"))
         if serial_cols is not None and "lpn_id" not in serial_cols:
             conn.execute(text("ALTER TABLE serial_numbers ADD COLUMN lpn_id INTEGER"))
+        if qc_cols is not None and "location_id" not in qc_cols:
+            conn.execute(text("ALTER TABLE quality_checks ADD COLUMN location_id INTEGER"))
         if supplier_cols is not None and "is_active" not in supplier_cols:
             conn.execute(text("ALTER TABLE suppliers ADD COLUMN is_active BOOLEAN DEFAULT 1"))
         if shipment_cols is not None and "sale_id" not in shipment_cols and "sales" in table_names:

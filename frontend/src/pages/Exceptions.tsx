@@ -6,6 +6,7 @@ import api from "../api/client";
 import type { ExceptionsReport, LotGenealogy } from "../types";
 import Skeleton from "../components/Skeleton";
 import Modal from "../components/Modal";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
@@ -113,14 +114,17 @@ function ZeroStockTable({ data }: { data: ExceptionsReport }) {
 function QuarantineTable({ data }: { data: ExceptionsReport }) {
   const formatDate = useDateFormat();
   const [recallLot, setRecallLot] = useState<(typeof data.quarantined_lots)[number] | null>(null);
+  const [releaseTarget, setReleaseTarget] = useState<(typeof data.quarantined_lots)[number] | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const { addToast } = useToast();
   const [releasing, setReleasing] = useState<number | null>(null);
   if (data.quarantined_lots.length === 0) return <p className="text-sm text-muted">No quarantined lots.</p>;
 
-  const releaseLot = async (lot: (typeof data.quarantined_lots)[number]) => {
-    if (!confirm(`Release lot ${lot.lot_number} back to sellable stock?`)) return;
+  const confirmRelease = async () => {
+    if (!releaseTarget) return;
+    const lot = releaseTarget;
+    setReleaseTarget(null);
     setReleasing(lot.id);
     try {
       await api.put(`/lots/${lot.id}`, { status: "in_stock" });
@@ -151,7 +155,7 @@ function QuarantineTable({ data }: { data: ExceptionsReport }) {
                     <Search size={12} /> Recall
                   </button>
                   {can("lots.update") && (
-                    <button onClick={() => releaseLot(l)} disabled={releasing === l.id}
+                    <button onClick={() => setReleaseTarget(l)} disabled={releasing === l.id}
                       className="btn-primary text-xs py-1 px-2 inline-flex items-center gap-1">
                       <Undo2 size={12} /> {releasing === l.id ? "Releasing..." : "Release"}
                     </button>
@@ -163,6 +167,15 @@ function QuarantineTable({ data }: { data: ExceptionsReport }) {
         </tbody>
       </table>
       {recallLot && <RecallModal lot={recallLot} onClose={() => setRecallLot(null)} />}
+      <ConfirmDialog
+        open={!!releaseTarget}
+        title="Release Quarantined Lot"
+        message={`Release lot ${releaseTarget?.lot_number} back to sellable stock?`}
+        confirmLabel="Release Lot"
+        confirmClass="btn-primary"
+        onConfirm={confirmRelease}
+        onCancel={() => setReleaseTarget(null)}
+      />
     </div>
   );
 }

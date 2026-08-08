@@ -21,6 +21,7 @@ class UserOut(BaseModel):
     username: str
     email: str
     role: str
+    is_active: bool = True
     avatar_url: str = ""
     last_login_at: datetime | None = None
     created_at: datetime

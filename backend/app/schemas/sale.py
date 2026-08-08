@@ -8,6 +8,7 @@ class SaleItemCreate(BaseModel):
     product_id: int
     quantity: int = Field(gt=0)
     unit_price: float = Field(default=0.0, ge=0)
+    location_id: Optional[int] = None
 
 
 class SaleCreate(BaseModel):
@@ -29,6 +30,8 @@ class SaleItemOut(BaseModel):
     unit_price: float
     product_name: str = ""
     line_total: float = 0.0
+    location: str = ""
+    locations: list[str] = []
 
     class Config:
         from_attributes = True
@@ -50,6 +53,7 @@ class SaleOut(BaseModel):
     customer_name: str = ""
     username: str = ""
     items: list[SaleItemOut] = []
+    locations: list[str] = []
 
     class Config:
         from_attributes = True

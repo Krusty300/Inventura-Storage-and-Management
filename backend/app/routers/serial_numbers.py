@@ -26,6 +26,7 @@ def list_serial_numbers(
     product_id: int | None = None,
     status: str | None = None,
     location_id: int | None = None,
+    no_location: bool = Query(False),
     search: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
@@ -40,6 +41,8 @@ def list_serial_numbers(
         q = q.filter(SerialNumber.status == status)
     if location_id:
         q = q.filter(SerialNumber.location_id == location_id)
+    if no_location:
+        q = q.filter(SerialNumber.location_id.is_(None))
     if search:
         like = f"%{search}%"
         q = q.filter(SerialNumber.serial_number.ilike(like))

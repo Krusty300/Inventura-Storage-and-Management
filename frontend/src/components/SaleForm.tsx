@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import api from "../api/client";
 import type { Customer, Product, Settings } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import Modal from "./Modal";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { formatCurrency } from "../utils/currency";
 import { isSelectable, selectableProducts, productLabel } from "../utils/variants";
 
@@ -17,6 +18,71 @@ interface LineItem {
   product_id: string;
   quantity: string;
   unit_price: string;
+  location_id: string;
+}
+
+const EMPTY_ITEM: LineItem = { product_id: "", quantity: "1", unit_price: "0", location_id: "" };
+
+interface SaleItemRowProps {
+  item: LineItem;
+  idx: number;
+  sellable: Product[];
+  currency: string;
+  canRemove: boolean;
+  onChange: (idx: number, field: string, value: string) => void;
+  onRemove: (idx: number) => void;
+}
+
+function SaleItemRow({ item, idx, sellable, currency, canRemove, onChange, onRemove }: SaleItemRowProps) {
+  const product = sellable.find((p) => p.id === parseInt(item.product_id));
+  const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(product?.id, false);
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end border border-border rounded-lg p-3">
+      <div className="sm:col-span-4">
+        <label className="block text-xs font-medium text-muted mb-1.5">Product</label>
+        <select className="select text-sm" value={item.product_id} onChange={(e) => onChange(idx, "product_id", e.target.value)} required>
+          <option value="">Select product</option>
+          {sellable.map((p) => (
+            <option key={p.id} value={p.id}>{productLabel(p)} ({formatCurrency(p.unit_price, currency)})</option>
+          ))}
+        </select>
+      </div>
+      <div className="sm:col-span-3">
+        <label className="flex items-center gap-1.5 text-xs font-medium text-muted mb-1.5">
+          Fulfill from
+          {stockLoading && <Loader2 size={10} className="animate-spin" />}
+        </label>
+        <select
+          className="select text-sm"
+          value={item.location_id}
+          onChange={(e) => onChange(idx, "location_id", e.target.value)}
+          disabled={!product}
+          aria-label="Fulfill from location"
+        >
+          <option value="">Auto (any location)</option>
+          {stockLocations.map((l) => (
+            <option key={l.location_id} value={l.location_id.toString()}>{l.path} ({l.count})</option>
+          ))}
+        </select>
+      </div>
+      <div className="sm:col-span-2">
+        <label className="block text-xs font-medium text-muted mb-1.5">Qty</label>
+        <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity} onChange={(e) => onChange(idx, "quantity", e.target.value)} min="1" required />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="block text-xs font-medium text-muted mb-1.5">Price</label>
+        <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price} onChange={(e) => onChange(idx, "unit_price", e.target.value)} step="0.01" required />
+      </div>
+      <div className="sm:col-span-1 flex justify-end">
+        {canRemove && (
+          <button type="button" onClick={() => onRemove(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
+            <Trash2 size={16} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function SaleForm({ onClose, onSaved }: Props) {
@@ -26,7 +92,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [customerId, setCustomerId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<LineItem[]>([{ product_id: "", quantity: "1", unit_price: "0" }]);
+  const [items, setItems] = useState<LineItem[]>([{ ...EMPTY_ITEM }]);
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
 
@@ -39,7 +105,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const selectable = selectableProducts(products);
   const sellable = selectable.filter((p) => !p.is_serialized);
 
-  const addItem = () => setItems([...items, { product_id: "", quantity: "1", unit_price: "0" }]);
+  const addItem = () => setItems([...items, { ...EMPTY_ITEM }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
 
   const updateItem = (idx: number, field: string, value: string) => {
@@ -48,6 +114,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     if (field === "product_id") {
       const p = sellable.find((x) => x.id === parseInt(value));
       if (p) updated[idx].unit_price = p.unit_price.toString();
+      updated[idx].location_id = "";
     }
     setItems(updated);
   };
@@ -73,6 +140,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           product_id: parseInt(i.product_id),
           quantity: parseInt(i.quantity) || 1,
           unit_price: parseFloat(i.unit_price) || 0,
+          location_id: i.location_id ? parseInt(i.location_id) : null,
         })),
       });
       addToast("Sale completed", "success");
@@ -105,41 +173,30 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between gap-2 mb-3">
             <label className="text-sm font-medium text-ink">Items</label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap justify-end">
               <BarcodeScanner onProductFound={(p) => {
                 if (p.is_serialized) { addToast("Serialized products can't be sold at checkout - create a shipment instead", "error"); return; }
-                if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.unit_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error");
+                if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.unit_price.toString(), location_id: "" }]); else addToast("Product has variants - scan a specific variant", "error");
               }} placeholder="Scan to add item..." />
               <button type="button" onClick={addItem} className="btn-secondary text-xs py-1 px-2">
                 Add Item
               </button>
             </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {items.map((item, idx) => (
-              <div key={idx} className="flex gap-2 items-end">
-                <div className="flex-1">
-                  <select className="select text-sm" value={item.product_id} onChange={(e) => updateItem(idx, "product_id", e.target.value)} required>
-                    <option value="">Select product</option>
-                    {sellable.map((p) => (
-                      <option key={p.id} value={p.id}>{productLabel(p)} ({formatCurrency(p.unit_price, currency)})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="w-16 sm:w-20">
-                  <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity} onChange={(e) => updateItem(idx, "quantity", e.target.value)} min="1" required />
-                </div>
-                <div className="w-20 sm:w-24">
-                  <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price} onChange={(e) => updateItem(idx, "unit_price", e.target.value)} step="0.01" required />
-                </div>
-                {items.length > 1 && (
-                  <button type="button" onClick={() => removeItem(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
+              <SaleItemRow
+                key={idx}
+                item={item}
+                idx={idx}
+                sellable={sellable}
+                currency={currency}
+                canRemove={items.length > 1}
+                onChange={updateItem}
+                onRemove={removeItem}
+              />
             ))}
           </div>
         </div>

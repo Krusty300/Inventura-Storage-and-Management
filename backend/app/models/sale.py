@@ -52,3 +52,7 @@ class SaleItem(Base):
     @property
     def product_name(self) -> str:
         return self.product.display_name if self.product else ""
+
+    @property
+    def line_total(self) -> float:
+        return float(self.unit_price) * self.quantity

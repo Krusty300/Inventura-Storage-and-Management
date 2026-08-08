@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
-import type { StockMovement } from "../types";
+import type { Location, StockMovement } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import Modal from "./Modal";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
+import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { isSelectable, productLabel } from "../utils/variants";
 
 interface Props {
@@ -17,6 +19,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
   const isEdit = !!movement;
   const products = useSelectableProducts().filter((p) => !p.is_serialized);
   const [productId, setProductId] = useState(movement?.product_id?.toString() || "");
+  const [locationId, setLocationId] = useState("");
   const [quantityChange, setQuantityChange] = useState(
     movement ? (movement.movement_type === "out" ? Math.abs(movement.quantity_change).toString() : movement.quantity_change.toString()) : ""
   );
@@ -25,6 +28,22 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
   const [notes, setNotes] = useState(movement?.notes || "");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+
+  const { data: allLocations = [] } = useQuery({
+    queryKey: ["locations", "movement-form"],
+    queryFn: async () => {
+      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      return (data.items || []) as Location[];
+    },
+  });
+  const activeLocations = allLocations.filter((l) => l.is_active);
+
+  const productIdNum = productId ? parseInt(productId) : null;
+  const stockLocations = useProductStockLocations(productIdNum, false);
+  const stockCountByLoc = new Map(stockLocations.locations.map((l) => [l.location_id, l.count]));
+
+  const locationOptions = [...activeLocations].sort((a, b) => a.path.localeCompare(b.path));
+  const showLocation = !isEdit && !!productIdNum;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,13 +56,16 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
       return;
     }
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         product_id: parseInt(productId),
         quantity_change: qty,
         movement_type: movementType,
         reference,
         notes,
       };
+      if (!isEdit) {
+        payload.location_id = locationId ? parseInt(locationId) : null;
+      }
       if (isEdit) {
         await api.put(`/stock-movements/${movement!.id}`, payload);
         addToast("Stock movement updated", "success");
@@ -64,7 +86,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Product *</label>
           {!isEdit && <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />}
-          <select className={!isEdit ? "select mt-2" : "select"} value={productId} onChange={(e) => setProductId(e.target.value)} required>
+          <select className={!isEdit ? "select mt-2" : "select"} value={productId} onChange={(e) => { setProductId(e.target.value); setLocationId(""); }} required>
             <option value="">Select product</option>
             {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
           </select>
@@ -78,6 +100,23 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
             <option value="return">Return</option>
           </select>
         </div>
+        {showLocation && (
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Location *</label>
+            <select className="select" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+              <option value="">Default (product location)</option>
+              {locationOptions.map((l) => {
+                const count = stockCountByLoc.get(l.id);
+                return <option key={l.id} value={l.id}>{l.path}{count !== undefined ? ` (${count})` : ""}</option>;
+              })}
+            </select>
+            <p className="text-xs text-faint mt-1">
+              {movementType === "out"
+                ? "Stock will be removed from this location."
+                : "Stock will be added to this location."}
+            </p>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
           <input

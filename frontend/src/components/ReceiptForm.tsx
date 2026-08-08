@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import Modal from "./Modal";
 import LocationPicker from "./LocationPicker";
@@ -8,7 +9,7 @@ import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { productLabel } from "../utils/variants";
 import { useToast } from "../context/ToastContext";
-import type { Product } from "../types";
+import type { LPN, Product } from "../types";
 
 interface Props {
   onClose: () => void;
@@ -35,16 +36,36 @@ interface ItemRowProps {
   row: ItemRow;
   idx: number;
   productList: Product[];
+  rowProducts: Product[];
+  locations: { id: number; path: string }[];
   onChange: (idx: number, key: keyof ItemRow, value: string) => void;
   onRemove: (idx: number) => void;
 }
 
-function ReceiptItemRow({ row, idx, productList, onChange, onRemove }: ItemRowProps) {
+function useLocationLpns(locationPath: string, locations: { id: number; path: string }[]) {
+  const locationId = useMemo(() => {
+    if (!locationPath) return undefined;
+    return locations.find((l) => l.path === locationPath)?.id;
+  }, [locationPath, locations]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["lpns", "by-location", locationId],
+    queryFn: async () => {
+      const { data } = await api.get("/lpns", { params: { location_id: locationId, limit: 500 } });
+      return data.items as LPN[];
+    },
+    enabled: !!locationId,
+  });
+  return { lpns: data ?? [], isLoading };
+}
+
+function ReceiptItemRow({ row, idx, productList, rowProducts, locations, onChange, onRemove }: ItemRowProps) {
   const product = productList.find((p) => p.id.toString() === row.product_id);
   const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(
     product?.id,
     !!product?.is_serialized
   );
+  const { lpns, isLoading: lpnsLoading } = useLocationLpns(row.location, locations);
 
   useEffect(() => {
     if (!product || row.location) return;
@@ -53,18 +74,34 @@ function ReceiptItemRow({ row, idx, productList, onChange, onRemove }: ItemRowPr
     }
   }, [stockLocations]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!row.location || row.lpn_number) return;
+    if (lpns.length === 1) {
+      onChange(idx, "lpn_number", lpns[0].lpn_number);
+    }
+  }, [lpns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleProductChange = (id: string) => {
+    onChange(idx, "product_id", id);
+    onChange(idx, "location", "");
+    onChange(idx, "lpn_number", "");
+    const p = productList.find((x) => x.id.toString() === id);
+    onChange(idx, "unit_cost", p ? String(p.cost_price ?? 0) : "0");
+  };
+
+  const handleLocationChange = (v: string) => {
+    onChange(idx, "location", v);
+    onChange(idx, "lpn_number", "");
+  };
+
   return (
     <div className="p-4 space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
         <div className="sm:col-span-5">
           <label className="block text-xs font-medium text-muted mb-1">Product</label>
-          <select className="select" value={row.product_id} onChange={(e) => {
-            const id = e.target.value;
-            onChange(idx, "product_id", id);
-            onChange(idx, "location", "");
-          }}>
+          <select className="select" aria-label="Product" value={row.product_id} onChange={(e) => handleProductChange(e.target.value)}>
             <option value="">Select...</option>
-            {productList.map((p) => (
+            {rowProducts.map((p) => (
               <option key={p.id} value={p.id}>{productLabel(p)}</option>
             ))}
           </select>
@@ -75,7 +112,7 @@ function ReceiptItemRow({ row, idx, productList, onChange, onRemove }: ItemRowPr
         </div>
         <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-muted mb-1">Unit Cost</label>
-          <input type="number" step="0.01" min={0} className="input" value={row.unit_cost} onChange={(e) => onChange(idx, "unit_cost", e.target.value)} />
+          <input type="number" step="0.01" min={0} className="input" aria-label="Unit cost" value={row.unit_cost} onChange={(e) => onChange(idx, "unit_cost", e.target.value)} />
         </div>
         <div className="sm:col-span-3 flex gap-2">
           <input className="input flex-1" placeholder="Lot #" value={row.lot_number} onChange={(e) => onChange(idx, "lot_number", e.target.value)} aria-label="Lot number" />
@@ -89,20 +126,28 @@ function ReceiptItemRow({ row, idx, productList, onChange, onRemove }: ItemRowPr
         </div>
         <div className="sm:col-span-4">
           <label className="block text-xs font-medium text-muted mb-1">Location</label>
-          <LocationPicker value={row.location} onChange={(v) => onChange(idx, "location", v)} />
+          <LocationPicker value={row.location} onChange={handleLocationChange} />
           {product && (
             <StockLocationHints
               locations={stockLocations}
               isSerialized={!!product.is_serialized}
               selectedPath={row.location}
-              onSelect={(path) => onChange(idx, "location", path)}
+              onSelect={handleLocationChange}
               isLoading={stockLoading}
             />
           )}
         </div>
         <div className="sm:col-span-3">
           <label className="block text-xs font-medium text-muted mb-1">LPN (pallet)</label>
-          <input className="input" placeholder="e.g. LPN-1001" value={row.lpn_number} onChange={(e) => onChange(idx, "lpn_number", e.target.value)} />
+          <input className="input" list={`lpn-options-${idx}`} placeholder="e.g. LPN-1001" aria-label="LPN number" value={row.lpn_number} onChange={(e) => onChange(idx, "lpn_number", e.target.value)} />
+          <datalist id={`lpn-options-${idx}`}>
+            {lpns.map((l) => (
+              <option key={l.id} value={l.lpn_number}>
+                {l.content_count === 0 ? "empty pallet" : `${l.total_quantity} units`}
+              </option>
+            ))}
+          </datalist>
+          {lpnsLoading && <p className="text-xs text-faint mt-1">Loading LPNs...</p>}
         </div>
       </div>
       {product?.is_serialized && (
@@ -141,6 +186,39 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
     api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
     api.get("/lpns", { params: { limit: 500 } }).then(({ data }) => setLpns(data.items));
   }, []);
+
+  const supplierOwned = useMemo(() => {
+    if (!supplier_id) return [];
+    return productList.filter((p) => p.supplier_id?.toString() === supplier_id);
+  }, [productList, supplier_id]);
+
+  const rowProducts = supplierOwned.length > 0 ? supplierOwned : productList;
+
+  useEffect(() => {
+    if (!supplier_id) return;
+    const only = supplierOwned.length === 1 ? supplierOwned[0] : null;
+    setRows((prev) => {
+      let changed = false;
+      let filled = false;
+      const next = prev.map((r) => {
+        if (!r.product_id) {
+          if (only && !filled) {
+            filled = true;
+            changed = true;
+            return { ...r, product_id: only.id.toString(), unit_cost: String(only.cost_price ?? 0) };
+          }
+          return r;
+        }
+        const p = productList.find((x) => x.id.toString() === r.product_id);
+        if (p && p.supplier_id?.toString() !== supplier_id) {
+          changed = true;
+          return { ...EMPTY_ROW, quantity: "1" };
+        }
+        return r;
+      });
+      return changed ? next : prev;
+    });
+  }, [supplier_id, supplierOwned]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setRow = (idx: number, key: keyof ItemRow, value: string) => {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
@@ -206,7 +284,7 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-            <select className="select" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
+            <select className="select" aria-label="Supplier" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
               <option value="">None</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
@@ -235,6 +313,8 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
                 row={row}
                 idx={idx}
                 productList={productList}
+                rowProducts={rowProducts}
+                locations={locations}
                 onChange={setRow}
                 onRemove={(i) => setRows(rows.filter((_, x) => x !== i))}
               />

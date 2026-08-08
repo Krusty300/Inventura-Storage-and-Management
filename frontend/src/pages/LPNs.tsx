@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Eye, PackagePlus, FileText, ArrowLeftRight, Trash2, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { Eye, FileText, ArrowLeftRight, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { LPN, Location, LPNSerialItem, PaginatedResponse, SerialNumber, StockLocation } from "../types";
@@ -65,7 +65,7 @@ export default function LPNs() {
         <h1 className="text-2xl font-bold text-ink">LPNs (Pallets & Totes)</h1>
         {can("lpns.create") && (
           <button onClick={() => setShowForm(true)} className="btn-primary">
-            <PackagePlus size={16} className="inline mr-1" />Create LPN
+            Create LPN
           </button>
         )}
       </div>
@@ -340,10 +340,10 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
           {can("lpns.update") && current.status === "active" && (
             <div className="flex flex-wrap gap-3 pt-2">
               <button onClick={() => setAction("load")} className="btn-secondary">
-                <ArrowDownToLine size={16} className="inline mr-1" />Load Stock
+                Load Stock
               </button>
               <button onClick={() => setAction("unload")} className="btn-secondary">
-                <ArrowUpFromLine size={16} className="inline mr-1" />Unload Stock
+                Unload Stock
               </button>
             </div>
           )}

@@ -67,8 +67,8 @@ export default function Sales() {
 
   const handleExport = () => {
     exportCSV(
-      ["Invoice #", "Customer", "Date", "Status", "Payment", "Total"],
-      sales.map((s) => [s.invoice_number, s.customer_name, formatDate(s.created_at), s.status, s.payment_method, s.total_amount]),
+      ["Invoice #", "Customer", "Date", "Status", "Payment", "Location", "Total"],
+      sales.map((s) => [s.invoice_number, s.customer_name, formatDate(s.created_at), s.status, s.payment_method, (s.locations ?? []).join(", "), s.total_amount]),
       "sales"
     );
     addToast("Sales exported to CSV", "success");
@@ -113,13 +113,14 @@ export default function Sales() {
               <th className="px-4 py-3 font-medium text-muted">Date</th>
               <th className="px-4 py-3 font-medium text-muted">Status</th>
               <th className="px-4 py-3 font-medium text-muted">Payment</th>
+              <th className="px-4 py-3 font-medium text-muted">Location</th>
               <th className="px-4 py-3 font-medium text-muted">Total</th>
               <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={8} />
+              <Skeleton rows={5} cols={9} />
             ) : sales.length === 0 ? (
               <EmptyState title="No sales yet" message="Record your first sale to start tracking revenue." actionLabel="New Sale" onAction={() => setShowForm(true)} />
             ) : sales.map((s) => (
@@ -134,6 +135,7 @@ export default function Sales() {
                   <span className={`badge ${s.status === "completed" ? "badge-success" : "badge-danger"}`}>{s.status}</span>
                 </td>
                 <td className="px-4 py-3 text-muted capitalize">{s.payment_method}</td>
+                <td className="px-4 py-3 text-muted">{(s.locations ?? []).join(", ") || "—"}</td>
                 <td className="px-4 py-3">{formatCurrency(s.total_amount, currencySymbol)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">

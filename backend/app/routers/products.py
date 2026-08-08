@@ -318,7 +318,7 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
         joinedload(Product.default_location),
         joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
         joinedload(Product.stock_lines).joinedload(StockLine.location),
-    ).filter(Product.barcode == barcode, Product.is_active == True).first()
+    ).filter(func.lower(Product.barcode) == barcode.lower(), Product.is_active == True).first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     out = ProductOut.model_validate(p)

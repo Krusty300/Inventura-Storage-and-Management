@@ -170,7 +170,7 @@ export default function Orders() {
                   {formatDate(o.created_at)}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={statusColors[o.status] || "badge-info"}>{o.status}</span>
+                  <span className={`badge ${statusColors[o.status] || "badge-info"}`}>{o.status}</span>
                 </td>
                 <td className="px-4 py-3">{formatCurrency(o.total_amount, currencySymbol)}</td>
                 <td className="px-4 py-3">
