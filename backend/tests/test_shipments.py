@@ -181,6 +181,32 @@ def test_shipment_auto_allocate_disabled_keeps_draft(auth_headers):
     assert client.get(f"/api/locations/{loc['id']}", headers=auth_headers).json()["total_quantity"] == 10
 
 
+def test_shipment_auto_allocate_skips_serialized_units(auth_headers):
+    client.put("/api/settings", json={"auto_allocate_stock": True}, headers=auth_headers)
+    p = _make_product(auth_headers, "SHP-AUTOSER", serialized=True)
+    loc = _make_location(auth_headers, "SHP-AUTOSER-LOC")
+    assert _receive_serials(auth_headers, p["id"], loc["id"], ["AS1", "AS2"]).status_code == 201
+
+    created = _create_shipment(auth_headers, [(p["id"], 2)])
+    assert created.status_code == 201
+    shipment = created.json()
+    # serialized lines are left for manual serial selection, not FEFO auto-picked
+    assert shipment["status"] == "draft"
+    assert shipment["total_picked"] == 0
+    assert shipment["staging_location_id"] is None
+    assert client.get(f"/api/locations/{loc['id']}", headers=auth_headers).json()["total_quantity"] == 2
+
+    # the manual pick flow picks the exact serials
+    serials = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"]
+    ids = [s["id"] for s in serials]
+    picked = client.post(f"/api/shipments/{shipment['id']}/pick", json={
+        "items": [{"product_id": p["id"], "serial_ids": ids}],
+    }, headers=auth_headers)
+    assert picked.status_code == 200
+    assert picked.json()["status"] == "picking"
+    assert picked.json()["total_picked"] == 2
+
+
 def test_pick_rejects_deactivated_serialized_product(auth_headers):
     p = _make_product(auth_headers, "SHP-DEACT", serialized=True)
     loc = _make_location(auth_headers, "SHP-DEACT-LOC")

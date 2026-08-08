@@ -155,12 +155,14 @@ def _validate_manual_serials(db: Session, product: Product, serial_ids: list[int
     return serials
 
 
-def _pick_shipment_items(db: Session, shipment: Shipment, user, serial_ids_by_product: dict[int, list[int]] | None = None) -> Location:
+def _pick_shipment_items(db: Session, shipment: Shipment, user, serial_ids_by_product: dict[int, list[int]] | None = None, skip_serialized: bool = False) -> Location:
     """Allocate the shipment's outstanding items and move them to the shipping
     staging location, marking each item as picked. Used by the manual ``pick``
     flow and, when ``auto_allocate_stock`` is enabled, at shipment creation.
     Serialized items pick the exact serials in ``serial_ids_by_product`` when
     provided for the product, otherwise they fall back to FEFO auto-allocation.
+    Pass ``skip_serialized=True`` (the auto-allocate-at-creation path) to leave
+    serialized lines for the operator's manual serial selection.
     Raises ``inventory.InventoryError`` on failure; the caller is responsible
     for committing / rolling back."""
     staging = _staging_location(db)
@@ -170,6 +172,8 @@ def _pick_shipment_items(db: Session, shipment: Shipment, user, serial_ids_by_pr
             continue
         product = item.product
         if product and product.is_serialized:
+            if skip_serialized:
+                continue
             manual = (serial_ids_by_product or {}).get(item.product_id)
             if manual:
                 serials = _validate_manual_serials(db, product, manual, item.location_id, remaining)
@@ -269,10 +273,11 @@ def create_shipment(data: ShipmentCreate, db: Session = Depends(get_db), user=De
     s = db.query(Settings).first()
     if s and s.auto_allocate_stock:
         try:
-            staging = _pick_shipment_items(db, shipment, user)
-            shipment.staging_location_id = staging.id
-            shipment.status = "picking"
-            auto_allocated = True
+            staging = _pick_shipment_items(db, shipment, user, skip_serialized=True)
+            if shipment.total_picked > 0:
+                shipment.staging_location_id = staging.id
+                shipment.status = "picking"
+                auto_allocated = True
             db.commit()
             shipment = _load_shipment(db, shipment.id)
         except inventory.InventoryError as e:
