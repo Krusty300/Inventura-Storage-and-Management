@@ -19,7 +19,7 @@ from app.models.stock_line import StockLine
 from app.models.lot import Lot
 from app.schemas.dashboard import DashboardStats
 from app.services.auth import get_current_user
-from app.services.inventory import TRANSFER_OUT, expire_overdue_lots, quarantined_qty_subquery
+from app.services.inventory import TRANSFER_OUT, expire_overdue_lots, quarantined_qty_by_product, quarantined_qty_subquery
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -90,10 +90,11 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
             Product.is_active == True, sellable <= Product.reorder_level,
             Product.id.notin_(Product.variant_parent_id_subquery()),
         )
-        .order_by(Product.quantity.asc())
+        .order_by(sellable.asc())
         .limit(10)
         .all()
     )
+    low_stock_quarantined = quarantined_qty_by_product(db, [p.id for p in low_stock_products]) if low_stock_products else {}
     expiring_products = (
         db.query(Product)
         .filter(
@@ -162,6 +163,7 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
                 "name": p.display_name,
                 "sku": p.sku,
                 "quantity": p.quantity,
+                "sellable": max(0, p.quantity - low_stock_quarantined.get(p.id, 0)),
                 "reorder_level": p.reorder_level,
             }
             for p in low_stock_products

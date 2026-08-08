@@ -188,6 +188,7 @@ export interface DashboardStats {
     name: string;
     sku: string;
     quantity: number;
+    sellable?: number;
     reorder_level: number;
   }[];
   expiring_products: {

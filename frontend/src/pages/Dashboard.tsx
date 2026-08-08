@@ -1,5 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -87,28 +87,34 @@ export default function Dashboard() {
       setRefreshing(false);
       return;
     }
-    const [salesData, valData, excData, riskData, lpnData, recData, ordData, profData, costData] = await Promise.all([
+    const [salesData, valData, excData, lpnData, recData, ordData, profData, costData] = await Promise.all([
       get<SalesStats>("/sales/stats"),
       get<InventoryValuation>("/reports/inventory-valuation"),
       get<ExceptionsReport>("/reports/exceptions"),
-      get<StockoutRisk>("/reports/stockout-risk", { params: { lead_time_days: riskLeadTime } }),
       get<PaginatedResponse<LPN>>("/lpns?limit=20"),
       get<PaginatedResponse<Receipt>>("/receipts?limit=20"),
       get<OrderSummary>("/reports/order-summary"),
       get<ProfitAnalysis>("/reports/profit-analysis"),
       get<ManufacturingCostReport>("/costing/report"),
     ]);
+    if (salesData === null || valData === null || excData === null || lpnData === null || recData === null || ordData === null || profData === null || costData === null) {
+      addToast("Some dashboard data failed to load", "error");
+    }
     setSalesStats(salesData);
     setValuation(valData);
     setExceptions(excData);
-    setStockoutRisk(riskData);
     setLpns(lpnData);
     setReceipts(recData);
     setOrderSummary(ordData);
     setProfit(profData);
     setCostReport(costData);
     setRefreshing(false);
-  }, [get, addToast, riskLeadTime]);
+  }, [get, addToast]);
+
+  const fetchRisk = useCallback(async () => {
+    const r = await get<StockoutRisk>("/reports/stockout-risk", { params: { lead_time_days: riskLeadTime } });
+    setStockoutRisk(r);
+  }, [get, riskLeadTime]);
 
   const fetchTrends = useCallback(async () => {
     const t = await get<StockMovementTrends>(`/reports/stock-movement-trends?days=${trendDays}`);
@@ -122,24 +128,34 @@ export default function Dashboard() {
   }, [get, topProductsDays]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
+  useEffect(() => { fetchRisk(); }, [fetchRisk]);
   useEffect(() => { fetchTrends(); }, [fetchTrends]);
   useEffect(() => { fetchTopProducts(); }, [fetchTopProducts]);
+
+  const refreshingRef = useRef(false);
+  useEffect(() => {
+    refreshingRef.current = refreshing;
+  }, [refreshing]);
 
   useEffect(() => {
     if (!autoRefresh) return;
     const id = setInterval(() => {
+      if (refreshingRef.current) return;
       fetchStats();
+      fetchRisk();
       fetchTrends();
       fetchTopProducts();
     }, 60000);
     return () => clearInterval(id);
-  }, [autoRefresh, fetchStats, fetchTrends, fetchTopProducts]);
+  }, [autoRefresh, fetchStats, fetchRisk, fetchTrends, fetchTopProducts]);
 
   const exportPdf = () => {
-    api.get("/reports/dashboard/pdf", { responseType: "blob" }).then(({ data }) => {
+    api.get("/reports/dashboard/pdf", { params: { lead_time_days: riskLeadTime }, responseType: "blob" }).then(({ data }) => {
       const url = URL.createObjectURL(data);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }).catch(() => {
+      addToast("Failed to export dashboard PDF", "error");
     });
   };
 
@@ -159,6 +175,9 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const todayLocal = new Date();
+  const localToday = `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, "0")}-${String(todayLocal.getDate()).padStart(2, "0")}`;
 
   const pendingOrders = orderSummary?.by_status.find((s) => s.status === "pending")?.count ?? 0;
   const isWorker = user?.role !== "admin";
@@ -222,7 +241,7 @@ export default function Dashboard() {
     { title: "Business", cards: businessCards },
   ];
 
-  const trendData = trends?.daily_trends?.slice(-14) || [];
+  const trendData = trends?.daily_trends || [];
   const riskSummary = stockoutRisk?.summary;
   const topProducts = salesSummary?.top_products?.slice(0, 5) || [];
   const topProfitProducts = profit?.products?.slice(0, 5) || [];
@@ -251,6 +270,14 @@ export default function Dashboard() {
       </div>
 
       <GlobalSearch />
+
+      {error && (
+        <div className="flex items-center justify-between bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          <span>{error}</span>
+          <button onClick={fetchStats} className="btn-secondary text-sm">Retry</button>
+        </div>
+      )}
+
 
       <div className="card">
         <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
@@ -558,7 +585,7 @@ export default function Dashboard() {
                   <span className="text-muted ml-2">({p.sku})</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-red-600 dark:text-red-400 font-medium">{p.quantity}</span>
+                  <span className="text-red-600 dark:text-red-400 font-medium">{p.sellable ?? p.quantity}</span>
                   <span className="text-faint">/ {p.reorder_level}</span>
                 </div>
               </div>
@@ -578,7 +605,7 @@ export default function Dashboard() {
                   <span className="font-medium">{p.name}</span>
                   {p.batch_number && <span className="text-muted ml-2">({p.batch_number})</span>}
                 </div>
-                <span className={p.expiry_date < new Date().toISOString().slice(0, 10) ? "text-red-600 dark:text-red-400 font-medium" : "text-amber-600 dark:text-amber-400 font-medium"}>
+                <span className={p.expiry_date < localToday ? "text-red-600 dark:text-red-400 font-medium" : "text-amber-600 dark:text-amber-400 font-medium"}>
                   {formatDate(p.expiry_date)}
                 </span>
               </div>

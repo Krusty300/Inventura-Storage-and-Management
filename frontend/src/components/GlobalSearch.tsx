@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CornerDownLeft } from "lucide-react";
@@ -70,6 +70,10 @@ export default function GlobalSearch() {
   const searching = debounced.trim().length >= 2;
   const showPanel = open && searching;
 
+  useEffect(() => {
+    setActive((a) => Math.min(a, Math.max(results.length - 1, 0)));
+  }, [results]);
+
   const select = (r: GlobalSearchResult) => {
     setOpen(false);
     setQuery("");
@@ -90,7 +94,8 @@ export default function GlobalSearch() {
       setActive((a) => Math.max(a - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      select(results[active]);
+      const r = results[active];
+      if (r) select(r);
     }
   };
 
@@ -98,7 +103,7 @@ export default function GlobalSearch() {
     <div className="relative z-10">
       {showPanel && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
 
-      <div className="relative flex-1 max-w-2xl">
+      <div className="relative flex-1 max-w-2xl z-50">
         <input
           className="input pl-10 pr-10"
           placeholder="Search everything: products, lots, serials, documents, people..."

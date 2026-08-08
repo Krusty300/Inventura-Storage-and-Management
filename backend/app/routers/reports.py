@@ -283,11 +283,14 @@ def sales_summary(start_date: str | None = None, end_date: str | None = None, db
         .join(SaleItem.product)
         .join(SaleItem.sale)
         .filter(Sale.status == "completed")
-        .group_by(Product.id, Product.name)
-        .order_by(func.sum(SaleItem.quantity * SaleItem.unit_price).desc())
-        .limit(15)
-        .all()
     )
+    if start:
+        item_rows = item_rows.filter(Sale.created_at >= start)
+    if end:
+        item_rows = item_rows.filter(Sale.created_at <= end)
+    item_rows = item_rows.group_by(Product.id, Product.name).order_by(
+        func.sum(SaleItem.quantity * SaleItem.unit_price).desc()
+    ).limit(15).all()
 
     return {
         "total_sales": len(completed),
@@ -620,7 +623,7 @@ def export_products(
 
 
 @router.get("/dashboard/pdf")
-def dashboard_pdf(db: Session = Depends(get_db)):
+def dashboard_pdf(lead_time_days: int = 7, db: Session = Depends(get_db)):
     s = db.query(Settings).first()
     store_name = (s.store_name if s else None) or "My Store"
     currency = (s.currency_symbol if s else "$") or "$"
@@ -656,7 +659,7 @@ def dashboard_pdf(db: Session = Depends(get_db)):
         StockMovement.movement_type != TRANSFER_OUT,  # count each transfer pair once
     ).scalar() or 0
 
-    _, risk_summary = _stockout_risk_data(db)
+    _, risk_summary = _stockout_risk_data(db, lead_time_days)
     quarantined = quarantined_qty_by_product(db)
 
     low_stock_rows = db.query(Product).filter(

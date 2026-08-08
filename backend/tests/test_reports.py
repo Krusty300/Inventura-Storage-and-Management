@@ -99,6 +99,15 @@ def test_sales_summary_with_refund(auth_headers):
     assert data["total_revenue"] == 0.0
 
 
+def test_sales_summary_top_products_respects_date_range(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "TPTOP-001", "name": "TP Top Item", "unit_price": 30.0, "quantity": 5}, headers=auth_headers).json()
+    client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 30.0}]}, headers=auth_headers)
+    future = client.get("/api/reports/sales-summary", params={"start_date": "2099-01-01"}, headers=auth_headers).json()
+    assert all(t["name"] != "TP Top Item" for t in future["top_products"])
+    past = client.get("/api/reports/sales-summary", params={"start_date": "2020-01-01"}, headers=auth_headers).json()
+    assert any(t["name"] == "TP Top Item" for t in past["top_products"])
+
+
 def test_stock_movement_trends(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "TREND-001", "name": "Trend", "quantity": 5, "cost_price": 1.0}, headers=auth_headers).json()
     client.post("/api/stock-movements", json={"product_id": prod["id"], "quantity_change": -2, "movement_type": "out"}, headers=auth_headers)
