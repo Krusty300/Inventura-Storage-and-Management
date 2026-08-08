@@ -240,7 +240,8 @@ def test_auto_reorder_skips_above_threshold_and_optouts(auth_headers):
     items = resp.json()["items"]
     assert len(items) == 1
     assert items[0]["product_id"] == low["id"]
-    assert items[0]["quantity"] == max(low["reorder_level"] * 2 - 3, 1)
+    # No demand history: top stock back up to the reorder level.
+    assert items[0]["quantity"] == low["reorder_level"] - 3
     assert ok["id"] not in [i["product_id"] for i in items]
     assert optout["id"] not in [i["product_id"] for i in items]
 

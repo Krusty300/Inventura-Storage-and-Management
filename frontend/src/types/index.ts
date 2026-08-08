@@ -53,6 +53,7 @@ export interface Supplier {
   phone: string;
   address: string;
   notes: string;
+  lead_time_days: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -668,6 +669,68 @@ export interface StockoutRiskItem {
 export interface StockoutRisk {
   items: StockoutRiskItem[];
   summary: { high: number; medium: number; low: number };
+}
+
+export interface ForecastingRow {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  supplier: string;
+  supplier_id: number | null;
+  on_hand: number;
+  reorder_level: number;
+  lead_time_days: number;
+  lead_time_source: "supplier" | "history" | "default" | "override";
+  forecast: number;
+  baseline: number;
+  stddev: number;
+  safety_stock: number;
+  reorder_point: number;
+  open_orders: number;
+  suggested_order_qty: number;
+  days_of_cover: number | null;
+  status: "reorder" | "ok";
+}
+
+export interface ForecastingReplenishment {
+  items: ForecastingRow[];
+  summary: {
+    products: number;
+    to_reorder: number;
+    total_suggested_qty: number;
+    avg_lead_time: number;
+  };
+  service_level: number;
+  days: number;
+}
+
+export interface ForecastingDailyPoint {
+  date: string;
+  quantity?: number;
+  forecast?: number;
+}
+
+export interface ForecastingDetail {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  supplier: string;
+  supplier_id: number | null;
+  service_level: number;
+  days: number;
+  forecast: number;
+  baseline: number;
+  factors: Record<string, number>;
+  stddev: number;
+  lead_time_days: number;
+  lead_time_source: string;
+  safety_stock: number;
+  reorder_point: number;
+  on_hand: number;
+  open_orders: number;
+  suggested_order_qty: number;
+  daily: ForecastingDailyPoint[];
+  forecast_series: ForecastingDailyPoint[];
 }
 
 export interface BOMItem {

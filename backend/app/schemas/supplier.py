@@ -21,11 +21,19 @@ class SupplierCreate(BaseModel):
     phone: str = ""
     address: str = ""
     notes: str = ""
+    lead_time_days: Optional[int] = None
 
     @field_validator("email")
     @classmethod
     def validate_email(cls, v):
         return _clean_email(v)
+
+    @field_validator("lead_time_days")
+    @classmethod
+    def validate_lead_time(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Lead time cannot be negative")
+        return v
 
 
 class SupplierUpdate(BaseModel):
@@ -35,11 +43,19 @@ class SupplierUpdate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     notes: Optional[str] = None
+    lead_time_days: Optional[int] = None
 
     @field_validator("email")
     @classmethod
     def validate_email(cls, v):
         return _clean_email(v)
+
+    @field_validator("lead_time_days")
+    @classmethod
+    def validate_lead_time(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Lead time cannot be negative")
+        return v
 
 
 class SupplierBulkEdit(BaseModel):
@@ -50,6 +66,7 @@ class SupplierBulkEdit(BaseModel):
     address: Optional[str] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+    lead_time_days: Optional[int] = None
 
     @field_validator("email")
     @classmethod
@@ -67,6 +84,7 @@ class SupplierOut(BaseModel):
     phone: str
     address: str
     notes: str
+    lead_time_days: Optional[int] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

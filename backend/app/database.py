@@ -103,6 +103,8 @@ def run_migrations():
             conn.execute(text("ALTER TABLE quality_checks ADD COLUMN location_id INTEGER"))
         if supplier_cols is not None and "is_active" not in supplier_cols:
             conn.execute(text("ALTER TABLE suppliers ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        if supplier_cols is not None and "lead_time_days" not in supplier_cols:
+            conn.execute(text("ALTER TABLE suppliers ADD COLUMN lead_time_days INTEGER"))
         if shipment_cols is not None and "sale_id" not in shipment_cols and "sales" in table_names:
             conn.execute(text("ALTER TABLE shipments ADD COLUMN sale_id INTEGER REFERENCES sales(id)"))
         if shipment_item_cols is not None and "location_id" not in shipment_item_cols:

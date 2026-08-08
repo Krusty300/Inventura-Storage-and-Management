@@ -34,6 +34,7 @@ const Boms = lazy(() => import("./pages/Boms"));
 const WorkOrders = lazy(() => import("./pages/WorkOrders"));
 const QualityChecks = lazy(() => import("./pages/QualityChecks"));
 const Planning = lazy(() => import("./pages/Planning"));
+const Forecasting = lazy(() => import("./pages/Forecasting"));
 const Shipments = lazy(() => import("./pages/Shipments"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -78,6 +79,7 @@ function AppRoutes() {
           <Route path="/boms" element={<Boms />} />
           <Route path="/work-orders" element={<WorkOrders />} />
           <Route path="/planning" element={<Planning />} />
+          <Route path="/forecasting" element={<Forecasting />} />
           <Route path="/shipments" element={<Shipments />} />
           <Route path="/quality-checks" element={<QualityChecks />} />
           <Route path="/exceptions" element={<Exceptions />} />

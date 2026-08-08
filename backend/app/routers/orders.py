@@ -4,13 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
+from app.models.location import Location
 from app.models.order import Order, OrderItem
 from app.models.product import Product
-from app.models.location import Location
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
 from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate
-from app.services import inventory
+from app.services import forecasting, inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_admins
 from app.services.sequences import next_document_number
@@ -32,30 +32,36 @@ ORDER_TRANSITIONS = {
 
 
 @router.post("/auto-reorder", response_model=OrderOut)
-def auto_reorder(db: Session = Depends(get_db), user=Depends(get_current_user)):
-    low_stock = (
-        db.query(Product)
-        .join(Location, Product.location_id == Location.id)
-        .filter(
-            Location.is_active == True,
-            Product.is_active == True, Product.quantity <= Product.reorder_level,
-            Product.reorder_level > 0,
-            Product.id.notin_(Product.variant_parent_id_subquery()),
-        )
-        .all()
+def auto_reorder(
+    service_level: float = Query(0.95, gt=0.5, lt=1.0),
+    days: int = Query(90, ge=7, le=365),
+    lead_time_days: int | None = Query(None, ge=1),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    rows = forecasting.replenishment_rows(
+        db,
+        service_level=service_level,
+        days=days,
+        lead_time_override=lead_time_days,
     )
-    if not low_stock:
-        raise HTTPException(status_code=400, detail="No low-stock products found")
+    to_reorder = [
+        r for r in rows
+        if r["suggested_order_qty"] > 0 and _has_active_location(db, r["product_id"])
+    ]
+    if not to_reorder:
+        raise HTTPException(status_code=400, detail="No products need reordering based on forecast demand")
     items = []
     total = 0.0
-    for p in low_stock:
-        qty = max(p.reorder_level * 2 - p.quantity, 1)
+    for r in to_reorder:
+        p = db.get(Product, r["product_id"])
+        qty = r["suggested_order_qty"]
         price = float(p.cost_price) if p.cost_price else 0.0
         items.append({"product_id": p.id, "quantity": qty, "unit_price": price})
         total += qty * price
     order = Order(
         order_number=generate_po_number(db), user_id=user.id,
-        notes=f"Auto-generated reorder for {len(low_stock)} low-stock product(s)",
+        notes=f"Auto-generated reorder for {len(to_reorder)} product(s) based on forecast demand",
     )
     db.add(order)
     db.flush()
@@ -67,10 +73,18 @@ def auto_reorder(db: Session = Depends(get_db), user=Depends(get_current_user)):
         joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
     ])
     log_activity(db, user.id, user.username, "create", "order", order.id,
-                 f"Auto-reorder '{o.order_number}' for {len(low_stock)} product(s) (${total:.2f})")
+                 f"Auto-reorder '{o.order_number}' for {len(to_reorder)} product(s) (${total:.2f})")
     db.commit()
     broadcast_change("order", "created")
     return o
+
+
+def _has_active_location(db: Session, product_id: int) -> bool:
+    try:
+        require_active_location(db, db.get(Product, product_id))
+        return True
+    except HTTPException:
+        return False
 
 
 @router.get("")

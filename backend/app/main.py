@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.database import Base, SessionLocal, backfill_stock_lines, engine, run_migrations
-from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, dashboard, labels, locations, lots, lpns, notifications, orders, planning, products, quality_checks, receipts, reports, sales, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
+from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, dashboard, forecasting, labels, locations, lots, lpns, notifications, orders, planning, products, quality_checks, receipts, reports, sales, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
 from app.services.inventory import expire_overdue_lots
 from app.ws_manager import manager
 
@@ -62,6 +62,7 @@ app.include_router(bom.router)
 app.include_router(work_orders.router)
 app.include_router(quality_checks.router)
 app.include_router(planning.router)
+app.include_router(forecasting.router)
 app.include_router(costing.router)
 app.include_router(shipments.router)
 app.include_router(search.router)
