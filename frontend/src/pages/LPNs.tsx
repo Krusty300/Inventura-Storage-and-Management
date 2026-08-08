@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Eye, FileText, ArrowLeftRight, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { LPN, Location, LPNSerialItem, PaginatedResponse, SerialNumber, StockLocation } from "../types";
+import type { LPN, Location, LPNSerialItem, PaginatedResponse, SerialNumber, StockLocation, StockMovement } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
+import { useDateFormat } from "../hooks/useDateFormat";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
@@ -217,7 +218,7 @@ function LpnCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
   const { can } = useAuth();
   const queryClient = useQueryClient();
-  const [action, setAction] = useState<"load" | "unload" | null>(null);
+  const [action, setAction] = useState<"load" | "unload" | "activity" | null>(null);
 
   const { data: live } = useQuery({
     queryKey: ["lpn", lpn.id],
@@ -247,6 +248,7 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["lpn", lpn.id] });
+    queryClient.invalidateQueries({ queryKey: ["lpn", lpn.id, "movements"] });
     queryClient.invalidateQueries({ queryKey: ["lpns"] });
     queryClient.invalidateQueries({ queryKey: ["products"] });
     setAction(null);
@@ -254,7 +256,9 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
 
   return (
     <Modal open onClose={onClose} title={`LPN ${current.lpn_number}`} wide>
-      {action ? (
+      {action === "activity" ? (
+        <LpnActivity lpnId={current.id} onClose={() => setAction(null)} />
+      ) : action ? (
         <LpnStockModal
           lpn={current}
           mode={action}
@@ -337,16 +341,21 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
               )}
             </>
           )}
-          {can("lpns.update") && current.status === "active" && (
-            <div className="flex flex-wrap gap-3 pt-2">
-              <button onClick={() => setAction("load")} className="btn-secondary">
-                Load Stock
-              </button>
-              <button onClick={() => setAction("unload")} className="btn-secondary">
-                Unload Stock
-              </button>
-            </div>
-          )}
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button onClick={() => setAction("activity")} className="btn-secondary">
+              Activity
+            </button>
+            {can("lpns.update") && current.status === "active" && (
+              <>
+                <button onClick={() => setAction("load")} className="btn-secondary">
+                  Load Stock
+                </button>
+                <button onClick={() => setAction("unload")} className="btn-secondary">
+                  Unload Stock
+                </button>
+              </>
+            )}
+          </div>
           <div className="flex justify-end pt-2">
             <button onClick={onClose} className="btn-secondary">Close</button>
           </div>
@@ -357,6 +366,85 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
 }
 
 type StockMode = "load" | "unload";
+
+function LpnActivity({ lpnId, onClose }: { lpnId: number; onClose: () => void }) {
+  const formatDate = useDateFormat();
+  const { data, isLoading } = useQuery({
+    queryKey: ["lpn", lpnId, "movements"],
+    queryFn: async () => {
+      const { data } = await api.get(`/lpns/${lpnId}/movements`, { params: { limit: 200 } });
+      return data as StockMovement[];
+    },
+  });
+
+  const movements = data || [];
+
+  const activityLabel = (m: StockMovement) => {
+    switch (m.reference_type) {
+      case "lpn_load": return "Loaded into LPN";
+      case "lpn_unload": return "Unloaded from LPN";
+      case "lpn_move": return m.quantity_change > 0 ? "Moved into location" : "Moved to location";
+      case "receipt": return "Received";
+      case "asn": return "ASN received";
+      case "shipment": return "Shipment pick";
+      case "sale": return "Sale";
+      case "purchase_order": return "Purchase order";
+      case "cycle_count": return "Cycle count";
+      default: return (m.reference_type || m.movement_type).replace(/_/g, " ");
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted">All stock movements recorded against this LPN.</p>
+      {isLoading ? (
+        <div className="border border-border rounded-lg p-6 text-sm text-muted">Loading activity...</div>
+      ) : movements.length === 0 ? (
+        <p className="text-sm text-muted">No movements recorded for this LPN yet.</p>
+      ) : (
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="max-h-[45vh] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-app text-left">
+                  <th className="px-4 py-2 font-medium text-muted">Date</th>
+                  <th className="px-4 py-2 font-medium text-muted">Activity</th>
+                  <th className="px-4 py-2 font-medium text-muted">Product</th>
+                  <th className="px-4 py-2 font-medium text-muted">Qty</th>
+                  <th className="px-4 py-2 font-medium text-muted">Route</th>
+                  <th className="px-4 py-2 font-medium text-muted">Reference</th>
+                  <th className="px-4 py-2 font-medium text-muted">User</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {movements.map((m) => (
+                  <tr key={m.id}>
+                    <td className="px-4 py-2 text-muted whitespace-nowrap">{formatDate(m.created_at)}</td>
+                    <td className="px-4 py-2">{activityLabel(m)}</td>
+                    <td className="px-4 py-2 font-medium">{m.product_name}</td>
+                    <td className="px-4 py-2">
+                      <span className={m.quantity_change > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                        {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-muted">
+                      {m.from_location_name || "—"} → {m.to_location_name || "—"}
+                    </td>
+                    <td className="px-4 py-2 text-muted">{m.reference || "—"}</td>
+                    <td className="px-4 py-2 text-muted">{m.username || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      <div className="flex justify-end pt-2">
+        <button onClick={onClose} className="btn-secondary">Close</button>
+      </div>
+    </div>
+  );
+}
 
 function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockMode; onClose: () => void; onSaved: () => void }) {
   const { addToast } = useToast();

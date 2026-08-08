@@ -102,6 +102,33 @@ describe("LPNs Page", () => {
     expect(screen.getByText("LOT-X")).toBeInTheDocument();
   });
 
+  it("shows LPN activity movements in the detail view", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/lpns") return Promise.resolve({ data: { items: [mockLPN()], total: 1, page: 1, pages: 1 } });
+      if (url === "/lpns/1") return Promise.resolve({ data: mockLPN() });
+      if (url === "/lpns/1/movements")
+        return Promise.resolve({ data: [
+          { id: 1, product_id: 1, user_id: 1, quantity_change: 5, movement_type: "receive", reference: "RCPT-0001", notes: "", created_at: "2026-01-01T10:00:00", product_name: "Widget", username: "tester", reference_type: "receipt", transfer_id: null, from_location_id: null, to_location_id: 2, from_location_name: "", to_location_name: "Aisle A", lot_id: null, serial_id: null },
+          { id: 2, product_id: 1, user_id: 1, quantity_change: -1, movement_type: "transfer_out", reference: "MOV-0001", notes: "", created_at: "2026-01-02T10:00:00", product_name: "Widget", username: "tester", reference_type: "lpn_move", transfer_id: 3, from_location_id: 2, to_location_id: 3, from_location_name: "Aisle A", to_location_name: "Aisle B", lot_id: null, serial_id: null },
+          { id: 3, product_id: 1, user_id: 1, quantity_change: 1, movement_type: "transfer_in", reference: "MOV-0001", notes: "", created_at: "2026-01-02T10:00:00", product_name: "Widget", username: "tester", reference_type: "lpn_move", transfer_id: 2, from_location_id: 2, to_location_id: 3, from_location_name: "Aisle A", to_location_name: "Aisle B", lot_id: null, serial_id: null },
+        ] });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<LPNs />);
+    fireEvent.click(await screen.findByLabelText("View LPN-0001"));
+    fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+
+    expect(await screen.findByText("Received")).toBeInTheDocument();
+    expect(screen.getByText("Moved into location")).toBeInTheDocument();
+    expect(screen.getByText("Moved to location")).toBeInTheDocument();
+    expect(screen.getByText("+5")).toBeInTheDocument();
+    expect(screen.getByText("+1")).toBeInTheDocument();
+    expect(screen.getByText("-1")).toBeInTheDocument();
+    expect(screen.getAllByText("MOV-0001").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Aisle A/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Aisle B/).length).toBeGreaterThan(0);
+  });
+
   it("opens the confirm dialog and deletes an LPN", async () => {
     mockLPNs([mockLPN()]);
     deleteMock.mockResolvedValue({ data: {} });

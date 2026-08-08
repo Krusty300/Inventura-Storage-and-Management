@@ -1,5 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, PackagePlus, Plus, Printer } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -201,13 +201,45 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<AsnFormRowData[]>([{ product_id: "", expected_qty: "1", unit_cost: "0", location: "" }]);
   const [saving, setSaving] = useState(false);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const { addToast } = useToast();
   const productList = useSelectableProducts();
   const [suppliers, setSuppliers] = useState<{ id: number; name: string }[]>([]);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   useEffect(() => {
     api.get("/suppliers", { params: { limit: 500 } }).then(({ data }) => setSuppliers(data.items));
   }, []);
+
+  useEffect(() => {
+    if (!supplier_id) return;
+    let cancelled = false;
+    setLoadingProducts(true);
+    const supplierName = suppliers.find((s) => s.id.toString() === supplier_id)?.name ?? "this supplier";
+    api.get(`/suppliers/${supplier_id}/products`, { params: { limit: 100 } })
+      .then(({ data }) => {
+        if (cancelled) return;
+        const items: Product[] = (data.items || []).filter((p: Product) => p.is_active);
+        if (rowsRef.current.every((r) => !r.product_id)) {
+          if (items.length > 0) {
+            setRows(items.map((p) => ({
+              product_id: String(p.id),
+              expected_qty: "1",
+              unit_cost: String(p.cost_price ?? 0),
+              location: "",
+            })));
+            addToast(`Loaded ${items.length} product(s) for ${supplierName}`, "success");
+          } else {
+            setRows([{ product_id: "", expected_qty: "1", unit_cost: "0", location: "" }]);
+            addToast(`${supplierName} has no linked products - add items manually`, "info");
+          }
+        }
+      })
+      .catch(() => { if (!cancelled) addToast("Could not load supplier products", "error"); })
+      .finally(() => { if (!cancelled) setLoadingProducts(false); });
+    return () => { cancelled = true; };
+  }, [supplier_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setRow = (idx: number, key: keyof AsnFormRowData, value: string) => {
     setRows((prev) => prev.map((r, i) => {
@@ -250,7 +282,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-            <select className="select" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
+            <select className="select" aria-label="Supplier" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
               <option value="">None</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
@@ -268,9 +300,12 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
         <div className="border border-border rounded-lg overflow-hidden">
           <div className="bg-app px-4 py-2 flex items-center justify-between">
             <span className="text-sm font-medium text-ink">Expected Items</span>
-            <button type="button" onClick={() => setRows([...rows, { product_id: "", expected_qty: "1", unit_cost: "0", location: "" }])} className="btn-secondary text-xs py-1 px-2">
-              <Plus size={14} className="inline mr-1" />Add Item
-            </button>
+            <div className="flex items-center gap-3">
+              {loadingProducts && <span className="text-xs text-muted">Loading supplier products...</span>}
+              <button type="button" onClick={() => setRows([...rows, { product_id: "", expected_qty: "1", unit_cost: "0", location: "" }])} className="btn-secondary text-xs py-1 px-2">
+                <Plus size={14} className="inline mr-1" />Add Item
+              </button>
+            </div>
           </div>
           <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (

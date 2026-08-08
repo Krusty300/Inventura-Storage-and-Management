@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models import LPN, Location, Lot, Product, SerialNumber, StockLine, StockMovement
 from app.schemas.lpn import LPNCreate, LPNLoadIn, LPNOut, LPNUnloadIn, LPNUpdate
+from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.sequences import next_document_number
@@ -100,6 +101,28 @@ def lpn_contents(lpn_id: int, db: Session = Depends(get_db)):
     return _serialize_lpn(db, _load_lpn(db, lpn_id))
 
 
+@router.get("/{lpn_id}/movements", response_model=list[StockMovementOut])
+def lpn_movements(
+    lpn_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Ledger activity for an LPN: loads, unloads, receipts, shipment picks,
+    and moves, newest first."""
+    get_or_404(LPN, lpn_id, db)
+    return db.query(StockMovement).options(
+        joinedload(StockMovement.product),
+        joinedload(StockMovement.user),
+        joinedload(StockMovement.from_location),
+        joinedload(StockMovement.to_location),
+        joinedload(StockMovement.lot),
+        joinedload(StockMovement.serial_number),
+    ).filter(StockMovement.lpn_id == lpn_id).order_by(
+        StockMovement.created_at.desc(), StockMovement.id.desc()
+    ).offset(skip).limit(limit).all()
+
+
 @router.post("", response_model=LPNOut, status_code=201)
 def create_lpn(data: LPNCreate, db: Session = Depends(get_db), user=Depends(require_permission("lpns.create"))):
     if data.location_id is not None:
@@ -152,29 +175,33 @@ def move_lpn(lpn_id: int, to_location_id: int, db: Session = Depends(get_db), us
             status_code=400,
             detail=f"LPN '{lpn.lpn_number}' holds stock from quarantined or expired lot(s): {details} - it cannot be moved. Release the lot(s) or unload and dispose of the stock first.",
         )
+    reference = next_document_number(db, "lpn_move", "MOV-")
     try:
         for sl in lpn.stock_lines:
-            dest = inventory.get_or_create_stock_line(
-                db, product_id=sl.product_id, location_id=to_location_id,
+            inventory.transfer_stock(
+                db, product_id=sl.product_id, user_id=user.id, quantity=sl.quantity,
+                from_location_id=lpn.location_id, to_location_id=to_location_id,
                 lot_id=sl.lot_id, lpn_id=lpn.id,
+                reference_type="lpn_move", reference=reference,
+                notes=f"Moved LPN '{lpn.lpn_number}' to {target.path}",
             )
-            if dest.id == sl.id:
-                continue
-            dest.quantity += sl.quantity
-            db.delete(sl)
         for serial in db.query(SerialNumber).filter(SerialNumber.lpn_id == lpn.id).all():
-            serial.location_id = to_location_id
+            inventory.transfer_stock(
+                db, product_id=serial.product_id, user_id=user.id, quantity=1,
+                from_location_id=lpn.location_id, to_location_id=to_location_id,
+                lot_id=serial.lot_id, serial_id=serial.id, lpn_id=lpn.id,
+                reference_type="lpn_move", reference=reference,
+                notes=f"Moved LPN '{lpn.lpn_number}' to {target.path}",
+            )
         lpn.location_id = to_location_id
         db.flush()
-        for sl in db.query(StockLine).filter(StockLine.lpn_id == lpn.id).all():
-            sl.product.quantity = inventory.on_hand(db, product_id=sl.product_id)
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     lpn = _load_lpn(db, lpn.id)
     log_activity(db, user.id, user.username, "move", "lpn", lpn.id,
-                 f"Moved LPN '{lpn.lpn_number}' to {target.path}")
+                 f"Moved LPN '{lpn.lpn_number}' to {target.path} ({reference})")
     db.commit()
     broadcast_change("lpn", "updated")
     broadcast_change("stock_movement", "created")

@@ -102,6 +102,60 @@ describe("ASNs Page", () => {
     expect(await screen.findByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
   });
 
+  it("auto-loads supplier products when a supplier is selected", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [
+          { id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] },
+          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", is_active: true, is_variant: false, is_serialized: false, variants: [] },
+        ], total: 2, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
+      if (url === "/suppliers/1/products")
+        return Promise.resolve({ data: { items: [
+          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", cost_price: 4.5, is_active: true },
+        ], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [] } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
+    await screen.findByRole("option", { name: "Acme Supplies" });
+    fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "1" } });
+
+    await waitFor(() => expect(screen.getByLabelText("Product")).toHaveValue("2"));
+    expect(screen.getByDisplayValue("4.5")).toBeInTheDocument();
+    expect(await screen.findByText("Loaded 1 product(s) for Acme Supplies")).toBeInTheDocument();
+  });
+
+  it("keeps manual rows when the user changed supplier after adding items", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [
+          { id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] },
+          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", is_active: true, is_variant: false, is_serialized: false, variants: [] },
+        ], total: 2, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
+      if (url === "/suppliers/1/products")
+        return Promise.resolve({ data: { items: [
+          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", cost_price: 4.5, is_active: true },
+        ], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [] } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
+    await screen.findByRole("option", { name: "Acme Supplies" });
+    fireEvent.change(screen.getByLabelText("Product"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "1" } });
+    await waitFor(() => expect(screen.queryByText("Loading supplier products...")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Product")).toHaveValue("1");
+    expect(screen.queryByText(/Loaded 1 product/)).not.toBeInTheDocument();
+  });
+
   it("prefills the new ASN location from where the product's stock actually is", async () => {
     getMock.mockImplementation((url: string) => {
       if (url === "/asns") return Promise.resolve({ data: { items: [mockASN()], total: 1, page: 1, pages: 1 } });
