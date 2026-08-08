@@ -187,6 +187,7 @@ button:disabled {
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 500;
+  white-space: nowrap;
 }
 .badge-success {
   background: #d1fae5;

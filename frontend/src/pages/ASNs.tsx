@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, PackagePlus, Plus, Printer } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Eye, PackagePlus, Plus, Printer, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { ASN, LPN, PaginatedResponse, Product } from "../types";
@@ -18,6 +18,31 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
 import { usePageSize } from "../hooks/usePageSize";
+
+function errorMessage(err: any, fallback: string): string {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((d: any) => d.msg || JSON.stringify(d)).join("; ");
+  return fallback;
+}
+
+function supplierSelectableItems(items: Product[], supplierId: string): Product[] {
+  const sid = Number(supplierId);
+  const out: Product[] = [];
+  for (const p of items) {
+    const variants = (p.variants || []).filter((v) => v.is_active);
+    if (variants.length > 0) {
+      const parentBelongs = p.supplier_id === sid;
+      const inSupplier = variants.filter(
+        (v) => v.supplier_id === sid || (v.supplier_id === null && parentBelongs)
+      );
+      if (inSupplier.length > 0) out.push(...inSupplier);
+    } else if (p.is_active && p.supplier_id === sid) {
+      out.push(p);
+    }
+  }
+  return out;
+}
 
 export default function ASNs() {
   const formatDate = useDateFormat();
@@ -142,11 +167,12 @@ interface AsnFormRowData {
   location: string;
 }
 
-function AsnFormRow({ row, idx, productList, onChange }: {
+function AsnFormRow({ row, idx, productList, onChange, onRemove }: {
   row: AsnFormRowData;
   idx: number;
   productList: Product[];
   onChange: (idx: number, key: keyof AsnFormRowData, value: string) => void;
+  onRemove: (idx: number) => void;
 }) {
   const product = productList.find((x) => x.id.toString() === row.product_id);
   const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(
@@ -163,7 +189,7 @@ function AsnFormRow({ row, idx, productList, onChange }: {
 
   return (
     <div className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
-      <div className="sm:col-span-5">
+      <div className="sm:col-span-4">
         <label className="block text-xs font-medium text-muted mb-1">Product</label>
         <select className="select" aria-label="Product" value={row.product_id} onChange={(e) => onChange(idx, "product_id", e.target.value)}>
           <option value="">Select...</option>
@@ -191,6 +217,12 @@ function AsnFormRow({ row, idx, productList, onChange }: {
           />
         )}
       </div>
+      <div className="sm:col-span-1 flex justify-end">
+        <button type="button" onClick={() => onRemove(idx)} aria-label={`Remove item ${idx + 1}`} title="Remove item"
+          className="text-muted hover:text-red-600 dark:hover:text-red-400 transition-colors p-1">
+          <Trash2 size={16} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -202,38 +234,34 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
   const [rows, setRows] = useState<AsnFormRowData[]>([{ product_id: "", expected_qty: "1", unit_cost: "0", location: "" }]);
   const [saving, setSaving] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [supplierProducts, setSupplierProducts] = useState<Product[]>([]);
+  const [locations, setLocations] = useState<{ id: number; path: string }[]>([]);
   const { addToast } = useToast();
   const productList = useSelectableProducts();
   const [suppliers, setSuppliers] = useState<{ id: number; name: string }[]>([]);
-  const rowsRef = useRef(rows);
-  rowsRef.current = rows;
 
   useEffect(() => {
     api.get("/suppliers", { params: { limit: 500 } }).then(({ data }) => setSuppliers(data.items));
+    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
   }, []);
 
   useEffect(() => {
-    if (!supplier_id) return;
+    if (!supplier_id) {
+      setSupplierProducts([]);
+      return;
+    }
     let cancelled = false;
     setLoadingProducts(true);
     const supplierName = suppliers.find((s) => s.id.toString() === supplier_id)?.name ?? "this supplier";
     api.get(`/suppliers/${supplier_id}/products`, { params: { limit: 100 } })
       .then(({ data }) => {
         if (cancelled) return;
-        const items: Product[] = (data.items || []).filter((p: Product) => p.is_active);
-        if (rowsRef.current.every((r) => !r.product_id)) {
-          if (items.length > 0) {
-            setRows(items.map((p) => ({
-              product_id: String(p.id),
-              expected_qty: "1",
-              unit_cost: String(p.cost_price ?? 0),
-              location: "",
-            })));
-            addToast(`Loaded ${items.length} product(s) for ${supplierName}`, "success");
-          } else {
-            setRows([{ product_id: "", expected_qty: "1", unit_cost: "0", location: "" }]);
-            addToast(`${supplierName} has no linked products - add items manually`, "info");
-          }
+        const items = supplierSelectableItems(data.items || [], supplier_id);
+        setSupplierProducts(items);
+        if (items.length > 0) {
+          addToast(`${supplierName}: ${items.length} linked product(s) available in the list`, "info");
+        } else {
+          addToast(`${supplierName} has no linked products - add items manually`, "info");
         }
       })
       .catch(() => { if (!cancelled) addToast("Could not load supplier products", "error"); })
@@ -241,23 +269,56 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
     return () => { cancelled = true; };
   }, [supplier_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const selectableProducts = useMemo(() => {
+    if (!supplier_id) return productList;
+    const selectedIds = new Set(rows.filter((r) => r.product_id).map((r) => r.product_id));
+    const extra = productList.filter((p) => selectedIds.has(p.id.toString()) && !supplierProducts.some((sp) => sp.id === p.id));
+    return [...supplierProducts, ...extra];
+  }, [supplier_id, supplierProducts, productList, rows]);
+
   const setRow = (idx: number, key: keyof AsnFormRowData, value: string) => {
     setRows((prev) => prev.map((r, i) => {
       if (i !== idx) return r;
-      return key === "product_id" ? { ...r, product_id: value, location: "" } : { ...r, [key]: value };
+      if (key === "product_id") {
+        const p = selectableProducts.find((x) => x.id.toString() === value);
+        return {
+          ...r,
+          product_id: value,
+          unit_cost: p ? String(p.cost_price ?? 0) : r.unit_cost,
+          location: "",
+        };
+      }
+      return { ...r, [key]: value };
     }));
+  };
+
+  const removeRow = (idx: number) => {
+    setRows((prev) => {
+      if (prev.length === 1) {
+        return [{ product_id: "", expected_qty: "1", unit_cost: "0", location: "" }];
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const items = rows.filter((r) => r.product_id).map((r) => ({
-      product_id: Number(r.product_id),
-      expected_qty: parseInt(r.expected_qty) || 1,
-      unit_cost: parseFloat(r.unit_cost) || 0,
-      location: r.location.trim(),
-    }));
+    const items = rows.filter((r) => r.product_id).map((r) => {
+      const loc = r.location.trim();
+      const locMatch = loc ? locations.find((l) => l.path === loc) : undefined;
+      return {
+        product_id: Number(r.product_id),
+        expected_qty: parseInt(r.expected_qty) || 1,
+        unit_cost: parseFloat(r.unit_cost) || 0,
+        location_id: loc ? locMatch?.id ?? -1 : null,
+      };
+    });
     if (items.length === 0) {
       addToast("Add at least one item", "error");
+      return;
+    }
+    if (items.some((i) => i.location_id === -1)) {
+      addToast("Unknown location - pick a location from the dropdown", "error");
       return;
     }
     setSaving(true);
@@ -271,7 +332,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
       addToast(`ASN ${data.asn_number} created`, "success");
       onSaved();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error creating ASN", "error");
+      addToast(errorMessage(err, "Error creating ASN"), "error");
     }
     setSaving(false);
   };
@@ -309,7 +370,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
           </div>
           <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (
-              <AsnFormRow key={idx} row={row} idx={idx} productList={productList} onChange={setRow} />
+              <AsnFormRow key={idx} row={row} idx={idx} productList={selectableProducts} onChange={setRow} onRemove={removeRow} />
             ))}
           </div>
         </div>
@@ -555,7 +616,7 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
       addToast(`ASN ${data.asn_number} updated`, "success");
       onSaved();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error receiving ASN", "error");
+      addToast(errorMessage(err, "Error receiving ASN"), "error");
     }
     setSaving(false);
   };

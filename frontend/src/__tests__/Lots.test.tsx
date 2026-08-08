@@ -68,6 +68,19 @@ describe("Lots Page", () => {
     expect(screen.getAllByText("Aisle A / Bin A-01")).toHaveLength(2);
   });
 
+  it("renders the status badge fully without wrapping or truncation", async () => {
+    mockLots([
+      mockLot({ id: 2, lot_number: "LOT-0002", status: "quarantined" }),
+      mockLot({ status: "in_stock" }),
+    ]);
+    renderWithProviders(<Lots />);
+    const badge = await screen.findByText("quarantined");
+    expect(badge).toHaveClass("badge", "badge-warning");
+    expect(badge.closest("td")).toHaveClass("whitespace-nowrap");
+    expect(badge).not.toHaveClass("truncate");
+    expect(screen.getByText("in stock")).toHaveClass("badge", "badge-success");
+  });
+
   it("shows status actions for admins", async () => {
     mockLots([mockLot()]);
     renderWithProviders(<Lots />);

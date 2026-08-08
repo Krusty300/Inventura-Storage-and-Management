@@ -130,7 +130,7 @@ export default function Lots() {
                 </td>
                 <td className="px-4 py-3 text-muted">{l.expiry_date ? formatDate(l.expiry_date) : "—"}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(l.received_date)}</td>
-                <td className="px-4 py-3"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
+                <td className="px-4 py-3 whitespace-nowrap"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => setViewing(l)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${l.lot_number}`}><Eye size={16} /></button>

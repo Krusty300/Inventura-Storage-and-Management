@@ -102,7 +102,7 @@ describe("ASNs Page", () => {
     expect(await screen.findByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
   });
 
-  it("auto-loads supplier products when a supplier is selected", async () => {
+  it("lists the selected supplier's products as selectable options", async () => {
     getMock.mockImplementation((url: string) => {
       if (url === "/asns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       if (url === "/products")
@@ -113,7 +113,7 @@ describe("ASNs Page", () => {
       if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
       if (url === "/suppliers/1/products")
         return Promise.resolve({ data: { items: [
-          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", cost_price: 4.5, is_active: true },
+          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", cost_price: 4.5, supplier_id: 1, is_active: true },
         ], total: 1, page: 1, pages: 1 } });
       if (url === "/locations") return Promise.resolve({ data: { items: [] } });
       if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
@@ -124,9 +124,10 @@ describe("ASNs Page", () => {
     await screen.findByRole("option", { name: "Acme Supplies" });
     fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "1" } });
 
-    await waitFor(() => expect(screen.getByLabelText("Product")).toHaveValue("2"));
-    expect(screen.getByDisplayValue("4.5")).toBeInTheDocument();
-    expect(await screen.findByText("Loaded 1 product(s) for Acme Supplies")).toBeInTheDocument();
+    expect(await screen.findByText(/1 linked product/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Gadget (SKU-2)" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Widget (SKU-1)" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Product")).toHaveValue("");
   });
 
   it("keeps manual rows when the user changed supplier after adding items", async () => {
@@ -140,7 +141,7 @@ describe("ASNs Page", () => {
       if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
       if (url === "/suppliers/1/products")
         return Promise.resolve({ data: { items: [
-          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", cost_price: 4.5, is_active: true },
+          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", cost_price: 4.5, supplier_id: 1, is_active: true },
         ], total: 1, page: 1, pages: 1 } });
       if (url === "/locations") return Promise.resolve({ data: { items: [] } });
       if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
@@ -153,7 +154,106 @@ describe("ASNs Page", () => {
     fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "1" } });
     await waitFor(() => expect(screen.queryByText("Loading supplier products...")).not.toBeInTheDocument());
     expect(screen.getByLabelText("Product")).toHaveValue("1");
+    expect(screen.getByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
     expect(screen.queryByText(/Loaded 1 product/)).not.toBeInTheDocument();
+  });
+
+  it("removes an unwanted product row", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [
+          { id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] },
+          { id: 2, name: "Gadget", sku: "SKU-2", display_name: "Gadget", is_active: true, is_variant: false, is_serialized: false, variants: [] },
+        ], total: 2, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [] } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
+    await screen.findByRole("option", { name: "Widget (SKU-1)" });
+    fireEvent.change(screen.getByLabelText("Product"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Item" }));
+    const selects = screen.getAllByLabelText("Product");
+    fireEvent.change(selects[1], { target: { value: "2" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove item 2" }));
+    await waitFor(() => expect(screen.getAllByLabelText("Product")).toHaveLength(1));
+    expect(screen.getByLabelText("Product")).toHaveValue("1");
+  });
+
+  it("lists variant products under the supplier as selectable options", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/products") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
+      if (url === "/suppliers/1/products")
+        return Promise.resolve({ data: { items: [
+          {
+            id: 10, name: "T-Shirt", sku: "TSHIRT", display_name: "T-Shirt", supplier_id: null, is_active: true,
+            is_variant: false, is_serialized: false, variants: [
+              { id: 11, name: "T-Shirt", sku: "TSHIRT-RED-M", display_name: "T-Shirt - Red / M", supplier_id: 1, is_active: true, is_variant: true, is_serialized: false, variants: [] },
+              { id: 12, name: "T-Shirt", sku: "TSHIRT-BLUE-L", display_name: "T-Shirt - Blue / L", supplier_id: 1, is_active: true, is_variant: true, is_serialized: false, variants: [] },
+            ],
+          },
+        ], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [] } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
+    await screen.findByRole("option", { name: "Acme Supplies" });
+    fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "1" } });
+
+    expect(await screen.findByRole("option", { name: "T-Shirt - Red / M (TSHIRT-RED-M)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "T-Shirt - Blue / L (TSHIRT-BLUE-L)" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "T-Shirt (TSHIRT)" })).not.toBeInTheDocument();
+  });
+
+  it("auto-fills the unit cost when a product is selected", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [{ id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", cost_price: 3.25, is_active: true, is_variant: false, is_serialized: false, variants: [] }], total: 1, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [] } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
+    await screen.findByRole("option", { name: "Widget (SKU-1)" });
+    fireEvent.change(screen.getByLabelText("Product"), { target: { value: "1" } });
+    await waitFor(() => expect(screen.getByDisplayValue("3.25")).toBeInTheDocument());
+  });
+
+  it("sends the resolved location id when creating an ASN", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/asns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [{ id: 1, name: "Widget", sku: "SKU-1", display_name: "Widget", is_active: true, is_variant: false, is_serialized: false, variants: [] }], total: 1, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }] } });
+      if (url === "/locations")
+        return Promise.resolve({ data: { items: [{ id: 42, name: "Aisle A", path: "Aisle A", is_active: true }] } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
+    await screen.findByRole("option", { name: "Widget (SKU-1)" });
+    fireEvent.change(screen.getByLabelText("Product"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Aisle A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create ASN" }));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith("/asns", expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ product_id: 1, location_id: 42 }),
+        ]),
+      }));
+    });
   });
 
   it("prefills the new ASN location from where the product's stock actually is", async () => {
