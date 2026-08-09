@@ -259,15 +259,20 @@ describe("Shipments", () => {
     );
   });
 
-  it("shows a draft icon for draft shipments but not for shipped ones", async () => {
+  it("shows a draft icon for draft shipments but not for shipped ones, and opens the detail when clicked", async () => {
     getMock.mockImplementation((url: string) => {
       if (url === "/shipments")
         return Promise.resolve({ data: { items: [baseShipment("draft"), { ...baseShipment("shipped"), id: 2, shipment_number: "SHP-200" }], total: 2, page: 1, pages: 1 } });
       if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 1, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 1 } });
+      if (url === "/shipments/1") return Promise.resolve({ data: baseShipment("draft") });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     renderWithProviders(<Shipments />);
-    expect(await screen.findByLabelText("Draft SHP-100")).toBeInTheDocument();
+    const draftAction = await screen.findByLabelText("Draft SHP-100");
+    expect(draftAction).toBeInTheDocument();
     expect(screen.queryByLabelText("Draft SHP-200")).not.toBeInTheDocument();
+
+    fireEvent.click(draftAction);
+    expect(await screen.findByRole("button", { name: "Pick" })).toBeInTheDocument();
   });
 });

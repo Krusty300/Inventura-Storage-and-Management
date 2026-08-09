@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Box, Eye, FileText, PackageCheck, Pencil, Trash2, XCircle } from "lucide-react";
+import { Eye, FileText, Pencil, Trash2, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, PaginatedResponse, SerialNumber, Shipment, ShipmentItem, ShipmentStats } from "../types";
@@ -147,9 +147,9 @@ export default function Shipments() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
                         {s.status === "draft" && (
-                          <span className="p-1 text-faint" title="Draft" aria-label={`Draft ${s.shipment_number}`}>
+                          <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`Draft ${s.shipment_number}`}>
                             <FileText size={16} />
-                          </span>
+                          </button>
                         )}
                         <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`View ${s.shipment_number}`}>
                           <Eye size={16} />
@@ -514,12 +514,12 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             <div className="ml-auto flex gap-2">
               {canPick && (
                 <button onClick={handlePick} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
-                  <PackageCheck size={14} /> Pick
+                  Pick
                 </button>
               )}
               {canPack && (
                 <button onClick={() => run("pack", `/shipments/${current.id}/pack`, "Packed")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
-                  <Box size={14} /> Pack
+                  Pack
                 </button>
               )}
               {canShip && (

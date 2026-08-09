@@ -321,7 +321,7 @@ function TraceSection({ product }: { product: Product }) {
             <div>
               <p className="text-xs font-medium text-muted mb-1">Work Orders</p>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs border rounded-lg">
+                <table className="w-full text-xs rounded-lg">
                   <thead>
                     <tr className="bg-app text-left">
                       <th className="px-3 py-2 font-medium text-muted">WO #</th>
@@ -354,7 +354,7 @@ function TraceSection({ product }: { product: Product }) {
             <div>
               <p className="text-xs font-medium text-muted mb-1">Inbound Movements</p>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs border rounded-lg">
+                <table className="w-full text-xs rounded-lg">
                   <thead>
                     <tr className="bg-app text-left">
                       <th className="px-3 py-2 font-medium text-muted">Date</th>
@@ -377,7 +377,7 @@ function TraceSection({ product }: { product: Product }) {
             <div>
               <p className="text-xs font-medium text-muted mb-1">Outbound Movements</p>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs border rounded-lg">
+                <table className="w-full text-xs rounded-lg">
                   <thead>
                     <tr className="bg-app text-left">
                       <th className="px-3 py-2 font-medium text-muted">Date</th>
