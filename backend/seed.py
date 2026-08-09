@@ -5,11 +5,13 @@ Run from the backend directory:
 
 Wipes existing data and inserts realistic demo data across every entity:
 users, settings, locations, categories, suppliers, customers, products,
-variants, lots, serial numbers, LPNs, purchase orders, receipts, ASNs,
-cycle counts, sales (incl. refunds), stock movements, notifications,
-activity logs, document sequences, BOMs, work orders (incl. serialized
-manufacturing), quality checks, lot genealogy links, and shipments across
-the full picking/packing/shipping lifecycle (incl. shipment->invoice).
+variants, lots (incl. expired/quarantined/sold serialized lots), serial
+numbers (every lifecycle status), LPNs, purchase orders, receipts, ASNs,
+cycle counts (all statuses incl. variances), sales (incl. refunds), stock
+movements, notifications, activity logs, document sequences, BOMs, work
+orders (every status incl. serialized manufacturing), quality checks, lot
+genealogy links, and shipments across the full picking/packing/shipping
+lifecycle (incl. shipment->invoice).
 
 Stock is always posted through inventory.post_journal_entry so the ledger,
 stock_lines and product.quantity stay consistent, and sales flow through
@@ -163,6 +165,7 @@ def create_locations(db):
     add("Staging Area", "STAGE", "storage", root)
     add("Shipping Dock", "SHIP", "shipping", root)
     add("Work In Progress", "WIP", "wip", root)
+    add("Quarantine Area", "Q-AREA", "quarantine", root)
 
     aisle_specs = [
         ("A", "Electronics", ["A-01", "A-02", "A-03", "A-04"]),
@@ -452,6 +455,83 @@ def create_serialized_stock(db, users, by_sku, locs):
               notes="Initial stock - Smart Watch Pro")
     db.commit()
     return serials
+
+
+def create_serialized_lots(db, users, by_sku, locs):
+    """Serialized lot batches for the smart watch, plus unit-level status coverage.
+
+    Creates two received lots (SW-BATCH-1 / SW-BATCH-2). SW-BATCH-1 is later
+    fully shipped via SHP-0008 so its lot flips to ``sold``; SW-BATCH-2 stays
+    in stock. Also marks one loose serial per lifecycle status (reserved,
+    quarantined, inactive, scrapped) through the same journal-entry paths the
+    API uses, so every SerialNumbers tab has demo rows.
+    """
+    admin = next(u for u in users if u.role == "admin")
+    worker = next(u for u in users if u.role == "worker")
+    product = by_sku["TECH-030"]
+    bin_id = locs["A-04-02"].id
+    created = days_ago(20, hour=9)
+
+    batch1 = Lot(product_id=product.id, lot_number="SW-BATCH-1", status="in_stock",
+                 received_date=created.date(), created_at=created)
+    batch2 = Lot(product_id=product.id, lot_number="SW-BATCH-2", status="in_stock",
+                 received_date=created.date(), created_at=created)
+    db.add(batch1)
+    db.add(batch2)
+    db.flush()
+
+    batch1_serials, batch2_serials = [], []
+    for lot, numbers, target in (
+        (batch1, ("SW-B0101", "SW-B0102", "SW-B0103"), batch1_serials),
+        (batch2, ("SW-B0201", "SW-B0202"), batch2_serials),
+    ):
+        for i, sn in enumerate(numbers):
+            serial = SerialNumber(product_id=product.id, serial_number=sn,
+                                  lot_id=lot.id, location_id=bin_id,
+                                  status=inventory.SERIAL_STATUS_IN_STOCK,
+                                  created_at=created)
+            db.add(serial)
+            db.flush()
+            _post(db, admin, product, 1, inventory.RECEIVE,
+                  created + timedelta(hours=i), to_loc=bin_id,
+                  lot=lot.id, serial_id=serial.id,
+                  ref_type="receipt", ref="RCP-0007",
+                  notes=f"Serialized lot {lot.lot_number}")
+            target.append(serial)
+    db.commit()
+
+    # Unit-level lifecycle statuses on loose serials (no lot), mirroring the
+    # serial_numbers router (issue -> reserved, adjustment -> quarantined,
+    # deactivate -> inactive, scrap -> scrapped).
+    status_plans = {
+        "SW-0005": (inventory.ISSUE, "WIP", inventory.SERIAL_STATUS_RESERVED,
+                    "work_order", "WO-REV", "Reserved for assembly"),
+        "SW-0006": (inventory.ADJUSTMENT, "A-04-02", inventory.SERIAL_STATUS_QUARANTINED,
+                    "adjustment", "SER-ADJ", "Off-spec unit quarantined"),
+        "SW-0007": (inventory.DEACTIVATE, "A-04-02", inventory.SERIAL_STATUS_INACTIVE,
+                    "adjustment", "SER-ADJ", "Unit deactivated from inventory"),
+        "SW-0008": (inventory.SCRAP, "A-04-02", inventory.SERIAL_STATUS_SCRAPPED,
+                    "adjustment", "SER-ADJ", "Unit scrapped after damage"),
+    }
+    for serial in db.query(SerialNumber).filter(
+        SerialNumber.product_id == product.id, SerialNumber.lot_id.is_(None)
+    ).all():
+        plan = status_plans.get(serial.serial_number)
+        if not plan:
+            continue
+        mtype, loc_code, expected, ref_type, ref, notes = plan
+        if mtype == inventory.ISSUE:
+            _post(db, worker, product, -1, mtype, days_ago(18, hour=11),
+                  from_loc=bin_id, to_loc=locs[loc_code].id,
+                  serial_id=serial.id, ref_type=ref_type, ref=ref, notes=notes)
+        else:
+            _post(db, worker, product, -1, mtype, days_ago(18, hour=11),
+                  from_loc=locs[loc_code].id, serial_id=serial.id,
+                  ref_type=ref_type, ref=ref, notes=notes)
+        db.refresh(serial)
+        assert serial.status == expected, (serial.serial_number, serial.status, expected)
+    db.commit()
+    return batch1_serials, batch2_serials
 
 
 def create_lpns(db, locs):
@@ -771,6 +851,68 @@ def create_sales(db, users, customers, products, by_sku):
             "created_at": created, "items": [(p.id, qty) for p, qty in group],
         })
         counter += 1
+
+    # Refunded sale: a completed sale that was fully refunded, restoring stock
+    # through sale_return movements exactly like the refund endpoint does.
+    if sale_records:
+        customer = customers[customer_idx % len(customers)]
+        customer_idx += 1
+        created = days_ago(2, hour=12)
+        invoice = f"INV-{counter:04d}"
+        items = [sale_records[-1]["items"][0]]
+        p, qty = items[0]
+        product = db.get(Product, p)
+        subtotal = float(product.unit_price) * qty
+        tax = subtotal * tax_rate / 100
+        sale = Sale(
+            invoice_number=invoice, customer_id=customer.id, user_id=worker.id,
+            subtotal=subtotal, tax_amount=tax, total_amount=subtotal + tax,
+            status="completed", payment_method="transfer",
+            notes="Customer changed their mind after delivery",
+            created_at=created,
+        )
+        db.add(sale)
+        db.flush()
+        db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=qty,
+                        unit_price=float(product.unit_price)))
+        allocation = inventory.allocate_lots(db, product_id=product.id, quantity=qty)
+        for lot_id, take, location_id, lpn_id in allocation:
+            _post(db, worker, product, -take, "out",
+                  created + timedelta(minutes=5),
+                  from_loc=location_id, lot=lot_id, lpn=lpn_id,
+                  ref_type="sale", ref=invoice,
+                  notes=f"Sale to {customer.name}")
+        # Refund: restore each original line back to its source location.
+        originals = db.query(StockMovement).filter(
+            StockMovement.reference_type == "sale",
+            StockMovement.reference == invoice,
+            StockMovement.product_id == product.id,
+            StockMovement.quantity_change < 0,
+        ).order_by(StockMovement.id).all()
+        restored = 0
+        for m in originals:
+            if restored >= qty:
+                break
+            take = min(-m.quantity_change, qty - restored)
+            _post(db, worker, product, take, "return",
+                  days_ago(1, hour=10),
+                  from_loc=m.from_location_id, lot=m.lot_id, lpn=m.lpn_id,
+                  ref_type="sale_return", ref=f"Refund {invoice}",
+                  notes="Sale refund")
+            restored += take
+        if restored < qty:
+            _post(db, worker, product, qty - restored, "return",
+                  days_ago(1, hour=10),
+                  ref_type="sale_return", ref=f"Refund {invoice}",
+                  notes="Sale refund")
+        sale.status = "refunded"
+        sale.updated_at = days_ago(1, hour=11)
+        sale_records.append({
+            "id": sale.id, "invoice": invoice, "customer": customer,
+            "created_at": created, "items": [(p, qty)],
+            "refunded": True,
+        })
+        counter += 1
     db.commit()
     return sale_records, counter - 1
 
@@ -834,6 +976,8 @@ def create_cycle_counts(db, users, by_sku, locs):
         ("CC-0002", 3, "D-01-01", "completed", "CLN-022", -2, "Found fewer than expected"),
         ("CC-0003", 1, "B-02-03", "pending", "OFF-015", None, "Scheduled count"),
         ("CC-0004", 0, "C-02-02", "pending", "BEV-020", None, "Scheduled count"),
+        ("CC-0005", 1, "A-01-03", "in_progress", "TECH-003", +1, "Partially counted - awaiting recount"),
+        ("CC-0006", 0, "D-01-02", "cancelled", "CLN-023", None, "Cancelled before counting"),
     ]
     ccs = []
     for number, days, bin_code, status, sku, delta, notes in cc_specs:
@@ -898,7 +1042,8 @@ def create_boms(db, by_sku):
 
 
 def create_work_orders(db, users, by_sku, boms, locs):
-    """One completed WO (with backflush + FG lot) and one planned WO."""
+    """Work orders across every status: completed (backflush/FG lot, lot
+    genealogy, serialized), planned, released, in_progress, and cancelled."""
     worker = next(u for u in users if u.role == "worker")
     admin = next(u for u in users if u.role == "admin")
     wos = []
@@ -1019,6 +1164,78 @@ def create_work_orders(db, users, by_sku, boms, locs):
               ref_type="work_order", ref="WO-0004", notes="Received from WO-0004")
     wos.append(watch_wo)
 
+    def issue_components(wo, ts):
+        """Release WO-0005/0006: issue every required component to the WIP location."""
+        wip = locs["WIP"]
+        for item in wo.items:
+            remaining = item.quantity_required - item.quantity_issued
+            if remaining <= 0:
+                continue
+            product = db.get(Product, item.product_id)
+            allocation = inventory.allocate_lots(db, product_id=item.product_id, quantity=remaining)
+            for lot_id, take, source_location, lpn_id in allocation:
+                _post(db, worker, product, -take, inventory.ISSUE,
+                      ts, from_loc=source_location, to_loc=wip.id,
+                      lot=lot_id, lpn=lpn_id,
+                      ref_type="work_order", ref=wo.wo_number,
+                      notes=f"Issued to {wo.wo_number}")
+            item.quantity_issued += remaining
+        wo.wip_location_id = wip.id
+
+    # WO-0005 (released): components issued to WIP, awaiting start.
+    released = WorkOrder(
+        wo_number="WO-0005",
+        product_id=by_sku["TECH-004"].id,  # Smartphone Charger 65W
+        quantity=5, bom_id=boms[1].id, status="released", priority="high",
+        notes="Released - components issued to WIP", created_by=admin.id,
+        created_at=days_ago(1, hour=9),
+    )
+    db.add(released)
+    db.flush()
+    for item in boms[1].items:
+        db.add(WorkOrderItem(
+            work_order_id=released.id, product_id=item.product_id,
+            quantity_required=item.quantity * 5, quantity_issued=0,
+        ))
+    issue_components(released, days_ago(1, hour=10))
+    wos.append(released)
+
+    # WO-0006 (in_progress): released and started.
+    in_progress = WorkOrder(
+        wo_number="WO-0006",
+        product_id=by_sku["TECH-001"].id,  # Laptop Stand Pro
+        quantity=3, bom_id=boms[0].id, status="in_progress", priority="normal",
+        notes="In production on the line", created_by=admin.id,
+        started_at=days_ago(1, hour=11),
+        created_at=days_ago(2, hour=10),
+    )
+    db.add(in_progress)
+    db.flush()
+    for item in boms[0].items:
+        db.add(WorkOrderItem(
+            work_order_id=in_progress.id, product_id=item.product_id,
+            quantity_required=item.quantity * 3, quantity_issued=0,
+        ))
+    issue_components(in_progress, days_ago(1, hour=10))
+    wos.append(in_progress)
+
+    # WO-0007 (cancelled): planned then cancelled before any issue.
+    cancelled = WorkOrder(
+        wo_number="WO-0007",
+        product_id=by_sku["BEV-030"].id,  # Beverage Combo Pack
+        quantity=2, bom_id=boms[4].id, status="cancelled", priority="low",
+        notes="Cancelled - no demand", created_by=admin.id,
+        created_at=days_ago(1, hour=8),
+    )
+    db.add(cancelled)
+    db.flush()
+    for item in boms[4].items:
+        db.add(WorkOrderItem(
+            work_order_id=cancelled.id, product_id=item.product_id,
+            quantity_required=item.quantity * 2, quantity_issued=0,
+        ))
+    wos.append(cancelled)
+
     db.commit()
     return wos
 
@@ -1052,13 +1269,14 @@ def create_quality_checks(db, users, by_sku):
     return [passed, failed]
 
 
-def create_shipments(db, users, customers, by_sku, locs):
+def create_shipments(db, users, customers, by_sku, locs, batch1_serials=None):
     """Shipments across the full fulfillment lifecycle.
 
     Mirrors the pick/pack/ship endpoints: picking transfers stock to the
     shipping dock, shipping posts SHIP journal entries. One shipped shipment
-    is turned into an invoice (the create-sale flow), and a serialized
-    shipment exercises unit-level serial tracking.
+    is turned into an invoice (the create-sale flow), a serialized
+    shipment exercises unit-level serial tracking, and a final shipment
+    ships an entire serialized lot (SW-BATCH-1) so the lot flips to sold.
     """
     worker = next(u for u in users if u.role == "worker")
     cust = {c.name: c for c in customers}
@@ -1230,6 +1448,53 @@ def create_shipments(db, users, customers, by_sku, locs):
         db.add(SaleItem(sale_id=sale.id, product_id=pid, quantity=qty, unit_price=price))
     s7.sale_id = sale.id
 
+    # Shipped: serialized lot batch (SW-BATCH-1). Picking moves the exact lot
+    # serials to staging, shipping posts SHIP for each, and the lot flips to
+    # 'sold' once none of its units remain in stock.
+    if batch1_serials:
+        s8 = new_shipment("SHP-0008", "TechNest Ltd", carrier="DHL",
+                          tracking="DHL 9988 7766 55", notes="Serialized lot sale - SW-BATCH-1",
+                          created_days=1)
+        add_items(s8, [("TECH-030", len(batch1_serials))])
+        for serial in batch1_serials:
+            movements = inventory.transfer_stock(
+                db, product_id=serial.product_id, user_id=worker.id, quantity=1,
+                from_location_id=serial.location_id, to_location_id=shipping.id,
+                lot_id=serial.lot_id, serial_id=serial.id,
+                transfer_id=s8.id, reference_type="shipment",
+                reference=s8.shipment_number,
+                notes=f"Picked to {s8.shipment_number}",
+            )
+            for m in movements:
+                m.created_at = days_ago(1, hour=11)
+        for item in s8.items:
+            item.quantity_picked = item.quantity_ordered
+        s8.staging_location_id = shipping.id
+        s8.status = "picking"
+        s8.updated_at = days_ago(1, hour=11)
+        for item in s8.items:
+            item.quantity_packed = item.quantity_picked
+        s8.status = "packed"
+        s8.updated_at = days_ago(1, hour=12)
+        for serial in batch1_serials:
+            m = inventory.post_journal_entry(
+                db, product_id=serial.product_id, user_id=worker.id,
+                quantity_change=-1, movement_type=inventory.SHIP,
+                from_location_id=shipping.id, lot_id=serial.lot_id,
+                serial_id=serial.id,
+                reference_type="shipment", reference=s8.shipment_number,
+                notes=f"Shipped on {s8.shipment_number}",
+            )
+            m.created_at = days_ago(1, hour=13)
+            inventory.sync_serialized_lot_status(db, serial.lot_id)
+        for item in s8.items:
+            item.quantity_shipped = item.quantity_picked
+        s8.status = "shipped"
+        s8.ship_date = days_ago(1, hour=13)
+        s8.shipped_at = days_ago(1, hour=13)
+        s8.updated_at = days_ago(1, hour=13)
+        db.flush()
+
     db.add(ActivityLog(user_id=worker.id, username=worker.username, action="create",
                        entity_type="shipment", entity_id=s1.id,
                        description="Created shipment 'SHP-0001' (12 units)",
@@ -1251,10 +1516,10 @@ def seed_document_sequences(db, sales_count, orders, receipts, asns, ccs, transf
         ("cycle_count", len(ccs) + 1),
         ("lpn", 5),
         ("transfer", transfers + 1),
-        ("work_order", 5),
+        ("work_order", 8),
         ("bom", 6),
         ("quality_check", 3),
-        ("shipment", 8),
+        ("shipment", 9),
     ]
     for name, next_value in rows:
         db.add(DocumentSequence(name=name, next_value=next_value))
@@ -1310,9 +1575,10 @@ def create_notifications(db, users, products, sale_records):
     return notes
 
 
-def create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, by_sku):
+def create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, by_sku, wos=None):
     admin = next(u for u in users if u.role == "admin")
     worker = next(u for u in users if u.role == "worker")
+    refunded = next((s for s in sale_records if s.get("refunded")), None)
     logs = [
         (admin, "create", "location", 1, "Created location 'Main Warehouse'", 60),
         (admin, "create", "category", 1, "Created category 'Electronics'", 40),
@@ -1329,11 +1595,27 @@ def create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, b
         (admin, "create", "asn", asns[0].id, f"Created ASN '{asns[0].asn_number}'", 2),
         (worker, "create", "asn", asns[2].id, f"Received ASN '{asns[2].asn_number}' (36 unit(s))", 7),
         (worker, "complete", "cycle_count", ccs[0].id, f"Completed cycle count '{ccs[0].cc_number}' (variance +1)", 4),
+        (worker, "create", "cycle_count", ccs[4].id, f"Started cycle count '{ccs[4].cc_number}' (in progress)", 1),
+        (worker, "cancel", "cycle_count", ccs[5].id, f"Cancelled cycle count '{ccs[5].cc_number}'", 0),
         (worker, "create", "sale", sale_records[0]["id"], f"Sale '{sale_records[0]['invoice']}'", 10),
         (worker, "create", "stock_movement", 3, "out movement of 4 x 'Wireless Mouse M300'", 2),
         (admin, "create", "customer", 8, "Created customer 'Bright Learning Center'", 1),
         (admin, "update", "stock_movement", 2, "Updated stock movement #2", 1),
     ]
+    if wos:
+        logs += [
+            (worker, "complete", "work_order", wos[0].id, "Completed work order 'WO-0001' (received 20 x 'Smartphone Charger 65W')", 7),
+            (worker, "complete", "work_order", wos[2].id, "Completed work order 'WO-0003' (lot genealogy demo)", 5),
+            (worker, "complete", "work_order", wos[3].id, "Completed work order 'WO-0004' (received 2 x 'Smart Watch Pro')", 3),
+            (worker, "release", "work_order", wos[4].id, "Released work order 'WO-0005' (components issued to WIP)", 1),
+            (worker, "start", "work_order", wos[5].id, "Started work order 'WO-0006'", 1),
+            (worker, "cancel", "work_order", wos[6].id, "Cancelled work order 'WO-0007'", 0),
+        ]
+    if refunded:
+        logs.append(
+            (worker, "update", "sale", refunded["id"],
+             f"Refunded sale '{refunded['invoice']}' (stock restored)", 1),
+        )
     for user, action, entity, eid, desc, day in logs:
         db.add(ActivityLog(user_id=user.id, username=user.username, action=action,
                            entity_type=entity, entity_id=eid, description=desc,
@@ -1356,6 +1638,7 @@ def main():
         products, by_sku = build_products(db, cats, suppliers, locs)
         lots = create_lots(db, by_sku, suppliers)
         serials = create_serialized_stock(db, users, by_sku, locs)
+        batch1_serials, batch2_serials = create_serialized_lots(db, users, by_sku, locs)
         lpns = create_lpns(db, locs)
         orders = create_orders(db, users, suppliers, by_sku)
         receipts = create_receipts(db, users, suppliers, by_sku, lots, locs)
@@ -1371,9 +1654,9 @@ def main():
         wos = create_work_orders(db, users, by_sku, boms, locs)
         qcs = create_quality_checks(db, users, by_sku)
         seed_document_sequences(db, sales_count + len(serial_sales), orders, receipts, asns, ccs, transfers=2)
-        shipments = create_shipments(db, users, customers, by_sku, locs)
+        shipments = create_shipments(db, users, customers, by_sku, locs, batch1_serials=batch1_serials)
         create_notifications(db, users, products, sale_records)
-        create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, by_sku)
+        create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, by_sku, wos)
         db.commit()
 
         print("=" * 60)
@@ -1397,7 +1680,7 @@ def main():
         print(f"  Quality Checks    : {len(qcs)}")
         print(f"  Lot Links         : {db.query(LotLink).count()}")
         print(f"  Shipments         : {len(shipments)}")
-        print(f"  Sales             : {sales_count + len(serial_sales)}")
+        print(f"  Sales             : {db.query(Sale).count()}")
         print(f"  Stock Lines       : {db.query(StockLine).count()}")
         print(f"  Stock Movements   : {db.query(StockMovement).count()}")
         print(f"  Activity Logs     : {db.query(ActivityLog).count()}")
