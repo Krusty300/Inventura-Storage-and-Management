@@ -5,6 +5,10 @@ def _loc(auth_headers, code):
     return client.post("/api/locations", json={"name": f"Loc {code}", "code": code}, headers=auth_headers).json()
 
 
+def _q_loc(auth_headers, code):
+    return client.post("/api/locations", json={"name": f"Quarantine {code}", "code": code, "location_type": "quarantine"}, headers=auth_headers).json()
+
+
 def _receive(auth_headers, product_id, qty, location_id=None, lot=None, lpn_id=None, serial_numbers=None):
     item = {"product_id": product_id, "quantity": qty}
     if location_id is not None:
@@ -308,3 +312,119 @@ def test_dashboard_stats_includes_total_lots(auth_headers):
 
     stats = client.get("/api/dashboard/stats", headers=auth_headers).json()
     assert stats["total_lots"] >= 1
+
+
+def test_quarantine_move_auto_quarantines_lot(auth_headers):
+    src = _loc(auth_headers, "QM-S1")
+    qa = _q_loc(auth_headers, "QM-Q1")
+    prod = _make_product(auth_headers, "QM-P1")
+    _receive(auth_headers, prod["id"], 6, src["id"], lot="LOT-QM1")
+    lot = _lot(auth_headers, prod["id"], "LOT-QM1")
+    assert lot["status"] == "in_stock"
+
+    resp = client.post("/api/stock-movements/quarantine", json={
+        "product_id": prod["id"], "quantity": 2, "from_location_id": src["id"], "to_location_id": qa["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["reference"].startswith("QAR-")
+    assert resp.json()["movements"][0]["reference_type"] == "quarantine"
+    assert {m["movement_type"] for m in resp.json()["movements"]} == {"transfer_out", "transfer_in"}
+
+    assert client.get(f"/api/lots/{lot['id']}", headers=auth_headers).json()["status"] == "quarantined"
+    assert qa["path"] in client.get(f"/api/lots/{lot['id']}", headers=auth_headers).json()["locations"]
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 6
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quarantined_qty"] == 6
+
+
+def test_quarantine_move_requires_quarantine_area(auth_headers):
+    src = _loc(auth_headers, "QM-S2")
+    dst = _loc(auth_headers, "QM-D2")
+    prod = _make_product(auth_headers, "QM-P2")
+    _receive(auth_headers, prod["id"], 3, src["id"], lot="LOT-QM2")
+
+    resp = client.post("/api/stock-movements/quarantine", json={
+        "product_id": prod["id"], "quantity": 3, "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "not a quarantine area" in resp.json()["detail"]
+
+
+def test_quarantine_move_rejects_lpn_held_stock(auth_headers):
+    src = _loc(auth_headers, "QM-S3")
+    qa = _q_loc(auth_headers, "QM-Q3")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-QM3", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = _make_product(auth_headers, "QM-P3")
+    _receive(auth_headers, prod["id"], 4, src["id"], lot="LOT-QM3", lpn_id=lpn["id"])
+
+    resp = client.post("/api/stock-movements/quarantine", json={
+        "product_id": prod["id"], "quantity": 4, "from_location_id": src["id"], "to_location_id": qa["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "Only 0 sellable" in resp.json()["detail"]
+
+
+def test_quarantine_move_rejects_already_quarantined_lot(auth_headers):
+    src = _loc(auth_headers, "QM-S4")
+    qa = _q_loc(auth_headers, "QM-Q4")
+    prod = _make_product(auth_headers, "QM-P4")
+    _receive(auth_headers, prod["id"], 3, src["id"], lot="LOT-QM4")
+    lot = _lot(auth_headers, prod["id"], "LOT-QM4")
+    _set_status(auth_headers, lot["id"], "quarantined")
+
+    resp = client.post("/api/stock-movements/quarantine", json={
+        "product_id": prod["id"], "quantity": 3, "from_location_id": src["id"], "to_location_id": qa["id"], "lot_id": lot["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "quarantined" in resp.json()["detail"]
+
+
+def test_quarantine_move_serialized(auth_headers):
+    src = _loc(auth_headers, "QM-S5")
+    qa = _q_loc(auth_headers, "QM-Q5")
+    prod = _make_product(auth_headers, "QM-P5", serialized=True)
+    _receive(auth_headers, prod["id"], 1, src["id"], lot="LOT-QM5", serial_numbers=["S-QM5-1"])
+    lot = _lot(auth_headers, prod["id"], "LOT-QM5")
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+
+    resp = client.post("/api/stock-movements/quarantine", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]],
+        "from_location_id": src["id"], "to_location_id": qa["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+
+    assert client.get(f"/api/lots/{lot['id']}", headers=auth_headers).json()["status"] == "quarantined"
+    serial = client.get(f"/api/serial-numbers/{serial['id']}", headers=auth_headers).json()
+    assert serial["status"] == "quarantined"
+    assert serial["location_name"] == f"Quarantine QM-Q5"
+
+
+def test_transfer_to_quarantine_area_auto_quarantines(auth_headers):
+    src = _loc(auth_headers, "QM-S6")
+    qa = _q_loc(auth_headers, "QM-Q6")
+    prod = _make_product(auth_headers, "QM-P6")
+    _receive(auth_headers, prod["id"], 5, src["id"], lot="LOT-QM6")
+    lot = _lot(auth_headers, prod["id"], "LOT-QM6")
+
+    resp = client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 3, "from_location_id": src["id"], "to_location_id": qa["id"], "lot_id": lot["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    assert client.get(f"/api/lots/{lot['id']}", headers=auth_headers).json()["status"] == "quarantined"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quarantined_qty"] == 5
+
+
+def test_transfer_serial_to_quarantine_area_auto_quarantines(auth_headers):
+    src = _loc(auth_headers, "QM-S7")
+    qa = _q_loc(auth_headers, "QM-Q7")
+    prod = _make_product(auth_headers, "QM-P7", serialized=True)
+    _receive(auth_headers, prod["id"], 1, src["id"], lot="LOT-QM7", serial_numbers=["S-QM7-1"])
+    lot = _lot(auth_headers, prod["id"], "LOT-QM7")
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+
+    resp = client.post("/api/stock-movements/transfer-serial", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]],
+        "from_location_id": src["id"], "to_location_id": qa["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    assert client.get(f"/api/lots/{lot['id']}", headers=auth_headers).json()["status"] == "quarantined"
+    assert client.get(f"/api/serial-numbers/{serial['id']}", headers=auth_headers).json()["status"] == "quarantined"

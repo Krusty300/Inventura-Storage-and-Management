@@ -143,3 +143,30 @@ class StockMovementUnallocatedMove(BaseModel):
             if len(set(v)) != len(v):
                 raise ValueError("serial_ids must be unique")
         return v
+
+
+class StockMovementQuarantine(BaseModel):
+    product_id: int
+    quantity: int = 1
+    from_location_id: int
+    to_location_id: int
+    lot_id: Optional[int] = None
+    serial_ids: Optional[list[int]] = None
+    notes: str = ""
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("quantity must be positive")
+        return v
+
+    @field_validator("serial_ids")
+    @classmethod
+    def validate_serial_ids(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        if v is not None:
+            if not v:
+                raise ValueError("serial_ids must not be empty")
+            if len(set(v)) != len(v):
+                raise ValueError("serial_ids must be unique")
+        return v

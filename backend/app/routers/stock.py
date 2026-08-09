@@ -16,6 +16,7 @@ from app.schemas.stock_movement import (
     StockMovementAdjust,
     StockMovementCreate,
     StockMovementOut,
+    StockMovementQuarantine,
     StockMovementSerialTransfer,
     StockMovementTransfer,
     StockMovementUnallocatedMove,
@@ -28,6 +29,28 @@ from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
 router = APIRouter(prefix="/api/stock-movements", tags=["stock-movements"], dependencies=[Depends(get_current_user)])
+
+
+def _auto_quarantine(db: Session, to_loc: Location, movements: list[StockMovement]) -> None:
+    """When stock arrives at a quarantine-typed area, quarantine the moved lots and serials.
+
+    The physical move is a normal transfer pair; this flips the ledger-affiliated
+    statuses so the stock stops being sellable and renders with the quarantined
+    design everywhere. Only ``in_stock`` lots are touched so an already quarantined
+    or expired lot keeps its stricter status.
+    """
+    if to_loc.location_type != "quarantine":
+        return
+    lot_ids = {m.lot_id for m in movements if m.lot_id is not None}
+    for lot_id in lot_ids:
+        lot = db.get(Lot, lot_id)
+        if lot is not None and lot.status == "in_stock":
+            lot.status = "quarantined"
+    for m in movements:
+        if m.serial_id is not None:
+            serial = db.get(SerialNumber, m.serial_id)
+            if serial is not None and serial.status == inventory.SERIAL_STATUS_IN_STOCK:
+                serial.status = inventory.SERIAL_STATUS_QUARANTINED
 
 
 @router.get("")
@@ -253,6 +276,7 @@ def transfer_stock(data: StockMovementTransfer, db: Session = Depends(get_db), u
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    _auto_quarantine(db, to_loc, movements)
     db.commit()
     log_activity(db, user.id, user.username, "create", "stock_movement", out.id,
                  f"Transfer {data.quantity} x '{product.display_name}' {reference} "
@@ -328,6 +352,7 @@ def transfer_serialized_stock(data: StockMovementSerialTransfer, db: Session = D
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    _auto_quarantine(db, to_loc, movements)
     db.commit()
     log_activity(db, user.id, user.username, "create", "stock_movement", movements[0].id,
                  f"Transferred {len(data.serial_ids)} x '{product.display_name}' {reference} "
@@ -487,6 +512,149 @@ def move_unallocated_stock(data: StockMovementUnallocatedMove, db: Session = Dep
     db.commit()
     log_activity(db, user.id, user.username, "create", "stock_movement", movements[0].id,
                  f"Moved {data.quantity} unallocated x '{product.display_name}' to '{to_loc.path}' ({reference})")
+    notify_low_stock(db, product)
+    db.commit()
+    broadcast_change("stock_movement", "created")
+    broadcast_change("product", "updated")
+    return {
+        "reference": reference,
+        "count": len(movements),
+        "movements": [StockMovementOut.model_validate(m) for m in movements],
+    }
+
+
+@router.post("/quarantine", status_code=201)
+def quarantine_stock(data: StockMovementQuarantine, db: Session = Depends(get_db), user=Depends(require_permission("stock.record"))):
+    """Move stock into a quarantine-typed location and quarantine its lots.
+
+    A first-class quarantine move: the destination must be a quarantine area,
+    stock is moved loose (LPN-held and unallocated flows are intentionally not
+    supported yet), and the moved lot(s) are flipped to ``quarantined`` so they
+    stop being sellable and render with the quarantined design. Serialized units
+    are moved individually and their serials are quarantined too.
+    """
+    product = get_or_404(Product, data.product_id, db)
+    if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
+        raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - quarantine a specific variant")
+    from_loc = get_or_404(Location, data.from_location_id, db)
+    to_loc = get_or_404(Location, data.to_location_id, db)
+    if not from_loc.is_active:
+        raise HTTPException(status_code=400, detail=f"Source location '{from_loc.path}' is inactive")
+    if not to_loc.is_active:
+        raise HTTPException(status_code=400, detail=f"Quarantine area '{to_loc.path}' is inactive")
+    if to_loc.location_type != "quarantine":
+        raise HTTPException(status_code=400, detail=f"'{to_loc.path}' is not a quarantine area - pick a location with type 'quarantine'")
+    if data.from_location_id == data.to_location_id:
+        raise HTTPException(status_code=400, detail="Source and quarantine locations must differ")
+
+    reference = next_document_number(db, "quarantine", "QAR-")
+    movements: list[StockMovement] = []
+    try:
+        if product.is_serialized:
+            if not data.serial_ids:
+                raise HTTPException(status_code=400, detail="Select at least one serial number to quarantine")
+            if data.lot_id is not None:
+                raise HTTPException(status_code=400, detail="Select serial numbers instead of a lot for serialized products")
+            serials = db.query(SerialNumber).filter(SerialNumber.id.in_(data.serial_ids)).all()
+            if len(serials) != len(data.serial_ids):
+                raise HTTPException(status_code=400, detail="One or more serial numbers were not found")
+            by_id = {s.id: s for s in serials}
+            for serial_id in data.serial_ids:
+                serial = by_id[serial_id]
+                if serial.product_id != product.id:
+                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
+                if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
+                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
+                if serial.lot is not None and serial.lot.status != "in_stock":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be quarantined",
+                    )
+                if serial.location_id != from_loc.id:
+                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not at '{from_loc.path}'")
+                if serial.lpn_id is not None:
+                    lpn = db.query(LPN).filter(LPN.id == serial.lpn_id).first()
+                    lpn_label = lpn.lpn_number if lpn else str(serial.lpn_id)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Serial '{serial.serial_number}' is on LPN '{lpn_label}' - unload it from the LPN first",
+                    )
+            for serial_id in data.serial_ids:
+                serial = by_id[serial_id]
+                out, inbound = inventory.transfer_stock(
+                    db, product_id=product.id, user_id=user.id,
+                    quantity=1,
+                    from_location_id=from_loc.id,
+                    to_location_id=to_loc.id,
+                    lot_id=serial.lot_id,
+                    serial_id=serial.id,
+                    reference_type="quarantine", reference=reference,
+                    notes=data.notes,
+                )
+                movements.extend([out, inbound])
+        else:
+            if data.serial_ids:
+                raise HTTPException(status_code=400, detail=f"'{product.display_name}' is not serialized - serial_ids cannot be used")
+            if data.lot_id is not None:
+                lot = get_or_404(Lot, data.lot_id, db)
+                if lot.status != "in_stock":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Lot '{lot.lot_number}' is {lot.status} and cannot be quarantined. "
+                        "Release it (if quarantined) or dispose of it via a scrap/adjustment instead.",
+                    )
+            lines = (
+                db.query(StockLine)
+                .outerjoin(Lot, StockLine.lot_id == Lot.id)
+                .filter(
+                    StockLine.product_id == product.id,
+                    StockLine.location_id == from_loc.id,
+                    StockLine.lpn_id.is_(None),
+                    StockLine.quantity > 0,
+                    (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+                )
+                .order_by(StockLine.id)
+                .all()
+            )
+            if data.lot_id is not None:
+                lines = [l for l in lines if l.lot_id == data.lot_id]
+            total = sum(l.quantity for l in lines)
+            if data.quantity > total:
+                blocked = inventory._blocked_lot_stock(db, product_id=product.id, location_id=from_loc.id)
+                if blocked:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Only {total} sellable unit(s) at '{from_loc.path}'. {inventory._blocked_lot_message(blocked)}",
+                    )
+                raise HTTPException(status_code=400, detail=f"Only {total} sellable unit(s) at '{from_loc.path}'")
+            remaining = data.quantity
+            for line in lines:
+                if remaining <= 0:
+                    break
+                take = min(line.quantity, remaining)
+                if take <= 0:
+                    continue
+                out, inbound = inventory.transfer_stock(
+                    db, product_id=product.id, user_id=user.id,
+                    quantity=take,
+                    from_location_id=from_loc.id,
+                    to_location_id=to_loc.id,
+                    lot_id=line.lot_id,
+                    lpn_id=None,
+                    reference_type="quarantine", reference=reference,
+                    notes=data.notes,
+                )
+                movements.extend([out, inbound])
+                remaining -= take
+    except inventory.InventoryError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    _auto_quarantine(db, to_loc, movements)
+    db.commit()
+    log_activity(db, user.id, user.username, "create", "stock_movement", movements[0].id,
+                 f"Quarantined {data.quantity if not product.is_serialized else len(data.serial_ids)} x '{product.display_name}' "
+                 f"at '{to_loc.path}' ({reference})")
     notify_low_stock(db, product)
     db.commit()
     broadcast_change("stock_movement", "created")
