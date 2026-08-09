@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -32,6 +32,8 @@ import {
   Moon,
   Monitor,
   CircleUser,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemeMode } from "../context/ThemeContext";
@@ -40,6 +42,22 @@ import NotificationBell from "./NotificationBell";
 const MIN_SIDEBAR_WIDTH = 208;
 const DEFAULT_SIDEBAR_WIDTH = 256;
 const MAX_SIDEBAR_WIDTH = 480;
+const DESKTOP_MQ = "(min-width: 1024px)";
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia(DESKTOP_MQ).matches
+      : false,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(DESKTOP_MQ);
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+}
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard", perm: "dashboard.view" },
@@ -77,12 +95,26 @@ export default function Layout() {
     const saved = Number(localStorage.getItem("sidebarWidth"));
     return saved >= MIN_SIDEBAR_WIDTH && saved <= MAX_SIDEBAR_WIDTH ? saved : DEFAULT_SIDEBAR_WIDTH;
   });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    () => localStorage.getItem("sidebarCollapsed") === "1",
+  );
   const sidebarWidthRef = useRef(sidebarWidth);
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, user, can } = useAuth();
   const { theme, setTheme } = useTheme();
+  const isDesktop = useIsDesktop();
   const visibleNavItems = navItems.filter((item) => can(item.perm));
+
+  const collapsed = isDesktop && sidebarCollapsed;
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebarCollapsed", next ? "1" : "0");
+      return next;
+    });
+  };
 
   const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [
     { mode: "light", icon: Sun, label: "Light mode" },
@@ -120,10 +152,11 @@ export default function Layout() {
   return (
     <div className="flex h-screen bg-app overflow-hidden">
       <aside
-        style={{ width: sidebarWidth }}
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-border max-w-[85vw] transform transition-transform lg:translate-x-0 lg:static lg:inset-auto lg:max-w-none ${
+        style={{ width: collapsed ? 0 : sidebarWidth }}
+        aria-hidden={collapsed || undefined}
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-border max-w-[85vw] overflow-hidden transform transition-transform lg:translate-x-0 lg:static lg:inset-auto lg:max-w-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        } ${collapsed ? "lg:border-r-0 lg:invisible" : ""}`}
       >
         <nav className="sidebar-scroll flex-1 overflow-y-auto p-4 space-y-1">
           {visibleNavItems.map((item) => {
@@ -167,7 +200,9 @@ export default function Layout() {
           aria-orientation="vertical"
           aria-label="Resize sidebar"
           onPointerDown={startResize}
-          className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/70 active:bg-indigo-500 hidden lg:block"
+          className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/70 active:bg-indigo-500 ${
+            collapsed ? "hidden" : "hidden lg:block"
+          }`}
         />
       </aside>
 
@@ -180,10 +215,20 @@ export default function Layout() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <header className="bg-surface border-b border-border px-6 py-3 flex items-center justify-between relative z-20">
-          <button onClick={() => setSidebarOpen(true)} className="text-muted lg:hidden">
-            <Menu size={24} />
-          </button>
-          <div className="hidden lg:block text-lg font-semibold text-ink">Inventura Storage</div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setSidebarOpen(true)} className="text-muted lg:hidden" aria-label="Open navigation">
+              <Menu size={24} />
+            </button>
+            <button
+              onClick={toggleSidebarCollapsed}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="hidden lg:flex items-center justify-center p-1.5 rounded-md text-muted hover:text-ink hover:bg-subtle transition-colors"
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+            </button>
+            <div className="hidden lg:block text-lg font-semibold text-ink">Inventura Storage</div>
+          </div>
           <div className="flex items-center gap-3">
             <div
               role="group"
@@ -224,7 +269,9 @@ export default function Layout() {
           </div>
         </header>
         <main className="flex-1 overflow-auto p-6">
-          <Outlet />
+          <div className={collapsed ? "mx-auto max-w-7xl" : ""}>
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
