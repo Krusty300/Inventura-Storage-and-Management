@@ -39,4 +39,17 @@ describe("ActivityLog Page", () => {
     expect(screen.getByLabelText("Filter by entity")).toBeInTheDocument();
     expect(screen.getByLabelText("Filter by action")).toBeInTheDocument();
   });
+
+  it("renders workflow actions with status badges and normalized labels", async () => {
+    mockLogs([
+      { id: 2, user_id: 1, username: "tester", action: "reset_password", entity_type: "user", entity_id: 1, description: "Password reset", details: "", created_at: "2026-01-01T10:00:00" },
+      { id: 3, user_id: 1, username: "tester", action: "ship", entity_type: "shipment", entity_id: 1, description: "Shipped SHP-1", details: "", created_at: "2026-01-01T10:00:00" },
+      { id: 4, user_id: 1, username: "tester", action: "pick", entity_type: "shipment", entity_id: 1, description: "Picked SHP-1", details: "", created_at: "2026-01-01T10:00:00" },
+    ]);
+    renderWithProviders(<ActivityLog />);
+    expect(await screen.findByText("reset password")).toBeInTheDocument();
+    expect(screen.getByText("reset password").className).toContain("badge-danger");
+    expect(screen.getByText("ship").className).toContain("badge-success");
+    expect(screen.getByText("pick").className).toContain("badge-warning");
+  });
 });

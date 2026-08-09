@@ -23,7 +23,7 @@ export default function Shipments() {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [editing, setEditing] = useState<Shipment | null>(null);
   const [deleting, setDeleting] = useState<Shipment | null>(null);
   const [viewing, setViewing] = useState<Shipment | null>(null);
@@ -363,6 +363,13 @@ function ShipmentLineRow({
   );
 }
 
+function serializedLineStatus(item: ShipmentItem) {
+  if (item.quantity_shipped > 0) return { label: "shipped", cls: "badge-success" };
+  if (item.quantity_packed > 0) return { label: "packed", cls: "badge-info" };
+  if (item.quantity_picked > 0) return { label: "picking", cls: "badge-warning" };
+  return { label: "pending", cls: "badge-neutral" };
+}
+
 function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; onClose: () => void; onChanged: () => void }) {
   const formatDate = useDateFormat();
   const [carrier, setCarrier] = useState(shipment.carrier);
@@ -470,7 +477,15 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             <tbody className="divide-y divide-border">
               {current.items.map((item) => (
                 <tr key={item.id}>
-                  <td className="px-4 py-2 font-medium">{item.product_name}{item.is_serialized && <span className="ml-2 badge-info">serialized</span>}</td>
+                  <td className="px-4 py-2 font-medium">
+                    {item.product_name}
+                    {item.is_serialized && (
+                      <>
+                        <span className="ml-2 badge badge-info">serialized</span>
+                        <span className={`ml-1 badge ${serializedLineStatus(item).cls} capitalize`}>{serializedLineStatus(item).label}</span>
+                      </>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-muted">{item.location_name || "—"}</td>
                   <td className="px-4 py-2">{item.quantity_ordered}</td>
                   <td className="px-4 py-2">{item.quantity_picked}</td>

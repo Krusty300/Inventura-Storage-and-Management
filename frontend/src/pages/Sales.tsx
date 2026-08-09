@@ -27,7 +27,7 @@ export default function Sales() {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [viewing, setViewing] = useState<Sale | null>(null);
   const [refunding, setRefunding] = useState<Sale | null>(null);
   const [showBulkEdit, setShowBulkEdit] = useState(false);

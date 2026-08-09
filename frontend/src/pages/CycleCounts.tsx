@@ -21,7 +21,7 @@ export default function CycleCounts() {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [viewing, setViewing] = useState<CycleCount | null>(null);
   const [counting, setCounting] = useState<CycleCount | null>(null);
   const queryClient = useQueryClient();

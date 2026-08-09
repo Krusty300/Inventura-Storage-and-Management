@@ -202,6 +202,21 @@ describe("Dashboard Page", () => {
     expect(screen.getByRole("button", { name: "New Sale" })).toBeInTheDocument();
   });
 
+  it("quick actions deep-link with ?new=1 to open create forms directly", async () => {
+    mockDashboard();
+    renderWithProviders(
+      <>
+        <Dashboard />
+        <LocationProbe />
+      </>
+    );
+    await screen.findByText("Quick Actions");
+    fireEvent.click(screen.getByRole("button", { name: "New ASN" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/asns?new=1");
+    });
+  });
+
   it("shows error state with retry when the API fails", async () => {
     getMock.mockRejectedValue(new Error("boom"));
     renderWithProviders(<Dashboard />);

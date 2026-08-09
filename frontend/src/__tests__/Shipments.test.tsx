@@ -223,6 +223,29 @@ describe("Shipments", () => {
     );
   });
 
+  it("shows a fulfillment status badge for serialized lines in the detail view", async () => {
+    const serialized: Shipment = {
+      ...baseShipment("draft"),
+      items: [
+        { id: 2, shipment_id: 1, product_id: 2, location_id: null, quantity_ordered: 2, quantity_picked: 0, quantity_packed: 0, quantity_shipped: 0, product_name: "Serial Widget", location_name: "", is_serialized: true },
+      ],
+    };
+    getMock.mockImplementation((url: string) => {
+      if (url === "/shipments") return Promise.resolve({ data: { items: [serialized], total: 1, page: 1, pages: 1 } });
+      if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 1, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 1 } });
+      if (url === "/shipments/1") return Promise.resolve({ data: serialized });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<Shipments />);
+    fireEvent.click(await screen.findByRole("button", { name: /View/ }));
+
+    expect(await screen.findByText("serialized")).toBeInTheDocument();
+    const pending = screen.getByText("pending");
+    expect(pending).toHaveTextContent("pending");
+    expect(pending.className).toContain("badge-neutral");
+  });
+
   it("sends the selected status filter to the list endpoint", async () => {
     getMock.mockImplementation((url: string) => {
       if (url === "/shipments") return Promise.resolve({ data: { items: [baseShipment("draft")], total: 1, page: 1, pages: 1 } });
