@@ -104,6 +104,24 @@ describe("Products Page", () => {
     expect(screen.getByText("Q5")).toBeInTheDocument();
   });
 
+  it("shows an expired badge when a product holds units in expired lots", async () => {
+    mockProducts([makeProduct({ id: 9, sku: "E-1", name: "Expired Item", quantity: 10, reorder_level: 5, expired_lot_qty: 4 })]);
+    renderWithProviders(<Products />);
+    expect(await screen.findByText("Expired Item")).toBeInTheDocument();
+    expect(screen.getByText("E4")).toBeInTheDocument();
+    expect(screen.queryByText("E5")).not.toBeInTheDocument();
+  });
+
+  it("sums expired units across a variant group on the parent row", async () => {
+    const parent = makeProduct({ id: 10, sku: "PG-10", name: "Group Expired" });
+    const v1 = makeVariant(parent, { expired_lot_qty: 2 });
+    const v2 = makeVariant(parent, { id: 101, expired_lot_qty: 3 });
+    mockProducts([{ ...parent, variants: [v1, v2] }]);
+    renderWithProviders(<Products />);
+    await screen.findByText("Group Expired");
+    expect(screen.getByText("E5")).toBeInTheDocument();
+  });
+
   it("flags low stock based on sellable quantity excluding quarantined units", async () => {
     const items = [
       makeProduct({ id: 7, sku: "LS-1", name: "Sellable Low", quantity: 10, reorder_level: 8, quarantined_qty: 4 }),

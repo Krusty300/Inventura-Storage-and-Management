@@ -129,6 +129,25 @@ def test_record_movement_return_restores_stock_to_location(auth_headers):
     assert locs["locations"][0]["quantity"] == 4
 
 
+def test_record_return_auto_generates_reference(auth_headers):
+    loc = _create_transfer_location(auth_headers, "Bin AutoRet", "TAUR")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "STK-AUTORET", "name": "Auto Ret", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 5, "location_id": loc["id"]}],
+    }, headers=auth_headers).status_code == 201
+    assert client.post("/api/stock-movements", json={
+        "product_id": prod["id"], "quantity_change": -5, "movement_type": "out", "location_id": loc["id"],
+    }, headers=auth_headers).status_code == 201
+    resp = client.post("/api/stock-movements", json={
+        "product_id": prod["id"], "quantity_change": 5, "movement_type": "return", "location_id": loc["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["reference"].startswith("RET-")
+    assert resp.json()["to_location_id"] == loc["id"]
+
+
 def test_list_movements(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "STK004", "name": "Movements", "quantity": 100}, headers=auth_headers).json()
     client.post("/api/stock-movements", json={"product_id": prod["id"], "quantity_change": 5, "movement_type": "in"}, headers=auth_headers)

@@ -131,6 +131,9 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Reference (e.g. PO#)</label>
           <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
+          {movementType === "return" && (
+            <p className="text-xs text-faint mt-1">Leave blank to auto-generate a reference (RET-...).</p>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>

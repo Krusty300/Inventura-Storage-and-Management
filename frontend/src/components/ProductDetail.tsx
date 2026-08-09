@@ -52,6 +52,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   const [isActive, setIsActive] = useState(product.is_active);
   const currencySymbol = settings?.currency_symbol || "$";
   const qty = hasVariants(product) ? product.total_quantity : product.quantity;
+  const expiredLotQty = product.expired_lot_qty || 0;
   const { locations, unallocated } = useProductStockLocations(product.id, product.is_serialized);
 
   const toggleStatus = useMutation({
@@ -103,6 +104,11 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           <div>
             <span className="text-muted">{hasVariants(product) ? "Total Quantity:" : "Quantity:"}</span>
             <p className={`font-medium ${qty <= product.reorder_level ? "text-red-600 dark:text-red-400" : ""}`}>{qty}</p>
+            {expiredLotQty > 0 && (
+              <span className="badge badge-danger mt-1" title={`${expiredLotQty} unit(s) in expired lots`}>
+                Expired {expiredLotQty}
+              </span>
+            )}
           </div>
           <div>
             <span className="text-muted">Reorder Level:</span>

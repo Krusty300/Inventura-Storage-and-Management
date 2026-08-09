@@ -40,6 +40,10 @@ class Shipment(Base):
         return self.sale.invoice_number if self.sale else ""
 
     @property
+    def payment_method(self) -> str:
+        return self.sale.payment_method if self.sale else ""
+
+    @property
     def total_amount(self) -> float:
         return float(self.sale.total_amount) if self.sale else 0.0
 

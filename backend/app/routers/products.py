@@ -189,11 +189,14 @@ def list_products(
         if include_variants and p.variants:
             ids.update(v.id for v in p.variants)
     quarantined = inventory.quarantined_qty_by_product(db, list(ids)) if ids else {}
+    expired = inventory.expired_lot_qty_by_product(db, list(ids)) if ids else {}
     for p in results:
         p.quarantined_qty = quarantined.get(p.id, 0)
+        p.expired_lot_qty = expired.get(p.id, 0)
         if include_variants and p.variants:
             for v in p.variants:
                 v.quarantined_qty = quarantined.get(v.id, 0)
+                v.expired_lot_qty = expired.get(v.id, 0)
     return {"items": results, "total": total, "page": (skip // limit) + 1 if limit else 1, "pages": max(ceil(total / limit), 1) if limit else 1}
 
 
@@ -314,9 +317,16 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     ])
     out = ProductOut.model_validate(p)
     out.location = _effective_location(p)
+    ids = [p.id] + [v.id for v in p.variants]
+    quarantined = inventory.quarantined_qty_by_product(db, ids)
+    expired = inventory.expired_lot_qty_by_product(db, ids)
+    out.quarantined_qty = quarantined.get(p.id, 0)
+    out.expired_lot_qty = expired.get(p.id, 0)
     if p.variants and out.variants:
         for v_orm, v_out in zip(p.variants, out.variants):
             v_out.location = _effective_location(v_orm)
+            v_out.quarantined_qty = quarantined.get(v_orm.id, 0)
+            v_out.expired_lot_qty = expired.get(v_orm.id, 0)
     return out
 
 
@@ -332,9 +342,16 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found")
     out = ProductOut.model_validate(p)
     out.location = _effective_location(p)
+    ids = [p.id] + [v.id for v in p.variants]
+    quarantined = inventory.quarantined_qty_by_product(db, ids)
+    expired = inventory.expired_lot_qty_by_product(db, ids)
+    out.quarantined_qty = quarantined.get(p.id, 0)
+    out.expired_lot_qty = expired.get(p.id, 0)
     if p.variants and out.variants:
         for v_orm, v_out in zip(p.variants, out.variants):
             v_out.location = _effective_location(v_orm)
+            v_out.quarantined_qty = quarantined.get(v_orm.id, 0)
+            v_out.expired_lot_qty = expired.get(v_orm.id, 0)
     return out
 
 

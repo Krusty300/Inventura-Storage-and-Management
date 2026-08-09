@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Box, PackageCheck, XCircle } from "lucide-react";
+import { Box, Eye, PackageCheck, Pencil, Trash2, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, PaginatedResponse, SerialNumber, Shipment, ShipmentItem, ShipmentStats } from "../types";
@@ -136,17 +136,17 @@ export default function Shipments() {
                     <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
-                        <button onClick={() => setViewing(s)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
-                          View
+                        <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`View ${s.shipment_number}`}>
+                          <Eye size={16} />
                         </button>
                         {s.status !== "shipped" && can("shipments.update") && (
-                          <button onClick={() => setEditing(s)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1">
-                            Edit
+                          <button onClick={() => setEditing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`Edit ${s.shipment_number}`} aria-label={`Edit ${s.shipment_number}`}>
+                            <Pencil size={16} />
                           </button>
                         )}
                         {(s.status === "draft" || s.status === "cancelled") && can("shipments.delete") && (
-                          <button onClick={() => setDeleting(s)} className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1 hover:border-red-300 dark:border-red-500/40 hover:text-red-600 dark:text-red-400" aria-label={`Delete ${s.shipment_number}`}>
-                            Delete
+                          <button onClick={() => setDeleting(s)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${s.shipment_number}`}>
+                            <Trash2 size={16} />
                           </button>
                         )}
                       </div>
@@ -352,6 +352,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   const formatDate = useDateFormat();
   const [carrier, setCarrier] = useState(shipment.carrier);
   const [tracking, setTracking] = useState(shipment.tracking_number);
+  const [paymentMethod, setPaymentMethod] = useState(shipment.payment_method || "cash");
   const [busy, setBusy] = useState<string | null>(null);
   const [pickingSerials, setPickingSerials] = useState(false);
   const { addToast } = useToast();
@@ -415,7 +416,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   const createSale = async () => {
     setBusy("invoice");
     try {
-      const { data } = await api.post(`/shipments/${current.id}/create-sale`);
+      const { data } = await api.post(`/shipments/${current.id}/create-sale`, null, { params: { payment_method: paymentMethod } });
       addToast(`Invoice ${data.invoice_number} created`, "success");
       refresh();
     } catch (err: any) {
@@ -433,6 +434,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
           <div><p className="text-muted">Carrier</p><p className="font-medium">{current.carrier || "—"}</p></div>
           <div><p className="text-muted">Tracking</p><p className="font-medium">{current.tracking_number || "—"}</p></div>
           <div><p className="text-muted">Invoice</p><p className="font-medium">{current.invoice_number || "—"}</p></div>
+          <div><p className="text-muted">Payment</p><p className="font-medium capitalize">{current.payment_method || "—"}</p></div>
           <div><p className="text-muted">Amount</p><p className="font-medium">{current.total_amount ? `$${current.total_amount.toFixed(2)}` : "—"}</p></div>
           <div><p className="text-muted">Created By</p><p className="font-medium">{current.username}</p></div>
           <div><p className="text-muted">Created</p><p className="font-medium">{formatDate(current.created_at)}</p></div>
@@ -499,7 +501,15 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
           </div>
         )}
         {canCreateSale && (
-          <div className="flex justify-end">
+          <div className="flex items-center gap-3 justify-end">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Payment Method</label>
+              <select className="select" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} aria-label="Payment method">
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="transfer">Bank Transfer</option>
+              </select>
+            </div>
             <button onClick={createSale} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
               Create Invoice
             </button>

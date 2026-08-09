@@ -29,6 +29,7 @@ export interface Product {
   display_name: string;
   total_quantity: number;
   quarantined_qty: number;
+  expired_lot_qty: number;
   variants: Product[];
 }
 
@@ -986,6 +987,7 @@ export interface Shipment {
   customer_name: string;
   username: string;
   invoice_number: string;
+  payment_method: string;
   total_amount: number;
   total_quantity: number;
   total_picked: number;

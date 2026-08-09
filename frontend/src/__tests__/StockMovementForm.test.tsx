@@ -109,4 +109,16 @@ describe("StockMovementForm", () => {
     expect(await screen.findByText("Edit Stock Movement")).toBeInTheDocument();
     expect(screen.queryByText("Location *")).not.toBeInTheDocument();
   });
+
+  it("shows the auto-reference hint only for a Return movement", async () => {
+    mockProductApi([makeProduct({ id: 5, name: "Widget", sku: "W-5" })], [{ id: 1, path: "Main", is_active: true }]);
+    renderWithProviders(<StockMovementForm onClose={() => {}} onSaved={() => {}} />);
+
+    await screen.findByText("Record Stock Movement");
+    expect(screen.queryByText(/auto-generate a reference/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "return" } });
+
+    expect(await screen.findByText("Leave blank to auto-generate a reference (RET-...).")).toBeInTheDocument();
+  });
 });

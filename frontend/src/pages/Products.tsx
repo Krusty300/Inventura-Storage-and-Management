@@ -207,6 +207,12 @@ export default function Products() {
     }
     return r.product.quarantined_qty || 0;
   };
+  const expiredLotQtyOf = (r: DisplayRow) => {
+    if (r.kind === "parent" && hasVariants(r.product)) {
+      return (r.product.expired_lot_qty || 0) + r.product.variants.filter((v) => v.is_active).reduce((sum, v) => sum + (v.expired_lot_qty || 0), 0);
+    }
+    return r.product.expired_lot_qty || 0;
+  };
   const sellableQtyOf = (r: DisplayRow) => qtyOf(r) - quarantinedQtyOf(r);
 
   const movementBadgeClass = (t: string) => {
@@ -321,6 +327,7 @@ export default function Products() {
                 const isGroup = r.kind === "parent" && hasVariants(p);
                 const qty = qtyOf(r);
                 const quarantined = quarantinedQtyOf(r);
+                const expired = expiredLotQtyOf(r);
                 const sellable = sellableQtyOf(r);
                 const isLowStock = sellable <= p.reorder_level && !isGroup;
                 const isCollapsed = isGroup && collapsed.has(p.id);
@@ -376,6 +383,11 @@ export default function Products() {
                         {quarantined > 0 && (
                           <span className="badge badge-warning" title={`${quarantined} unit(s) in quarantined lots`}>
                             Q{quarantined}
+                          </span>
+                        )}
+                        {expired > 0 && (
+                          <span className="badge badge-danger" title={`${expired} unit(s) in expired lots`}>
+                            E{expired}
                           </span>
                         )}
                       </div>

@@ -71,6 +71,7 @@ class ShipmentOut(BaseModel):
     customer_name: str = ""
     username: str = ""
     invoice_number: str = ""
+    payment_method: str = ""
     total_amount: float = 0.0
     total_quantity: int = 0
     total_picked: int = 0

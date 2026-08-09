@@ -168,6 +168,23 @@ def quarantined_qty_by_product(db: Session, product_ids: list[int] | None = None
     return {int(r[0]): int(r[1] or 0) for r in rows}
 
 
+def expired_lot_qty_by_product(db: Session, product_ids: list[int] | None = None) -> dict[int, int]:
+    """Map of product_id -> quantity held in expired lots.
+
+    Optionally restricted to ``product_ids`` so a page of products can be
+    annotated without scanning the whole stock_lines table.
+    """
+    stmt = (
+        select(StockLine.product_id, func.sum(StockLine.quantity))
+        .join(Lot, StockLine.lot_id == Lot.id)
+        .where(Lot.status == "expired")
+    )
+    if product_ids:
+        stmt = stmt.where(StockLine.product_id.in_(product_ids))
+    rows = db.execute(stmt.group_by(StockLine.product_id)).all()
+    return {int(r[0]): int(r[1] or 0) for r in rows}
+
+
 def expire_overdue_lots(db: Session) -> int:
     """Flip ``in_stock`` lots whose expiry date has passed to ``expired``.
 

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import String, cast
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -32,7 +33,11 @@ def _search_products(db: Session, like: str, limit: int):
         db.query(Product)
         .filter(
             Product.name.ilike(like) | Product.sku.ilike(like) |
-            Product.barcode.ilike(like) | Product.description.ilike(like)
+            Product.barcode.ilike(like) | Product.description.ilike(like) |
+            Product.variants.any(
+                Product.name.ilike(like) | Product.sku.ilike(like) |
+                Product.barcode.ilike(like) | cast(Product.attributes, String).ilike(like)
+            )
         )
         .order_by(Product.name)
         .limit(limit)

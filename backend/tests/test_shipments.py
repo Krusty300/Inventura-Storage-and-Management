@@ -452,7 +452,7 @@ def test_shipment_create_sale_invoice(auth_headers):
     client.post(f"/api/shipments/{sid}/pack", headers=auth_headers)
     client.post(f"/api/shipments/{sid}/ship", headers=auth_headers)
 
-    sale = client.post(f"/api/shipments/{sid}/create-sale", headers=auth_headers)
+    sale = client.post(f"/api/shipments/{sid}/create-sale", params={"payment_method": "card"}, headers=auth_headers)
     assert sale.status_code == 201
     sale = sale.json()
     assert sale["invoice_number"].startswith("INV-")
@@ -462,12 +462,14 @@ def test_shipment_create_sale_invoice(auth_headers):
     assert float(sale["items"][0]["unit_price"]) == 10.0
     assert float(sale["subtotal"]) == 30.0
     assert float(sale["total_amount"]) == 30.0
+    assert sale["payment_method"] == "card"
     assert "SHP-" in sale["notes"]
 
     shipment = client.get(f"/api/shipments/{sid}", headers=auth_headers).json()
     assert shipment["sale_id"] == sale["id"]
     assert shipment["invoice_number"] == sale["invoice_number"]
     assert float(shipment["total_amount"]) == 30.0
+    assert shipment["payment_method"] == "card"
 
     # double invoicing rejected
     assert client.post(f"/api/shipments/{sid}/create-sale", headers=auth_headers).status_code == 400

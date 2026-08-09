@@ -314,4 +314,35 @@ describe("ProductDetail", () => {
     expect(await screen.findByText("Active")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Toggle status for Widget" })).not.toBeInTheDocument();
   });
+
+  it("shows an Expired badge when the product holds units in expired lots", async () => {
+    const product = makeProduct({ id: 14, sku: "SKU-14", name: "Expired Widget", expired_lot_qty: 4 });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/products/14/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    expect(await screen.findByText("Expired 4")).toBeInTheDocument();
+  });
+
+  it("does not show an Expired badge when no units are in expired lots", async () => {
+    const product = makeProduct({ id: 15, sku: "SKU-15", name: "Fresh Widget" });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/products/15/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    expect(await screen.findByText("Quantity:")).toBeInTheDocument();
+    expect(screen.queryByText(/Expired/)).not.toBeInTheDocument();
+  });
 });

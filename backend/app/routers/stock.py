@@ -122,12 +122,15 @@ def record_movement(data: StockMovementCreate, db: Session = Depends(get_db), us
         raise HTTPException(status_code=400, detail="Serialized products must be managed through receipts")
     try:
         loc_id = require_active_location(db, product, data.location_id)
+        reference = data.reference
+        if not reference and data.movement_type == "return":
+            reference = next_document_number(db, "return", "RET-")
         sm = inventory.post_journal_entry(
             db, product_id=product.id, user_id=user.id,
             quantity_change=data.quantity_change, movement_type=data.movement_type,
             from_location_id=loc_id if data.quantity_change < 0 else None,
             to_location_id=loc_id if data.quantity_change > 0 else None,
-            reference=data.reference, notes=data.notes,
+            reference=reference, notes=data.notes,
         )
     except inventory.InventoryError as e:
         raise HTTPException(status_code=400, detail=str(e))

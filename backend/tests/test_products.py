@@ -243,3 +243,22 @@ def test_deactivating_parent_flags_serialized_variant_serials(auth_headers):
 
     serials = client.get(f"/api/serial-numbers?product_id={variant['id']}&limit=10", headers=auth_headers).json()["items"]
     assert all(s["status"] == "inactive" for s in serials)
+
+
+def test_product_lists_expired_lot_quantity(auth_headers):
+    loc = _make_location(auth_headers, "Bin Expired", "EXPLOT")
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "EXP-LOT", "name": "Expired Lot Item", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 5, "location_id": loc["id"],
+                   "lot_number": "EXP-OLD", "expiry_date": "2020-01-01"}],
+    }, headers=auth_headers).status_code == 201
+
+    # the list endpoint flips overdue in_stock lots to expired
+    listing = client.get("/api/products", params={"include_variants": 1, "limit": 100}, headers=auth_headers).json()
+    row = next(p for p in listing["items"] if p["id"] == prod["id"])
+    assert row["expired_lot_qty"] == 5
+
+    detail = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert detail["expired_lot_qty"] == 5

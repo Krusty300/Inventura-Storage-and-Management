@@ -30,6 +30,7 @@ const baseShipment = (status: string): Shipment => ({
   customer_name: "Acme",
   username: "tester",
   invoice_number: "",
+  payment_method: "",
   total_amount: 150,
   total_quantity: 3,
   total_picked: 0,
@@ -59,7 +60,7 @@ describe("Shipments", () => {
 
     renderWithProviders(<Shipments />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "View" }));
+    fireEvent.click(await screen.findByRole("button", { name: /View/ }));
 
     expect(await screen.findByRole("button", { name: "Pick" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pack" })).not.toBeInTheDocument();
@@ -95,7 +96,7 @@ describe("Shipments", () => {
 
     renderWithProviders(<Shipments />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "View" }));
+    fireEvent.click(await screen.findByRole("button", { name: /View/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
     fireEvent.click(await screen.findByRole("button", { name: "Pack" }));
     fireEvent.click(await screen.findByRole("button", { name: "Ship" }));
@@ -103,6 +104,40 @@ describe("Shipments", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Ship" })).not.toBeInTheDocument());
     expect((await screen.findAllByText("shipped")).length).toBeGreaterThan(0);
     expect(await screen.findByRole("button", { name: "Create Invoice" })).toBeInTheDocument();
+  });
+
+  it("sends the selected payment method when creating the invoice", async () => {
+    let status = "draft";
+    getMock.mockImplementation((url: string) => {
+      if (url === "/shipments") return Promise.resolve({ data: { items: [{ ...baseShipment(status) }], total: 1, page: 1, pages: 1 } });
+      if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 1, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 1 } });
+      if (url === "/shipments/1") return Promise.resolve({ data: baseShipment(status) });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    postMock.mockImplementation((url: string) => {
+      if (url === "/shipments/1/pick") { status = "picking"; return Promise.resolve({}); }
+      if (url === "/shipments/1/pack") { status = "packed"; return Promise.resolve({}); }
+      if (url === "/shipments/1/ship") { status = "shipped"; return Promise.resolve({}); }
+      if (url === "/shipments/1/create-sale") return Promise.resolve({ data: { invoice_number: "INV-1", payment_method: "card" } });
+      return Promise.reject(new Error(`Unexpected post: ${url}`));
+    });
+
+    renderWithProviders(<Shipments />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /View/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pack" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ship" }));
+
+    expect(await screen.findByRole("combobox", { name: "Payment method" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "card" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Invoice" }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/shipments/1/create-sale", null, expect.objectContaining({
+        params: expect.objectContaining({ payment_method: "card" }),
+      }))
+    );
   });
 
   it("sends a debounced search query", async () => {
@@ -171,7 +206,7 @@ describe("Shipments", () => {
     });
 
     renderWithProviders(<Shipments />);
-    fireEvent.click(await screen.findByRole("button", { name: "View" }));
+    fireEvent.click(await screen.findByRole("button", { name: /View/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
 
     expect(await screen.findByText("Select Serial Numbers")).toBeInTheDocument();
