@@ -31,6 +31,8 @@ class LocationOut(BaseModel):
     path: str = ""
     stock_line_count: int = 0
     lpn_count: int = 0
+    lot_count: int = 0
+    serial_count: int = 0
     total_quantity: int = 0
     stock_value: float = 0.0
 

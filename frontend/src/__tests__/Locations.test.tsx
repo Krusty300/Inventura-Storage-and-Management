@@ -55,6 +55,7 @@ function mockLocations(tree: ReturnType<typeof mockLocationTree>[], summary: Rec
     }
     if (url === "/activity-logs") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
     if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+    if (url === "/reports/export/locations") return Promise.resolve({ data: new Blob(["a,b,c"], { type: "text/csv" }) });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
 }
@@ -229,11 +230,39 @@ describe("Locations Page", () => {
     expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument();
   });
 
-  it("renders the export button", async () => {
+  it("exports locations through the CSV report endpoint", async () => {
     mockLocations([mockLocationTree()]);
+    URL.createObjectURL = vi.fn(() => "blob:locations");
     renderWithProviders(<Locations />);
     expect(await screen.findByText("Aisle A")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export locations to CSV" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Export locations to CSV" }));
+    await vi.waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith("/reports/export/locations", expect.objectContaining({ responseType: "blob" }))
+    );
+    expect(await screen.findByText("Locations exported to CSV")).toBeInTheDocument();
+  });
+
+  it("shows the server message when deleting fails", async () => {
+    mockLocations([mockLocationTree()]);
+    (api.delete as ReturnType<typeof vi.fn>).mockRejectedValue({
+      response: { data: { detail: [{ msg: "Cannot delete a location with stock movement history" }] } },
+    });
+    renderWithProviders(<Locations />);
+    fireEvent.click(await screen.findByLabelText("Delete Aisle A"));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("Cannot delete a location with stock movement history")).toBeInTheDocument();
+  });
+
+  it("shows validation errors from the server when saving fails", async () => {
+    mockLocations([mockLocationTree()]);
+    (api.post as ReturnType<typeof vi.fn>).mockRejectedValue({
+      response: { data: { detail: [{ msg: "Invalid location type 'binn'" }] } },
+    });
+    renderWithProviders(<Locations />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add Location" }));
+    fireEvent.change(screen.getByPlaceholderText("e.g. Aisle A, Bin A-01"), { target: { value: "Bin B-02" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText("Invalid location type 'binn'")).toBeInTheDocument();
   });
 
   it("creates a location through the form including the active toggle", async () => {

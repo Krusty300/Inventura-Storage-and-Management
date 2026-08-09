@@ -11,6 +11,8 @@ from app.database import get_db
 from app.models.product import Product
 from app.models.category import Category
 from app.models.supplier import Supplier
+from app.models.location import Location
+from app.routers.locations import _with_counts
 from app.models.stock_movement import StockMovement
 from app.models.order import Order, OrderItem
 from app.models.sale import Sale, SaleItem
@@ -360,6 +362,23 @@ def export_movements(start_date: str | None = None, end_date: str | None = None,
         "stock_movements_report",
         ["Date", "Product", "Type", "Quantity Change", "Reference", "Notes"],
         [[m.created_at.strftime("%Y-%m-%d %H:%M"), m.product_name, m.movement_type, m.quantity_change, m.reference or "", m.notes or ""] for m in rows],
+    )
+
+
+@router.get("/export/locations")
+def export_locations(search: str = Query(""), db: Session = Depends(get_db)):
+    q = db.query(Location).options(joinedload(Location.parent))
+    if search:
+        like = f"%{search}%"
+        q = q.filter(Location.name.ilike(like) | Location.code.ilike(like))
+    locations = q.order_by(Location.name).all()
+    return _csv_response(
+        "locations_report",
+        ["Name", "Code", "Path", "Type", "Status", "Stock Lines", "Quantity", "Stock Value", "LPNs", "Lots", "Serials"],
+        [[l["name"], l["code"] or "", l["path"], l["location_type"],
+          "active" if l["is_active"] else "inactive", l["stock_line_count"], l["total_quantity"],
+          l["stock_value"], l["lpn_count"], l["lot_count"], l["serial_count"]]
+         for l in _with_counts(locations, db)],
     )
 
 

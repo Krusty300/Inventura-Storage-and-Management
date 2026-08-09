@@ -329,6 +329,12 @@ def create_location(data: LocationCreate, db: Session = Depends(get_db), user=De
 def update_location(location_id: int, data: LocationUpdate, db: Session = Depends(get_db), user=Depends(require_permission("locations.update"))):
     loc = get_or_404(Location, location_id, db)
     updates = data.model_dump(exclude_unset=True)
+    if "name" in updates:
+        if not updates["name"] or not str(updates["name"]).strip():
+            raise HTTPException(status_code=400, detail="Location name cannot be empty")
+        updates["name"] = updates["name"].strip()
+    if "code" in updates and updates["code"] is not None:
+        updates["code"] = updates["code"].strip()
     if "parent_id" in updates and updates["parent_id"] is not None:
         if updates["parent_id"] == loc.id:
             raise HTTPException(status_code=400, detail="A location cannot be its own parent")
@@ -360,14 +366,22 @@ def delete_location(location_id: int, db: Session = Depends(get_db), user=Depend
     has_stock = db.query(StockLine).filter(StockLine.location_id == loc.id).first() is not None
     if has_stock:
         raise HTTPException(status_code=400, detail="Cannot delete a location that has stock on hand")
+    has_products = db.query(Product).filter(Product.location_id == loc.id).first() is not None
+    if has_products:
+        raise HTTPException(status_code=400, detail="Cannot delete a location that is assigned to products")
     has_lpns = db.query(LPN).filter(LPN.location_id == loc.id).first() is not None
     if has_lpns:
         raise HTTPException(status_code=400, detail="Cannot delete a location that has LPNs")
-    has_serials = db.query(SerialNumber).filter(
-        SerialNumber.location_id == loc.id, SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK
-    ).first() is not None
+    has_serials = db.query(SerialNumber).filter(SerialNumber.location_id == loc.id).first() is not None
     if has_serials:
-        raise HTTPException(status_code=400, detail="Cannot delete a location that has serialized items on hand")
+        raise HTTPException(status_code=400, detail="Cannot delete a location with serial number history")
+    has_movements = (
+        db.query(StockMovement)
+        .filter((StockMovement.from_location_id == loc.id) | (StockMovement.to_location_id == loc.id))
+        .first() is not None
+    )
+    if has_movements:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with stock movement history")
     path = loc.path
     db.delete(loc)
     db.commit()

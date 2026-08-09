@@ -13,7 +13,8 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
-import { exportCSV } from "../utils/csv";
+import { downloadBlob } from "../utils/download";
+import { errorMessage } from "../utils/errors";
 
 interface LocationForm {
   name: string;
@@ -80,7 +81,7 @@ export default function Locations() {
       addToast("Location deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["locations"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot delete location", "error"),
+    onError: (err: any) => addToast(errorMessage(err, "Cannot delete location"), "error"),
   });
 
   const openDetail = (loc: Location) => {
@@ -141,24 +142,17 @@ export default function Locations() {
   const expandAll = () => setExpanded(new Set(allIds));
   const collapseAll = () => setExpanded(new Set());
 
-  const handleExport = () => {
-    exportCSV(
-      ["Name", "Path", "Code", "Type", "Status", "Stock Lines", "Quantity", "Stock Value", "LPNs", "Lots"],
-      (all || []).map((l) => [
-        l.name,
-        l.path,
-        l.code || "",
-        l.location_type,
-        l.is_active ? "active" : "inactive",
-        l.stock_line_count,
-        l.total_quantity,
-        formatCurrency(l.stock_value, currencySymbol),
-        l.lpn_count,
-        l.lot_count ?? 0,
-      ]),
-      "locations"
-    );
-    addToast("Locations exported to CSV", "success");
+  const handleExport = async () => {
+    try {
+      const { data } = await api.get("/reports/export/locations", {
+        params: search.trim() ? { search: search.trim() } : {},
+        responseType: "blob",
+      });
+      downloadBlob(data, "locations_report.csv");
+      addToast("Locations exported to CSV", "success");
+    } catch (err: any) {
+      addToast(errorMessage(err, "Failed to export locations"), "error");
+    }
   };
 
   const renderNode = (node: LocationTree, depth: number, forceOpen: boolean) => {
@@ -346,7 +340,7 @@ function LocationFormModal({ location, locations, onClose, onSaved }: {
       addToast(location ? "Location updated" : "Location created", "success");
       onSaved();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving location", "error");
+      addToast(errorMessage(err, "Error saving location"), "error");
     }
     setSaving(false);
   };

@@ -140,7 +140,7 @@ def test_report_exports(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "EXP-001", "name": "Export Item", "quantity": 1, "cost_price": 1.0}, headers=auth_headers).json()
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
     client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 1.0}]}, headers=auth_headers)
-    for path in ("/api/reports/export/sales", "/api/reports/export/movements", "/api/reports/export/products", "/api/reports/export/orders"):
+    for path in ("/api/reports/export/sales", "/api/reports/export/movements", "/api/reports/export/products", "/api/reports/export/orders", "/api/reports/export/locations"):
         resp = client.get(path, headers=auth_headers)
         assert resp.status_code == 200
         assert "text/csv" in resp.headers["content-type"]
@@ -155,3 +155,14 @@ def test_export_orders_respects_search(auth_headers):
     body = resp.content.decode("utf-8")
     assert first["order_number"] in body
     assert second["order_number"] not in body
+
+
+def test_export_locations_respects_search(auth_headers):
+    client.post("/api/locations", json={"name": "Export Bin One", "code": "EXP-LOC-1"}, headers=auth_headers)
+    client.post("/api/locations", json={"name": "Export Bin Two", "code": "EXP-LOC-2"}, headers=auth_headers)
+    resp = client.get("/api/reports/export/locations", params={"search": "EXP-LOC-1"}, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.content.decode("utf-8")
+    assert "EXP-LOC-1" in body
+    assert "EXP-LOC-2" not in body
+    assert "Stock Lines" in body

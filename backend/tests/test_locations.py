@@ -1,4 +1,4 @@
-from app.models import Location, StockLine
+from app.models import Location, StockLine, User
 from app.services import inventory
 from tests.conftest import TestingSessionLocal, client
 
@@ -286,3 +286,65 @@ def test_location_delete_blocked_with_serials(auth_headers):
     resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "serial" in resp.json()["detail"].lower()
+
+
+def test_location_delete_blocked_with_product_assigned(auth_headers):
+    loc = _create_location(auth_headers, code="P-ASSIGN").json()
+    client.post("/api/products", json={
+        "sku": "LOC-ASSIGN", "name": "Assigned Loc", "unit_price": 1.0, "quantity": 0, "location_id": loc["id"],
+    }, headers=auth_headers)
+    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "product" in resp.json()["detail"].lower()
+
+
+def test_location_delete_blocked_with_movement_history(auth_headers):
+    src = _create_location(auth_headers, code="MOVHIST-A").json()
+    dst = _create_location(auth_headers, code="MOVHIST-B").json()
+    prod = client.post("/api/products", json={
+        "sku": "LOC-MOVEH", "name": "Move Hist", "unit_price": 1.0, "quantity": 0, "location_id": 1,
+    }, headers=auth_headers).json()
+    client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "location_id": src["id"]}],
+    }, headers=auth_headers)
+    assert client.post("/api/stock-movements/transfer", json={
+        "product_id": prod["id"], "quantity": 2, "from_location_id": src["id"], "to_location_id": dst["id"],
+    }, headers=auth_headers).status_code == 201
+    resp = client.delete(f"/api/locations/{src['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "movement" in resp.json()["detail"].lower()
+
+
+def test_location_delete_blocked_with_scrapped_serials(auth_headers):
+    loc = _create_location(auth_headers, code="SERDEL-2").json()
+    prod = _serialized_at(auth_headers, loc, "SERDEL-2P", ["S-DEL2"])
+    db = TestingSessionLocal()
+    try:
+        user_id = db.query(User).filter(User.username == "testuser").first().id
+        inventory.scrap_serials(
+            db, product_id=prod["id"], user_id=user_id, location_id=loc["id"], quantity=1, reference="test scrap",
+        )
+        db.commit()
+    finally:
+        db.close()
+    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "serial" in resp.json()["detail"].lower()
+
+
+def test_update_location_blank_name_rejected(auth_headers):
+    loc = _create_location(auth_headers, code="BLANK-NAME").json()
+    assert client.put(f"/api/locations/{loc['id']}", json={"name": "   "}, headers=auth_headers).status_code == 400
+    assert client.put(f"/api/locations/{loc['id']}", json={"name": None}, headers=auth_headers).status_code == 400
+    assert client.get(f"/api/locations/{loc['id']}", headers=auth_headers).json()["name"] == "Bin A-01"
+
+
+def test_update_location_clears_code_and_parent(auth_headers):
+    parent = _create_location(auth_headers, code="CLEAR-P").json()
+    child = _create_location(auth_headers, code="CLEAR-C", parent_id=parent["id"]).json()
+    updated = client.put(f"/api/locations/{child['id']}", json={"code": None, "parent_id": None}, headers=auth_headers)
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["code"] is None
+    assert body["parent_id"] is None
+    assert body["path"] == child["name"]
