@@ -61,8 +61,8 @@ describe("AdjustStockModal", () => {
     );
   });
 
-  it("submits a null location_id when using the default product location", async () => {
-    mockApi([{ id: 1, path: "Main", is_active: true }], [{ location_id: 1, path: "Main", quantity: 2 }]);
+  it("submits a null location_id when the product has no located stock", async () => {
+    mockApi([{ id: 1, path: "Main", is_active: true }], []);
     (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
     renderWithProviders(<AdjustStockModal product={makeProduct({ id: 5, name: "Widget", sku: "W-5" })} onClose={() => {}} onAdjusted={() => {}} />);
 
@@ -82,6 +82,28 @@ describe("AdjustStockModal", () => {
         location_id: null,
       })
     );
+  });
+
+  it("auto-detects and preselects the location holding the most existing stock", async () => {
+    mockApi(
+      [
+        { id: 1, path: "Main", is_active: true },
+        { id: 10, path: "Shelf A", is_active: true },
+        { id: 3, path: "Bin B", is_active: true },
+      ],
+      [
+        { location_id: 1, path: "Main", quantity: 2 },
+        { location_id: 10, path: "Shelf A", quantity: 8 },
+        { location_id: 3, path: "Bin B", quantity: 5 },
+      ]
+    );
+    renderWithProviders(<AdjustStockModal product={makeProduct({ id: 5, name: "Widget", sku: "W-5" })} onClose={() => {}} onAdjusted={() => {}} />);
+
+    await screen.findByRole("heading", { name: "Adjust Stock" });
+    await waitFor(() => expect(screen.getAllByRole("combobox")[0]).toHaveValue("10"));
+
+    expect(screen.getByText(/Auto-detected from existing stock/)).toBeInTheDocument();
+    expect(screen.getByText("Will add 12 units")).toBeInTheDocument();
   });
 
   it("shows the selected location's on-hand as the current quantity", async () => {

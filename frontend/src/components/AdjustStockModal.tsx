@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import api from "../api/client";
@@ -16,6 +16,7 @@ interface Props {
 export default function AdjustStockModal({ product, onClose, onAdjusted }: Props) {
   const [newQty, setNewQty] = useState(product.quantity.toString());
   const [locationId, setLocationId] = useState("");
+  const [locationTouched, setLocationTouched] = useState(false);
   const [reasonCode, setReasonCode] = useState("recount");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -32,6 +33,14 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
 
   const stockLocations = useProductStockLocations(product.id, false);
   const stockCountByLoc = new Map(stockLocations.locations.map((l) => [l.location_id, l.count]));
+
+  useEffect(() => {
+    if (locationTouched || locationId !== "") return;
+    const stocked = stockLocations.locations.filter((l) => l.count > 0);
+    if (stocked.length === 0) return;
+    const top = [...stocked].sort((a, b) => b.count - a.count)[0];
+    setLocationId(String(top.location_id));
+  }, [stockLocations.locations, locationId, locationTouched]);
 
   const locationOptions = [...activeLocations].sort((a, b) => a.path.localeCompare(b.path));
   const currentQty = locationId ? stockCountByLoc.get(parseInt(locationId)) ?? 0 : product.quantity;
@@ -68,7 +77,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
 
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Location</label>
-          <select className="select" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+          <select className="select" value={locationId} onChange={(e) => { setLocationTouched(true); setLocationId(e.target.value); }}>
             <option value="">Default (product location)</option>
             {locationOptions.map((l) => {
               const count = stockCountByLoc.get(l.id);
@@ -79,6 +88,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
             {locationId
               ? `New quantity will be the target stock at this location (current: ${currentQty}).`
               : "Applies to the product's default location. Pick a location to adjust stock there instead."}
+            {!locationTouched && locationId !== "" && " Auto-detected from existing stock."}
           </p>
         </div>
 

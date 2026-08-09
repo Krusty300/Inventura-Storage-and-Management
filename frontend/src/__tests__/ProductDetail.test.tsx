@@ -377,7 +377,7 @@ describe("ProductDetail", () => {
         return Promise.resolve({
           data: {
             items: [
-              { id: 10, product_id: 5, lot_number: "LOT-Q1", status: "quarantined", on_hand: 3, quantity: 3, created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00" },
+              { id: 10, product_id: 5, lot_number: "LOT-Q1", status: "quarantined", on_hand: 3, quantity: 3, locations: ["Quarantine Area"], created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00" },
             ],
             total: 1,
             page: 1,
@@ -392,6 +392,7 @@ describe("ProductDetail", () => {
 
     expect(await screen.findByText("Quarantined Lots:")).toBeInTheDocument();
     expect(await screen.findByText("LOT-Q1")).toBeInTheDocument();
+    expect(screen.getByText("Quarantine Area")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Release LOT-Q1"));
     await waitFor(() => expect(putMock).toHaveBeenCalledWith("/lots/10", { status: "in_stock" }));
   });

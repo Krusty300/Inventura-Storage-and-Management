@@ -66,6 +66,21 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   });
   const quarantinedLots = quarantinedLotsData || [];
 
+  const statusBadges = (
+    <>
+      {quarantinedQty > 0 && (
+        <span className="badge badge-warning" title={`${quarantinedQty} unit(s) in quarantined lots`}>
+          Quarantined {quarantinedQty}
+        </span>
+      )}
+      {expiredLotQty > 0 && (
+        <span className="badge badge-danger" title={`${expiredLotQty} unit(s) in expired lots`}>
+          Expired {expiredLotQty}
+        </span>
+      )}
+    </>
+  );
+
   const releaseLot = useMutation({
     mutationFn: (id: number) => api.put(`/lots/${id}`, { status: "in_stock" }),
     onSuccess: () => {
@@ -92,7 +107,18 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   });
 
   return (
-    <Modal open onClose={onClose} title={product.display_name} wide>
+    <Modal
+      open
+      onClose={onClose}
+      wide
+      title={
+        <span className="inline-flex flex-wrap items-center gap-2">
+          {product.display_name}
+          {statusBadges}
+        </span>
+      }
+      ariaLabel={product.display_name}
+    >
       <div className="space-y-4">
         {product.image_url && (
           <div className="flex justify-center">
@@ -128,16 +154,6 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           <div>
             <span className="text-muted">{hasVariants(product) ? "Total Quantity:" : "Quantity:"}</span>
             <p className={`font-medium ${qty <= product.reorder_level ? "text-red-600 dark:text-red-400" : ""}`}>{qty}</p>
-            {quarantinedQty > 0 && (
-              <span className="badge badge-warning mt-1" title={`${quarantinedQty} unit(s) in quarantined lots`}>
-                Quarantined {quarantinedQty}
-              </span>
-            )}
-            {expiredLotQty > 0 && (
-              <span className="badge badge-danger mt-1" title={`${expiredLotQty} unit(s) in expired lots`}>
-                Expired {expiredLotQty}
-              </span>
-            )}
           </div>
           <div>
             <span className="text-muted">Reorder Level:</span>
@@ -221,11 +237,18 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
                     <span className="font-medium truncate">{lot.lot_number}</span>
                     <span className="text-muted">({lot.on_hand} on hand)</span>
                   </span>
-                  {can("lots.update") && (
-                    <button onClick={() => releaseLot.mutate(lot.id)} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label={`Release ${lot.lot_number}`}>
-                      Release
-                    </button>
-                  )}
+                  <span className="inline-flex flex-wrap items-center justify-end gap-1 shrink-0">
+                    {(lot.locations ?? []).map((loc) => (
+                      <span key={loc} className="badge bg-subtle text-ink border border-border inline-flex items-center gap-1 px-2 py-0.5 text-xs" title={`${lot.lot_number} at ${loc}`}>
+                        <MapPin size={11} /> {loc}
+                      </span>
+                    ))}
+                    {can("lots.update") && (
+                      <button onClick={() => releaseLot.mutate(lot.id)} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label={`Release ${lot.lot_number}`}>
+                        Release
+                      </button>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>

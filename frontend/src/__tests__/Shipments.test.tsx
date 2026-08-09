@@ -68,14 +68,14 @@ describe("Shipments", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pick" }));
 
     expect(await screen.findByRole("button", { name: "Pack" })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Ship" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Product Shipping" })).toBeInTheDocument();
     expect((await screen.findAllByText("picking")).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Pack" }));
 
     await waitFor(() => expect(screen.queryByRole("button", { name: "Pick" })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Pack" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ship" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Product Shipping" })).toBeInTheDocument();
     expect((await screen.findAllByText("packed")).length).toBeGreaterThan(0);
   });
 
@@ -99,9 +99,9 @@ describe("Shipments", () => {
     fireEvent.click(await screen.findByRole("button", { name: /View/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
     fireEvent.click(await screen.findByRole("button", { name: "Pack" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Ship" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Product Shipping" }));
 
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Ship" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Product Shipping" })).not.toBeInTheDocument());
     expect((await screen.findAllByText("shipped")).length).toBeGreaterThan(0);
     expect(await screen.findByRole("button", { name: "Create Invoice" })).toBeInTheDocument();
   });
@@ -127,7 +127,7 @@ describe("Shipments", () => {
     fireEvent.click(await screen.findByRole("button", { name: /View/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
     fireEvent.click(await screen.findByRole("button", { name: "Pack" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Ship" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Product Shipping" }));
 
     expect(await screen.findByRole("combobox", { name: "Payment method" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "card" } });

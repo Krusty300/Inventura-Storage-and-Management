@@ -524,7 +524,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
               )}
               {canShip && (
                 <button onClick={ship} disabled={busy !== null} className="btn-primary inline-flex items-center gap-1">
-                  Ship
+                  Product Shipping
                 </button>
               )}
             </div>
