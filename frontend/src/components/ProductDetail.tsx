@@ -1,11 +1,11 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import Modal from "./Modal";
-import { PackagePlus, PackageOpen, MapPin } from "lucide-react";
+import { PackagePlus, PackageOpen, MapPin, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Product, ProductTrace } from "../types";
+import type { Lot, Product, ProductTrace } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -55,6 +55,29 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   const expiredLotQty = product.expired_lot_qty || 0;
   const quarantinedQty = product.quarantined_qty || 0;
   const { locations, unallocated } = useProductStockLocations(product.id, product.is_serialized);
+
+  const { data: quarantinedLotsData } = useQuery({
+    queryKey: ["product-quarantined-lots", product.id],
+    queryFn: async () => {
+      const { data } = await api.get("/lots", { params: { product_id: product.id, status: "quarantined", limit: 50 } });
+      return (data?.items || []) as Lot[];
+    },
+    enabled: quarantinedQty > 0,
+  });
+  const quarantinedLots = quarantinedLotsData || [];
+
+  const releaseLot = useMutation({
+    mutationFn: (id: number) => api.put(`/lots/${id}`, { status: "in_stock" }),
+    onSuccess: () => {
+      addToast("Lot released", "success");
+      queryClient.invalidateQueries({ queryKey: ["product-quarantined-lots"] });
+      queryClient.invalidateQueries({ queryKey: ["product-stock-locations"] });
+      queryClient.invalidateQueries({ queryKey: ["lots"] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release lot", "error"),
+  });
 
   const toggleStatus = useMutation({
     mutationFn: () => api.put(`/products/${product.id}`, { is_active: !isActive }),
@@ -184,6 +207,28 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {quarantinedQty > 0 && (
+          <div>
+            <span className="text-sm text-muted">Quarantined Lots:</span>
+            <ul className="mt-1 space-y-1">
+              {quarantinedLots.map((lot) => (
+                <li key={lot.id} className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 text-sm">
+                  <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400 min-w-0">
+                    <ShieldAlert size={14} className="shrink-0" />
+                    <span className="font-medium truncate">{lot.lot_number}</span>
+                    <span className="text-muted">({lot.on_hand} on hand)</span>
+                  </span>
+                  {can("lots.update") && (
+                    <button onClick={() => releaseLot.mutate(lot.id)} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label={`Release ${lot.lot_number}`}>
+                      Release
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 

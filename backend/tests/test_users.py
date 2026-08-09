@@ -57,12 +57,61 @@ def test_change_password(auth_headers):
         "current_password": "testpass123", "new_password": "newpass456",
     }, headers=auth_headers)
     assert resp.status_code == 200
+    # All sessions are revoked, so the old token no longer works
+    assert client.get("/api/auth/me", headers=auth_headers).status_code == 401
+    # Log in with the new password
+    fresh_token = client.post("/api/auth/login", json={"username": "testuser", "password": "newpass456"}).json()["access_token"]
+    fresh = {"Authorization": f"Bearer {fresh_token}"}
+    # Wrong current password is still rejected
     resp = client.put("/api/users/password/change", json={
         "current_password": "wrong", "new_password": "other789",
-    }, headers=auth_headers)
+    }, headers=fresh)
     assert resp.status_code == 400
     login = client.post("/api/auth/login", json={"username": "testuser", "password": "newpass456"})
     assert login.status_code == 200
+
+
+def test_change_password_revokes_all_sessions(auth_headers):
+    # testuser is logged in on this device (auth_headers) plus a second device
+    other_token = client.post("/api/auth/login", json={"username": "testuser", "password": "testpass123"}).json()["access_token"]
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    assert client.get("/api/auth/me", headers=auth_headers).status_code == 200
+    assert client.get("/api/auth/me", headers=other_headers).status_code == 200
+
+    resp = client.put("/api/users/password/change", json={
+        "current_password": "testpass123", "new_password": "newpass456",
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+
+    # Both this device and the other device are signed out
+    assert client.get("/api/auth/me", headers=auth_headers).status_code == 401
+    assert client.get("/api/auth/me", headers=other_headers).status_code == 401
+
+    # After logging back in, the old sessions are shown as revoked
+    fresh = client.post("/api/auth/login", json={"username": "testuser", "password": "newpass456"}).json()["access_token"]
+    sessions = client.get("/api/auth/sessions", headers={"Authorization": f"Bearer {fresh}"}).json()
+    active = [s for s in sessions if s["revoked_at"] is None]
+    assert len(active) == 1
+    assert all(s["revoked_at"] is not None for s in sessions if not s["is_current"])
+
+
+def test_reset_password_revokes_user_sessions(auth_headers):
+    created = client.post("/api/users", json={
+        "username": "revoketarget", "email": "rt@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers).json()
+    target_token = client.post("/api/auth/login", json={"username": "revoketarget", "password": "testpass123"}).json()["access_token"]
+    target_headers = {"Authorization": f"Bearer {target_token}"}
+    assert client.get("/api/auth/me", headers=target_headers).status_code == 200
+
+    resp = client.post(f"/api/users/{created['id']}/reset-password", json={"new_password": "resetpass123"}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    # The target user's existing sessions are invalidated, but the admin's own session still works
+    assert client.get("/api/auth/me", headers=target_headers).status_code == 401
+    assert client.get("/api/auth/me", headers=auth_headers).status_code == 200
+    # Old password no longer works, the new one does
+    assert client.post("/api/auth/login", json={"username": "revoketarget", "password": "testpass123"}).status_code == 401
+    assert client.post("/api/auth/login", json={"username": "revoketarget", "password": "resetpass123"}).status_code == 200
 
 
 def test_update_own_profile(auth_headers):

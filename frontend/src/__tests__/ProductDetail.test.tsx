@@ -11,6 +11,7 @@ vi.mock("../api/client", () => ({
 import ProductDetail from "../components/ProductDetail";
 
 const getMock = api.get as ReturnType<typeof vi.fn>;
+const putMock = api.put as ReturnType<typeof vi.fn>;
 
 describe("ProductDetail", () => {
   beforeEach(() => {
@@ -360,5 +361,38 @@ describe("ProductDetail", () => {
     expect(await screen.findByText("Quantity:")).toBeInTheDocument();
     expect(screen.queryByText(/Quarantined/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Expired/)).not.toBeInTheDocument();
+  });
+
+  it("shows quarantined lots with a release quick action", async () => {
+    const product = makeProduct({ id: 5, sku: "SKU-5", name: "Widget", quarantined_qty: 3 });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/stock-movements/locations") {
+        return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      }
+      if (url === "/products/5/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      if (url === "/lots") {
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 10, product_id: 5, lot_number: "LOT-Q1", status: "quarantined", on_hand: 3, quantity: 3, created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00" },
+            ],
+            total: 1,
+            page: 1,
+            pages: 1,
+          },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    expect(await screen.findByText("Quarantined Lots:")).toBeInTheDocument();
+    expect(await screen.findByText("LOT-Q1")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Release LOT-Q1"));
+    await waitFor(() => expect(putMock).toHaveBeenCalledWith("/lots/10", { status: "in_stock" }));
   });
 });

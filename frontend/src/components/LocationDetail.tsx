@@ -1,12 +1,14 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Package, MapPin, ClipboardList } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Package, MapPin, ClipboardList, ShieldCheck, ShieldX } from "lucide-react";
 import api from "../api/client";
 import Modal from "./Modal";
 import type { Location, PaginatedResponse } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 
 interface LocationDetailData {
   location: Location;
@@ -16,6 +18,7 @@ interface LocationDetailData {
     product_name: string;
     sku: string;
     lot_number: string;
+    lot_id: number | null;
     lot_status: string;
     lpn_number: string;
     quantity: number;
@@ -96,6 +99,22 @@ export default function LocationDetail({ location, onClose }: Props) {
   const [tab, setTab] = useState<Tab>("stock");
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const { can } = useAuth();
+  const { addToast } = useToast();
+  const queryClient = useQueryClient();
+
+  const updateLotMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) => api.put(`/lots/${id}`, { status }),
+    onSuccess: () => {
+      addToast("Lot updated", "success");
+      queryClient.invalidateQueries({ queryKey: ["locations", "detail", location.id] });
+      queryClient.invalidateQueries({ queryKey: ["locations"] });
+      queryClient.invalidateQueries({ queryKey: ["lots"] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot update lot", "error"),
+  });
 
   const { data: detail, isLoading } = useQuery({
     queryKey: ["locations", "detail", location.id],
@@ -187,6 +206,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                       <th className="px-3 py-2 font-medium">LPN</th>
                       <th className="px-3 py-2 font-medium text-right">Qty</th>
                       <th className="px-3 py-2 font-medium text-right">Value</th>
+                      <th className="px-3 py-2 font-medium" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -198,6 +218,16 @@ export default function LocationDetail({ location, onClose }: Props) {
                         <td className="px-3 py-2 text-muted">{sl.lpn_number || "—"}</td>
                         <td className="px-3 py-2 text-right">{sl.quantity}</td>
                         <td className="px-3 py-2 text-right">{formatCurrency(sl.value, currencySymbol)}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex justify-end gap-1">
+                            {can("lots.update") && sl.lot_id != null && sl.lot_status === "in_stock" && (
+                              <button onClick={() => { if (sl.lot_id != null) updateLotMutation.mutate({ id: sl.lot_id, status: "quarantined" }); }} className="p-1 text-faint hover:text-amber-600 dark:text-amber-400" title="Quarantine" aria-label={`Quarantine ${sl.lot_number}`}><ShieldX size={16} /></button>
+                            )}
+                            {can("lots.update") && sl.lot_id != null && sl.lot_status === "quarantined" && (
+                              <button onClick={() => { if (sl.lot_id != null) updateLotMutation.mutate({ id: sl.lot_id, status: "in_stock" }); }} className="p-1 text-faint hover:text-green-600 dark:text-green-400" title="Release" aria-label={`Release ${sl.lot_number}`}><ShieldCheck size={16} /></button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
