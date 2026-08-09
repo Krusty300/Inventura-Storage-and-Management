@@ -1,16 +1,17 @@
 # Inventory Management System
 
-A full-stack warehouse and inventory management application covering products (with variants), purchase orders, sales, stock movements, receipts, shipments, work orders, BOMs, costed manufacturing, serial/lot tracking, cycle counts, ASNs, LPNs, quality checks, MRP planning, reporting, and real-time WebSocket updates.
+A full-stack warehouse and inventory management application covering products (with variants), purchase orders, sales, stock movements, receipts, shipments, work orders, BOMs, costed manufacturing, serial/lot tracking, quarantine management, cycle counts, ASNs, LPNs, quality checks, MRP planning, demand forecasting, reporting, and real-time WebSocket updates.
 
 - **Backend:** Python 3.11+ / FastAPI / SQLAlchemy 2.0 / SQLite (`backend/`)
 - **Frontend:** React 19 / TypeScript / Vite 8 / Tailwind CSS 4 / React Query (`frontend/`)
-- **Tests:** pytest (546 backend), Vitest + Testing Library (236 frontend)
+- **Tests:** pytest (629 backend), Vitest + Testing Library (283 frontend)
 
 ---
 
 ## Table of contents
 
 - [Quick start](#quick-start)
+- [Real-world use cases](#real-world-use-cases)
 - [Manual setup](#manual-setup)
 - [Environment](#environment)
 - [Seeding demo data](#seeding-demo-data)
@@ -38,6 +39,75 @@ The included `start.ps1` boots both servers (and kills any leftover processes on
 | Frontend | http://localhost:5173               |
 | API      | http://localhost:8000/api           |
 | API docs | http://localhost:8000/docs          |
+
+---
+
+## Real-world use cases
+
+This system is designed for small and mid-sized operations that need warehouse
+accuracy without a heavyweight ERP. A few concrete ways teams use it:
+
+### Food & beverage distribution (perishables)
+- Each production run or supplier delivery becomes a **lot** with an expiry date.
+- **FEFO allocation** sells the soonest-expiring stock first, so nothing sits
+  past its date while newer stock sells.
+- Automatic **expiring-soon notifications** and an **exceptions report** flag
+  lots approaching their expiry.
+- Expired lots are automatically quarantined and excluded from sellable on-hand,
+  and a red **Expired** badge appears beside the product name on the product
+  detail view.
+- **Cycle counts** per aisle/bin keep physical vs. system quantities in line.
+
+### Medical devices & electronics (serial traceability)
+- **Serialized products** track every individual unit through
+  `in_stock` → `reserved` → `sold` (and `quarantined` / `scrapped`).
+- Receiving registers serials; shipping marks them sold; refunds restore them.
+- **Lot genealogy + recall mode** walks parent/child lot links so a bad raw
+  material lot lists every finished good that consumed it, downstream —
+  exactly what a recall letter needs.
+- Serial status breakdown is available in the WMS stock reports.
+
+### Small-batch manufacturing (make-to-order)
+- **BOMs** define component requirements per finished good (variants can have
+  their own BOM).
+- **Work orders** flow planned → released → in_progress → completed; issuing
+  components backflushes stock automatically and links component lots to the
+  finished-goods lot.
+- Serialized manufacturing registers serial numbers on completion.
+- The **costing report** compares standard vs. actual unit cost per work order,
+  and **MRP planning** shows component readiness before a run starts.
+
+### Multi-location warehouse (transfers & LPNs)
+- Stock lives in a hierarchical location tree (Zone / Aisle / Bin).
+- **Transfers** move stock between locations; **LPNs** group pallets under a
+  scannable label and move as a unit.
+- Unallocated stock (received without a location) is moved via the product
+  detail's **Move Unallocated** action.
+- When adjusting stock on the Products page, the modal **auto-detects the
+  location** that already holds the product's stock and preselects it.
+
+### Quality control (QC → quarantine → release)
+- Receiving a suspect batch? Create a **quality check**; a failed check
+  quarantines the lot, removing it from sellable on-hand and sales allocation.
+- Move stock into a **quarantine-typed location** (e.g. a "Quarantine Area")
+  and the system auto-quarantines the lot/serials on arrival — no manual step.
+- Use the **Quarantine** quick action on the location or product detail, then
+  inspect and **Release** the lot from anywhere once it passes; stock becomes
+  sellable again.
+
+### Retail / e-commerce fulfilment
+- Restock via **purchase orders** or **ASNs** (Advanced Shipping Notices) and
+  **auto-reorder** anything below its reorder level.
+- Sell through **sales** (PDF invoices, source-location tracking per line) or
+  run the **shipment** flow: draft → pick → pack → ship → Create Invoice.
+- **WebSocket updates** keep every open screen current as stock changes land.
+
+### Audit & compliance
+- **RBAC** separates admin and worker capabilities; **activity logging** records
+  every create/update/delete with user and detail.
+- Password changes and admin resets **revoke all active sessions** immediately.
+
+---
 
 ## Manual setup
 
@@ -128,7 +198,7 @@ inventory-app/
       config.py            # pydantic-settings (SECRET_KEY, DATABASE_URL)
       database.py          # SQLAlchemy engine, session, run_migrations(), Base
       models/              # 27 SQLAlchemy 2.0 mapped model files
-      routers/             # 29 APIRouters under /api/*
+      routers/             # 30 APIRouters under /api/*
       schemas/             # Pydantic request/response models
       services/
         auth.py            # JWT creation, password hashing, get_current_user
@@ -142,18 +212,18 @@ inventory-app/
         password_policy.py # Enforced password complexity
         ratelimit.py       # Login rate-limiting
       ws_manager.py        # WebSocket broadcast manager
-    tests/                 # 41 test files, 546 tests
+    tests/                 # 44 test files, 629 tests
     seed.py                # Wipes + repopulates demo data
   frontend/
     src/
-      pages/               # 28 page components (one per route)
+      pages/               # 29 page components (one per route)
       components/          # 41 shared components
       context/             # AuthContext, ToastContext
       hooks/               # useSettings, useDebounce, useSelectableProducts
       utils/               # permissions, currency, date, csv, download, variants
       api/client.ts        # Axios instance with auth interceptor
       types/index.ts       # Shared TypeScript interfaces
-    __tests__/             # 37 test files, 236 tests
+    __tests__/             # 39 test files, 283 tests
 ```
 
 ### Inventory ledger
@@ -200,7 +270,10 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 - **Stock movements:** full journal of every stock change with type, quantity,
   from/to location, lot, serial, LPN, and reference.
 - **Transfers:** move stock between locations via matched TRANSFER_OUT /
-  TRANSFER_IN pairs.
+  TRANSFER_IN pairs. Moving stock into a **quarantine-typed location**
+  (e.g. "Quarantine Area") auto-quarantines the lot/serials on arrival.
+- **Quarantine move:** `POST /api/stock-movements/quarantine` quarantines
+  stock directly (QAR-xxxx references), with per-lot/per-serial handling.
 - **Cycle counts:** create counts per location, record actual quantities, post
   variance adjustments (positive or negative), with audit trail.
 - **LPNs (License Plate Numbers):** group stock lines under a scannable label;
@@ -210,8 +283,14 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 
 ### Lots & genealogy
 
-- **Lots:** batch tracking with lot number, status (in_stock / quarantined /
-  depleted), and expiry date.
+- **Lots:** batch tracking with lot number, status (`in_stock` / `quarantined` /
+  `expired` / `sold`), and expiry date. `sold` is derived automatically when a
+  serialized lot is fully shipped and reverted on refund.
+- **Quarantine flow:** lots can be quarantined by a failed quality check, by
+  moving stock into a **quarantine-typed location** (auto-quarantine on
+  arrival), or via the dedicated quarantine move. Quarantined lots are excluded
+  from sellable on-hand and sales allocation, and can be released back to
+  sellable stock from the product or location detail view.
 - **Lot links (genealogy):** parent-to-child lot relationships. When a work order
   completes, component lots are linked to the finished-goods lot. Full genealogy
   tree view available per work order. Recall mode traces all descendants of any
@@ -266,7 +345,14 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
   Dashboard shows pending and failed QC count.
 - **Quarantine management:** failing a check quarantines its lot; quarantined
   lots are excluded from sellable on-hand and blocked from sales allocation.
-  Dashboard tracks quarantined units.
+  Dashboard tracks quarantined units. Quarantined and expired lots show badges
+  on the product detail view.
+- **Quarantine-typed locations:** mark a location (e.g. "Quarantine Area") with
+  `location_type=quarantine`; transferring stock into it auto-quarantines the
+  lot/serials on arrival. A dedicated `POST /api/stock-movements/quarantine`
+  move is also available, and **Quarantine / Release** quick actions sit on the
+  location and product detail views. Release works from anywhere and makes the
+  lot sellable again.
 - **Location awareness:** QCs can be scoped to a specific location, and the
   Quality Checks page/detail view show the related location.
 
@@ -337,7 +423,7 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 | StockLine            | Per-product balance at a location (lot/LPN aware) |
 | StockMovement        | Immutable journal of every stock change           |
 | SerialNumber         | Individual serialized unit tracking               |
-| Lot                  | Batch tracking (in_stock / quarantined / depleted)|
+| Lot                  | Batch tracking (in_stock / quarantined / expired / sold) |
 | LotLink              | Parent-child lot genealogy relationships          |
 | Location             | Hierarchical warehouse zones/bins                |
 | LPN                  | License plate numbers grouping stock lines        |
@@ -363,7 +449,7 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 
 ## API overview
 
-All endpoints are under `/api/`. 29 routers in `backend/app/routers/`:
+All endpoints are under `/api/`. 30 routers in `backend/app/routers/`:
 
 | Router           | Prefix             | Key endpoints                                        |
 | ---------------- | ------------------ | ---------------------------------------------------- |
@@ -374,13 +460,13 @@ All endpoints are under `/api/`. 29 routers in `backend/app/routers/`:
 | `customers`      | `/api/customers`   | CRUD, CSV import                                     |
 | `suppliers`      | `/api/suppliers`   | CRUD, CSV import                                     |
 | `locations`      | `/api/locations`   | CRUD, tree, detail (stock + LPN summary)              |
-| `stock-movements`| `/api/stock-movements` | Movement list, transfers, adjustments            |
+| `stock-movements`| `/api/stock-movements` | Movement list, transfers, quarantine, adjustments |
 | `search`         | `/api/search`      | Global search across entities                         |
 | `receipts`       | `/api/receipts`    | Create receipts (standalone or from PO)               |
 | `orders`         | `/api/orders`      | Purchase orders, receive, auto-reorder, PDF           |
 | `sales`          | `/api/sales`       | Sales CRUD, stats, refund, PDF                        |
 | `shipments`      | `/api/shipments`   | Shipments CRUD, pick, pack, ship, cancel, create-sale |
-| `lots`           | `/api/lots`        | Lot list, update status, genealogy                    |
+| `lots`           | `/api/lots`        | Lot list, update status (release), genealogy          |
 | `serial-numbers` | `/api/serial-numbers` | Serial list, status, location history              |
 | `lpns`           | `/api/lpns`        | LPN CRUD, move between locations                      |
 | `asn`            | `/api/asns`        | ASN CRUD, receive (creates receipt + stock)           |
@@ -389,6 +475,7 @@ All endpoints are under `/api/`. 29 routers in `backend/app/routers/`:
 | `work-orders`    | `/api/work-orders` | WO CRUD, release, issue, complete (backflush/serials) |
 | `quality-checks` | `/api/quality-checks` | QC CRUD                                           |
 | `planning`       | `/api/planning`    | MRP planning data (demand, supply, readiness)         |
+| `forecasting`    | `/api/forecasting` | Replenishment recommendations, product forecasts      |
 | `costing`        | `/api/costing`     | Manufacturing cost report (per work order)            |
 | `dashboard`      | `/api/dashboard`   | Aggregated stats (cards + to-process lists)           |
 | `reports`        | `/api/reports`     | Valuation, trends, sales, profit, exceptions, PDF     |
@@ -406,7 +493,7 @@ order, sale) to all connected clients.
 
 ## Frontend pages
 
-28 pages in `frontend/src/pages/`:
+29 pages in `frontend/src/pages/`:
 
 | Page             | Route               | Description                                   |
 | ---------------- | ------------------- | --------------------------------------------- |
@@ -430,6 +517,7 @@ order, sale) to all connected clients.
 | Work Orders      | `/work-orders`      | Manufacturing orders                          |
 | Quality Checks   | `/quality-checks`   | QC inspections                                |
 | Planning         | `/planning`         | MRP dashboard                                 |
+| Forecasting      | `/forecasting`      | Replenishment / demand forecasts              |
 | Reports          | `/reports`          | Valuation, trends, profit, exceptions         |
 | Exceptions       | `/exceptions`       | Low stock, zero stock, quarantined, pending   |
 | Users            | `/users`            | User management (admin)                       |
@@ -483,8 +571,8 @@ modify cycle counts.
 - **Work order statuses:** `planned` / `released` / `in_progress` / `completed` /
   `cancelled`.
 - **QC results:** `pending` / `pass` / `fail`.
-- **Lot statuses:** `in_stock` / `quarantined` / `depleted`.
+- **Lot statuses:** `in_stock` / `quarantined` / `expired` / `sold`.
 - **Serial statuses:** `in_stock` / `reserved` / `sold` / `quarantined` / `scrapped`.
 - **Movement types:** `receive`, `in`, `out`, `transfer_out`, `transfer_in`,
   `sale`, `sale_return`, `issue`, `backflush`, `adjustment`, `count`, `ship`,
-  `return`.
+  `return`, `activate`, `deactivate`, `scrap`.
