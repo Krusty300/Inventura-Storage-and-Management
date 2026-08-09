@@ -10,6 +10,7 @@ vi.mock("../api/client", () => ({
 import Profile from "../pages/Profile";
 
 const getMock = api.get as ReturnType<typeof vi.fn>;
+const postMock = api.post as ReturnType<typeof vi.fn>;
 const putMock = api.put as ReturnType<typeof vi.fn>;
 const deleteMock = api.delete as ReturnType<typeof vi.fn>;
 
@@ -68,5 +69,23 @@ describe("Profile Page", () => {
     const revokeButtons = await screen.findAllByRole("button", { name: "Revoke" });
     fireEvent.click(revokeButtons[0]);
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/auth/sessions/2"));
+  });
+
+  it("signs the user out after changing the password", async () => {
+    putMock.mockResolvedValue({ data: { ok: true } });
+    postMock.mockResolvedValue({ data: { ok: true } });
+    renderWithProviders(<Profile />);
+    const submit = await screen.findByRole("button", { name: /Change Password/ });
+    const inputs = document.querySelectorAll<HTMLInputElement>('input[type="password"]');
+    fireEvent.change(inputs[0], { target: { value: "oldpass1" } });
+    fireEvent.change(inputs[1], { target: { value: "newpass123" } });
+    fireEvent.click(submit);
+    await waitFor(() => expect(putMock).toHaveBeenCalledWith("/users/password/change", {
+      current_password: "oldpass1",
+      new_password: "newpass123",
+    }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/auth/logout"));
+    await waitFor(() => expect(localStorage.getItem("token")).toBeNull());
+    await waitFor(() => expect(document.querySelectorAll('input[type="password"]').length).toBe(0));
   });
 });

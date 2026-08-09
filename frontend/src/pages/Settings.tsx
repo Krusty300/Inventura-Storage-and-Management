@@ -30,7 +30,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 }
 
 export default function Settings() {
-  const { can } = useAuth();
+  const { can, logout } = useAuth();
   const { addToast } = useToast();
   const [tab, setTab] = useState<Tab>("store");
   const [form, setForm] = useState<Record<string, any>>({});
@@ -91,8 +91,9 @@ export default function Settings() {
     setPwSaving(true);
     try {
       await api.put("/users/password/change", pw);
-      addToast("Password changed", "success");
+      addToast("Password changed. You have been signed out of all devices. Please log in with your new password.", "success");
       setPw({ current_password: "", new_password: "" });
+      logout();
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Failed to change password", "error");
     }

@@ -1,11 +1,13 @@
 from math import ceil
 from typing import Optional
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database import get_db
+from app.models.session import UserSession
 from app.models.user import User
 from app.schemas.user import UserOut
 from app.services.auth import get_current_user, require_permission, hash_password, verify_password
@@ -168,9 +170,13 @@ def reset_password(
         raise HTTPException(status_code=400, detail=password_error)
     u = _get_user_or_404(db, user_id)
     u.password_hash = hash_password(data.new_password)
+    db.query(UserSession).filter(
+        UserSession.user_id == u.id,
+        UserSession.revoked_at.is_(None),
+    ).update({"revoked_at": datetime.now(timezone.utc)})
     db.commit()
     log_activity(db, current_user.id, current_user.username, "reset_password", "user", u.id,
-                 f"Reset password for user '{u.username}'")
+                 f"Reset password for user '{u.username}'; all sessions signed out")
     db.commit()
     return {"ok": True}
 
@@ -206,5 +212,12 @@ def change_password(
     if not verify_password(data.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     current_user.password_hash = hash_password(data.new_password)
+    db.query(UserSession).filter(
+        UserSession.user_id == current_user.id,
+        UserSession.revoked_at.is_(None),
+    ).update({"revoked_at": datetime.now(timezone.utc)})
+    db.commit()
+    log_activity(db, current_user.id, current_user.username, "change_password", "user", current_user.id,
+                 "Changed password; all sessions signed out")
     db.commit()
     return {"ok": True}

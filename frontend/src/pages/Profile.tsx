@@ -40,7 +40,7 @@ function deviceLabel(ua: string): string {
 }
 
 export default function Profile() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const { addToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ username: "", email: "" });
@@ -87,8 +87,9 @@ export default function Profile() {
     setPwSaving(true);
     try {
       await api.put("/users/password/change", pw);
-      addToast("Password changed", "success");
+      addToast("Password changed. You have been signed out of all devices. Please log in with your new password.", "success");
       setPw({ current_password: "", new_password: "" });
+      logout();
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Failed to change password", "error");
     }
