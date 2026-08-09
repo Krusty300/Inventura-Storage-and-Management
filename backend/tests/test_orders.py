@@ -1,4 +1,6 @@
-from tests.conftest import client
+from tests.conftest import client, TestingSessionLocal
+from app.models.user import User
+from app.services.auth import hash_password
 
 
 def test_create_order(auth_headers):
@@ -221,6 +223,86 @@ def test_delete_received_order_rejected(auth_headers):
     resp = client.delete(f"/api/orders/{order['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).status_code == 200
+
+
+def test_create_order_unknown_supplier_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-BADSUP", "name": "Bad Supplier", "cost_price": 5.00}, headers=auth_headers).json()
+    resp = client.post("/api/orders", json={
+        "supplier_id": 99999,
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 5.00}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "supplier" in resp.json()["detail"].lower()
+
+
+def test_update_order_unknown_supplier_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-UPBSUP", "name": "Update Bad Supplier", "cost_price": 5.00}, headers=auth_headers).json()
+    sup = client.post("/api/suppliers", json={"name": "Good Supplier"}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "supplier_id": sup["id"],
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 5.00}],
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"supplier_id": 99999}, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["supplier_id"] == sup["id"]
+
+
+def test_update_order_clears_supplier(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-CLRSUP", "name": "Clear Supplier", "cost_price": 5.00}, headers=auth_headers).json()
+    sup = client.post("/api/suppliers", json={"name": "Clear Supplier Co"}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "supplier_id": sup["id"],
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 5.00}],
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"supplier_id": None}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["supplier_id"] is None
+
+
+def test_create_order_duplicate_product_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-DUP", "name": "Duplicate Item", "cost_price": 5.00}, headers=auth_headers).json()
+    resp = client.post("/api/orders", json={
+        "items": [
+            {"product_id": prod["id"], "quantity": 2, "unit_price": 5.00},
+            {"product_id": prod["id"], "quantity": 3, "unit_price": 5.00},
+        ],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "more than once" in resp.json()["detail"].lower()
+
+
+def test_update_order_duplicate_product_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-DUP2", "name": "Duplicate Edit", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}],
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "items": [
+            {"product_id": prod["id"], "quantity": 1, "unit_price": 5.00},
+            {"product_id": prod["id"], "quantity": 1, "unit_price": 5.00},
+        ],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["total_amount"] == 10.0
+
+
+def test_receive_order_attributes_receiving_user(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-USER", "name": "User Item", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 5.00}],
+    }, headers=auth_headers).json()
+    db = TestingSessionLocal()
+    db.add(User(username="receiver", email="receiver@example.com", password_hash=hash_password("testpass123"), role="user"))
+    db.commit()
+    db.close()
+    login = client.post("/api/auth/login", json={"username": "receiver", "password": "testpass123"})
+    recv_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    resp = client.put(f"/api/orders/{order['id']}", json={"status": "received"}, headers=recv_headers)
+    assert resp.status_code == 200
+    movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
+    receive_moves = [m for m in movements if m["movement_type"] == "in"]
+    assert receive_moves
+    assert all(m["username"] == "receiver" for m in receive_moves)
 
 
 def test_order_zero_or_negative_quantity_rejected(auth_headers):

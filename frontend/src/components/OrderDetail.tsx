@@ -8,6 +8,7 @@ import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { useToast } from "../context/ToastContext";
+import { errorMessage } from "../utils/errors";
 import LocationPicker from "./LocationPicker";
 import Modal from "./Modal";
 import StockLocationHints from "./StockLocationHints";
@@ -67,7 +68,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
       const url = URL.createObjectURL(data);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    });
+    }).catch(() => addToast("Failed to generate PDF", "error"));
   };
 
   const updateStatus = async (status: string) => {
@@ -77,7 +78,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
       addToast(`Order ${status === "received" ? "marked as received" : "cancelled"}`, "success");
       onUpdated();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to update order", "error");
+      addToast(errorMessage(err, "Failed to update order"), "error");
     }
   };
 
@@ -121,7 +122,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
       addToast("Order marked as received", "success");
       onUpdated();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to receive order", "error");
+      addToast(errorMessage(err, "Failed to receive order"), "error");
     }
   };
 

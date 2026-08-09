@@ -332,6 +332,21 @@ def export_sales(search: str = Query(""), start_date: str | None = None, end_dat
     )
 
 
+@router.get("/export/orders")
+def export_orders(search: str = Query(""), supplier_id: int | None = None, db: Session = Depends(get_db)):
+    q = db.query(Order).options(joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user))
+    if search:
+        q = q.filter(Order.order_number.ilike(f"%{search}%"))
+    if supplier_id:
+        q = q.filter(Order.supplier_id == supplier_id)
+    orders = q.order_by(Order.created_at.desc()).all()
+    return _csv_response(
+        "orders_report",
+        ["Order #", "Date", "Supplier", "Status", "Total", "Items", "Notes", "Created By"],
+        [[o.order_number, o.created_at.strftime("%Y-%m-%d %H:%M"), o.supplier_name or "", o.status, o.total_amount, len(o.items), o.notes or "", o.username] for o in orders],
+    )
+
+
 @router.get("/export/movements")
 def export_movements(start_date: str | None = None, end_date: str | None = None, db: Session = Depends(get_db)):
     start, end = parse_range(start_date, end_date)

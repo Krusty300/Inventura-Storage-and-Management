@@ -15,8 +15,9 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
-import { exportCSV } from "../utils/csv";
 import { formatCurrency } from "../utils/currency";
+import { errorMessage } from "../utils/errors";
+import { downloadBlob } from "../utils/download";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 
@@ -53,7 +54,7 @@ export default function Orders() {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Cannot delete order", "error");
+      addToast(errorMessage(err, "Cannot delete order"), "error");
     },
   });
 
@@ -67,7 +68,7 @@ export default function Orders() {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Auto-reorder failed", "error");
+      addToast(errorMessage(err, "Auto-reorder failed"), "error");
     },
   });
 
@@ -94,13 +95,17 @@ export default function Orders() {
     { name: "notes", label: "Notes", type: "text" },
   ];
 
-  const handleExport = () => {
-    exportCSV(
-      ["Order #", "Supplier", "Date", "Status", "Total"],
-      orders.map((o) => [o.order_number, o.supplier_name || "", formatDate(o.created_at), o.status, o.total_amount]),
-      "orders"
-    );
-    addToast("Orders exported to CSV", "success");
+  const handleExport = async () => {
+    try {
+      const { data } = await api.get("/reports/export/orders", {
+        params: debouncedSearch ? { search: debouncedSearch } : {},
+        responseType: "blob",
+      });
+      downloadBlob(data, "orders_report.csv");
+      addToast("Orders exported to CSV", "success");
+    } catch (err: any) {
+      addToast(errorMessage(err, "Failed to export orders"), "error");
+    }
   };
 
   const printPdf = async (o: Order) => {
@@ -189,9 +194,11 @@ export default function Orders() {
                     <button onClick={() => printPdf(o)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print order ${o.order_number}`}>
                       <Printer size={16} />
                     </button>
-                    <button onClick={() => setDeleting(o)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete order ${o.order_number}`}>
-                      <Trash2 size={16} />
-                    </button>
+                    {o.status !== "received" && (
+                      <button onClick={() => setDeleting(o)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete order ${o.order_number}`}>
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

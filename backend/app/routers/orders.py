@@ -225,21 +225,32 @@ def generate_po_number(db: Session) -> str:
     return next_document_number(db, "purchase_order", "PO-")
 
 
-@router.post("", response_model=OrderOut, status_code=201)
-def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    for item_data in data.items:
+def _validate_order_items(db: Session, items) -> float:
+    seen: set[int] = set()
+    total = 0.0
+    for item_data in items:
         product = db.query(Product).filter(Product.id == item_data.product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Product {item_data.product_id} not found")
         if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - order a specific variant")
+        if item_data.product_id in seen:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' appears more than once in this order - merge the duplicate lines")
+        seen.add(item_data.product_id)
         require_active_location(db, product)
+        total += item_data.quantity * item_data.unit_price
+    return total
+
+
+@router.post("", response_model=OrderOut, status_code=201)
+def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if data.supplier_id is not None and db.get(Supplier, data.supplier_id) is None:
+        raise HTTPException(status_code=400, detail=f"Supplier {data.supplier_id} not found")
+    total = _validate_order_items(db, data.items)
     order = Order(order_number=generate_po_number(db), user_id=user.id, **data.model_dump(exclude={"items"}))
     db.add(order)
     db.flush()
-    total = 0.0
     for item_data in data.items:
-        total += item_data.quantity * item_data.unit_price
         db.execute(OrderItem.__table__.insert().values(order_id=order.id, **item_data.model_dump()))
     order.total_amount = total
     db.commit()
@@ -258,34 +269,32 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
         joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
     ])
     prev_status = o.status
+    updates = data.model_fields_set
 
-    if data.notes is not None:
+    if "supplier_id" in updates:
+        new_supplier_id = data.supplier_id
+        if new_supplier_id is not None and db.get(Supplier, new_supplier_id) is None:
+            raise HTTPException(status_code=400, detail=f"Supplier {new_supplier_id} not found")
+        o.supplier_id = new_supplier_id
+    if "notes" in updates:
         o.notes = data.notes
-    if data.supplier_id is not None:
-        o.supplier_id = data.supplier_id
-    if data.items is not None:
+    if "items" in updates:
         if o.status != "pending":
             raise HTTPException(status_code=400, detail="Order items can only be changed while the order is pending")
+        total = _validate_order_items(db, data.items)
         db.execute(OrderItem.__table__.delete().where(OrderItem.__table__.c.order_id == order_id))
-        total = 0.0
         for item_data in data.items:
-            product = db.query(Product).filter(Product.id == item_data.product_id).first()
-            if not product:
-                raise HTTPException(status_code=404, detail=f"Product {item_data.product_id} not found")
-            if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
-                raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - order a specific variant")
-            require_active_location(db, product)
-            total += item_data.quantity * item_data.unit_price
             db.execute(OrderItem.__table__.insert().values(order_id=o.id, **item_data.model_dump()))
         o.total_amount = total
-    if data.status:
-        if data.status not in ORDER_STATUSES:
-            raise HTTPException(status_code=400, detail=f"Invalid order status '{data.status}'")
-        if data.status != prev_status and data.status not in ORDER_TRANSITIONS.get(prev_status, ()):
-            raise HTTPException(status_code=400, detail=f"Cannot change order status from '{prev_status}' to '{data.status}'")
-        o.status = data.status
+    status = data.status if "status" in updates else None
+    if status is not None:
+        if status not in ORDER_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid order status '{status}'")
+        if status != prev_status and status not in ORDER_TRANSITIONS.get(prev_status, ()):
+            raise HTTPException(status_code=400, detail=f"Cannot change order status from '{prev_status}' to '{status}'")
+        o.status = status
 
-    received_now = data.status == "received" and prev_status != "received"
+    received_now = status == "received" and prev_status != "received"
     if received_now:
         o = get_or_404(Order, order_id, db, options=[
             joinedload(Order.items).joinedload(OrderItem.product),
@@ -332,7 +341,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                         db.add(serial)
                         db.flush()
                         inventory.post_journal_entry(
-                            db, product_id=product.id, user_id=o.user_id,
+                            db, product_id=product.id, user_id=user.id,
                             quantity_change=1, movement_type="in",
                             serial_id=serial.id,
                             to_location_id=loc_id,
@@ -345,7 +354,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                             f"'{product.display_name}' is not serialized - remove its serial numbers"
                         )
                     inventory.post_journal_entry(
-                        db, product_id=product.id, user_id=o.user_id,
+                        db, product_id=product.id, user_id=user.id,
                         quantity_change=item.quantity, movement_type="in",
                         to_location_id=loc_id,
                         reference_type="purchase_order",
@@ -366,9 +375,9 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
         db.refresh(o)
 
     order_number = o.order_number
-    if data.status and data.status != prev_status:
+    if status and status != prev_status:
         log_activity(db, user.id, user.username, "update", "order", order_id,
-                     f"Order '{order_number}' status changed to '{data.status}'")
+                     f"Order '{order_number}' status changed to '{status}'")
         db.commit()
     broadcast_change("order", "updated")
     return o

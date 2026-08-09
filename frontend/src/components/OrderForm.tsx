@@ -7,6 +7,7 @@ import BarcodeScanner from "./BarcodeScanner";
 import Modal from "./Modal";
 import { isSelectable, selectableProducts, productLabel } from "../utils/variants";
 import { formatCurrency } from "../utils/currency";
+import { errorMessage } from "../utils/errors";
 import { useSettings } from "../hooks/useSettings";
 
 interface Props {
@@ -66,23 +67,36 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
     for (const item of items) {
+      if (!item.product_id) {
+        addToast("Every line item must have a product selected", "error");
+        return;
+      }
+      const quantity = parseInt(item.quantity);
+      if (isNaN(quantity) || quantity < 1) {
+        addToast("Quantity must be at least 1 for every line item", "error");
+        return;
+      }
+      const unitPrice = parseFloat(item.unit_price);
+      if (isNaN(unitPrice) || unitPrice < 0) {
+        addToast("Price cannot be negative for any line item", "error");
+        return;
+      }
       const p = products.find((sp) => sp.id === parseInt(item.product_id));
-      if (item.product_id && p && !hasActiveLocation(p)) {
+      if (p && !hasActiveLocation(p)) {
         addToast(`${p.name} has no active location and cannot be ordered`, "error");
-        setSaving(false);
         return;
       }
     }
+    setSaving(true);
     try {
       const payload = {
         supplier_id: supplierId ? parseInt(supplierId) : null,
         notes,
         items: items.map((i) => ({
           product_id: parseInt(i.product_id),
-          quantity: parseInt(i.quantity) || 1,
-          unit_price: parseFloat(i.unit_price) || 0,
+          quantity: parseInt(i.quantity),
+          unit_price: parseFloat(i.unit_price),
         })),
       };
       if (isEdit) {
@@ -94,7 +108,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
       }
       onSaved();
     } catch (err: any) {
-      addToast(err.response?.data?.detail || `Error ${isEdit ? "updating" : "creating"} order`, "error");
+      addToast(errorMessage(err, `Error ${isEdit ? "updating" : "creating"} order`), "error");
     }
     setSaving(false);
   };
@@ -106,9 +120,9 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   const allSupplierSelected = supplierOrderable.length > 0 && supplierOrderable.every((p) => selectedSupplierIds.has(p.id));
 
   const addSelectedSupplierItems = () => {
-    const toAdd = supplierOrderable.filter((p) => selectedSupplierIds.has(p.id));
+    const toAdd = supplierOrderable.filter((p) => selectedSupplierIds.has(p.id) && !alreadyAdded(p.id));
     if (toAdd.length === 0) {
-      addToast("No supplier products selected", "error");
+      addToast(selectedSupplierIds.size > 0 ? "Selected product(s) already in this order" : "No supplier products selected", "error");
       return;
     }
     setItems((prev) => [...prev, ...toAdd.map((p) => ({ product_id: p.id.toString(), quantity: "1", unit_price: p.cost_price.toString() }))]);
@@ -119,7 +133,13 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   const addItem = () => setItems([...items, { product_id: "", quantity: "1", unit_price: "0" }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
 
+  const alreadyAdded = (productId: number) => items.some((i) => i.product_id === productId.toString());
+
   const updateItem = (idx: number, field: string, value: string) => {
+    if (field === "product_id" && value && alreadyAdded(parseInt(value))) {
+      addToast("Product already added to this order", "error");
+      return;
+    }
     const updated = [...items];
     (updated[idx] as any)[field] = value;
     if (field === "product_id") {
@@ -192,7 +212,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
           <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-medium text-ink">Order Items</label>
             <div className="flex gap-2">
-              <BarcodeScanner onProductFound={(p) => { if (!hasActiveLocation(p)) { addToast(`${p.name} has no active location and cannot be ordered`, "error"); return; } if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.cost_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan to add item..." />
+              <BarcodeScanner onProductFound={(p) => { if (!hasActiveLocation(p)) { addToast(`${p.name} has no active location and cannot be ordered`, "error"); return; } if (alreadyAdded(p.id)) { addToast("Product already added to this order", "error"); return; } if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.cost_price.toString() }]); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan to add item..." />
               <button type="button" onClick={addItem} className="btn-secondary text-xs py-1 px-2">
                 Add Item
               </button>

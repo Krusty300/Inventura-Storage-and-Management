@@ -59,6 +59,30 @@ describe("Orders Page", () => {
     expect(screen.queryByLabelText("Edit order PO-1002")).not.toBeInTheDocument();
   });
 
+  it("hides delete action for received orders", async () => {
+    mockOrders([mockOrder(), mockOrder({ id: 2, order_number: "PO-1002", status: "received" })]);
+    renderWithProviders(<Orders />);
+    expect(await screen.findByText("PO-1001")).toBeInTheDocument();
+    expect(screen.getByLabelText("Delete order PO-1001")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Delete order PO-1002")).not.toBeInTheDocument();
+  });
+
+  it("exports the full order list through the CSV report endpoint", async () => {
+    mockOrders([mockOrder()]);
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "€" } });
+      if (url === "/orders") return Promise.resolve({ data: { items: [mockOrder()], total: 1, page: 1, pages: 1 } });
+      if (url === "/reports/export/orders") return Promise.resolve({ data: new Blob(["a,b,c"], { type: "text/csv" }) });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    URL.createObjectURL = vi.fn(() => "blob:orders");
+    renderWithProviders(<Orders />);
+    await screen.findByText("PO-1001");
+    fireEvent.click(screen.getByRole("button", { name: "Export orders to CSV" }));
+    await vi.waitFor(() => expect(getMock).toHaveBeenCalledWith("/reports/export/orders", expect.objectContaining({ responseType: "blob" })));
+    expect(await screen.findByText("Orders exported to CSV")).toBeInTheDocument();
+  });
+
   it("runs auto-reorder through the confirm dialog", async () => {
     mockOrders([mockOrder()]);
     postMock.mockResolvedValue({ data: [{ order_number: "PO-2000", items: [{ product_id: 1 }] }] });
@@ -104,5 +128,31 @@ describe("Orders Page", () => {
       expect(selects.some((el) => (el as HTMLSelectElement).value === "10")).toBe(true);
       expect(selects.some((el) => (el as HTMLSelectElement).value === "11")).toBe(true);
     });
+  });
+
+  it("blocks adding the same product twice to an order", async () => {
+    const product = (id: number, sku: string, name: string, price: number) => ({
+      id, sku, name, display_name: name, is_active: true, is_variant: false, parent_id: null,
+      location_id: 1, location: "Main", quantity: 0, total_quantity: 0, unit_price: price, cost_price: price - 2,
+      reorder_level: 5, supplier_id: null, supplier_name: "", variants: [], category_name: "",
+      description: "", barcode: "", batch_number: "", image_url: "", expiry_date: null, attributes: null,
+      is_serialized: false, created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00",
+    });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "€" } });
+      if (url === "/orders") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/products") return Promise.resolve({ data: { items: [product(10, "P1", "Widget", 8)], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 1, name: "Main", is_active: true }] } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Orders />);
+    fireEvent.click(await screen.findByRole("button", { name: "New Order" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Item" }));
+    let selects = await screen.findAllByRole("combobox");
+    fireEvent.change(selects[selects.length - 2], { target: { value: "10" } });
+    selects = await screen.findAllByRole("combobox");
+    fireEvent.change(selects[selects.length - 1], { target: { value: "10" } });
+    expect(await screen.findByText("Product already added to this order")).toBeInTheDocument();
   });
 });

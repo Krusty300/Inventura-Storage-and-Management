@@ -139,7 +139,19 @@ def test_stock_movement_trends_counts_transfer_pair_once(auth_headers):
 def test_report_exports(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "EXP-001", "name": "Export Item", "quantity": 1, "cost_price": 1.0}, headers=auth_headers).json()
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
-    for path in ("/api/reports/export/sales", "/api/reports/export/movements", "/api/reports/export/products"):
+    client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 1.0}]}, headers=auth_headers)
+    for path in ("/api/reports/export/sales", "/api/reports/export/movements", "/api/reports/export/products", "/api/reports/export/orders"):
         resp = client.get(path, headers=auth_headers)
         assert resp.status_code == 200
         assert "text/csv" in resp.headers["content-type"]
+
+
+def test_export_orders_respects_search(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "EXP-ORD", "name": "Export Order Item", "cost_price": 1.0}, headers=auth_headers).json()
+    first = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 1.0}]}, headers=auth_headers).json()
+    second = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 1.0}]}, headers=auth_headers).json()
+    resp = client.get("/api/reports/export/orders", params={"search": first["order_number"]}, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.content.decode("utf-8")
+    assert first["order_number"] in body
+    assert second["order_number"] not in body
