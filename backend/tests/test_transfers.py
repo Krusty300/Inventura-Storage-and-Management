@@ -322,7 +322,7 @@ def test_transfer_lpn_constrained_availability(auth_headers):
     assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 5
 
 
-def test_transfer_serial_clears_lpn_assignment(auth_headers):
+def test_transfer_serial_of_lpn_held_unit_rejected(auth_headers):
     src = _loc(auth_headers, "TRF-SLNSRC")
     dst = _loc(auth_headers, "TRF-SLNDST")
     lpn = client.post("/api/lpns", json={"lpn_number": "TRF-SPAL", "location_id": src["id"]}, headers=auth_headers).json()
@@ -336,12 +336,23 @@ def test_transfer_serial_clears_lpn_assignment(auth_headers):
     serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
     assert serial["lpn_id"] == lpn["id"]
 
+    # A generic serial transfer must not silently detach a serial from its LPN.
     resp = client.post("/api/stock-movements/transfer-serial", json={
         "product_id": prod["id"], "serial_ids": [serial["id"]],
         "from_location_id": src["id"], "to_location_id": dst["id"],
     }, headers=auth_headers)
-    assert resp.status_code == 201
+    assert resp.status_code == 400
+    assert "LPN" in resp.json()["detail"]
 
     after = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
-    assert after["lpn_id"] is None
-    assert after["location_id"] == dst["id"]
+    assert after["lpn_id"] == lpn["id"]
+    assert after["location_id"] == src["id"]
+
+    # Unloading through the LPN endpoint clears the assignment and moves the serial.
+    resp = client.post(f"/api/lpns/{lpn['id']}/unload", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    final = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+    assert final["lpn_id"] is None
+    assert final["location_id"] == dst["id"]

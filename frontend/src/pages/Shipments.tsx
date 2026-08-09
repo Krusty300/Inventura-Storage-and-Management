@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Box, Eye, PackageCheck, Pencil, Trash2, XCircle } from "lucide-react";
+import { Box, Eye, FileText, PackageCheck, Pencil, Trash2, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, PaginatedResponse, SerialNumber, Shipment, ShipmentItem, ShipmentStats } from "../types";
@@ -21,6 +21,7 @@ import { usePageSize } from "../hooks/usePageSize";
 export default function Shipments() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+  const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Shipment | null>(null);
@@ -44,10 +45,11 @@ export default function Shipments() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["shipments", debouncedSearch, page, pageSize],
+    queryKey: ["shipments", debouncedSearch, statusFilter, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (statusFilter) params.status = statusFilter;
       const { data } = await api.get("/shipments", { params });
       return data as PaginatedResponse<Shipment>;
     },
@@ -63,7 +65,7 @@ export default function Shipments() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["shipments"] });
 
   const statusBadge = (s: string) =>
-    s === "shipped" ? "badge-success" : s === "packed" ? "badge-info" : s === "picking" ? "badge-warning" : s === "cancelled" ? "badge-danger" : "badge";
+    s === "shipped" ? "badge-success" : s === "packed" ? "badge-info" : s === "picking" ? "badge-warning" : s === "cancelled" ? "badge-danger" : s === "draft" ? "badge-neutral" : "badge";
 
   const statCards = stats
     ? [
@@ -89,6 +91,14 @@ export default function Shipments() {
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by shipment number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search shipments" />
         </div>
+        <select className="select w-auto" aria-label="Filter by status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="picking">Picking</option>
+          <option value="packed">Packed</option>
+          <option value="shipped">Shipped</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
       </div>
 
       {statCards.length > 0 && (
@@ -136,6 +146,11 @@ export default function Shipments() {
                     <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
+                        {s.status === "draft" && (
+                          <span className="p-1 text-faint" title="Draft" aria-label={`Draft ${s.shipment_number}`}>
+                            <FileText size={16} />
+                          </span>
+                        )}
                         <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`View ${s.shipment_number}`}>
                           <Eye size={16} />
                         </button>

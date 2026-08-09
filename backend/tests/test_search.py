@@ -68,14 +68,41 @@ def test_global_search_finds_parent_by_variant_sku_and_attribute(auth_headers):
         "attributes": {"Color": "Crimson", "Size": "Large"},
     }, headers=auth_headers)
 
-    # searching a variant's sku returns the variant (label includes the parent name)
+    # searching a variant's sku returns the parent product (not the variant row itself)
     resp = client.get("/api/search", params={"q": "GS-RED-L"}, headers=auth_headers)
     assert resp.status_code == 200
     product_hits = [r for r in resp.json()["results"] if r["type"] == "product"]
-    assert any("GS T-Shirt" in r["label"] for r in product_hits)
+    assert product_hits
+    assert all("GS T-Shirt" in r["label"] for r in product_hits)
+    assert not any("Crimson / Large" in r["label"] for r in product_hits)
 
     # searching a variant attribute value surfaces the parent product
     resp = client.get("/api/search", params={"q": "Crimson"}, headers=auth_headers)
     assert resp.status_code == 200
     product_hits = [r for r in resp.json()["results"] if r["type"] == "product"]
     assert any("GS T-Shirt" in r["label"] for r in product_hits)
+
+
+def test_products_search_matches_parent_and_variant_barcodes(auth_headers):
+    parent = client.post("/api/products", json={
+        "location_id": 1, "sku": "BC-PARENT", "name": "BC T-Shirt", "barcode": "BARCODE-PARENT",
+        "unit_price": 10.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    client.post("/api/products", json={
+        "location_id": 1, "sku": "BC-VAR", "parent_id": parent["id"], "quantity": 0,
+        "barcode": "BARCODE-VARIANT", "attributes": {"Color": "Teal"},
+    }, headers=auth_headers)
+
+    resp = client.get("/api/products", params={"search": "BARCODE-PARENT"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert any(p["sku"] == "BC-PARENT" for p in resp.json()["items"])
+
+    resp = client.get("/api/products", params={"search": "BARCODE-VARIANT", "include_variants": 1}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert any(p["sku"] == "BC-PARENT" for p in resp.json()["items"])
+
+    resp = client.get("/api/search", params={"q": "BARCODE-VARIANT"}, headers=auth_headers)
+    assert resp.status_code == 200
+    product_hits = [r for r in resp.json()["results"] if r["type"] == "product"]
+    assert any("BC T-Shirt" in r["label"] for r in product_hits)
+    assert not any("Teal" in r["label"] for r in product_hits)

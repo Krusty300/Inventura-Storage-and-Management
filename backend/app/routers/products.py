@@ -112,11 +112,11 @@ def list_products(
         like = f"%{search}%"
         if include_variants:
             q = q.filter(
-                Product.name.ilike(like) | Product.sku.ilike(like)
-                | Product.variants.any(Product.name.ilike(like) | Product.sku.ilike(like) | cast(Product.attributes, String).ilike(like))
+                Product.name.ilike(like) | Product.sku.ilike(like) | Product.barcode.ilike(like)
+                | Product.variants.any(Product.name.ilike(like) | Product.sku.ilike(like) | Product.barcode.ilike(like) | cast(Product.attributes, String).ilike(like))
             )
         else:
-            q = q.filter(Product.name.ilike(like) | Product.sku.ilike(like))
+            q = q.filter(Product.name.ilike(like) | Product.sku.ilike(like) | Product.barcode.ilike(like))
     if category_id:
         q = q.filter(Product.category_id == category_id)
     today = date.today()

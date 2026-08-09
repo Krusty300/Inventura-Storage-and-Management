@@ -104,4 +104,34 @@ describe("Variant-aware product selection", () => {
     expect(await screen.findByText(/This product has no stock at any location yet/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Transfer Stock" })).toBeDisabled();
   });
+
+  it("TransferModal excludes serials that are currently on an LPN", async () => {
+    const serialized = makeProduct({ id: 4, name: "Chip", is_serialized: true });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/products") return Promise.resolve({ data: { items: [serialized], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations")
+        return Promise.resolve({ data: { items: [{ id: 10, path: "A-01", is_active: true }, { id: 11, path: "B-01", is_active: true }], total: 2, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/lpns") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/lots") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      if (url === "/serial-numbers")
+        return Promise.resolve({
+          data: { items: [
+            { id: 21, product_id: 4, serial_number: "S-LOOSE", lot_id: null, location_id: 10, lpn_id: null, status: "in_stock", sold_at: null, location_name: "A-01", lot_number: "", lot_status: "in_stock", product_name: "Chip", created_at: "2026-01-01T00:00:00" },
+            { id: 22, product_id: 4, serial_number: "S-ON-LPN", lot_id: null, location_id: 10, lpn_id: 99, status: "in_stock", sold_at: null, location_name: "A-01", lot_number: "", lot_status: "in_stock", product_name: "Chip", created_at: "2026-01-01T00:00:00" },
+          ], total: 2, page: 1, pages: 1 },
+        });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<TransferModal onClose={() => {}} onSaved={() => {}} />);
+    await screen.findByRole("option", { name: "Chip (SKU-4) (Serialized)" });
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: String(serialized.id) } });
+    await screen.findByRole("option", { name: "A-01 (1 serials)" });
+    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "10" } });
+
+    expect(screen.getByText("S-LOOSE")).toBeInTheDocument();
+    expect(screen.queryByText("S-ON-LPN")).not.toBeInTheDocument();
+  });
 });

@@ -60,6 +60,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
     const map = new Map<number, { location_id: number; path: string; serials: SerialNumber[] }>();
     for (const s of serialsData || []) {
       if (s.lot_status && s.lot_status !== "in_stock") continue;
+      if (s.lpn_id != null) continue;
       if (!s.location_id) continue;
       const entry = map.get(s.location_id) || { location_id: s.location_id, path: s.location_name || "Location", serials: [] };
       entry.serials.push(s);

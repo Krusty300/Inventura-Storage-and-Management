@@ -31,6 +31,7 @@ router = APIRouter(prefix="/api/search", tags=["search"], dependencies=[Depends(
 def _search_products(db: Session, like: str, limit: int):
     rows = (
         db.query(Product)
+        .filter(Product.parent_id.is_(None))
         .filter(
             Product.name.ilike(like) | Product.sku.ilike(like) |
             Product.barcode.ilike(like) | Product.description.ilike(like) |

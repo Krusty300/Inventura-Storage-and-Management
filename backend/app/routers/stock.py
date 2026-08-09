@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.product import Product
 from app.models.location import Location
 from app.models.lot import Lot
+from app.models.lpn import LPN
 from app.models.serial_number import SerialNumber
 from app.models.stock_line import StockLine
 from app.models.stock_movement import StockMovement
@@ -300,6 +301,13 @@ def transfer_serialized_stock(data: StockMovementSerialTransfer, db: Session = D
             )
         if serial.location_id != from_loc.id:
             raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not at '{from_loc.path}'")
+        if serial.lpn_id is not None:
+            lpn = db.query(LPN).filter(LPN.id == serial.lpn_id).first()
+            lpn_label = lpn.lpn_number if lpn else str(serial.lpn_id)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Serial '{serial.serial_number}' is on LPN '{lpn_label}' - unload it from the LPN first",
+            )
 
     reference = next_document_number(db, "transfer", "TRF-")
     movements: list[StockMovement] = []
