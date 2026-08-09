@@ -274,6 +274,46 @@ def test_refund_serialized_invoice_restores_serials(auth_headers):
     assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 3
 
 
+def test_refund_serialized_lot_restores_lot_status(auth_headers):
+    loc = client.post("/api/locations", json={
+        "code": "SALE-SER-LOT-LOC", "name": "SALE-SER-LOT-LOC", "location_type": "bin",
+    }, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "SALE-SER-LOT", "name": "Serialized Sale Lot", "unit_price": 25.00, "cost_price": 10.00,
+        "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    resp = client.post("/api/receipts", json={"items": [{
+        "product_id": prod["id"], "quantity": 2, "location_id": loc["id"],
+        "lot_number": "SALE-LOT-1", "serial_numbers": ["SSL-1", "SSL-2"],
+    }]}, headers=auth_headers)
+    assert resp.status_code == 201
+
+    def _lot():
+        return client.get("/api/lots", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+
+    assert _lot()["status"] == "in_stock"
+
+    shipment = client.post("/api/shipments", json={
+        "items": [{"product_id": prod["id"], "quantity": 2}],
+    }, headers=auth_headers).json()
+    sid = shipment["id"]
+    assert client.post(f"/api/shipments/{sid}/pick", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{sid}/pack", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{sid}/ship", headers=auth_headers).status_code == 200
+
+    lot = _lot()
+    assert lot["status"] == "sold"
+    assert lot["serial_count"] == 0
+
+    sale = client.post(f"/api/shipments/{sid}/create-sale", params={"payment_method": "card"}, headers=auth_headers).json()
+    refund = client.put(f"/api/sales/{sale['id']}/refund", headers=auth_headers)
+    assert refund.status_code == 200
+
+    lot = _lot()
+    assert lot["status"] == "in_stock"
+    assert lot["serial_count"] == 2
+
+
 def test_sale_search_and_stats(auth_headers):
     prod = _make_product(auth_headers)
     _make_sale(auth_headers, [{"product_id": prod["id"], "quantity": 2, "unit_price": 20.00}])

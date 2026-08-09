@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
-LOT_STATUSES = {"in_stock", "quarantined", "expired"}
+LOT_STATUSES = {"in_stock", "quarantined", "expired", "sold"}
 
 
 class LotUpdate(BaseModel):

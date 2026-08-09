@@ -400,6 +400,7 @@ def ship_shipment(
                         reference_type="shipment", reference=shipment.shipment_number,
                         notes=f"Shipped on {shipment.shipment_number}",
                     )
+                    inventory.sync_serialized_lot_status(db, serial.lot_id)
             else:
                 allocation = inventory.allocate_lots(db, product_id=item.product_id, quantity=to_ship, location_id=staging)
                 for lot_id, take, source_location, lpn_id in allocation:

@@ -145,6 +145,29 @@ describe("Lots Page", () => {
     expect(screen.queryByText("LOT-0001")).not.toBeInTheDocument();
   });
 
+  it("renders a sold badge for fully shipped serialized lots", async () => {
+    mockLots([mockLot({ id: 5, lot_number: "LOT-0005", status: "sold", on_hand: 0 })]);
+    renderWithProviders(<Lots />);
+    const badge = await screen.findByText("sold");
+    expect(badge).toHaveClass("badge", "badge-neutral");
+    expect(screen.queryByLabelText("Quarantine LOT-0005")).not.toBeInTheDocument();
+  });
+
+  it("filters by sold status", async () => {
+    getMock.mockImplementation((url: string, config?: any) => {
+      if (url === "/lots") {
+        const rows = config?.params?.status === "sold" ? [mockLot({ id: 4, lot_number: "LOT-0004", status: "sold" })] : [mockLot()];
+        return Promise.resolve({ data: { items: rows, total: rows.length, page: 1, pages: 1 } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Lots />);
+    expect(await screen.findByText("LOT-0001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sold" }));
+    expect(await screen.findByText("LOT-0004")).toBeInTheDocument();
+    expect(screen.queryByText("LOT-0001")).not.toBeInTheDocument();
+  });
+
   it("opens the detail modal with movements", async () => {
     mockLots([mockLot()]);
     renderWithProviders(<Lots />);

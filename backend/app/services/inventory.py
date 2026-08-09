@@ -213,6 +213,27 @@ def expire_overdue_lots(db: Session) -> int:
     return len(overdue)
 
 
+def sync_serialized_lot_status(db: Session, lot_id: int | None) -> None:
+    """Keep a serialized lot's status in sync with its remaining stock.
+
+    A serialized lot becomes ``sold`` once none of its units remain in stock
+    (all serials shipped), and returns to ``in_stock`` when a refund brings
+    units back. Bulk lots and lots without a serialized product are untouched,
+    and derived states never clobber ``expired``/``quarantined``.
+    """
+    if lot_id is None:
+        return
+    lot = db.get(Lot, lot_id)
+    if lot is None or lot.product is None or not lot.product.is_serialized:
+        return
+    if lot.on_hand > 0:
+        return
+    if lot.serial_count == 0 and lot.status == "in_stock":
+        lot.status = "sold"
+    elif lot.serial_count > 0 and lot.status == "sold":
+        lot.status = "in_stock"
+
+
 def allocate_lots(
     db: Session,
     *,

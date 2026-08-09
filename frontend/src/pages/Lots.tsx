@@ -19,6 +19,7 @@ import { usePageSize } from "../hooks/usePageSize";
 const STATUS_FILTERS = [
   { value: "", label: "All" },
   { value: "in_stock", label: "In Stock" },
+  { value: "sold", label: "Sold" },
   { value: "quarantined", label: "Quarantined" },
   { value: "expired", label: "Expired" },
 ] as const;
@@ -26,6 +27,7 @@ const STATUS_FILTERS = [
 function statusBadge(status: string) {
   switch (status) {
     case "in_stock": return "badge-success";
+    case "sold": return "badge-neutral";
     case "quarantined": return "badge-warning";
     case "expired": return "badge-danger";
     default: return "badge-info";

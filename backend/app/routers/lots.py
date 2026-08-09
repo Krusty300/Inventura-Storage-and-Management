@@ -21,11 +21,14 @@ from app.utils import get_or_404, log_activity, broadcast_change
 router = APIRouter(prefix="/api/lots", tags=["lots"], dependencies=[Depends(get_current_user)])
 
 # Controlled status transitions. A lot can only move between states along these
-# edges; QC failures quarantine, and a release restores sellable stock.
+# edges; QC failures quarantine, and a release restores sellable stock. The
+# ``sold`` state is derived automatically when a serialized lot is fully
+# shipped (and reverted on refund), so it has no manual transitions.
 ALLOWED_LOT_TRANSITIONS = {
     "in_stock": {"quarantined", "expired"},
     "quarantined": {"in_stock", "expired"},
     "expired": set(),
+    "sold": set(),
 }
 
 

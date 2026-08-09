@@ -124,6 +124,43 @@ def test_shipment_serialized_flow(auth_headers):
     assert len(in_stock) == 1
 
 
+def test_shipment_serialized_lot_marked_sold_when_depleted(auth_headers):
+    p = _make_product(auth_headers, "SHP-SER-LOT", serialized=True)
+    loc = _make_location(auth_headers, "SHP-SER-LOT-LOC")
+    resp = client.post("/api/receipts", json={
+        "items": [{
+            "product_id": p["id"], "quantity": 3, "location_id": loc["id"],
+            "lot_number": "LOT-SER-1", "serial_numbers": ["SL1", "SL2", "SL3"],
+        }],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+
+    def _lot():
+        return client.get("/api/lots", params={"product_id": p["id"]}, headers=auth_headers).json()["items"][0]
+
+    assert _lot()["status"] == "in_stock"
+    assert _lot()["serial_count"] == 3
+
+    # partial shipment keeps the lot in stock
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    assert client.post(f"/api/shipments/{created['id']}/pick", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{created['id']}/ship", headers=auth_headers).status_code == 200
+    assert _lot()["status"] == "in_stock"
+    assert _lot()["serial_count"] == 1
+
+    # shipping the last serial flips the lot to sold
+    created = _create_shipment(auth_headers, [(p["id"], 1)]).json()
+    assert client.post(f"/api/shipments/{created['id']}/pick", headers=auth_headers).status_code == 200
+    assert client.post(f"/api/shipments/{created['id']}/ship", headers=auth_headers).status_code == 200
+    lot = _lot()
+    assert lot["status"] == "sold"
+    assert lot["serial_count"] == 0
+    assert client.get(f"/api/products/{p['id']}", headers=auth_headers).json()["quantity"] == 0
+
+    # sold lots have no manual transitions
+    assert client.put(f"/api/lots/{lot['id']}", json={"status": "in_stock"}, headers=auth_headers).status_code == 400
+
+
 def test_shipment_auto_allocate_reserves_stock_on_create(auth_headers):
     client.put("/api/settings", json={"auto_allocate_stock": True}, headers=auth_headers)
     p = _make_product(auth_headers, "SHP-AUTO")

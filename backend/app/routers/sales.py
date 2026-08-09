@@ -12,6 +12,7 @@ from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
 from app.models.quality_check import QualityCheck
 from app.models.shipment import Shipment
+from app.models.serial_number import SerialNumber
 from app.models.stock_movement import StockMovement
 from app.schemas.sale import SaleBulkEdit, SaleCreate, SaleOut
 from app.services import inventory
@@ -362,6 +363,9 @@ def refund_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
                     reference=f"Refund {sale.invoice_number}",
                     notes="Sale refund",
                 )
+                serial = db.get(SerialNumber, serial_id)
+                if serial is not None:
+                    inventory.sync_serialized_lot_status(db, serial.lot_id)
             continue
         originals = db.query(StockMovement).filter(
             StockMovement.reference_type == "sale",
