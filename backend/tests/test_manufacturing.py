@@ -91,6 +91,16 @@ def test_bom_crud_and_cost(auth_headers):
     assert client.get(f"/api/boms/{bom['id']}", headers=auth_headers).status_code == 404
 
 
+def test_bom_delete_blocked_by_work_order(auth_headers):
+    fg = _make_product(auth_headers, "BOM-WO")
+    comp = _make_product(auth_headers, "BOM-WC")
+    bom = _create_bom(auth_headers, fg["id"], [(comp["id"], 1)]).json()
+    assert _create_wo(auth_headers, fg["id"], 1, bom_id=bom["id"]).status_code == 201
+    resp = client.delete(f"/api/boms/{bom['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "work order" in resp.json()["detail"].lower()
+
+
 # ---------------------------------------------------------------- Work orders
 
 def test_work_order_create_snapshots_bom_components(auth_headers):

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import BOM, BOMItem, Product
+from app.models import BOM, BOMItem, Product, WorkOrder
 from app.schemas.bom import BOMCreate, BOMOut, BOMUpdate
 from app.services.auth import get_current_user, require_permission
 from app.utils import get_or_404, log_activity, broadcast_change
@@ -164,6 +164,9 @@ def update_bom(bom_id: int, data: BOMUpdate, db: Session = Depends(get_db), user
 @router.delete("/{bom_id}", status_code=204)
 def delete_bom(bom_id: int, db: Session = Depends(get_db), user=Depends(require_permission("bom.delete"))):
     bom = _load_bom(db, bom_id)
+    has_work_orders = db.query(WorkOrder).filter(WorkOrder.bom_id == bom.id).first() is not None
+    if has_work_orders:
+        raise HTTPException(status_code=400, detail="Cannot delete a BOM that is referenced by work orders")
     db.delete(bom)
     db.commit()
     log_activity(db, user.id, user.username, "delete", "bom", bom.id, f"Deleted BOM for '{bom.product_name}'")

@@ -347,6 +347,35 @@ def test_location_delete_blocked_with_scrapped_serials(auth_headers):
     assert "serial" in resp.json()["detail"].lower()
 
 
+def test_location_delete_blocked_with_asn_history(auth_headers):
+    loc = _create_location(auth_headers, code="ASNDEL-1").json()
+    prod = client.post("/api/products", json={
+        "sku": "LOC-ASND", "name": "ASN Loc", "unit_price": 1.0, "quantity": 0, "location_id": 1,
+    }, headers=auth_headers).json()
+    client.post("/api/asns", json={
+        "items": [{"product_id": prod["id"], "expected_qty": 5, "location_id": loc["id"]}],
+    }, headers=auth_headers)
+    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "asn" in resp.json()["detail"].lower()
+
+
+def test_location_delete_blocked_with_shipment_staging(auth_headers):
+    loc = _create_location(auth_headers, code="STAGDEL-1").json()
+    db = TestingSessionLocal()
+    try:
+        from app.models import Shipment
+        user_id = db.query(User).filter(User.username == "testuser").first().id
+        shipment = Shipment(shipment_number="STAGE-TEST-1", staging_location_id=loc["id"], created_by=user_id)
+        db.add(shipment)
+        db.commit()
+    finally:
+        db.close()
+    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "staging" in resp.json()["detail"].lower()
+
+
 def test_update_location_blank_name_rejected(auth_headers):
     loc = _create_location(auth_headers, code="BLANK-NAME").json()
     assert client.put(f"/api/locations/{loc['id']}", json={"name": "   "}, headers=auth_headers).status_code == 400

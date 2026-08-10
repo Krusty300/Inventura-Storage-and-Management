@@ -5,7 +5,22 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import LPN, Location, Lot, Product, SerialNumber, StockLine, StockMovement
+from app.models import (
+    ASNItem,
+    CycleCount,
+    LPN,
+    Location,
+    Lot,
+    Product,
+    QualityCheck,
+    ReceiptItem,
+    SerialNumber,
+    Shipment,
+    ShipmentItem,
+    StockLine,
+    StockMovement,
+    WorkOrder,
+)
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
@@ -386,6 +401,27 @@ def delete_location(location_id: int, db: Session = Depends(get_db), user=Depend
     )
     if has_movements:
         raise HTTPException(status_code=400, detail="Cannot delete a location with stock movement history")
+    has_receipts = db.query(ReceiptItem).filter(ReceiptItem.location_id == loc.id).first() is not None
+    if has_receipts:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with receiving history")
+    has_asns = db.query(ASNItem).filter(ASNItem.location_id == loc.id).first() is not None
+    if has_asns:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with ASN history")
+    has_cycle_counts = db.query(CycleCount).filter(CycleCount.location_id == loc.id).first() is not None
+    if has_cycle_counts:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with cycle count history")
+    has_shipments = db.query(Shipment).filter(Shipment.staging_location_id == loc.id).first() is not None
+    if has_shipments:
+        raise HTTPException(status_code=400, detail="Cannot delete a location that is a shipment staging area")
+    has_shipment_items = db.query(ShipmentItem).filter(ShipmentItem.location_id == loc.id).first() is not None
+    if has_shipment_items:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with shipment history")
+    has_wip = db.query(WorkOrder).filter(WorkOrder.wip_location_id == loc.id).first() is not None
+    if has_wip:
+        raise HTTPException(status_code=400, detail="Cannot delete a location used as a work order WIP area")
+    has_qc = db.query(QualityCheck).filter(QualityCheck.location_id == loc.id).first() is not None
+    if has_qc:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with quality check history")
     path = loc.path
     db.delete(loc)
     db.commit()
