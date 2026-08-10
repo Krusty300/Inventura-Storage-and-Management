@@ -408,3 +408,131 @@ def test_lpn_serialized_double_load_rejected(auth_headers):
     }, headers=auth_headers)
     assert second.status_code == 400
     assert "already assigned to an LPN" in second.json()["detail"]
+
+
+def _quarantine_loc(auth_headers, code):
+    return client.post("/api/locations", json={"name": f"Quarantine {code}", "code": code, "location_type": "quarantine"}, headers=auth_headers).json()
+
+
+def _lot_for(auth_headers, product_id, lot_number):
+    items = client.get("/api/lots", params={"product_id": product_id}, headers=auth_headers).json()["items"]
+    return next(l for l in items if l["lot_number"] == lot_number)
+
+
+def test_serialized_lpn_total_quantity_counts_serials(auth_headers):
+    """Serialized units in an LPN count toward total_quantity."""
+    src = _loc(auth_headers, "LPN-TQ")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-TQ", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-TQ", "name": "LPN TQ", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "serial_numbers": ["S-TQ-A", "S-TQ-B"],
+                   "location_id": src["id"]}],
+    }, headers=auth_headers).status_code == 201
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    resp = client.post(f"/api/lpns/{lpn['id']}/items", json={
+        "product_id": prod["id"], "serial_ids": [s["id"] for s in serials], "from_location_id": src["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["total_quantity"] == 2
+    assert resp.json()["content_count"] == 2
+    listed = client.get("/api/lpns", headers=auth_headers).json()
+    match = next(l for l in listed["items"] if l["id"] == lpn["id"])
+    assert match["total_quantity"] == 2
+
+
+def test_unload_serialized_quarantined_lot_to_normal_rejected(auth_headers):
+    """A serial whose lot is quarantined cannot be unloaded to a normal location."""
+    src = _loc(auth_headers, "LPN-QN")
+    dst = _loc(auth_headers, "LPN-QD")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-QN", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-QN", "name": "LPN QN", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "serial_numbers": ["S-QN-A"], "lot_number": "L-QN",
+                   "location_id": src["id"]}],
+    }, headers=auth_headers).status_code == 201
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+    assert client.post(f"/api/lpns/{lpn['id']}/items", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]], "from_location_id": src["id"],
+    }, headers=auth_headers).status_code == 201
+    lot = _lot_for(auth_headers, prod["id"], "L-QN")
+    assert client.put(f"/api/lots/{lot['id']}", json={"status": "quarantined"}, headers=auth_headers).status_code == 200
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/unload", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "quarantined" in resp.json()["detail"]
+
+
+def test_unload_serialized_quarantined_lot_to_quarantine_allowed(auth_headers):
+    """A serial whose lot is quarantined may be unloaded into a quarantine area."""
+    src = _loc(auth_headers, "LPN-QL")
+    q = _quarantine_loc(auth_headers, "LPN-Q")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-QL", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-QL", "name": "LPN QL", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "serial_numbers": ["S-QL-A"], "lot_number": "L-QL",
+                   "location_id": src["id"]}],
+    }, headers=auth_headers).status_code == 201
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+    assert client.post(f"/api/lpns/{lpn['id']}/items", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]], "from_location_id": src["id"],
+    }, headers=auth_headers).status_code == 201
+    lot = _lot_for(auth_headers, prod["id"], "L-QL")
+    assert client.put(f"/api/lots/{lot['id']}", json={"status": "quarantined"}, headers=auth_headers).status_code == 200
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/unload", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]], "to_location_id": q["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    after = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+    assert after["status"] == "quarantined"
+
+
+def test_unload_serialized_expired_lot_rejected(auth_headers):
+    """A serial whose lot is expired cannot be unloaded from an LPN."""
+    src = _loc(auth_headers, "LPN-EX")
+    dst = _loc(auth_headers, "LPN-EXD")
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-EX", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-EX", "name": "LPN EX", "unit_price": 1.0, "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "serial_numbers": ["S-EX-A"], "lot_number": "L-EX",
+                   "location_id": src["id"]}],
+    }, headers=auth_headers).status_code == 201
+    serial = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"][0]
+    assert client.post(f"/api/lpns/{lpn['id']}/items", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]], "from_location_id": src["id"],
+    }, headers=auth_headers).status_code == 201
+    lot = _lot_for(auth_headers, prod["id"], "L-EX")
+    assert client.put(f"/api/lots/{lot['id']}", json={"status": "expired"}, headers=auth_headers).status_code == 200
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/unload", json={
+        "product_id": prod["id"], "serial_ids": [serial["id"]], "to_location_id": dst["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "expired" in resp.json()["detail"]
+
+
+def test_move_lpn_to_inactive_location_rejected(auth_headers):
+    """Moving an LPN to an inactive location is rejected."""
+    src = _loc(auth_headers, "LPN-IA")
+    inactive = client.post("/api/locations", json={"name": "Inactive", "code": "LPN-IAX", "is_active": False}, headers=auth_headers).json()
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-IA", "location_id": src["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LPN-IA", "name": "LPN IA", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "location_id": src["id"], "lpn_id": lpn["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    resp = client.post(f"/api/lpns/{lpn['id']}/move", params={"to_location_id": inactive["id"]}, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "inactive" in resp.json()["detail"]

@@ -57,7 +57,7 @@ def _serialize_lpn(db: Session, lpn: LPN) -> dict:
         "created_at": lpn.created_at,
         "location_name": lpn.location_name,
         "content_count": len(contents) + len(serials),
-        "total_quantity": total_qty,
+        "total_quantity": total_qty + len(serials),
         "contents": contents,
         "serials": serials,
     }
@@ -160,6 +160,8 @@ def update_lpn(lpn_id: int, data: LPNUpdate, db: Session = Depends(get_db), user
 def move_lpn(lpn_id: int, to_location_id: int, db: Session = Depends(get_db), user=Depends(require_permission("lpns.update"))):
     lpn = _load_lpn(db, lpn_id)
     target = get_or_404(Location, to_location_id, db)
+    if not target.is_active:
+        raise HTTPException(status_code=400, detail=f"Location '{target.path}' is inactive")
     if lpn.location_id == to_location_id:
         raise HTTPException(status_code=400, detail="LPN is already at this location")
     moving_to_quarantine = target.location_type == "quarantine"
@@ -384,6 +386,16 @@ def unload_lpn(lpn_id: int, data: LPNUnloadIn, db: Session = Depends(get_db), us
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is quarantined - it can only be unloaded to a quarantine area")
                 if serial.status not in (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED):
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
+                if serial.lot is not None and serial.lot.status not in ("in_stock", "quarantined"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be unloaded from an LPN",
+                    )
+                if serial.lot is not None and serial.lot.status == "quarantined" and not allow_quarantined:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is quarantined - it can only be unloaded to a quarantine area",
+                    )
             for serial in serials:
                 movements.extend(_serialized_move_pair(
                     db, product=product, user_id=user.id, serial=serial,

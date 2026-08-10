@@ -477,6 +477,8 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
     },
   });
   const activeLocations = (locations || []).filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path));
+  const sourceLocation = activeLocations.find((l) => l.id === from_location_id);
+  const sourceIsQuarantine = sourceLocation?.location_type === "quarantine";
 
   const { data: stockLocations } = useQuery({
     queryKey: ["stock-locations", "lpn-load", product_id],
@@ -491,11 +493,22 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
     queryKey: ["serial-numbers", "lpn-load", product_id, from_location_id],
     queryFn: async () => {
       const { data } = await api.get("/serial-numbers", {
-        params: { product_id, location_id: from_location_id, status: "in_stock", limit: 500 },
+        params: { product_id, location_id: from_location_id, status: "in_stock", limit: 200 },
       });
       return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && (!s.lot_status || s.lot_status === "in_stock"));
     },
     enabled: !!product_id && isSerialized && isLoad && from_location_id != null,
+  });
+
+  const { data: looseQuarantinedSerials } = useQuery({
+    queryKey: ["serial-numbers", "lpn-load", product_id, from_location_id, "quarantined"],
+    queryFn: async () => {
+      const { data } = await api.get("/serial-numbers", {
+        params: { product_id, location_id: from_location_id, status: "quarantined", limit: 200 },
+      });
+      return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && s.lot_status === "quarantined");
+    },
+    enabled: !!product_id && isSerialized && isLoad && from_location_id != null && sourceIsQuarantine,
   });
 
   const loadLocation = stockLocations?.find((l) => l.location_id === from_location_id);
@@ -509,7 +522,9 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
   const maxQuantity = isSerialized ? 0 : isLoad ? loadAvailable : unloadMax;
 
   const unloadSerials = lpn.serials.filter((s) => s.product_id === Number(product_id));
-  const loadSerialPool = (looseSerials || []).filter((s) => !serialIds.includes(s.id));
+  const loadSerialPool = (looseSerials || [])
+    .concat(looseQuarantinedSerials || [])
+    .filter((s) => !serialIds.includes(s.id));
   const unloadSerialPool = unloadSerials.filter((s) => !serialIds.includes(s.serial_id));
 
   const toggleSerial = (id: number) => {
@@ -627,6 +642,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
               const pool = (isLoad ? loadSerialPool : unloadSerialPool).map((s) => ({
                 key: isLoad ? (s as SerialNumber).id : (s as LPNSerialItem).serial_id,
                 serial_number: s.serial_number,
+                quarantined: s.status === "quarantined",
               }));
               if ((isLoad && !from_location_id) || pool.length === 0) {
                 return <p className="text-xs text-muted">{isLoad ? "No loose serials available at the source." : "No serials for this product in the LPN."}</p>;
@@ -641,6 +657,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
                       className="text-xs font-mono px-2 py-1 rounded border border-border-strong bg-subtle text-ink hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                     >
                       {s.serial_number}
+                      {s.quarantined && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400">Q</span>}
                     </button>
                   ))}
                 </div>
