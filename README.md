@@ -91,6 +91,9 @@ accuracy without a heavyweight ERP. A few concrete ways teams use it:
   quarantines the lot, removing it from sellable on-hand and sales allocation.
 - Move stock into a **quarantine-typed location** (e.g. a "Quarantine Area")
   and the system auto-quarantines the lot/serials on arrival — no manual step.
+  This holds across every flow: loose transfers, LPN moves/loads/unloads, and
+  moves of unallocated stock. Already-quarantined lots keep their status, so
+  shuffling stock within quarantine areas never accidentally releases it.
 - Use the **Quarantine** quick action on the location or product detail, then
   inspect and **Release** the lot from anywhere once it passes; stock becomes
   sellable again.
@@ -271,9 +274,17 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
   from/to location, lot, serial, LPN, and reference.
 - **Transfers:** move stock between locations via matched TRANSFER_OUT /
   TRANSFER_IN pairs. Moving stock into a **quarantine-typed location**
-  (e.g. "Quarantine Area") auto-quarantines the lot/serials on arrival.
+  (e.g. "Quarantine Area") auto-quarantines the lot/serials on arrival —
+  including via **LPN moves / loads / unloads** and **unallocated stock moves**,
+  so every path into a quarantine area behaves consistently.
 - **Quarantine move:** `POST /api/stock-movements/quarantine` quarantines
   stock directly (QAR-xxxx references), with per-lot/per-serial handling.
+- **Relocate quarantined stock:** already-quarantined lots/serials can be moved
+  to another location (e.g. between quarantine areas) without releasing them via
+  `POST /api/stock-movements/quarantined-move` (TRF-xxxx references).
+  `GET /api/stock-movements/quarantined-locations` lists where quarantined
+  stock currently sits. A **Move** quick action on the product detail view
+  opens the relocation dialog.
 - **Cycle counts:** create counts per location, record actual quantities, post
   variance adjustments (positive or negative), with audit trail.
 - **LPNs (License Plate Numbers):** group stock lines under a scannable label;
@@ -287,10 +298,12 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
   `expired` / `sold`), and expiry date. `sold` is derived automatically when a
   serialized lot is fully shipped and reverted on refund.
 - **Quarantine flow:** lots can be quarantined by a failed quality check, by
-  moving stock into a **quarantine-typed location** (auto-quarantine on
-  arrival), or via the dedicated quarantine move. Quarantined lots are excluded
-  from sellable on-hand and sales allocation, and can be released back to
-  sellable stock from the product or location detail view.
+  moving stock into a **quarantine-typed location** (auto-quarantine on arrival
+  across transfers, LPN moves/loads/unloads, and unallocated stock moves), or
+  via the dedicated quarantine move. Quarantined lots are excluded from sellable
+  on-hand and sales allocation, can be relocated between locations without
+  releasing, and can be released back to sellable stock from the product or
+  location detail view.
 - **Lot links (genealogy):** parent-to-child lot relationships. When a work order
   completes, component lots are linked to the finished-goods lot. Full genealogy
   tree view available per work order. Recall mode traces all descendants of any
@@ -348,11 +361,13 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
   Dashboard tracks quarantined units. Quarantined and expired lots show badges
   on the product detail view.
 - **Quarantine-typed locations:** mark a location (e.g. "Quarantine Area") with
-  `location_type=quarantine`; transferring stock into it auto-quarantines the
-  lot/serials on arrival. A dedicated `POST /api/stock-movements/quarantine`
-  move is also available, and **Quarantine / Release** quick actions sit on the
-  location and product detail views. Release works from anywhere and makes the
-  lot sellable again.
+  `location_type=quarantine`; stock arriving there auto-quarantines on arrival —
+  loose transfers, LPN moves/loads/unloads, and unallocated stock moves all
+  behave the same. A dedicated `POST /api/stock-movements/quarantine`
+  move is also available, **Quarantine / Release / Move** quick actions sit on
+  the product detail view (Move relocates quarantined stock without releasing),
+  and **Quarantine / Release** quick actions on the location detail view.
+  Release works from anywhere and makes the lot sellable again.
 - **Location awareness:** QCs can be scoped to a specific location, and the
   Quality Checks page/detail view show the related location.
 

@@ -509,6 +509,18 @@ export interface StockLocation {
   lots: StockLocationLot[];
 }
 
+export interface QuarantinedLocation {
+  location_id: number;
+  path: string;
+  name: string;
+  quantity: number;
+  lots: StockLocationLot[];
+}
+
+export interface QuarantinedLocationsResponse {
+  locations: QuarantinedLocation[];
+}
+
 export interface ASNItem {
   id: number;
   asn_id: number;

@@ -14,6 +14,7 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
 import MoveUnallocatedModal from "./MoveUnallocatedModal";
+import MoveQuarantinedModal from "./MoveQuarantinedModal";
 
 interface Props {
   product: Product;
@@ -48,6 +49,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   const { can } = useAuth();
   const { addToast } = useToast();
   const [showMoveUnallocated, setShowMoveUnallocated] = useState(false);
+  const [moveQuarantinedLot, setMoveQuarantinedLot] = useState<Lot | null>(null);
   const [confirmStatus, setConfirmStatus] = useState(false);
   const [isActive, setIsActive] = useState(product.is_active);
   const currencySymbol = settings?.currency_symbol || "$";
@@ -248,6 +250,11 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
                         Release
                       </button>
                     )}
+                    {can("stock.record") && (
+                      <button onClick={() => setMoveQuarantinedLot(lot)} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label={`Move ${lot.lot_number}`}>
+                        Move
+                      </button>
+                    )}
                   </span>
                 </li>
               ))}
@@ -330,6 +337,25 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           onClose={() => setShowMoveUnallocated(false)}
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });
+            queryClient.invalidateQueries({ queryKey: ["trace", product.id] });
+          }}
+        />
+      )}
+
+      {moveQuarantinedLot && (
+        <MoveQuarantinedModal
+          productId={product.id}
+          productName={product.display_name}
+          lotId={moveQuarantinedLot.id}
+          lotNumber={moveQuarantinedLot.lot_number}
+          isSerialized={product.is_serialized}
+          onClose={() => setMoveQuarantinedLot(null)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["product-quarantined-lots"] });
+            queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });
+            queryClient.invalidateQueries({ queryKey: ["lots"] });
+            queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+            queryClient.invalidateQueries({ queryKey: ["products"] });
             queryClient.invalidateQueries({ queryKey: ["trace", product.id] });
           }}
         />

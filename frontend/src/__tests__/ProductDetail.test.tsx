@@ -396,4 +396,146 @@ describe("ProductDetail", () => {
     fireEvent.click(screen.getByLabelText("Release LOT-Q1"));
     await waitFor(() => expect(putMock).toHaveBeenCalledWith("/lots/10", { status: "in_stock" }));
   });
+
+  it("moves a quarantined lot to a new location without releasing it", async () => {
+    const product = makeProduct({ id: 5, sku: "SKU-5", name: "Widget", quarantined_qty: 3 });
+    (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { reference: "TRF-0001", outbound_id: 1, inbound_id: 2, movements: [] },
+    });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/stock-movements/locations") {
+        return Promise.resolve({ data: { locations: [], unallocated: 0 } });
+      }
+      if (url === "/products/5/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      if (url === "/lots") {
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 10, product_id: 5, lot_number: "LOT-Q1", status: "quarantined", on_hand: 3, quantity: 3, locations: ["Quarantine Area"], created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00" },
+            ],
+            total: 1,
+            page: 1,
+            pages: 1,
+          },
+        });
+      }
+      if (url === "/stock-movements/quarantined-locations") {
+        return Promise.resolve({
+          data: {
+            locations: [
+              { location_id: 1, path: "Quarantine Area", name: "Quarantine Area", quantity: 3, lots: [{ lot_id: 10, lot_number: "LOT-Q1", quantity: 3 }] },
+            ],
+          },
+        });
+      }
+      if (url === "/locations") {
+        return Promise.resolve({ data: { items: [{ id: 2, path: "Shelf B", is_active: true }], total: 1, page: 1, pages: 1 } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Move LOT-Q1" }));
+
+    expect(await screen.findByText("Move Quarantined Stock: LOT-Q1")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Source Location")).toHaveValue("1");
+    fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "3" } });
+    await screen.findByRole("option", { name: "Shelf B" });
+    fireEvent.change(screen.getByLabelText("Destination Location"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move Quarantined Stock" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/stock-movements/quarantined-move", {
+        product_id: 5,
+        quantity: 3,
+        from_location_id: 1,
+        to_location_id: 2,
+        lot_id: 10,
+        notes: "",
+      })
+    );
+  });
+
+  it("moves quarantined serialized stock by selecting serial numbers", async () => {
+    const product = makeProduct({ id: 6, sku: "SKU-6", name: "Serial Widget", is_serialized: true, quarantined_qty: 2 });
+    (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { reference: "TRF-0002", outbound_id: 1, inbound_id: 2, movements: [] },
+    });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/products/6/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      if (url === "/lots") {
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 10, product_id: 6, lot_number: "LOT-QS", status: "quarantined", on_hand: 2, quantity: 2, locations: ["Quarantine Area"], created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00" },
+            ],
+            total: 1,
+            page: 1,
+            pages: 1,
+          },
+        });
+      }
+      if (url === "/serial-numbers") {
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 1, product_id: 6, serial_number: "SN-Q1", lot_id: 10, location_id: 1, status: "quarantined", location_name: "Quarantine Area", sold_at: null, lot_number: "LOT-QS", lot_status: "quarantined", product_name: "Serial Widget", created_at: "2026-01-01T00:00:00" },
+              { id: 2, product_id: 6, serial_number: "SN-Q2", lot_id: 10, location_id: 1, status: "quarantined", location_name: "Quarantine Area", sold_at: null, lot_number: "LOT-QS", lot_status: "quarantined", product_name: "Serial Widget", created_at: "2026-01-01T00:00:00" },
+            ],
+            total: 2,
+            page: 1,
+            pages: 1,
+          },
+        });
+      }
+      if (url === "/stock-movements/quarantined-locations") {
+        return Promise.resolve({
+          data: {
+            locations: [
+              { location_id: 1, path: "Quarantine Area", name: "Quarantine Area", quantity: 2, lots: [{ lot_id: 10, lot_number: "LOT-QS", quantity: 2 }] },
+            ],
+          },
+        });
+      }
+      if (url === "/locations") {
+        return Promise.resolve({ data: { items: [{ id: 2, path: "Shelf B", is_active: true }], total: 1, page: 1, pages: 1 } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Move LOT-QS" }));
+
+    expect(await screen.findByText("Move Quarantined Stock: LOT-QS")).toBeInTheDocument();
+    expect(await screen.findByText("SN-Q1")).toBeInTheDocument();
+    expect(screen.getByText("SN-Q2")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    fireEvent.click(checkboxes[1]);
+    await screen.findByRole("option", { name: "Shelf B" });
+    fireEvent.change(screen.getByLabelText("Destination Location"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Move Quarantined Stock" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/stock-movements/quarantined-move", {
+        product_id: 6,
+        quantity: 2,
+        from_location_id: 1,
+        to_location_id: 2,
+        lot_id: 10,
+        serial_ids: [1, 2],
+        notes: "",
+      })
+    );
+  });
 });

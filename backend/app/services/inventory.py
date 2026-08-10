@@ -679,11 +679,14 @@ def _location_lines(
     location_id: int,
     lot_id: int | None = None,
     sellable_only: bool = False,
+    include_quarantined: bool = False,
 ) -> list[StockLine]:
     """Positive stock lines for a product at a location, loose (non-LPN) first.
 
     With ``sellable_only=True``, lines held in non-``in_stock`` lots (quarantined
     or expired) are excluded so manual movements mirror what allocations can use.
+    With ``include_quarantined=True``, lines in quarantined lots are included in
+    addition to ``in_stock`` (expired and other states remain excluded).
     """
     stmt = (
         select(StockLine)
@@ -698,6 +701,10 @@ def _location_lines(
         stmt = stmt.outerjoin(Lot, StockLine.lot_id == Lot.id).where(
             (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock")
         )
+    elif include_quarantined:
+        stmt = stmt.outerjoin(Lot, StockLine.lot_id == Lot.id).where(
+            (StockLine.lot_id.is_(None)) | (Lot.status.in_(("in_stock", "quarantined")))
+        )
     if lot_id is not None:
         stmt = stmt.where(StockLine.lot_id == lot_id)
     return list(db.execute(stmt).scalars().all())
@@ -709,18 +716,27 @@ def _blocked_lot_stock(
     product_id: int,
     location_id: int | None = None,
     lpn_id: int | None = None,
+    include_quarantined: bool = False,
 ) -> list[tuple[str, str, int]]:
-    """Non-sellable lot stock (quarantined/expired) at the given scope, returned
-    as ``(lot_number, status, quantity)`` rows for error reporting."""
+    """Non-movable lot stock at the given scope, returned as
+    ``(lot_number, status, quantity)`` rows for error reporting.
+
+    With ``include_quarantined=True``, quarantined lots are treated as movable
+    (quarantine-consistent flows) so only other blocked states (e.g. expired)
+    are reported.
+    """
     stmt = (
         select(StockLine, Lot)
         .join(Lot, StockLine.lot_id == Lot.id)
         .where(
             StockLine.product_id == product_id,
             StockLine.quantity > 0,
-            Lot.status != "in_stock",
         )
     )
+    if include_quarantined:
+        stmt = stmt.where(Lot.status.notin_(("in_stock", "quarantined")))
+    else:
+        stmt = stmt.where(Lot.status != "in_stock")
     if location_id is not None:
         stmt = stmt.where(StockLine.location_id == location_id)
     if lpn_id is not None:
@@ -734,6 +750,28 @@ def _blocked_lot_message(rows: list[tuple[str, str, int]]) -> str:
         return ""
     details = ", ".join(f"'{num}' ({status}, {qty})" for num, status, qty in rows)
     return f"stock in quarantined or expired lots cannot be transferred or moved: {details}"
+
+
+def auto_quarantine(db: Session, to_loc: Location, movements: list[StockMovement]) -> None:
+    """When stock arrives at a quarantine-typed area, quarantine the moved lots and serials.
+
+    The physical move is a normal transfer pair; this flips the ledger-affiliated
+    statuses so the stock stops being sellable and renders with the quarantined
+    design everywhere. Only ``in_stock`` lots/serials are touched so an already
+    quarantined or expired lot keeps its stricter status.
+    """
+    if to_loc.location_type != "quarantine":
+        return
+    lot_ids = {m.lot_id for m in movements if m.lot_id is not None}
+    for lot_id in lot_ids:
+        lot = db.get(Lot, lot_id)
+        if lot is not None and lot.status == "in_stock":
+            lot.status = "quarantined"
+    for m in movements:
+        if m.serial_id is not None:
+            serial = db.get(SerialNumber, m.serial_id)
+            if serial is not None and serial.status == SERIAL_STATUS_IN_STOCK:
+                serial.status = SERIAL_STATUS_QUARANTINED
 
 
 def _post_line_transfer_pairs(
@@ -835,6 +873,7 @@ def load_into_lpn(
     location_id: int,
     lpn_id: int,
     lot_id: int | None = None,
+    include_quarantined: bool = False,
     reference: str = "",
     notes: str = "",
 ) -> list[StockMovement]:
@@ -843,19 +882,25 @@ def load_into_lpn(
     Consumes the location's stock across every LPN identity (loose first, then
     LPN-held) and re-lands it on the LPN, so partial contents of other LPNs at
     the same location can also be consolidated. Posts a transfer pair per source
-    line, with the inbound leg carrying the destination LPN.
+    line, with the inbound leg carrying the destination LPN. With
+    ``include_quarantined=True``, stock in quarantined lots can be loaded (e.g.
+    LPN-ing up stock already held in a quarantine area); expired stock stays
+    blocked.
     """
     if quantity <= 0:
         raise InventoryError("Load quantity must be positive")
-    lines = _location_lines(db, product_id=product_id, location_id=location_id, lot_id=lot_id, sellable_only=True)
-    sellable_total = sum(line.quantity for line in lines)
-    if quantity > sellable_total:
-        blocked = _blocked_lot_stock(db, product_id=product_id, location_id=location_id)
+    lines = _location_lines(
+        db, product_id=product_id, location_id=location_id, lot_id=lot_id,
+        sellable_only=not include_quarantined, include_quarantined=include_quarantined,
+    )
+    available_total = sum(line.quantity for line in lines)
+    if quantity > available_total:
+        blocked = _blocked_lot_stock(db, product_id=product_id, location_id=location_id, include_quarantined=include_quarantined)
         if blocked:
             raise InventoryError(
-                f"Insufficient sellable stock: need {quantity}, on hand {sellable_total}. {_blocked_lot_message(blocked)}"
+                f"Insufficient movable stock: need {quantity}, on hand {available_total}. {_blocked_lot_message(blocked)}"
             )
-        raise InventoryError(f"Insufficient stock: need {quantity}, on hand {sellable_total}")
+        raise InventoryError(f"Insufficient stock: need {quantity}, on hand {available_total}")
     return _post_line_transfer_pairs(
         db, product_id=product_id, user_id=user_id, lines=lines, quantity=quantity,
         from_location_id=location_id, to_location_id=location_id,
@@ -873,6 +918,7 @@ def unload_from_lpn(
     lpn_id: int,
     to_location_id: int,
     lot_id: int | None = None,
+    include_quarantined: bool = False,
     reference: str = "",
     notes: str = "",
 ) -> list[StockMovement]:
@@ -880,7 +926,10 @@ def unload_from_lpn(
 
     Consumes the LPN's stock lines (lot-aware when `lot_id` is given) and lands
     the quantity as non-LPN stock at the destination. Posts a transfer pair per
-    source line so the ledger stays consistent and reversible.
+    source line so the ledger stays consistent and reversible. With
+    ``include_quarantined=True``, stock in quarantined lots can be unloaded (e.g.
+    relocating quarantined LPN contents into a quarantine area); expired stock
+    stays blocked.
     """
     if quantity <= 0:
         raise InventoryError("Unload quantity must be positive")
@@ -892,20 +941,23 @@ def unload_from_lpn(
             StockLine.quantity > 0,
         )
         .outerjoin(Lot, StockLine.lot_id == Lot.id)
-        .where((StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"))
-        .order_by(StockLine.id.asc())
     )
+    if include_quarantined:
+        stmt = stmt.where((StockLine.lot_id.is_(None)) | (Lot.status.in_(("in_stock", "quarantined"))))
+    else:
+        stmt = stmt.where((StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"))
+    stmt = stmt.order_by(StockLine.id.asc())
     if lot_id is not None:
         stmt = stmt.where(StockLine.lot_id == lot_id)
     lines = list(db.execute(stmt).scalars().all())
-    sellable_total = sum(line.quantity for line in lines)
-    if quantity > sellable_total:
-        blocked = _blocked_lot_stock(db, product_id=product_id, lpn_id=lpn_id)
+    available_total = sum(line.quantity for line in lines)
+    if quantity > available_total:
+        blocked = _blocked_lot_stock(db, product_id=product_id, lpn_id=lpn_id, include_quarantined=include_quarantined)
         if blocked:
             raise InventoryError(
-                f"Insufficient sellable stock: need {quantity}, on hand {sellable_total}. {_blocked_lot_message(blocked)}"
+                f"Insufficient movable stock: need {quantity}, on hand {available_total}. {_blocked_lot_message(blocked)}"
             )
-        raise InventoryError(f"Insufficient stock: need {quantity}, on hand {sellable_total}")
+        raise InventoryError(f"Insufficient stock: need {quantity}, on hand {available_total}")
     return _post_line_transfer_pairs(
         db, product_id=product_id, user_id=user_id, lines=lines, quantity=quantity,
         from_location_id=location_id, to_location_id=to_location_id,

@@ -162,42 +162,45 @@ def move_lpn(lpn_id: int, to_location_id: int, db: Session = Depends(get_db), us
     target = get_or_404(Location, to_location_id, db)
     if lpn.location_id == to_location_id:
         raise HTTPException(status_code=400, detail="LPN is already at this location")
+    moving_to_quarantine = target.location_type == "quarantine"
     blocked: list[tuple[str, str]] = []
     for sl in lpn.stock_lines:
-        if sl.lot is not None and sl.lot.status != "in_stock":
+        if sl.lot is not None and (sl.lot.status not in ("in_stock", "quarantined") or (sl.lot.status == "quarantined" and not moving_to_quarantine)):
             blocked.append((sl.lot.lot_number, sl.lot.status))
     for serial in db.query(SerialNumber).filter(SerialNumber.lpn_id == lpn.id).all():
-        if serial.lot is not None and serial.lot.status != "in_stock":
+        if serial.lot is not None and (serial.lot.status not in ("in_stock", "quarantined") or (serial.lot.status == "quarantined" and not moving_to_quarantine)):
             blocked.append((serial.lot.lot_number, serial.lot.status))
     if blocked:
         details = ", ".join(f"'{num}' ({status})" for num, status in dict.fromkeys(blocked))
         raise HTTPException(
             status_code=400,
-            detail=f"LPN '{lpn.lpn_number}' holds stock from quarantined or expired lot(s): {details} - it cannot be moved. Release the lot(s) or unload and dispose of the stock first.",
+            detail=f"LPN '{lpn.lpn_number}' holds stock from lot(s) that cannot be moved to '{target.path}': {details}. Quarantined stock can only be moved to a quarantine area; expired stock must be unloaded and disposed of first.",
         )
     reference = next_document_number(db, "lpn_move", "MOV-")
+    movements: list[StockMovement] = []
     try:
         for sl in lpn.stock_lines:
-            inventory.transfer_stock(
+            movements.extend(inventory.transfer_stock(
                 db, product_id=sl.product_id, user_id=user.id, quantity=sl.quantity,
                 from_location_id=lpn.location_id, to_location_id=to_location_id,
                 lot_id=sl.lot_id, lpn_id=lpn.id,
                 reference_type="lpn_move", reference=reference,
                 notes=f"Moved LPN '{lpn.lpn_number}' to {target.path}",
-            )
+            ))
         for serial in db.query(SerialNumber).filter(SerialNumber.lpn_id == lpn.id).all():
-            inventory.transfer_stock(
+            movements.extend(inventory.transfer_stock(
                 db, product_id=serial.product_id, user_id=user.id, quantity=1,
                 from_location_id=lpn.location_id, to_location_id=to_location_id,
                 lot_id=serial.lot_id, serial_id=serial.id, lpn_id=lpn.id,
                 reference_type="lpn_move", reference=reference,
                 notes=f"Moved LPN '{lpn.lpn_number}' to {target.path}",
-            )
+            ))
         lpn.location_id = to_location_id
         db.flush()
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    inventory.auto_quarantine(db, target, movements)
     db.commit()
     lpn = _load_lpn(db, lpn.id)
     log_activity(db, user.id, user.username, "move", "lpn", lpn.id,
@@ -268,6 +271,7 @@ def load_lpn(lpn_id: int, data: LPNLoadIn, db: Session = Depends(get_db), user=D
     src = get_or_404(Location, data.from_location_id, db)
     if not src.is_active:
         raise HTTPException(status_code=400, detail=f"Location '{src.path}' is inactive")
+    allow_quarantined = src.location_type == "quarantine"
 
     reference = next_document_number(db, "lpn_load", "LOD-")
     movements: list[StockMovement] = []
@@ -285,9 +289,11 @@ def load_lpn(lpn_id: int, data: LPNLoadIn, db: Session = Depends(get_db), user=D
                 serial = by_id[serial_id]
                 if serial.product_id != product.id:
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
-                if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
+                if serial.status == inventory.SERIAL_STATUS_QUARANTINED and not allow_quarantined:
+                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is quarantined - it can only be loaded into an LPN in a quarantine area")
+                if serial.status not in (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED):
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
-                if serial.lot is not None and serial.lot.status != "in_stock":
+                if serial.lot is not None and serial.lot.status not in ("in_stock", "quarantined"):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be loaded into an LPN",
@@ -318,11 +324,13 @@ def load_lpn(lpn_id: int, data: LPNLoadIn, db: Session = Depends(get_db), user=D
                 db, product_id=product.id, user_id=user.id,
                 quantity=data.quantity, location_id=src.id, lot_id=data.lot_id,
                 lpn_id=lpn.id, reference=reference,
+                include_quarantined=allow_quarantined,
                 notes=f"Loaded into LPN '{lpn.lpn_number}'",
             )
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    inventory.auto_quarantine(db, src, movements)
     db.commit()
     lpn = _load_lpn(db, lpn.id)
     log_activity(db, user.id, user.username, "load", "lpn", lpn.id,
@@ -352,6 +360,7 @@ def unload_lpn(lpn_id: int, data: LPNUnloadIn, db: Session = Depends(get_db), us
     dest = get_or_404(Location, data.to_location_id, db)
     if not dest.is_active:
         raise HTTPException(status_code=400, detail=f"Location '{dest.path}' is inactive")
+    allow_quarantined = dest.location_type == "quarantine"
 
     reference = next_document_number(db, "lpn_unload", "ULD-")
     movements: list[StockMovement] = []
@@ -371,7 +380,9 @@ def unload_lpn(lpn_id: int, data: LPNUnloadIn, db: Session = Depends(get_db), us
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
                 if serial.lpn_id != lpn.id:
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in LPN '{lpn.lpn_number}'")
-                if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
+                if serial.status == inventory.SERIAL_STATUS_QUARANTINED and not allow_quarantined:
+                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is quarantined - it can only be unloaded to a quarantine area")
+                if serial.status not in (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED):
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
             for serial in serials:
                 movements.extend(_serialized_move_pair(
@@ -389,11 +400,13 @@ def unload_lpn(lpn_id: int, data: LPNUnloadIn, db: Session = Depends(get_db), us
                 db, product_id=product.id, user_id=user.id,
                 quantity=data.quantity, location_id=lpn.location_id, lot_id=data.lot_id,
                 lpn_id=lpn.id, to_location_id=dest.id, reference=reference,
+                include_quarantined=allow_quarantined,
                 notes=f"Unloaded from LPN '{lpn.lpn_number}'",
             )
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    inventory.auto_quarantine(db, dest, movements)
     db.commit()
     lpn = _load_lpn(db, lpn.id)
     log_activity(db, user.id, user.username, "unload", "lpn", lpn.id,
