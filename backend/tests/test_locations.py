@@ -280,6 +280,21 @@ def test_location_detail_includes_serialized(auth_headers):
     assert detail["serials"][0]["value"] == 5.0
 
 
+def test_location_detail_serialized_lpn_total_quantity(auth_headers):
+    """The location detail must count serialized units held inside an LPN."""
+    loc = _create_location(auth_headers, code="SERLPN-1").json()
+    prod = _serialized_at(auth_headers, loc, "SERLPN-P", ["S-LPN-1", "S-LPN-2"])
+    lpn = client.post("/api/lpns", json={"lpn_number": "PAL-SERLPN", "location_id": loc["id"]}, headers=auth_headers).json()
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert client.post(f"/api/lpns/{lpn['id']}/items", json={
+        "product_id": prod["id"], "serial_ids": [s["id"] for s in serials], "from_location_id": loc["id"],
+    }, headers=auth_headers).status_code == 201
+
+    detail = client.get(f"/api/locations/{loc['id']}/detail", headers=auth_headers).json()
+    match = next(l for l in detail["lpns"] if l["id"] == lpn["id"])
+    assert match["total_quantity"] == 2
+
+
 def test_location_delete_blocked_with_serials(auth_headers):
     loc = _create_location(auth_headers, code="SERDEL-1").json()
     _serialized_at(auth_headers, loc, "SERDEL-P", ["S-DEL"])

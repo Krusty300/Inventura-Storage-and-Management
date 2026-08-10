@@ -206,14 +206,14 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
     )
     lpns = (
         db.query(LPN)
-        .options(joinedload(LPN.stock_lines))
+        .options(joinedload(LPN.stock_lines), joinedload(LPN.serial_numbers))
         .filter(LPN.location_id == location_id)
         .order_by(LPN.lpn_number)
         .all()
     )
     serials = (
         db.query(SerialNumber)
-        .options(joinedload(SerialNumber.product), joinedload(SerialNumber.lot))
+        .options(joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.lpn))
         .filter(
             SerialNumber.location_id == location_id,
             SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK,
@@ -223,7 +223,7 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
     )
     scrapped = (
         db.query(SerialNumber)
-        .options(joinedload(SerialNumber.product), joinedload(SerialNumber.lot))
+        .options(joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.lpn))
         .filter(
             SerialNumber.location_id == location_id,
             SerialNumber.status == inventory.SERIAL_STATUS_SCRAPPED,
@@ -260,6 +260,8 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
             "lot_id": s.lot.id if s.lot else None,
             "lot_status": s.lot.status if s.lot else "",
             "status": s.status,
+            "lpn_id": s.lpn_id,
+            "lpn_number": s.lpn.lpn_number if s.lpn else "",
             "unit_cost": float(s.product.cost_price) if s.product and s.product.cost_price else 0.0,
             "value": float(s.product.cost_price or 0) if s.product else 0.0,
         }
@@ -284,7 +286,7 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
             "lpn_number": l.lpn_number,
             "lpn_type": l.lpn_type,
             "status": l.status,
-            "total_quantity": sum(sl.quantity for sl in l.stock_lines),
+            "total_quantity": sum(sl.quantity for sl in l.stock_lines) + len(l.serial_numbers),
         } for l in lpns],
         "serials": [_serial_payload(s) for s in serials],
         "scrapped_serials": [_serial_payload(s) for s in scrapped],

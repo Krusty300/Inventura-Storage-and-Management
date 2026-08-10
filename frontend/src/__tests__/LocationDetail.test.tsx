@@ -76,4 +76,34 @@ describe("LocationDetail", () => {
     fireEvent.click(screen.getByLabelText("Quarantine LOT-S1"));
     await waitFor(() => expect(putMock).toHaveBeenCalledWith("/lots/11", { status: "quarantined" }));
   });
+
+  it("shows serialized items when the location has no bulk stock lines", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/locations/5/detail") {
+        return Promise.resolve({
+          data: {
+            location: makeLocation(),
+            stock_lines: [],
+            lpns: [],
+            serials: [
+              { id: 7, product_id: 1, product_name: "Ser Widget", sku: "SKU-SER", serial_number: "SN-1001", lot_number: "LOT-S1", lot_id: 11, lot_status: "in_stock", status: "in_stock", unit_cost: 1, value: 1 },
+            ],
+            scrapped_serials: [],
+            movements: [],
+          },
+        });
+      }
+      if (url === "/activity-logs") {
+        return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<LocationDetail location={makeLocation()} onClose={() => {}} />);
+
+    expect(await screen.findByText("SN-1001")).toBeInTheDocument();
+    expect(screen.getByText("Serialized items (1)")).toBeInTheDocument();
+    expect(screen.queryByText("No stock at this location.")).not.toBeInTheDocument();
+  });
 });

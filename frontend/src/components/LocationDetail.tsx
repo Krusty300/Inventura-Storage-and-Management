@@ -41,6 +41,8 @@ interface LocationDetailData {
     lot_number: string;
     lot_status: string;
     status: string;
+    lpn_id: number | null;
+    lpn_number: string;
     unit_cost: number;
     value: number;
   }[];
@@ -53,6 +55,8 @@ interface LocationDetailData {
     lot_number: string;
     lot_status: string;
     status: string;
+    lpn_id: number | null;
+    lpn_number: string;
     unit_cost: number;
     value: number;
   }[];
@@ -193,9 +197,11 @@ export default function LocationDetail({ location, onClose }: Props) {
           <p className="text-muted py-4">Loading...</p>
         ) : tab === "stock" ? (
           <>
-            {stockLines.length === 0 ? (
+            {stockLines.length === 0 && serials.length === 0 ? (
               <p className="text-muted py-4">No stock at this location.</p>
             ) : (
+              <>
+            {stockLines.length > 0 && (
               <div className="overflow-x-auto max-h-72 overflow-y-auto">
                 <table className="w-full text-sm" role="grid" aria-label="Stock at location">
                   <thead>
@@ -234,6 +240,8 @@ export default function LocationDetail({ location, onClose }: Props) {
                 </table>
               </div>
             )}
+              </>
+            )}
             {serials.length > 0 && (
               <div className="mt-4">
                 <p className="text-sm font-medium text-ink mb-2">Serialized items ({serials.length})</p>
@@ -245,6 +253,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                         <th className="px-3 py-2 font-medium">Product</th>
                         <th className="px-3 py-2 font-medium">SKU</th>
                         <th className="px-3 py-2 font-medium">Lot</th>
+                        <th className="px-3 py-2 font-medium">LPN</th>
                         <th className="px-3 py-2 font-medium">Status</th>
                         <th className="px-3 py-2 font-medium text-right">Value</th>
                       </tr>
@@ -256,6 +265,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                           <td className="px-3 py-2 text-muted">{s.product_name}</td>
                           <td className="px-3 py-2 text-muted">{s.sku}</td>
                           <td className="px-3 py-2 text-muted">{s.lot_number || "—"}{s.lot_status && s.lot_status !== "in_stock" ? <LotStatusBadge status={s.lot_status} /> : null}</td>
+                          <td className="px-3 py-2 text-muted">{s.lpn_number || "—"}</td>
                           <td className="px-3 py-2"><span className="badge badge-success">{s.status}</span></td>
                           <td className="px-3 py-2 text-right">{formatCurrency(s.value, currencySymbol)}</td>
                         </tr>
@@ -276,6 +286,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                         <th className="px-3 py-2 font-medium">Product</th>
                         <th className="px-3 py-2 font-medium">SKU</th>
                         <th className="px-3 py-2 font-medium">Lot</th>
+                        <th className="px-3 py-2 font-medium">LPN</th>
                         <th className="px-3 py-2 font-medium">Status</th>
                         <th className="px-3 py-2 font-medium text-right">Value</th>
                       </tr>
@@ -287,6 +298,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                           <td className="px-3 py-2 text-muted">{s.product_name}</td>
                           <td className="px-3 py-2 text-muted">{s.sku}</td>
                           <td className="px-3 py-2 text-muted">{s.lot_number || "—"}</td>
+                          <td className="px-3 py-2 text-muted">{s.lpn_number || "—"}</td>
                           <td className="px-3 py-2"><span className="badge badge-danger">{s.status}</span></td>
                           <td className="px-3 py-2 text-right">{formatCurrency(s.value, currencySymbol)}</td>
                         </tr>
