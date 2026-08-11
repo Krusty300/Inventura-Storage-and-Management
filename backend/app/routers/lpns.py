@@ -3,6 +3,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
+from app.constants import MAX_PAGE_SIZE, MAX_PAGE_SIZE_PICKER
 from app.database import get_db
 from app.models import LPN, Location, Lot, Product, SerialNumber, StockLine, StockMovement
 from app.schemas.lpn import LPNCreate, LPNLoadIn, LPNOut, LPNUnloadIn, LPNUpdate
@@ -69,7 +70,7 @@ def list_lpns(
     location_id: int | None = None,
     status: str | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_PICKER),
     db: Session = Depends(get_db),
 ):
     q = db.query(LPN).options(
@@ -105,7 +106,7 @@ def lpn_contents(lpn_id: int, db: Session = Depends(get_db)):
 def lpn_movements(
     lpn_id: int,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_PICKER),
     db: Session = Depends(get_db),
 ):
     """Ledger activity for an LPN: loads, unloads, receipts, shipment picks,
@@ -291,15 +292,10 @@ def load_lpn(lpn_id: int, data: LPNLoadIn, db: Session = Depends(get_db), user=D
                 serial = by_id[serial_id]
                 if serial.product_id != product.id:
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
-                if serial.status == inventory.SERIAL_STATUS_QUARANTINED and not allow_quarantined:
-                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is quarantined - it can only be loaded into an LPN in a quarantine area")
-                if serial.status not in (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED):
-                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
-                if serial.lot is not None and serial.lot.status not in ("in_stock", "quarantined"):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be loaded into an LPN",
-                    )
+                try:
+                    inventory.validate_serial_movable(serial, allow_quarantined=allow_quarantined)
+                except inventory.InventoryError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
                 if serial.location_id != src.id:
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not at '{src.path}'")
                 if serial.lpn_id is not None:
@@ -382,20 +378,10 @@ def unload_lpn(lpn_id: int, data: LPNUnloadIn, db: Session = Depends(get_db), us
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
                 if serial.lpn_id != lpn.id:
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in LPN '{lpn.lpn_number}'")
-                if serial.status == inventory.SERIAL_STATUS_QUARANTINED and not allow_quarantined:
-                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is quarantined - it can only be unloaded to a quarantine area")
-                if serial.status not in (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED):
-                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
-                if serial.lot is not None and serial.lot.status not in ("in_stock", "quarantined"):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be unloaded from an LPN",
-                    )
-                if serial.lot is not None and serial.lot.status == "quarantined" and not allow_quarantined:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is quarantined - it can only be unloaded to a quarantine area",
-                    )
+                try:
+                    inventory.validate_serial_movable(serial, allow_quarantined=allow_quarantined)
+                except inventory.InventoryError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
             for serial in serials:
                 movements.extend(_serialized_move_pair(
                     db, product=product, user_id=user.id, serial=serial,

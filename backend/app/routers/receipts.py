@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
+from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models.location import Location
 from app.models.lot import Lot
@@ -39,7 +40,7 @@ def list_receipts(
     search: str = Query(""),
     supplier_id: int | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     q = db.query(Receipt).options(

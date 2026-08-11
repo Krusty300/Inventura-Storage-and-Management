@@ -41,8 +41,8 @@ def _make_location(db, name, parent_id=None, code=None):
     return location
 
 
-def _make_lot(db, product_id, lot_number, expiry_date=None):
-    lot = Lot(product_id=product_id, lot_number=lot_number, expiry_date=expiry_date)
+def _make_lot(db, product_id, lot_number, expiry_date=None, status="in_stock"):
+    lot = Lot(product_id=product_id, lot_number=lot_number, expiry_date=expiry_date, status=status)
     db.add(lot)
     db.commit()
     db.refresh(lot)
@@ -522,3 +522,71 @@ class TestValidation:
 
         with pytest.raises(InventoryError, match="non-negative"):
             inventory.allocate_lots(db, product_id=product.id, quantity=-1)
+
+
+def _make_serial(db, product, lot=None, status="in_stock"):
+    serial = SerialNumber(product_id=product.id, serial_number="SN", status=status, lot_id=lot.id if lot else None)
+    db.add(serial)
+    db.commit()
+    db.refresh(serial)
+    return serial
+
+
+class TestValidateSerialMovable:
+    def test_in_stock_serial_passes(self, db):
+        product = _make_product(db, "VM-OK")
+        serial = _make_serial(db, product)
+        inventory.validate_serial_movable(serial)
+        assert True
+
+    def test_in_stock_lot_passes(self, db):
+        product = _make_product(db, "VM-LOT")
+        lot = _make_lot(db, product.id, "VM-LOT-1", status="in_stock")
+        serial = _make_serial(db, product, lot=lot)
+        inventory.validate_serial_movable(serial)
+        assert True
+
+    def test_quarantined_serial_blocked_by_default(self, db):
+        product = _make_product(db, "VM-QS")
+        serial = _make_serial(db, product, status="quarantined")
+        with pytest.raises(InventoryError, match="quarantined"):
+            inventory.validate_serial_movable(serial)
+
+    def test_quarantined_serial_allowed_for_quarantine_area(self, db):
+        product = _make_product(db, "VM-QS2")
+        serial = _make_serial(db, product, status="quarantined")
+        inventory.validate_serial_movable(serial, to_loc_type="quarantine")
+        assert True
+
+    def test_non_stock_status_blocked(self, db):
+        product = _make_product(db, "VM-NS")
+        serial = _make_serial(db, product, status="sold")
+        with pytest.raises(InventoryError, match="not in stock"):
+            inventory.validate_serial_movable(serial)
+
+    def test_quarantined_lot_blocked_by_default(self, db):
+        product = _make_product(db, "VM-QL")
+        lot = _make_lot(db, product.id, "VM-QL-1", status="quarantined")
+        serial = _make_serial(db, product, lot=lot)
+        with pytest.raises(InventoryError, match="quarantined"):
+            inventory.validate_serial_movable(serial)
+
+    def test_quarantined_lot_allowed_for_quarantine_area(self, db):
+        product = _make_product(db, "VM-QL2")
+        lot = _make_lot(db, product.id, "VM-QL-2", status="quarantined")
+        serial = _make_serial(db, product, lot=lot)
+        inventory.validate_serial_movable(serial, to_loc_type="quarantine")
+        assert True
+
+    def test_expired_lot_blocked_even_for_quarantine_area(self, db):
+        product = _make_product(db, "VM-EX")
+        lot = _make_lot(db, product.id, "VM-EX-1", status="expired")
+        serial = _make_serial(db, product, lot=lot)
+        with pytest.raises(InventoryError, match="expired"):
+            inventory.validate_serial_movable(serial, to_loc_type="quarantine")
+
+    def test_allow_quarantined_flag_grants_quarantined_serial(self, db):
+        product = _make_product(db, "VM-FLAG")
+        serial = _make_serial(db, product, status="quarantined")
+        inventory.validate_serial_movable(serial, allow_quarantined=True)
+        assert True

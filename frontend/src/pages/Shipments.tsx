@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Eye, FileText, Pencil, Trash2, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Customer, PaginatedResponse, SerialNumber, Shipment, ShipmentItem, ShipmentStats } from "../types";
 import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
@@ -208,7 +209,7 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
 
   const { data: customersData } = useQuery({
     queryKey: ["customers", "select"],
-    queryFn: async () => (await api.get("/customers", { params: { limit: 1000 } })).data as PaginatedResponse<Customer>,
+    queryFn: async () => (await api.get("/customers", { params: { limit: PAGE_SIZE_PRODUCTS } })).data as PaginatedResponse<Customer>,
   });
   const customers = customersData?.items || [];
 
@@ -580,7 +581,7 @@ function SerializedPickRow({ item, selected, onSelect }: {
     queryKey: ["serial-numbers", "shipment-pick", item.product_id, locationId ?? "any"],
     queryFn: async () => {
       const { data } = await api.get("/serial-numbers", {
-        params: { product_id: item.product_id, status: "in_stock", limit: 200, ...(locationId ? { location_id: locationId } : {}) },
+        params: { product_id: item.product_id, status: "in_stock", limit: PAGE_SIZE, ...(locationId ? { location_id: locationId } : {}) },
       });
       return data.items as SerialNumber[];
     },

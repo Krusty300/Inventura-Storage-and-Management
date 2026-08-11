@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE } from "../utils/constants";
 import type { SerialNumber, StockLocation } from "../types";
 
 export interface StockLocationSummary {
@@ -19,7 +20,7 @@ export function useProductStockLocations(productId: number | null | undefined, i
     queryFn: async () => {
       if (isSerialized) {
         const { data } = await api.get("/serial-numbers", {
-          params: { product_id: productId ?? undefined, status: "in_stock", limit: 200 },
+          params: { product_id: productId ?? undefined, status: "in_stock", limit: PAGE_SIZE },
         });
         const serials = (data?.items || []) as SerialNumber[];
         const map = new Map<number, StockLocationSummary>();

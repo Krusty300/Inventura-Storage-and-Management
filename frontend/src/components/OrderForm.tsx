@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Order, Product, Supplier, Location } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
@@ -36,8 +37,8 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
   useEffect(() => {
     api.get("/suppliers").then(({ data }) => setSuppliers(data.items));
-    api.get("/products", { params: { active_only: true, limit: 1000, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
-    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
+    api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
+    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
   }, []);
 
   useEffect(() => {

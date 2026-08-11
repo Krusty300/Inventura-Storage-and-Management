@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
 import type { Location, QuarantinedLocation, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
@@ -45,7 +46,7 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
     queryKey: ["serial-numbers", "quarantined-move", productId, sourceLocationId],
     queryFn: async () => {
       const { data } = await api.get("/serial-numbers", {
-        params: { product_id: productId, status: "quarantined", location_id: sourceLocationId, limit: 200 },
+        params: { product_id: productId, status: "quarantined", location_id: sourceLocationId, limit: PAGE_SIZE },
       });
       return (data.items || []) as SerialNumber[];
     },
@@ -55,7 +56,7 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
   const { data: locations = [] } = useQuery({
     queryKey: ["locations", "move-quarantined"],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return (data.items || []) as Location[];
     },
   });

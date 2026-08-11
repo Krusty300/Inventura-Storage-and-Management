@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Eye, FileText, ArrowLeftRight, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { LPN, Location, LPNSerialItem, PaginatedResponse, SerialNumber, StockLocation, StockMovement } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -162,7 +163,7 @@ function LpnCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [locations, setLocations] = useState<Location[]>([]);
 
   useEffect(() => {
-    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
+    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -372,7 +373,7 @@ function LpnActivity({ lpnId, onClose }: { lpnId: number; onClose: () => void })
   const { data, isLoading } = useQuery({
     queryKey: ["lpn", lpnId, "movements"],
     queryFn: async () => {
-      const { data } = await api.get(`/lpns/${lpnId}/movements`, { params: { limit: 200 } });
+      const { data } = await api.get(`/lpns/${lpnId}/movements`, { params: { limit: PAGE_SIZE } });
       return data as StockMovement[];
     },
   });
@@ -472,7 +473,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
   const { data: locations } = useQuery({
     queryKey: ["locations", "lpn-stock"],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return data.items as Location[];
     },
   });
@@ -493,7 +494,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
     queryKey: ["serial-numbers", "lpn-load", product_id, from_location_id],
     queryFn: async () => {
       const { data } = await api.get("/serial-numbers", {
-        params: { product_id, location_id: from_location_id, status: "in_stock", limit: 200 },
+        params: { product_id, location_id: from_location_id, status: "in_stock", limit: PAGE_SIZE },
       });
       return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && (!s.lot_status || s.lot_status === "in_stock"));
     },
@@ -504,7 +505,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
     queryKey: ["serial-numbers", "lpn-load", product_id, from_location_id, "quarantined"],
     queryFn: async () => {
       const { data } = await api.get("/serial-numbers", {
-        params: { product_id, location_id: from_location_id, status: "quarantined", limit: 200 },
+        params: { product_id, location_id: from_location_id, status: "quarantined", limit: PAGE_SIZE },
       });
       return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && s.lot_status === "quarantined");
     },
@@ -685,7 +686,7 @@ function LpnMoveModal({ lpn, onClose, onSaved }: { lpn: LPN; onClose: () => void
   const { data: locations } = useQuery({
     queryKey: ["locations", "lpn-move"],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return data.items as Location[];
     },
   });

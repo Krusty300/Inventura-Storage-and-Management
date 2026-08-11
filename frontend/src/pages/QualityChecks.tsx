@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE } from "../utils/constants";
 import type { Lot, PaginatedResponse, QualityCheck } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -174,7 +175,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
       setLocationId("");
       return;
     }
-    api.get("/lots", { params: { product_id: productId, limit: 200 } }).then(({ data }) => setLots(data.items));
+    api.get("/lots", { params: { product_id: productId, limit: PAGE_SIZE } }).then(({ data }) => setLots(data.items));
     if (!qc) setLocationId("");
   }, [productId]);
 

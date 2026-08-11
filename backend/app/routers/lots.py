@@ -4,6 +4,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
+from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models.lot import Lot
 from app.models.lot_link import LotLink
@@ -46,7 +47,7 @@ def list_lots(
     status: str | None = None,
     search: str = Query(""),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     expire_overdue_lots(db)

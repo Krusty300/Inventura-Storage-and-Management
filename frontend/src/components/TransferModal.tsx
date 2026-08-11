@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowLeftRight, AlertTriangle, Fingerprint } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, SerialNumber, StockLocation } from "../types";
 import Modal from "./Modal";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
@@ -31,7 +32,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
   const { data: locations } = useQuery({
     queryKey: ["locations", "transfer"],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return data.items as Location[];
     },
   });
@@ -49,7 +50,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
     queryKey: ["serial-numbers", "transfer", product_id],
     queryFn: async () => {
       const { data } = await api.get("/serial-numbers", {
-        params: { product_id, status: "in_stock", limit: 200 },
+        params: { product_id, status: "in_stock", limit: PAGE_SIZE },
       });
       return data.items as SerialNumber[];
     },

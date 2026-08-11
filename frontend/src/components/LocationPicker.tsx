@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location } from "../types";
 
 interface Props {
@@ -14,7 +15,7 @@ export default function LocationPicker({ value, onChange, placeholder = "Select 
   const { data, isLoading } = useQuery({
     queryKey: ["locations", "picker", includeInactive],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return data.items as Location[];
     },
   });

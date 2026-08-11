@@ -3,6 +3,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
+from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models import BOM, BOMItem, Product, WorkOrder
 from app.schemas.bom import BOMCreate, BOMOut, BOMUpdate
@@ -100,7 +101,7 @@ def list_boms(
     is_active: bool | None = None,
     search: str = Query(""),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     q = db.query(BOM).options(joinedload(BOM.product), joinedload(BOM.items).joinedload(BOMItem.product))

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import api from "../api/client";
+import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Customer, Product, QualityCheck, Settings } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
@@ -145,10 +146,10 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   }, []);
 
   useEffect(() => {
-    api.get("/customers", { params: { limit: 1000 } }).then(({ data }) => setCustomers(data.items));
-    api.get("/products", { params: { active_only: true, limit: 1000, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
+    api.get("/customers", { params: { limit: PAGE_SIZE_PRODUCTS } }).then(({ data }) => setCustomers(data.items));
+    api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
     api.get("/settings").then(({ data }) => setSettings(data));
-    api.get("/quality-checks", { params: { result: "pending", limit: 200 } }).then(({ data }) => setPendingQcs(data.items));
+    api.get("/quality-checks", { params: { result: "pending", limit: PAGE_SIZE } }).then(({ data }) => setPendingQcs(data.items));
   }, []);
 
   const selectable = selectableProducts(products);

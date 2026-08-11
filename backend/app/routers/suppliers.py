@@ -5,6 +5,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
+from app.constants import MAX_PAGE_SIZE, MAX_PAGE_SIZE_PICKER
 from app.database import get_db
 from app.models.order import Order
 from app.models.product import Product
@@ -79,7 +80,7 @@ def list_suppliers(
     include_inactive: bool = False,
     category_id: int | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_PICKER),
     db: Session = Depends(get_db),
 ):
     stats = _stats_query(db)

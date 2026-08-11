@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Category, Location, Product, Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
 import { useSettings } from "../hooks/useSettings";
@@ -50,7 +51,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   useEffect(() => {
     api.get("/categories").then(({ data }) => setCategories(data.items));
     api.get("/suppliers").then(({ data }) => setSuppliers(data.items));
-    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
+    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
     if (product) {
       setForm({
         sku: product.sku, name: product.name, description: product.description,

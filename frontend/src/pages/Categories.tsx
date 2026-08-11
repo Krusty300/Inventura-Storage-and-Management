@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Pencil, Trash2, Eye } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Category, PaginatedResponse } from "../types";
 import CategoryDetail from "../components/CategoryDetail";
 import CategoryForm from "../components/CategoryForm";
@@ -36,7 +37,7 @@ export default function Categories() {
   const { data: allCategories } = useQuery({
     queryKey: ["categories", "all"],
     queryFn: async () => {
-      const { data } = await api.get("/categories", { params: { limit: 1000 } });
+      const { data } = await api.get("/categories", { params: { limit: PAGE_SIZE_PRODUCTS } });
       return (data as PaginatedResponse<Category>).items;
     },
   });

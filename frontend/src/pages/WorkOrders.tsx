@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle, Eye, Pencil, Play, Plus, Printer, Rocket, XCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { BOM, Location, PaginatedResponse, WorkOrder, WorkOrderCost, WorkOrderGenealogy } from "../types";
 import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
@@ -201,7 +202,7 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
       setBomId("");
       return;
     }
-    api.get("/boms", { params: { product_id: productId, limit: 200 } }).then(({ data }) => setBoms(data.items));
+    api.get("/boms", { params: { product_id: productId, limit: PAGE_SIZE } }).then(({ data }) => setBoms(data.items));
   }, [productId]);
 
   const setRow = (idx: number, key: string, value: string) => {
@@ -520,7 +521,7 @@ function CompleteModal({ wo, onClose, onSaved }: { wo: WorkOrder; onClose: () =>
   const { addToast } = useToast();
 
   useEffect(() => {
-    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
+    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

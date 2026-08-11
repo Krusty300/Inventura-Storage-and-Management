@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Order } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
@@ -55,7 +56,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const { data: locationOptions } = useQuery({
     queryKey: ["locations", "order-picker"],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return (data.items || []) as { id: number; path: string }[];
     },
   });

@@ -363,13 +363,10 @@ def transfer_serialized_stock(data: StockMovementSerialTransfer, db: Session = D
         serial = by_id[serial_id]
         if serial.product_id != product.id:
             raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
-        if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
-            raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
-        if serial.lot is not None and serial.lot.status != "in_stock":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be transferred",
-            )
+        try:
+            inventory.validate_serial_movable(serial)
+        except inventory.InventoryError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         if serial.location_id != from_loc.id:
             raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not at '{from_loc.path}'")
         if serial.lpn_id is not None:
@@ -434,15 +431,10 @@ def _move_unallocated_serialized(
         serial = by_id[sid]
         if serial.product_id != product.id:
             raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
-        if serial.status == inventory.SERIAL_STATUS_QUARANTINED and not allow_quarantined:
-            raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is quarantined - it can only be moved to a quarantine area")
-        if serial.status not in (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED):
-            raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
-        if serial.lot is not None and serial.lot.status not in ("in_stock", "quarantined"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be moved",
-            )
+        try:
+            inventory.validate_serial_movable(serial, allow_quarantined=allow_quarantined)
+        except inventory.InventoryError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         if serial.location_id is not None:
             raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' already has a location - transfer it instead")
 
@@ -626,13 +618,10 @@ def quarantine_stock(data: StockMovementQuarantine, db: Session = Depends(get_db
                 serial = by_id[serial_id]
                 if serial.product_id != product.id:
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
-                if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
-                    raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
-                if serial.lot is not None and serial.lot.status != "in_stock":
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be quarantined",
-                    )
+                try:
+                    inventory.validate_serial_movable(serial)
+                except inventory.InventoryError as e:
+                    raise HTTPException(status_code=400, detail=str(e))
                 if serial.location_id != from_loc.id:
                     raise HTTPException(status_code=400, detail=f"Serial '{serial.serial_number}' is not at '{from_loc.path}'")
                 if serial.lpn_id is not None:

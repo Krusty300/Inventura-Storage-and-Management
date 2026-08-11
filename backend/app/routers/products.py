@@ -8,12 +8,13 @@ from pathlib import Path
 
 from math import ceil
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import String, case, cast, exists, func, select
 from sqlalchemy.orm import Session, joinedload, aliased
+from app.constants import MAX_PAGE_SIZE_PRODUCTS
 from app.database import get_db
 from app.models.category import Category
 from app.models.location import Location
@@ -94,7 +95,7 @@ def resolve_location(db: Session, location_id: Optional[int], location_text: Opt
 def list_products(
     search: str = "", category_id: int | None = None,
     sort_by: str = "name", sort_dir: str = "asc",
-    skip: int = 0, limit: int = 100,
+    skip: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_PRODUCTS),
     active_only: bool = False,
     expiry: str = "",
     low_stock: bool = False,

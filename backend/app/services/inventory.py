@@ -55,6 +55,42 @@ SERIAL_STATUS_SCRAPPED = "scrapped"
 SERIAL_STATUS_INACTIVE = "inactive"
 
 
+def validate_serial_movable(
+    serial: SerialNumber,
+    to_loc_type: str | None = None,
+    allow_quarantined: bool = False,
+) -> None:
+    """Validate that a serial number is in a movable state.
+
+    A serial can be moved only if its status is ``in_stock`` (or
+    ``quarantined`` when the move is to a quarantine area) and its lot is
+    likewise ``in_stock`` (or ``quarantined`` for quarantine-area moves).
+    Raises ``InventoryError`` with a human-readable reason otherwise.
+
+    ``allow_quarantined`` is an explicit override for flows whose source or
+    destination is already known to be a quarantine area; ``to_loc_type`` is
+    the destination location type used to derive the same flag.
+    """
+    allow_quarantined = allow_quarantined or to_loc_type == "quarantine"
+    if serial.status == SERIAL_STATUS_QUARANTINED and not allow_quarantined:
+        raise InventoryError(
+            f"Serial '{serial.serial_number}' is quarantined - it can only be moved to a quarantine area"
+        )
+    if serial.status not in (SERIAL_STATUS_IN_STOCK, SERIAL_STATUS_QUARANTINED):
+        raise InventoryError(
+            f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})"
+        )
+    if serial.lot is not None:
+        if serial.lot.status == "quarantined" and not allow_quarantined:
+            raise InventoryError(
+                f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is quarantined - it can only be moved to a quarantine area"
+            )
+        if serial.lot.status not in ("in_stock", "quarantined"):
+            raise InventoryError(
+                f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status} - it cannot be moved"
+            )
+
+
 def _location_is_valid(db: Session, location_id: int | None) -> bool:
     if location_id is None:
         return True

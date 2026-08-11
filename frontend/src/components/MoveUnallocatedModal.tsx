@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
 import type { Location, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
@@ -24,7 +25,7 @@ export default function MoveUnallocatedModal({ productId, productName, available
   const { data: locations = [] } = useQuery({
     queryKey: ["locations", "move-unallocated"],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return (data.items || []) as Location[];
     },
   });
@@ -34,7 +35,7 @@ export default function MoveUnallocatedModal({ productId, productName, available
     queryKey: ["serial-numbers", "move-unallocated", productId],
     queryFn: async () => {
       const { data } = await api.get("/serial-numbers", {
-        params: { product_id: productId, status: "in_stock", no_location: true, limit: 200 },
+        params: { product_id: productId, status: "in_stock", no_location: true, limit: PAGE_SIZE },
       });
       return (data.items || []) as SerialNumber[];
     },

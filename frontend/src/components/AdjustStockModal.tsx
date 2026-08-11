@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, Product } from "../types";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 
@@ -25,7 +26,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
   const { data: allLocations = [] } = useQuery({
     queryKey: ["locations", "adjust-form"],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return (data.items || []) as Location[];
     },
   });

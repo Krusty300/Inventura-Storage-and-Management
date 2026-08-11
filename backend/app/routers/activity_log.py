@@ -2,6 +2,7 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
+from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models.activity_log import ActivityLog
 from app.schemas.activity_log import ActivityLogOut
@@ -17,7 +18,7 @@ def list_logs(
     entity_id: int | None = Query(None),
     action: str | None = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     _=Depends(get_current_user),
 ):

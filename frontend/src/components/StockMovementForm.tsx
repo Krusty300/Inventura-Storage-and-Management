@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, StockMovement } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
@@ -32,7 +33,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
   const { data: allLocations = [] } = useQuery({
     queryKey: ["locations", "movement-form"],
     queryFn: async () => {
-      const { data } = await api.get("/locations", { params: { limit: 5000 } });
+      const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
       return (data.items || []) as Location[];
     },
   });

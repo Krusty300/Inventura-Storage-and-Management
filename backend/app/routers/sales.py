@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
+from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models.customer import Customer
 from app.models.location import Location
@@ -154,7 +155,7 @@ def list_sales(
     search: str = Query(""),
     customer_id: int | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     q = db.query(Sale).options(

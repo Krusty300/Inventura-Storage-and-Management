@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Eye, PackagePlus, Plus, Printer, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { ASN, LPN, PaginatedResponse, Product } from "../types";
 import Modal from "../components/Modal";
 import LocationPicker from "../components/LocationPicker";
@@ -241,8 +242,8 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
   const [suppliers, setSuppliers] = useState<{ id: number; name: string }[]>([]);
 
   useEffect(() => {
-    api.get("/suppliers", { params: { limit: 500 } }).then(({ data }) => setSuppliers(data.items));
-    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
+    api.get("/suppliers", { params: { limit: PAGE_SIZE_PICKER } }).then(({ data }) => setSuppliers(data.items));
+    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
   }, []);
 
   useEffect(() => {
@@ -456,7 +457,7 @@ function useLocationLpns(locationPath: string, locations: { id: number; path: st
   const { data, isLoading } = useQuery({
     queryKey: ["lpns", "by-location", locationId],
     queryFn: async () => {
-      const { data } = await api.get("/lpns", { params: { location_id: locationId, limit: 500 } });
+      const { data } = await api.get("/lpns", { params: { location_id: locationId, limit: PAGE_SIZE_PICKER } });
       return data.items as LPN[];
     },
     enabled: !!locationId,
@@ -570,8 +571,8 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
   const [lpns, setLpns] = useState<{ id: number; lpn_number: string }[]>([]);
 
   useEffect(() => {
-    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
-    api.get("/lpns", { params: { limit: 500 } }).then(({ data }) => setLpns(data.items));
+    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
+    api.get("/lpns", { params: { limit: PAGE_SIZE_PICKER } }).then(({ data }) => setLpns(data.items));
   }, []);
 
   const setRow = (idx: number, key: keyof AsnRowData, value: string) => {

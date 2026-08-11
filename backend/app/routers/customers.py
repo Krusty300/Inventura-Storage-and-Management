@@ -5,6 +5,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
+from app.constants import MAX_PAGE_SIZE, MAX_PAGE_SIZE_LOOKUP
 from app.database import get_db
 from app.models.customer import Customer
 from app.models.product import Product
@@ -67,7 +68,7 @@ def list_customers(
     customer_type: str = Query(""),
     include_inactive: bool = False,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=5000),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
     stats = _stats_query(db)

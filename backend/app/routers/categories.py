@@ -2,6 +2,7 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
+from app.constants import MAX_PAGE_SIZE_LOOKUP
 from app.database import get_db
 from app.models.category import Category
 from app.schemas.category import CategoryBulkEdit, CategoryCreate, CategoryOut, CategoryTree, CategoryUpdate
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/api/categories", tags=["categories"], dependencies=[
 def list_categories(
     search: str = Query(""),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=5000),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
     q = db.query(Category).options(joinedload(Category.subcategories))

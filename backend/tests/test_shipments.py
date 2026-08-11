@@ -623,6 +623,27 @@ def test_shipment_pick_manual_serials_rejects_non_stock_serial(auth_headers):
     assert "not in stock" in resp.json()["detail"]
 
 
+def test_shipment_pick_manual_serials_rejects_quarantined_lot(auth_headers):
+    p = _make_product(auth_headers, "SHP-MAN-QL", serialized=True)
+    loc = _make_location(auth_headers, "SHP-MAN-QL-LOC")
+    assert client.post("/api/receipts", json={
+        "items": [{
+            "product_id": p["id"], "quantity": 2, "location_id": loc["id"],
+            "serial_numbers": ["QL1", "QL2"], "lot_number": "LOT-QL",
+        }],
+    }, headers=auth_headers).status_code == 201
+    lot = client.get(f"/api/lots?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"][0]
+    created = _create_shipment(auth_headers, [(p["id"], 2)]).json()
+    assert client.put(f"/api/lots/{lot['id']}", json={"status": "quarantined"}, headers=auth_headers).status_code == 200
+
+    serials = client.get(f"/api/serial-numbers?product_id={p['id']}&limit=10", headers=auth_headers).json()["items"]
+    resp = client.post(f"/api/shipments/{created['id']}/pick", json={
+        "items": [{"product_id": p["id"], "serial_ids": [s["id"] for s in serials]}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "quarantined" in resp.json()["detail"]
+
+
 def _create_shipment_with_location(auth_headers, items):
     return client.post("/api/shipments", json={
         "items": [

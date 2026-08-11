@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import Modal from "./Modal";
 import LocationPicker from "./LocationPicker";
 import StockLocationHints from "./StockLocationHints";
@@ -51,7 +52,7 @@ function useLocationLpns(locationPath: string, locations: { id: number; path: st
   const { data, isLoading } = useQuery({
     queryKey: ["lpns", "by-location", locationId],
     queryFn: async () => {
-      const { data } = await api.get("/lpns", { params: { location_id: locationId, limit: 500 } });
+      const { data } = await api.get("/lpns", { params: { location_id: locationId, limit: PAGE_SIZE_PICKER } });
       return data.items as LPN[];
     },
     enabled: !!locationId,
@@ -182,9 +183,9 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
   const [lpns, setLpns] = useState<{ id: number; lpn_number: string }[]>([]);
 
   useEffect(() => {
-    api.get("/suppliers", { params: { limit: 500 } }).then(({ data }) => setSuppliers(data.items));
-    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
-    api.get("/lpns", { params: { limit: 500 } }).then(({ data }) => setLpns(data.items));
+    api.get("/suppliers", { params: { limit: PAGE_SIZE_PICKER } }).then(({ data }) => setSuppliers(data.items));
+    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
+    api.get("/lpns", { params: { limit: PAGE_SIZE_PICKER } }).then(({ data }) => setLpns(data.items));
   }, []);
 
   const supplierOwned = useMemo(() => {

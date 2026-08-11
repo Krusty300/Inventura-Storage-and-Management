@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
+from app.constants import MAX_PAGE_SIZE_LOOKUP
 from app.database import get_db
 from app.models import (
     ASNItem,
@@ -131,7 +132,7 @@ def list_locations(
     location_type: str = Query(""),
     is_active: bool | None = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(200, ge=1, le=5000),
+    limit: int = Query(200, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
     q = db.query(Location).options(joinedload(Location.parent))

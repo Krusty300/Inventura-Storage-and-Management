@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Eye, ClipboardCheck, Plus, Printer, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
+import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { CycleCount, Location, PaginatedResponse } from "../types";
 import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
@@ -150,7 +151,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [locations, setLocations] = useState<Location[]>([]);
 
   useEffect(() => {
-    api.get("/locations", { params: { limit: 5000 } }).then(({ data }) => setLocations(data.items));
+    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
   }, []);
 
   useEffect(() => {

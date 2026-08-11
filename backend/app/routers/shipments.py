@@ -4,6 +4,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
+from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models import Customer, Location, Product, QualityCheck, Sale, SaleItem, SerialNumber, Shipment, ShipmentItem
 from app.models.stock_movement import StockMovement
@@ -143,12 +144,7 @@ def _validate_manual_serials(db: Session, product: Product, serial_ids: list[int
             raise inventory.InventoryError("One or more selected serial numbers were not found")
         if serial.product_id != product.id:
             raise inventory.InventoryError(f"Serial '{serial.serial_number}' does not belong to '{product.display_name}'")
-        if serial.status != inventory.SERIAL_STATUS_IN_STOCK:
-            raise inventory.InventoryError(f"Serial '{serial.serial_number}' is not in stock (status: {serial.status})")
-        if serial.lot is not None and serial.lot.status != "in_stock":
-            raise inventory.InventoryError(
-                f"Serial '{serial.serial_number}' belongs to lot '{serial.lot.lot_number}' which is {serial.lot.status}"
-            )
+        inventory.validate_serial_movable(serial)
         if location_id is not None and serial.location_id != location_id:
             raise inventory.InventoryError(f"Serial '{serial.serial_number}' is not at the item's source location")
         serials.append(serial)
@@ -207,7 +203,7 @@ def list_shipments(
     status: str | None = None,
     search: str = Query(""),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     q = db.query(Shipment).options(
