@@ -25,3 +25,12 @@ export function formatDate(value?: Date | string | null, format?: string, fallba
   }
 }
 
+export function formatDateTime(value?: Date | string | null, format?: string, fallback = "—"): string {
+  if (value === null || value === undefined || value === "") return fallback;
+  const d = value instanceof Date ? value : parseLocalDate(value);
+  if (Number.isNaN(d.getTime())) return fallback;
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${formatDate(d, format, fallback)} ${hours}:${minutes}`;
+}
+

@@ -8,6 +8,7 @@ import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useExportCsv } from "../hooks/useExportCsv";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 
 interface ActivityLogEntry {
   id: number;
@@ -52,6 +53,7 @@ const entityLabels: Record<string, string> = {
 import { usePageSize } from "../hooks/usePageSize";
 
 export default function ActivityLog() {
+  const formatDateTime = useDateTimeFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
@@ -127,7 +129,7 @@ export default function ActivityLog() {
               ) : logs.map((log) => (
                 <tr key={log.id} className="hover:bg-app">
                   <td className="px-4 py-3 text-muted whitespace-nowrap">
-                    {new Date(log.created_at).toLocaleString()}
+                    {formatDateTime(log.created_at)}
                   </td>
                   <td className="px-4 py-3 text-muted">{log.username || `User #${log.user_id}`}</td>
                   <td className="px-4 py-3">

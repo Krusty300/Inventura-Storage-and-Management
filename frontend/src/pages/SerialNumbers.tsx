@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
 import { Eye, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -186,6 +187,7 @@ export default function SerialNumbers() {
 }
 
 function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () => void }) {
+  const formatDateTime = useDateTimeFormat();
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const { addToast } = useToast();
@@ -263,7 +265,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
               <tbody className="divide-y divide-border">
                 {movements.map((m) => (
                   <tr key={m.id}>
-                    <td className="px-4 py-2 text-muted">{new Date(m.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-2 text-muted">{formatDateTime(m.created_at)}</td>
                     <td className="px-4 py-2 capitalize">{m.movement_type}</td>
                     <td className={`px-4 py-2 ${m.quantity_change < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                       {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}

@@ -1,5 +1,6 @@
 import Modal from "./Modal";
 import type { StockMovement } from "../types";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 
 interface Props {
   movement: StockMovement;
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function StockMovementDetail({ movement, onClose }: Props) {
+  const formatDateTime = useDateTimeFormat();
   const isTransfer = movement.movement_type === "transfer_out" || movement.movement_type === "transfer_in";
   return (
     <Modal open onClose={onClose} title={`Movement #${movement.id}`}>
@@ -50,7 +52,7 @@ export default function StockMovementDetail({ movement, onClose }: Props) {
           </div>
           <div>
             <span className="text-muted">Date:</span>
-            <p className="font-medium">{new Date(movement.created_at).toLocaleString()}</p>
+            <p className="font-medium">{formatDateTime(movement.created_at)}</p>
           </div>
         </div>
         {movement.notes && (

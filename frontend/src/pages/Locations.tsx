@@ -254,9 +254,10 @@ export default function Locations() {
       </div>
 
       {isLoading ? (
-        <Skeleton rows={5} cols={3} />
+        <Skeleton variant="rows" rows={5} cols={3} />
       ) : visibleTree.length === 0 ? (
         <EmptyState
+          variant="block"
           title={q ? "No matching locations" : "No locations yet"}
           message={q ? `Nothing matched "${search}".` : "Create zones, aisles, and bins to organize your warehouse."}
           actionLabel={q ? undefined : "Add Location"}

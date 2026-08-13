@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
 import { Eye, FlaskConical, ShieldCheck, ShieldX, CalendarX } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -183,6 +184,7 @@ export default function Lots() {
 
 function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
   const formatDate = useDateFormat();
+  const formatDateTime = useDateTimeFormat();
   const { data: movements, isLoading } = useQuery({
     queryKey: ["lot-movements", lot.id],
     queryFn: async () => {
@@ -251,7 +253,7 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
               <tbody className="divide-y divide-border">
                 {movements.map((m) => (
                   <tr key={m.id}>
-                    <td className="px-4 py-2 text-muted">{new Date(m.created_at).toLocaleString()}</td>
+                    <td className="px-4 py-2 text-muted">{formatDateTime(m.created_at)}</td>
                     <td className="px-4 py-2 capitalize">{m.movement_type}</td>
                     <td className={`px-4 py-2 ${m.quantity_change < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                       {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}

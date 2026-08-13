@@ -114,9 +114,9 @@ export default function Shipments() {
       )}
 
       {isLoading ? (
-        <Skeleton rows={8} cols={5} />
+        <Skeleton variant="rows" rows={8} cols={5} />
       ) : shipments.length === 0 ? (
-        <EmptyState title="No shipments" message="Create a shipment to start the picking workflow." />
+        <EmptyState variant="block" title="No shipments" message="Create a shipment to start the picking workflow." />
       ) : (
         <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">

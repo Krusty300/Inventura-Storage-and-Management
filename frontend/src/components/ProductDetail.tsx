@@ -314,7 +314,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
               <span className="text-sm text-muted">Quarantined Serials:</span>
               {can("stock.record") && (
                 <button onClick={() => setMoveQuarantinedSerialized(true)} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label="Move quarantined serials">
-                  Move
+                  Move Serials
                 </button>
               )}
             </div>

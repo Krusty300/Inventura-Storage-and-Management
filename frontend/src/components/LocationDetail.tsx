@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Package, MapPin, ClipboardList, ShieldCheck, ShieldX } from "lucide-react";
@@ -100,6 +101,7 @@ type Tab = "stock" | "lpns" | "activity";
 
 export default function LocationDetail({ location, onClose }: Props) {
   const formatDate = useDateFormat();
+  const formatDateTime = useDateTimeFormat();
   const [tab, setTab] = useState<Tab>("stock");
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
@@ -390,7 +392,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                     <tbody className="divide-y divide-border">
                       {movements.map((m) => (
                         <tr key={m.id}>
-                          <td className="px-3 py-2 text-muted">{new Date(m.created_at).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-muted">{formatDateTime(m.created_at)}</td>
                           <td className="px-3 py-2 capitalize">{m.movement_type}</td>
                           <td className="px-3 py-2 font-medium">{m.product_name}</td>
                           <td className="px-3 py-2 text-muted">
@@ -416,7 +418,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                     <div className="min-w-0">
                       <p className="text-ink">{log.description}</p>
                       <p className="text-xs text-muted">
-                        by {log.username || `User #${log.user_id}`} · {new Date(log.created_at).toLocaleString()}
+                        by {log.username || `User #${log.user_id}`} · {formatDateTime(log.created_at)}
                       </p>
                     </div>
                   </li>

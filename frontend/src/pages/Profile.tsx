@@ -6,6 +6,7 @@ import {
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 
 interface ActivityEntry {
   id: number;
@@ -26,11 +27,6 @@ interface SessionItem {
   is_current: boolean;
 }
 
-function formatDate(value?: string | null): string {
-  if (!value) return "—";
-  return new Date(value).toLocaleString();
-}
-
 function deviceLabel(ua: string): string {
   if (/Firefox/i.test(ua)) return "Firefox";
   if (/Edg/i.test(ua)) return "Edge";
@@ -40,6 +36,7 @@ function deviceLabel(ua: string): string {
 }
 
 export default function Profile() {
+  const formatDateTime = useDateTimeFormat();
   const { user, updateUser, logout } = useAuth();
   const { addToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -202,8 +199,8 @@ export default function Profile() {
               <InfoItem label="Username" value={user.username} />
               <InfoItem label="Email" value={user.email} />
               <InfoItem label="Role" value={user.role} />
-              <InfoItem label="Last Login" value={formatDate(user.last_login_at)} />
-              <InfoItem label="Member Since" value={formatDate(user.created_at)} />
+              <InfoItem label="Last Login" value={formatDateTime(user.last_login_at)} />
+              <InfoItem label="Member Since" value={formatDateTime(user.created_at)} />
               <InfoItem label="User ID" value={String(user.id)} />
             </div>
           </div>
@@ -279,7 +276,7 @@ export default function Profile() {
                         )}
                       </div>
                       <p className="text-xs text-faint mt-0.5 truncate">
-                        {s.ip_address || "Unknown IP"} · Last seen {formatDate(s.last_seen_at)}
+                        {s.ip_address || "Unknown IP"} · Last seen {formatDateTime(s.last_seen_at)}
                       </p>
                     </div>
                     {!s.is_current && (
@@ -311,7 +308,7 @@ export default function Profile() {
                       <span className="capitalize">{a.entity_type.replace("_", " ")}</span>
                       <span className="text-faint">·</span>
                       <Clock size={12} className="text-faint" />
-                      <span className="text-xs">{formatDate(a.created_at)}</span>
+                      <span className="text-xs">{formatDateTime(a.created_at)}</span>
                     </div>
                     <p className="text-ink">{a.description}</p>
                   </li>

@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useEffect, useState } from "react";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -280,6 +281,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
 }
 
 function QualityCheckDetail({ qc, onClose }: { qc: QualityCheck; onClose: () => void }) {
+  const formatDateTime = useDateTimeFormat();
   return (
     <Modal open onClose={onClose} title={qc.qc_number}>
       <div className="space-y-4 text-sm">
@@ -315,7 +317,7 @@ function QualityCheckDetail({ qc, onClose }: { qc: QualityCheck; onClose: () => 
           {qc.checked_at && (
             <div>
               <p className="text-muted">Checked At</p>
-              <p className="font-medium">{new Date(qc.checked_at).toLocaleString()}</p>
+              <p className="font-medium">{formatDateTime(qc.checked_at)}</p>
             </div>
           )}
           {qc.notes && (

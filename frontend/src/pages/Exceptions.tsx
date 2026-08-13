@@ -31,7 +31,7 @@ export default function Exceptions() {
     { key: "pending_asns", label: "Pending ASNs", icon: Truck, color: "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400" },
   ];
 
-  if (isLoading) return <Skeleton rows={8} cols={4} />;
+  if (isLoading) return <Skeleton variant="rows" rows={8} cols={4} />;
   if (!data) return null;
 
   return (

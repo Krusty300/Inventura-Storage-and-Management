@@ -67,9 +67,9 @@ export default function Planning() {
         </button>
       </form>
 
-      {isLoading && <Skeleton rows={8} cols={6} />}
+      {isLoading && <Skeleton variant="rows" rows={8} cols={6} />}
       {!isLoading && ran && data && data.items.length === 0 && (
-        <EmptyState title="No plan" message="This product has no active BOM to explode." />
+        <EmptyState variant="block" title="No plan" message="This product has no active BOM to explode." />
       )}
       {!isLoading && ran && data && data.items.length > 0 && (
         <div className="card overflow-hidden p-0">

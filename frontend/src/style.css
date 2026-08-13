@@ -118,40 +118,57 @@ button:disabled {
   color: var(--t-ink);
 }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.625rem;
-  padding: 0.625rem 1.25rem;
-  border-radius: 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-  border: none;
-  line-height: 1.25;
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.btn-primary {
-  background: var(--t-surface);
-  color: var(--t-ink);
-}
+@layer components {
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25;
+    box-sizing: border-box;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+  .btn:disabled,
+  .btn-primary:disabled,
+  .btn-secondary:disabled,
+  .btn-danger:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
 
-.btn-secondary {
-  background: var(--t-surface);
-  color: var(--t-ink);
-}
+  .btn-primary {
+    background: #4f46e5;
+    color: #ffffff;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #4338ca;
+  }
 
-.btn-danger {
-  background: #dc2626;
-  color: white;
-}
-.btn-danger:hover {
-  background: #b91c1c;
+  .btn-secondary {
+    background: var(--t-subtle);
+    color: var(--t-ink);
+    border: 1px solid var(--t-border-strong);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--t-subtle-strong);
+  }
+
+  .btn-danger {
+    background: #dc2626;
+    color: #ffffff;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #b91c1c;
+  }
 }
 
 .input {

@@ -1,13 +1,14 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
 import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { BOM, PaginatedResponse, ProductCost } from "../types";
 import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
@@ -24,6 +25,8 @@ export default function Boms() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<BOM | null>(null);
   const [viewing, setViewing] = useState<BOM | null>(null);
+  const [deleting, setDeleting] = useState<BOM | null>(null);
+  const { addToast } = useToast();
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const debouncedSearch = useDebounce(search, 300);
@@ -39,6 +42,18 @@ export default function Boms() {
   });
 
   const boms = data?.items || [];
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/boms/${id}`),
+    onSuccess: () => {
+      addToast("BOM deleted", "success");
+      queryClient.invalidateQueries({ queryKey: ["boms"] });
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.detail || "Cannot delete BOM", "error");
+    },
+    onSettled: () => setDeleting(null),
+  });
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["boms"] });
 
@@ -93,7 +108,7 @@ export default function Boms() {
                       <button onClick={() => { setEditing(b); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${b.name}`}><Pencil size={16} /></button>
                     )}
                     {can("bom.delete") && (
-                      <button onClick={() => deleteBom(b)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${b.name}`}><Trash2 size={16} /></button>
+                      <button onClick={() => setDeleting(b)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${b.name}`}><Trash2 size={16} /></button>
                     )}
                   </div>
                 </td>
@@ -115,18 +130,17 @@ export default function Boms() {
       )}
 
       {viewing && <BomDetail bom={viewing} onClose={() => setViewing(null)} />}
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete BOM"
+        message={`Are you sure you want to delete the BOM for '${deleting?.product_name}'? This action cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={() => { if (deleting) deleteMutation.mutate(deleting.id); }}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   );
-
-  async function deleteBom(b: BOM) {
-    if (!confirm(`Delete BOM for '${b.product_name}'?`)) return;
-    try {
-      await api.delete(`/boms/${b.id}`);
-      refresh();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || "Error deleting BOM");
-    }
-  }
 }
 
 function useManufacturableProducts() {

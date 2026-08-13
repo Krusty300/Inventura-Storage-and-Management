@@ -4,6 +4,7 @@ import { Bell, CheckCheck, AlertTriangle, Info, PackageCheck } from "lucide-reac
 import api from "../api/client";
 import type { Notification } from "../types";
 import { useRealtime } from "../context/RealtimeContext";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 
 const typeIcon: Record<string, typeof Info> = {
   warning: AlertTriangle,
@@ -19,6 +20,7 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const { subscribe } = useRealtime();
+  const formatDateTime = useDateTimeFormat();
 
   const load = useCallback(async (withItems: boolean) => {
     try {
@@ -141,7 +143,7 @@ export default function NotificationBell() {
                       <p className="text-sm font-medium text-ink truncate">{n.title}</p>
                       {n.message && <p className="text-xs text-muted truncate">{n.message}</p>}
                       <p className="text-[10px] text-faint mt-0.5">
-                        {new Date(n.created_at).toLocaleString()}
+                        {formatDateTime(n.created_at)}
                       </p>
                     </div>
                     {!n.is_read && <span className="w-2 h-2 bg-indigo-500 rounded-full ml-auto mt-1.5" />}

@@ -128,7 +128,7 @@ export default function Forecasting() {
         </button>
       </form>
 
-      {isLoading && <Skeleton rows={8} cols={7} />}
+      {isLoading && <Skeleton variant="rows" rows={8} cols={7} />}
       {isError && (
         <div className="flex flex-col items-center justify-center h-48 gap-3">
           <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load forecasting data</div>
@@ -137,6 +137,7 @@ export default function Forecasting() {
       )}
       {!isLoading && !isError && data && data.items.length === 0 && (
         <EmptyState
+          variant="block"
           title="No products to analyze"
           message="Forecasting runs against active products. Create products and record sales to see demand forecasts."
         />

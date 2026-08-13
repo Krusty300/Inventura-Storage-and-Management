@@ -5,6 +5,7 @@ import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import Modal from "./Modal";
 import { useToast } from "../context/ToastContext";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 
 interface Props {
   sale: Sale;
@@ -18,6 +19,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function SaleDetail({ sale, onClose }: Props) {
+  const formatDateTime = useDateTimeFormat();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const { addToast } = useToast();
@@ -35,7 +37,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
         <div className="flex justify-between">
           <div className="space-y-1">
             <p className="text-muted">Customer: <span className="font-medium text-ink">{sale.customer_name}</span></p>
-            <p className="text-muted">Date: <span className="font-medium text-ink">{new Date(sale.created_at).toLocaleString()}</span></p>
+            <p className="text-muted">Date: <span className="font-medium text-ink">{formatDateTime(sale.created_at)}</span></p>
             <p className="text-muted">Cashier: <span className="font-medium text-ink">{sale.username}</span></p>
           </div>
           <div className="space-y-1 text-right">

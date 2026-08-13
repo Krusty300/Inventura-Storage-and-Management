@@ -1,5 +1,6 @@
 import type { Receipt } from "../types";
 import Modal from "./Modal";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 
 interface Props {
   receipt: Receipt;
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export default function ReceiptDetail({ receipt, onClose }: Props) {
+  const formatDateTime = useDateTimeFormat();
   return (
     <Modal open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} wide>
       <div className="space-y-4">
@@ -17,7 +19,7 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
           </div>
           <div>
             <p className="text-muted">Date</p>
-            <p className="font-medium">{new Date(receipt.created_at).toLocaleString()}</p>
+            <p className="font-medium">{formatDateTime(receipt.created_at)}</p>
           </div>
           <div>
             <p className="text-muted">Reference</p>

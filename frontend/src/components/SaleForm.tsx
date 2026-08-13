@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Loader2, Minus, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, GripVertical, Loader2, Minus, Package, Plus, Search, Trash2, X } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Customer, Product, QualityCheck, Settings } from "../types";
@@ -22,6 +22,8 @@ interface LineItem {
   location_id: string;
 }
 
+type LineField = "quantity" | "unit_price" | "location_id";
+
 const PAYMENT_METHODS = [
   { value: "cash", label: "Cash" },
   { value: "card", label: "Card" },
@@ -31,7 +33,6 @@ function CartLine({
   item,
   product,
   currency,
-  canRemove,
   blocked,
   onShortChange,
   onChange,
@@ -40,10 +41,9 @@ function CartLine({
   item: LineItem;
   product: Product | undefined;
   currency: string;
-  canRemove: boolean;
   blocked: boolean;
   onShortChange: (short: boolean) => void;
-  onChange: (field: string, value: string) => void;
+  onChange: (field: LineField, value: string) => void;
   onRemove: () => void;
 }) {
   const { locations: stockLocations, unallocated, isLoading: stockLoading } = useProductStockLocations(product?.id, false);
@@ -73,19 +73,28 @@ function CartLine({
   return (
     <div className="border border-border rounded-lg bg-surface p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="font-medium text-sm text-ink truncate" title={product?.display_name}>
-            {product?.display_name || `Product #${item.product_id}`}
-          </p>
-          <p className="text-xs text-faint">{product?.sku}</p>
+        <div className="flex items-start gap-2 min-w-0">
+          {product?.image_url ? (
+            <img src={product.image_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
+          ) : (
+            <div className="w-10 h-10 rounded bg-subtle flex items-center justify-center shrink-0">
+              <Package size={16} className="text-faint" />
+            </div>
+          )}
+          <div className="min-w-0">
+            <p className="font-medium text-sm text-ink truncate" title={product?.display_name}>
+              {product?.display_name || `Product #${item.product_id}`}
+            </p>
+            <p className="text-xs text-faint">{product?.sku}</p>
+          </div>
         </div>
-        <button type="button" onClick={onRemove} disabled={!canRemove} className="p-1 text-faint hover:text-red-600 dark:text-red-400 disabled:opacity-30" aria-label="Remove item">
+        <button type="button" onClick={onRemove} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
           <Trash2 size={15} />
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <div className="flex items-center rounded-lg border border-border overflow-hidden">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center rounded-lg border border-border overflow-hidden shrink-0">
           <button type="button" onClick={() => onChange("quantity", String(Math.max(1, (parseInt(item.quantity) || 1) - 1)))} className="p-1.5 text-muted hover:bg-app" aria-label="Decrease quantity">
             <Minus size={14} />
           </button>
@@ -101,18 +110,18 @@ function CartLine({
             <Plus size={14} />
           </button>
         </div>
-        <label className="flex-1 flex items-center gap-1.5 text-xs text-muted">
+        <label className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-muted">
           <span className="shrink-0">Price</span>
-          <input type="number" className="input !py-1.5 text-sm w-full" value={item.unit_price} onChange={(e) => onChange("unit_price", e.target.value)} step="0.01" min="0" aria-label={`Unit price for ${product?.display_name || item.product_id}`} />
+          <input type="number" className="input !py-1.5 text-sm w-full min-w-0" value={item.unit_price} onChange={(e) => onChange("unit_price", e.target.value)} step="0.01" min="0" aria-label={`Unit price for ${product?.display_name || item.product_id}`} />
         </label>
-        <span className="font-semibold text-sm whitespace-nowrap">{formatCurrency(lineTotal, currency)}</span>
+        <span className="font-semibold text-sm whitespace-nowrap shrink-0">{formatCurrency(lineTotal, currency)}</span>
       </div>
 
       <div className="flex items-center gap-2">
-        <label className="flex-1 flex items-center gap-1.5 text-xs text-muted">
+        <label className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-muted">
           <span className="shrink-0">Fulfill from</span>
-          {stockLoading && <Loader2 size={10} className="animate-spin" />}
-          <select className="select !py-1 text-xs" value={item.location_id} onChange={(e) => onChange("location_id", e.target.value)} disabled={!product} aria-label="Fulfill from location">
+          {stockLoading && <Loader2 size={10} className="animate-spin shrink-0" />}
+          <select className="select !py-1 text-xs min-w-0 flex-1" value={item.location_id} onChange={(e) => onChange("location_id", e.target.value)} disabled={!product} aria-label="Fulfill from location">
             <option value="">Auto (any location)</option>
             {stockLocations.map((l) => (
               <option key={l.location_id} value={l.location_id.toString()}>{l.path} ({l.count})</option>
@@ -156,7 +165,36 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [saving, setSaving] = useState(false);
+  const [isWide, setIsWide] = useState(false);
+  const [cartWidth, setCartWidth] = useState(400);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { addToast } = useToast();
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsWide(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
+
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const el = containerRef.current;
+    if (!el) return;
+    const onMove = (ev: PointerEvent) => {
+      const rect = el.getBoundingClientRect();
+      const min = 320;
+      const max = Math.max(min, Math.floor(rect.width * 0.6));
+      setCartWidth(Math.round(Math.max(min, Math.min(rect.right - ev.clientX, max))));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   useEffect(() => {
     api.get("/customers", { params: { limit: PAGE_SIZE_PRODUCTS } }).then(({ data }) => setCustomers(data.items));
@@ -205,13 +243,15 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     );
   };
 
-  const handleStockShort = useCallback((idx: number, short: boolean) => {
+  const handleStockShort = useCallback((productId: string, short: boolean) => {
+    const id = parseInt(productId);
+    if (!id) return;
     setStockShort((prev) => {
-      const has = prev.has(idx);
+      const has = prev.has(id);
       if (has === short) return prev;
       const next = new Set(prev);
-      if (short) next.add(idx);
-      else next.delete(idx);
+      if (short) next.add(id);
+      else next.delete(id);
       return next;
     });
   }, []);
@@ -228,12 +268,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     });
   };
 
-  const updateItem = (idx: number, field: string, value: string) => {
-    setItems((prev) => {
-      const next = [...prev];
-      (next[idx] as any)[field] = value;
-      return next;
-    });
+  const updateItem = (idx: number, field: LineField, value: string) => {
+    setItems((prev) => prev.map((item, i) => (i === idx ? { ...item, [field]: value } : item)));
   };
 
   const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
@@ -267,7 +303,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       addToast("Line item quantities must be at least 1", "error");
       return;
     }
-    if (items.some((_, idx) => stockShort.has(idx))) {
+    if (items.some((i) => stockShort.has(parseInt(i.product_id)))) {
       addToast("One or more line items exceed the available stock", "error");
       return;
     }
@@ -314,7 +350,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           <h2 className="text-lg font-bold text-ink">Register</h2>
           <span className="text-xs text-muted hidden sm:inline">Tap a product to add it to the sale</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <BarcodeScanner
             onProductFound={(p) => {
               if (p.is_serialized) { addToast("Serialized products can't be sold at checkout - create a shipment instead", "error"); return; }
@@ -330,8 +366,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        <section className="flex-1 flex flex-col overflow-hidden" aria-label="Product catalog">
+      <div ref={containerRef} className="flex-1 flex flex-col lg:flex-row overflow-hidden select-none">
+        <section className="min-w-0 flex-1 flex flex-col overflow-hidden" aria-label="Product catalog">
           <div className="px-6 py-3 border-b border-border bg-surface space-y-3">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
@@ -390,6 +426,13 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                           <AlertTriangle size={14} className="text-amber-500" />
                         </span>
                       )}
+                      <div className="h-28 mb-2 rounded-lg overflow-hidden bg-subtle flex items-center justify-center">
+                        {p.image_url ? (
+                          <img src={p.image_url} alt={p.display_name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Package size={28} className="text-faint" />
+                        )}
+                      </div>
                       <p className="font-semibold text-sm text-ink line-clamp-2">{p.display_name}</p>
                       <p className="text-xs text-faint mt-0.5">{p.sku}</p>
                       <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-2">{formatCurrency(p.unit_price, currency)}</p>
@@ -401,7 +444,24 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           </div>
         </section>
 
-        <aside className="w-[380px] shrink-0 border-l border-border bg-surface flex flex-col" aria-label="Sale cart">
+        {isWide && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            onPointerDown={startResize}
+            className="hidden lg:flex w-3.5 shrink-0 items-center justify-center cursor-col-resize bg-surface border-x border-border text-faint hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+            style={{ touchAction: "none" }}
+            title="Drag to resize"
+          >
+            <GripVertical size={14} />
+          </div>
+        )}
+
+        <aside
+          className="shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-surface flex flex-col h-[45vh] lg:h-auto"
+          style={{ width: isWide ? `${cartWidth}px` : undefined }}
+          aria-label="Sale cart"
+        >
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-5 py-4 border-b border-border space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -428,13 +488,12 @@ export default function SaleForm({ onClose, onSaved }: Props) {
               ) : (
                 items.map((item, idx) => (
                   <CartLine
-                    key={idx}
+                    key={item.product_id}
                     item={item}
                     product={sellable.find((p) => p.id === parseInt(item.product_id))}
                     currency={currency}
-                    canRemove={items.length > 1}
                     blocked={isBlocked(item)}
-                    onShortChange={(short) => handleStockShort(idx, short)}
+                    onShortChange={(short) => handleStockShort(item.product_id, short)}
                     onChange={(field, value) => updateItem(idx, field, value)}
                     onRemove={() => removeItem(idx)}
                   />
