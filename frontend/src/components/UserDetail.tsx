@@ -4,17 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Shield, ShieldOff } from "lucide-react";
 import api from "../api/client";
 import Modal from "./Modal";
-import type { PaginatedResponse } from "../types";
-
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: string;
-  is_active: boolean;
-  last_login_at: string | null;
-  created_at: string;
-}
+import type { PaginatedResponse, User } from "../types";
 
 interface ActivityLogEntry {
   id: number;

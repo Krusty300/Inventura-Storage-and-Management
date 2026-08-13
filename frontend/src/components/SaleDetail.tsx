@@ -49,10 +49,10 @@ export default function SaleDetail({ sale, onClose }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-3 py-2 font-medium text-muted">Item</th>
-              <th className="px-3 py-2 font-medium text-muted">Location</th>
-              <th className="px-3 py-2 font-medium text-muted">Qty</th>
-              <th className="px-3 py-2 font-medium text-muted">Price</th>
+              <th scope="col" className="px-3 py-2 font-medium text-muted">Item</th>
+              <th scope="col" className="px-3 py-2 font-medium text-muted">Location</th>
+              <th scope="col" className="px-3 py-2 font-medium text-muted">Qty</th>
+              <th scope="col" className="px-3 py-2 font-medium text-muted">Price</th>
               <th className="px-3 py-2 font-medium text-muted text-right">Amount</th>
             </tr>
           </thead>

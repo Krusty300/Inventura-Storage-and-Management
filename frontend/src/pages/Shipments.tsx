@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { statusBadge } from "../utils/statusBadges";
 import { useState } from "react";
 import { Eye, FileText, Pencil, Trash2, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,9 +66,6 @@ export default function Shipments() {
   const shipments = data?.items || [];
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["shipments"] });
 
-  const statusBadge = (s: string) =>
-    s === "shipped" ? "badge-success" : s === "packed" ? "badge-info" : s === "picking" ? "badge-warning" : s === "cancelled" ? "badge-danger" : s === "draft" ? "badge-neutral" : "badge";
-
   const statCards = stats
     ? [
         { label: "Open", value: stats.open, color: "text-indigo-600 dark:text-indigo-400" },
@@ -123,14 +121,14 @@ export default function Shipments() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-app text-left">
-                  <th className="px-4 py-3 font-medium text-muted">Shipment</th>
-                  <th className="px-4 py-3 font-medium text-muted">Customer</th>
-                  <th className="px-4 py-3 font-medium text-muted">Status</th>
-                  <th className="px-4 py-3 font-medium text-muted">Items</th>
-                  <th className="px-4 py-3 font-medium text-muted">Qty</th>
-                  <th className="px-4 py-3 font-medium text-muted">Invoice</th>
-                  <th className="px-4 py-3 font-medium text-muted">Carrier / Tracking</th>
-                  <th className="px-4 py-3 font-medium text-muted">Created</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Shipment</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Customer</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Items</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Invoice</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Carrier / Tracking</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Created</th>
                   <th className="px-4 py-3 font-medium text-muted" />
                 </tr>
               </thead>

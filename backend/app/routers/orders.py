@@ -39,7 +39,7 @@ def auto_reorder(
     days: int = Query(90, ge=7, le=365),
     lead_time_days: int | None = Query(None, ge=1),
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_permission("orders.create")),
 ):
     rows = forecasting.replenishment_rows(
         db,
@@ -70,7 +70,7 @@ def auto_reorder(
 def reorder_low_stock(
     payload: ReorderLowStockRequest,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_permission("orders.create")),
 ):
     """Create purchase order(s) to top low-stock products back up to their reorder level."""
     sellable = inventory.sellable_qty_by_product(db)
@@ -293,7 +293,7 @@ def _validate_order_items(db: Session, items) -> float:
 
 
 @router.post("", response_model=OrderOut, status_code=201)
-def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(require_permission("orders.create"))):
     if data.supplier_id is not None and db.get(Supplier, data.supplier_id) is None:
         raise HTTPException(status_code=400, detail=f"Supplier {data.supplier_id} not found")
     total = _validate_order_items(db, data.items)
@@ -314,7 +314,7 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(
 
 
 @router.put("/{order_id}", response_model=OrderOut)
-def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db), user=Depends(require_permission("orders.update"))):
     o = get_or_404(Order, order_id, db, options=[
         joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
     ])

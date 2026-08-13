@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Shield, ShieldOff, Eye, KeyRound, Trash2, UserCheck, Download } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { PaginatedResponse } from "../types";
+import type { PaginatedResponse, User } from "../types";
 import UserDetail from "../components/UserDetail";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -14,16 +14,6 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { exportCSV } from "../utils/csv";
-
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: string;
-  is_active: boolean;
-  last_login_at: string | null;
-  created_at: string;
-}
 
 const PASSWORD_HINT = "At least 8 characters.";
 
@@ -181,7 +171,7 @@ export default function Users() {
               {sortableHeader("Role", "role")}
               {sortableHeader("Last Login", "last_login_at")}
               {sortableHeader("Created", "created_at")}
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

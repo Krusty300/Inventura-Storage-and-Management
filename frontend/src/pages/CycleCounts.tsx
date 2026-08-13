@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useState } from "react";
 import { Eye, ClipboardCheck, Plus, Printer, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -42,9 +43,6 @@ export default function CycleCounts() {
 
   const counts = data?.items || [];
 
-  const statusBadge = (s: string) =>
-    s === "completed" ? "badge-success" : s === "in_progress" ? "badge-info" : s === "cancelled" ? "badge-danger" : "badge-warning";
-
   const printPdf = async (c: CycleCount) => {
     try {
       const { data } = await api.get(`/cycle-counts/${c.id}/pdf`, { responseType: "blob" });
@@ -78,13 +76,13 @@ export default function CycleCounts() {
         <table className="w-full text-sm" role="grid" aria-label="Cycle counts table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">Count #</th>
-              <th className="px-4 py-3 font-medium text-muted">Location</th>
-              <th className="px-4 py-3 font-medium text-muted">Status</th>
-              <th className="px-4 py-3 font-medium text-muted">Expected</th>
-              <th className="px-4 py-3 font-medium text-muted">Variance</th>
-              <th className="px-4 py-3 font-medium text-muted">Date</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Count #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Expected</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Variance</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

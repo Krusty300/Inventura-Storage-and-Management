@@ -424,6 +424,17 @@ export interface SaleItem {
   locations: string[];
 }
 
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: string;
+  is_active?: boolean;
+  avatar_url?: string;
+  last_login_at?: string | null;
+  created_at?: string;
+}
+
 export interface Sale {
   id: number;
   invoice_number: string;
@@ -586,21 +597,6 @@ export interface LPNSerialItem {
   lot_number: string;
   status: string;
   location_name: string;
-}
-
-export interface Lot {
-  id: number;
-  product_id: number;
-  lot_number: string;
-  supplier_id: number | null;
-  expiry_date: string | null;
-  received_date: string;
-  status: string;
-  created_at: string;
-  product_name: string;
-  supplier_name: string;
-  on_hand: number;
-  serial_count: number;
 }
 
 export interface CycleCountItem {

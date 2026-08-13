@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useMemo, useState } from "react";
 import { Eye, PackagePlus, Plus, Printer, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -70,9 +71,6 @@ export default function ASNs() {
 
   const asns = data?.items || [];
 
-  const statusBadge = (s: string) =>
-    s === "pending" ? "badge-info" : s === "received" ? "badge-success" : "badge-danger";
-
   const printPdf = async (a: ASN) => {
     try {
       const { data } = await api.get(`/asns/${a.id}/pdf`, { responseType: "blob" });
@@ -106,12 +104,12 @@ export default function ASNs() {
         <table className="w-full text-sm" role="grid" aria-label="ASNs table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">ASN #</th>
-              <th className="px-4 py-3 font-medium text-muted">Supplier</th>
-              <th className="px-4 py-3 font-medium text-muted">Expected Arrival</th>
-              <th className="px-4 py-3 font-medium text-muted">Status</th>
-              <th className="px-4 py-3 font-medium text-muted">Progress</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">ASN #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Expected Arrival</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Progress</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

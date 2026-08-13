@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { statusBadge } from "../utils/statusBadges";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
 import { Eye, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
@@ -26,18 +27,6 @@ const STATUS_FILTERS = [
   { value: "inactive", label: "Inactive" },
   { value: "scrapped", label: "Scrapped" },
 ] as const;
-
-function statusBadge(status: string) {
-  switch (status) {
-    case "in_stock": return "badge-success";
-    case "reserved": return "badge-info";
-    case "sold": return "badge-neutral";
-    case "quarantined": return "badge-warning";
-    case "inactive": return "badge-neutral";
-    case "scrapped": return "badge-danger";
-    default: return "";
-  }
-}
 
 export default function SerialNumbers() {
   const formatDate = useDateFormat();
@@ -113,13 +102,13 @@ export default function SerialNumbers() {
         <table className="w-full text-sm" role="grid" aria-label="Serial numbers table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">Serial #</th>
-              <th className="px-4 py-3 font-medium text-muted">Product</th>
-              <th className="px-4 py-3 font-medium text-muted">Lot</th>
-              <th className="px-4 py-3 font-medium text-muted">Location</th>
-              <th className="px-4 py-3 font-medium text-muted">Status</th>
-              <th className="px-4 py-3 font-medium text-muted">Sold</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Serial #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Lot</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Sold</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

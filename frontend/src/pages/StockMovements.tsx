@@ -106,15 +106,15 @@ export default function StockMovements() {
           <table className="w-full text-sm" role="grid" aria-label="Stock movements table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">Date</th>
-              <th className="px-4 py-3 font-medium text-muted">Product</th>
-              <th className="px-4 py-3 font-medium text-muted">Type</th>
-              <th className="px-4 py-3 font-medium text-muted">Route</th>
-              <th className="px-4 py-3 font-medium text-muted">Qty Change</th>
-              <th className="px-4 py-3 font-medium text-muted">Reference</th>
-              <th className="px-4 py-3 font-medium text-muted">User</th>
-              <th className="px-4 py-3 font-medium text-muted">Notes</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Route</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Qty Change</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Reference</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">User</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Notes</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

@@ -87,15 +87,15 @@ export default function QualityChecks() {
         <table className="w-full text-sm" role="grid" aria-label="Quality checks table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">QC #</th>
-              <th className="px-4 py-3 font-medium text-muted">Product</th>
-              <th className="px-4 py-3 font-medium text-muted">Batch</th>
-              <th className="px-4 py-3 font-medium text-muted">Lot</th>
-              <th className="px-4 py-3 font-medium text-muted">Location</th>
-              <th className="px-4 py-3 font-medium text-muted">Result</th>
-              <th className="px-4 py-3 font-medium text-muted">Checked By</th>
-              <th className="px-4 py-3 font-medium text-muted">Date</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">QC #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Batch</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Lot</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Result</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Checked By</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

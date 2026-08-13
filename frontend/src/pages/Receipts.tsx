@@ -85,12 +85,12 @@ export default function Receipts() {
         <table className="w-full text-sm" role="grid" aria-label="Receipts table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">Receipt #</th>
-              <th className="px-4 py-3 font-medium text-muted">Supplier</th>
-              <th className="px-4 py-3 font-medium text-muted">Date</th>
-              <th className="px-4 py-3 font-medium text-muted">Qty</th>
-              <th className="px-4 py-3 font-medium text-muted">Total Cost</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Receipt #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Total Cost</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

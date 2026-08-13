@@ -114,11 +114,11 @@ export default function ActivityLog() {
           <table className="w-full text-sm" role="grid" aria-label="Activity log table">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3 font-medium text-muted">Date</th>
-                <th className="px-4 py-3 font-medium text-muted">User</th>
-                <th className="px-4 py-3 font-medium text-muted">Action</th>
-                <th className="px-4 py-3 font-medium text-muted">Entity</th>
-                <th className="px-4 py-3 font-medium text-muted">Description</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">User</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Action</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Entity</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Description</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

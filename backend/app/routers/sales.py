@@ -2,6 +2,7 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.constants import MAX_PAGE_SIZE
@@ -194,9 +195,9 @@ def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depe
 @router.get("/stats")
 def sales_stats(db: Session = Depends(get_db)):
     total_sales = db.query(Sale).filter(Sale.status == "completed").count()
-    total_revenue = sum(
-        float(s.total_amount) for s in db.query(Sale).filter(Sale.status == "completed").all()
-    )
+    total_revenue = db.query(func.coalesce(func.sum(Sale.total_amount), 0.0)).filter(
+        Sale.status == "completed"
+    ).scalar()
     recent = (
         db.query(Sale).options(joinedload(Sale.customer))
         .filter(Sale.status == "completed")

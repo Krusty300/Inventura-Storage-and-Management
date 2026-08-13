@@ -116,12 +116,12 @@ export default function Categories() {
         <table className="w-full text-sm" role="grid" aria-label="Categories table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3">
+              <th scope="col" className="px-4 py-3">
                 <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all categories" />
               </th>
-              <th className="px-4 py-3 font-medium text-muted">Name</th>
-              <th className="px-4 py-3 font-medium text-muted">Description</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Description</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

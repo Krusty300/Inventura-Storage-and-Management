@@ -167,17 +167,17 @@ export default function Customers() {
           <table className="w-full text-sm" role="grid" aria-label="Customers table">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3">
+                <th scope="col" className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all customers" />
                 </th>
-                <th className="px-4 py-3 font-medium text-muted">Name</th>
-                <th className="px-4 py-3 font-medium text-muted">Phone</th>
-                <th className="px-4 py-3 font-medium text-muted">Email</th>
-                <th className="px-4 py-3 font-medium text-muted">Type</th>
-                <th className="px-4 py-3 font-medium text-muted">Orders</th>
-                <th className="px-4 py-3 font-medium text-muted">Total Spent</th>
-                <th className="px-4 py-3 font-medium text-muted">Last Purchase</th>
-                <th className="px-4 py-3 font-medium text-muted">Actions</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Phone</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Email</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Orders</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Total Spent</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Last Purchase</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

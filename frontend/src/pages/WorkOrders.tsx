@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useState } from "react";
 import { CheckCircle, Eye, Pencil, Play, Plus, Printer, Rocket, XCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -48,9 +49,6 @@ export default function WorkOrders() {
     queryClient.invalidateQueries({ queryKey: ["products"] });
   };
 
-  const statusBadge = (s: string) =>
-    s === "completed" ? "badge-success" : s === "in_progress" ? "badge-info" : s === "released" ? "badge-warning" : s === "cancelled" ? "badge-danger" : "badge-info";
-
   const priorityBadge = (p: string) =>
     p === "high" ? "badge-danger" : p === "low" ? "badge-success" : "badge-info";
 
@@ -97,14 +95,14 @@ export default function WorkOrders() {
         <table className="w-full text-sm" role="grid" aria-label="Work orders table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">WO #</th>
-              <th className="px-4 py-3 font-medium text-muted">Product</th>
-              <th className="px-4 py-3 font-medium text-muted">Qty</th>
-              <th className="px-4 py-3 font-medium text-muted">Priority</th>
-              <th className="px-4 py-3 font-medium text-muted">Issued</th>
-              <th className="px-4 py-3 font-medium text-muted">Status</th>
-              <th className="px-4 py-3 font-medium text-muted">Created</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">WO #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Priority</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Issued</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Created</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

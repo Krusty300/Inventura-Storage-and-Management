@@ -50,11 +50,14 @@ def list_cycle_counts(
         q = q.join(CycleCount.location, isouter=True).filter(
             CycleCount.cc_number.ilike(like) | Location.name.ilike(like) | CycleCount.notes.ilike(like)
         )
-    counts = q.order_by(CycleCount.created_at.desc()).all()
     if has_variance is not None:
-        counts = [c for c in counts if c.has_variance == has_variance]
-    total = len(counts)
-    items = counts[skip:skip + limit]
+        variance_exists = db.query(CycleCountItem.id).filter(
+            CycleCountItem.cycle_count_id == CycleCount.id,
+            CycleCountItem.variance != 0,
+        ).exists()
+        q = q.filter(variance_exists if has_variance else ~variance_exists)
+    total = q.count()
+    items = q.order_by(CycleCount.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [CycleCountOut.model_validate(c) for c in items], "total": total,
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 

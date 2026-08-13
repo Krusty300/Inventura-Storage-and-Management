@@ -79,13 +79,13 @@ export default function Boms() {
         <table className="w-full text-sm" role="grid" aria-label="BOMs table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">BOM</th>
-              <th className="px-4 py-3 font-medium text-muted">Output Product</th>
-              <th className="px-4 py-3 font-medium text-muted">Components</th>
-              <th className="px-4 py-3 font-medium text-muted">Total Cost</th>
-              <th className="px-4 py-3 font-medium text-muted">Status</th>
-              <th className="px-4 py-3 font-medium text-muted">Updated</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">BOM</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Output Product</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Components</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Total Cost</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Updated</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

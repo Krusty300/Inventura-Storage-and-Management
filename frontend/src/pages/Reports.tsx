@@ -250,14 +250,14 @@ function ManufacturingCostTab({ data, symbol }: { data: ManufacturingCostReport;
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3 font-medium text-muted">WO #</th>
-                <th className="px-4 py-3 font-medium text-muted">Product</th>
-                <th className="px-4 py-3 font-medium text-muted">Qty</th>
-                <th className="px-4 py-3 font-medium text-muted">Completed</th>
-                <th className="px-4 py-3 font-medium text-muted text-right">Material Cost</th>
-                <th className="px-4 py-3 font-medium text-muted text-right">Std / Unit</th>
-                <th className="px-4 py-3 font-medium text-muted text-right">Actual / Unit</th>
-                <th className="px-4 py-3 font-medium text-muted text-right">Variance</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">WO #</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Completed</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Material Cost</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Std / Unit</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Actual / Unit</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Variance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -313,13 +313,13 @@ function AgingTab({ data }: { data: InventoryAging }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3 font-medium text-muted">Lot</th>
-                <th className="px-4 py-3 font-medium text-muted">Product</th>
-                <th className="px-4 py-3 font-medium text-muted">On Hand</th>
-                <th className="px-4 py-3 font-medium text-muted">Age (days)</th>
-                <th className="px-4 py-3 font-medium text-muted">Last Movement</th>
-                <th className="px-4 py-3 font-medium text-muted">Avg Daily Demand</th>
-                <th className="px-4 py-3 font-medium text-muted">Days of Stock</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Lot</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">On Hand</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Age (days)</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Last Movement</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Avg Daily Demand</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Days of Stock</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -378,13 +378,13 @@ function StockoutTab({ data, leadTime, onLeadTimeChange }: { data: StockoutRisk;
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3 font-medium text-muted">Product</th>
-                <th className="px-4 py-3 font-medium text-muted">SKU</th>
-                <th className="px-4 py-3 font-medium text-muted">On Hand</th>
-                <th className="px-4 py-3 font-medium text-muted">Avg Daily Demand</th>
-                <th className="px-4 py-3 font-medium text-muted">Days of Supply</th>
-                <th className="px-4 py-3 font-medium text-muted">Suggested Reorder</th>
-                <th className="px-4 py-3 font-medium text-muted">Risk</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">SKU</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">On Hand</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Avg Daily Demand</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Days of Supply</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Suggested Reorder</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Risk</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -534,11 +534,11 @@ function CategoriesTab({ data, symbol }: { data: CategoryBreakdownItem[]; symbol
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-app text-left">
-                    <th className="px-4 py-3 font-medium text-muted">Category</th>
-                    <th className="px-4 py-3 font-medium text-muted">Products</th>
-                    <th className="px-4 py-3 font-medium text-muted">Total Stock</th>
-                    <th className="px-4 py-3 font-medium text-muted">Cost Value</th>
-                    <th className="px-4 py-3 font-medium text-muted">Retail Value</th>
+                    <th scope="col" className="px-4 py-3 font-medium text-muted">Category</th>
+                    <th scope="col" className="px-4 py-3 font-medium text-muted">Products</th>
+                    <th scope="col" className="px-4 py-3 font-medium text-muted">Total Stock</th>
+                    <th scope="col" className="px-4 py-3 font-medium text-muted">Cost Value</th>
+                    <th scope="col" className="px-4 py-3 font-medium text-muted">Retail Value</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -586,13 +586,13 @@ function ProfitTab({ data, symbol }: { data: ProfitAnalysis; symbol: string }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3 font-medium text-muted">Product</th>
-                <th className="px-4 py-3 font-medium text-muted">SKU</th>
-                <th className="px-4 py-3 font-medium text-muted">Qty</th>
-                <th className="px-4 py-3 font-medium text-muted">Unit Cost</th>
-                <th className="px-4 py-3 font-medium text-muted">Unit Price</th>
-                <th className="px-4 py-3 font-medium text-muted">Margin</th>
-                <th className="px-4 py-3 font-medium text-muted">Total Profit</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">SKU</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Unit Cost</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Unit Price</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Margin</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Total Profit</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -667,9 +667,9 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-app text-left">
-                  <th className="px-4 py-3 font-medium text-muted">Product</th>
-                  <th className="px-4 py-3 font-medium text-muted">Units Sold</th>
-                  <th className="px-4 py-3 font-medium text-muted">Revenue</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Units Sold</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Revenue</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -777,12 +777,12 @@ function CustomersTab({ data, symbol, days, onDaysChange }: {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3 font-medium text-muted">#</th>
-                <th className="px-4 py-3 font-medium text-muted">Customer</th>
-                <th className="px-4 py-3 font-medium text-muted">Phone</th>
-                <th className="px-4 py-3 font-medium text-muted">Orders</th>
-                <th className="px-4 py-3 font-medium text-muted">Total Spent</th>
-                <th className="px-4 py-3 font-medium text-muted">Last Purchase</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">#</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Customer</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Phone</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Orders</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Total Spent</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Last Purchase</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -845,12 +845,12 @@ function SuppliersTab({ data, symbol, days, onDaysChange }: {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3 font-medium text-muted">#</th>
-                <th className="px-4 py-3 font-medium text-muted">Supplier</th>
-                <th className="px-4 py-3 font-medium text-muted">Contact</th>
-                <th className="px-4 py-3 font-medium text-muted">Orders</th>
-                <th className="px-4 py-3 font-medium text-muted">Total Spent</th>
-                <th className="px-4 py-3 font-medium text-muted">Last Order</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">#</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Contact</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Orders</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Total Spent</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Last Order</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

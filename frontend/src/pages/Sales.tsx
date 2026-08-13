@@ -39,7 +39,7 @@ export default function Sales() {
   const debouncedSearch = useDebounce(search, 300);
   const { exportCsv } = useExportCsv();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["sales", debouncedSearch, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
@@ -55,6 +55,7 @@ export default function Sales() {
       addToast("Sale refunded, stock restored", "success");
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (err: any) => addToast(err.response?.data?.detail || "Refund failed", "error"),
   });
@@ -96,23 +97,29 @@ export default function Sales() {
 
       <BulkActionBar count={selectedIds.size} canEdit={can("sales.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
 
+      {isError && (
+        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          Failed to load sales: {(error as any)?.message}
+        </div>
+      )}
+
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Sales table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3">
+              <th scope="col" className="px-4 py-3">
                 <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all sales" />
               </th>
-              <th className="px-4 py-3 font-medium text-muted">Invoice #</th>
-              <th className="px-4 py-3 font-medium text-muted">Customer</th>
-              <th className="px-4 py-3 font-medium text-muted">Sold By</th>
-              <th className="px-4 py-3 font-medium text-muted">Date</th>
-              <th className="px-4 py-3 font-medium text-muted">Status</th>
-              <th className="px-4 py-3 font-medium text-muted">Payment</th>
-              <th className="px-4 py-3 font-medium text-muted">Location</th>
-              <th className="px-4 py-3 font-medium text-muted">Total</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Invoice #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Customer</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Sold By</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Payment</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Total</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -162,7 +169,12 @@ export default function Sales() {
       {showForm && (
         <SaleForm
           onClose={() => setShowForm(false)}
-          onSaved={() => { setShowForm(false); queryClient.invalidateQueries({ queryKey: ["sales"] }); }}
+          onSaved={() => {
+            setShowForm(false);
+            queryClient.invalidateQueries({ queryKey: ["sales"] });
+            queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+            queryClient.invalidateQueries({ queryKey: ["products"] });
+          }}
         />
       )}
 

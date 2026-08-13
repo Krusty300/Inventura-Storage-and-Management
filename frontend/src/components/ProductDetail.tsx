@@ -373,11 +373,11 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
               <table className="w-full text-sm border rounded-lg">
                 <thead>
                   <tr className="bg-app text-left">
-                    <th className="px-3 py-2 font-medium text-muted">SKU</th>
-                    <th className="px-3 py-2 font-medium text-muted">Attributes</th>
-                    <th className="px-3 py-2 font-medium text-muted">Price</th>
-                    <th className="px-3 py-2 font-medium text-muted">Qty</th>
-                    <th className="px-3 py-2 font-medium text-muted">Status</th>
+                    <th scope="col" className="px-3 py-2 font-medium text-muted">SKU</th>
+                    <th scope="col" className="px-3 py-2 font-medium text-muted">Attributes</th>
+                    <th scope="col" className="px-3 py-2 font-medium text-muted">Price</th>
+                    <th scope="col" className="px-3 py-2 font-medium text-muted">Qty</th>
+                    <th scope="col" className="px-3 py-2 font-medium text-muted">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -518,11 +518,11 @@ function TraceSection({ product }: { product: Product }) {
                 <table className="w-full text-xs rounded-lg">
                   <thead>
                     <tr className="bg-app text-left">
-                      <th className="px-3 py-2 font-medium text-muted">WO #</th>
-                      <th className="px-3 py-2 font-medium text-muted">Role</th>
-                      <th className="px-3 py-2 font-medium text-muted">Qty</th>
-                      <th className="px-3 py-2 font-medium text-muted">Status</th>
-                      <th className="px-3 py-2 font-medium text-muted">Date</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">WO #</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Role</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Qty</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Status</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -551,13 +551,13 @@ function TraceSection({ product }: { product: Product }) {
                 <table className="w-full text-xs rounded-lg">
                   <thead>
                     <tr className="bg-app text-left">
-                      <th className="px-3 py-2 font-medium text-muted">Date</th>
-                      <th className="px-3 py-2 font-medium text-muted">Type</th>
-                      <th className="px-3 py-2 font-medium text-muted">Qty</th>
-                      <th className="px-3 py-2 font-medium text-muted">Lot</th>
-                      <th className="px-3 py-2 font-medium text-muted">Reference</th>
-                      <th className="px-3 py-2 font-medium text-muted">Route</th>
-                      <th className="px-3 py-2 font-medium text-muted">User</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Date</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Type</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Qty</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Lot</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Reference</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Route</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">User</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -574,13 +574,13 @@ function TraceSection({ product }: { product: Product }) {
                 <table className="w-full text-xs rounded-lg">
                   <thead>
                     <tr className="bg-app text-left">
-                      <th className="px-3 py-2 font-medium text-muted">Date</th>
-                      <th className="px-3 py-2 font-medium text-muted">Type</th>
-                      <th className="px-3 py-2 font-medium text-muted">Qty</th>
-                      <th className="px-3 py-2 font-medium text-muted">Lot</th>
-                      <th className="px-3 py-2 font-medium text-muted">Reference</th>
-                      <th className="px-3 py-2 font-medium text-muted">Route</th>
-                      <th className="px-3 py-2 font-medium text-muted">User</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Date</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Type</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Qty</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Lot</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Reference</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">Route</th>
+                      <th scope="col" className="px-3 py-2 font-medium text-muted">User</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">

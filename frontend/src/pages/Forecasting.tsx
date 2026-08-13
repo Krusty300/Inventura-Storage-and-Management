@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { statusBadge } from "../utils/statusBadges";
 import { Eye } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -76,7 +77,6 @@ export default function Forecasting() {
     }
   };
 
-  const statusBadge = (s: string) => (s === "reorder" ? "badge-danger" : "badge-success");
   const ltSource = (s: string) => (s === "supplier" ? "supplier" : s === "history" ? "orders" : s === "override" ? "override" : "default");
 
   return (

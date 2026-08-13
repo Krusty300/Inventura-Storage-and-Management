@@ -1,16 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import api from "../api/client";
 import { can as canHelper } from "../utils/permissions";
-
-interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: string;
-  avatar_url?: string;
-  last_login_at?: string | null;
-  created_at?: string;
-}
+import type { User } from "../types";
 
 interface AuthContextType {
   user: User | null;

@@ -143,15 +143,15 @@ export default function Orders() {
         <table className="w-full text-sm" role="grid" aria-label="Orders table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3">
+              <th scope="col" className="px-4 py-3">
                 <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all orders" />
               </th>
-              <th className="px-4 py-3 font-medium text-muted">Order #</th>
-              <th className="px-4 py-3 font-medium text-muted">Supplier</th>
-              <th className="px-4 py-3 font-medium text-muted">Date</th>
-              <th className="px-4 py-3 font-medium text-muted">Status</th>
-              <th className="px-4 py-3 font-medium text-muted">Total</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Order #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Total</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">

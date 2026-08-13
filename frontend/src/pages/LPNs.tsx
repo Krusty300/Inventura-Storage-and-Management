@@ -11,6 +11,7 @@ import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useDateFormat } from "../hooks/useDateFormat";
+import { statusBadge } from "../utils/statusBadges";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
@@ -92,13 +93,13 @@ export default function LPNs() {
         <table className="w-full text-sm" role="grid" aria-label="LPNs table">
           <thead>
             <tr className="bg-app text-left">
-              <th className="px-4 py-3 font-medium text-muted">LPN #</th>
-              <th className="px-4 py-3 font-medium text-muted">Type</th>
-              <th className="px-4 py-3 font-medium text-muted">Location</th>
-              <th className="px-4 py-3 font-medium text-muted">Status</th>
-              <th className="px-4 py-3 font-medium text-muted">Items</th>
-              <th className="px-4 py-3 font-medium text-muted">Qty</th>
-              <th className="px-4 py-3 font-medium text-muted">Actions</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">LPN #</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Items</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -243,18 +244,6 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
   const contents = current.contents || [];
   const serials = current.serials || [];
   const hasContents = contents.length > 0 || serials.length > 0;
-
-  function statusBadge(status: string) {
-    switch (status) {
-      case "in_stock": return "badge-success";
-      case "reserved": return "badge-info";
-      case "sold": return "badge-neutral";
-      case "quarantined": return "badge-warning";
-      case "inactive": return "badge-neutral";
-      case "scrapped": return "badge-danger";
-      default: return "";
-    }
-  }
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["lpn", lpn.id] });

@@ -299,10 +299,10 @@ export default function Products() {
           <table className="w-full text-sm" role="grid" aria-label="Products table">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-3">
+                <th scope="col" className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all products" />
                 </th>
-                <th className="px-4 py-3 font-medium text-muted">Image</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Image</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("sku")} aria-label="Sort by SKU">SKU{sortIndicator("sku")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("name")} aria-label="Sort by name">Name{sortIndicator("name")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("category_name")} aria-label="Sort by category">Category{sortIndicator("category_name")}</th>
@@ -310,11 +310,11 @@ export default function Products() {
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("unit_price")} aria-label="Sort by price">Price{sortIndicator("unit_price")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("cost_price")} aria-label="Sort by cost">Cost{sortIndicator("cost_price")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("quantity")} aria-label="Sort by quantity">Qty{sortIndicator("quantity")}</th>
-                <th className="px-4 py-3 font-medium text-muted">Location</th>
-                <th className="px-4 py-3 font-medium text-muted">Batch</th>
-                <th className="px-4 py-3 font-medium text-muted">Expiry</th>
-                <th className="px-4 py-3 font-medium text-muted">Status</th>
-                <th className="px-4 py-3 font-medium text-muted">Actions</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Batch</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Expiry</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -509,11 +509,11 @@ export default function Products() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-3 py-2 font-medium text-muted">Date</th>
-                <th className="px-3 py-2 font-medium text-muted">Type</th>
-                <th className="px-3 py-2 font-medium text-muted">Qty</th>
-                <th className="px-3 py-2 font-medium text-muted">Ref</th>
-                <th className="px-3 py-2 font-medium text-muted">User</th>
+                <th scope="col" className="px-3 py-2 font-medium text-muted">Date</th>
+                <th scope="col" className="px-3 py-2 font-medium text-muted">Type</th>
+                <th scope="col" className="px-3 py-2 font-medium text-muted">Qty</th>
+                <th scope="col" className="px-3 py-2 font-medium text-muted">Ref</th>
+                <th scope="col" className="px-3 py-2 font-medium text-muted">User</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
