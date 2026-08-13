@@ -106,6 +106,7 @@ export default function Sales() {
               </th>
               <th className="px-4 py-3 font-medium text-muted">Invoice #</th>
               <th className="px-4 py-3 font-medium text-muted">Customer</th>
+              <th className="px-4 py-3 font-medium text-muted">Sold By</th>
               <th className="px-4 py-3 font-medium text-muted">Date</th>
               <th className="px-4 py-3 font-medium text-muted">Status</th>
               <th className="px-4 py-3 font-medium text-muted">Payment</th>
@@ -116,7 +117,7 @@ export default function Sales() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={9} />
+              <Skeleton rows={5} cols={10} />
             ) : sales.length === 0 ? (
               <EmptyState title="No sales yet" message="Record your first sale to start tracking revenue." actionLabel="New Sale" onAction={() => setShowForm(true)} />
             ) : sales.map((s) => (
@@ -126,6 +127,7 @@ export default function Sales() {
                 </td>
                 <td className="px-4 py-3 font-medium">{s.invoice_number}</td>
                 <td className="px-4 py-3 text-muted">{s.customer_name}</td>
+                <td className="px-4 py-3 text-muted">{s.username || "—"}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                 <td className="px-4 py-3">
                   <span className={`badge ${s.status === "completed" ? "badge-success" : "badge-danger"}`}>{s.status}</span>
