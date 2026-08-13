@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Loader2, Minus, Plus, Search, Trash2, X } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Customer, Product, QualityCheck, Settings } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
-import Modal from "./Modal";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { formatCurrency } from "../utils/currency";
 import { errorMessage } from "../utils/errors";
-import { isSelectable, selectableProducts, productLabel } from "../utils/variants";
+import { isSelectable, selectableProducts } from "../utils/variants";
 
 interface Props {
   onClose: () => void;
@@ -23,22 +22,30 @@ interface LineItem {
   location_id: string;
 }
 
-const EMPTY_ITEM: LineItem = { product_id: "", quantity: "1", unit_price: "0", location_id: "" };
-
-interface SaleItemRowProps {
+const PAYMENT_METHODS = [
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Card" },
+  { value: "transfer", label: "Bank Transfer" },
+];
+function CartLine({
+  item,
+  product,
+  currency,
+  canRemove,
+  blocked,
+  onShortChange,
+  onChange,
+  onRemove,
+}: {
   item: LineItem;
-  idx: number;
-  sellable: Product[];
+  product: Product | undefined;
   currency: string;
   canRemove: boolean;
   blocked: boolean;
-  onChange: (idx: number, field: string, value: string) => void;
-  onRemove: (idx: number) => void;
-  onStockShort: (idx: number, short: boolean) => void;
-}
-
-function SaleItemRow({ item, idx, sellable, currency, canRemove, blocked, onChange, onRemove, onStockShort }: SaleItemRowProps) {
-  const product = sellable.find((p) => p.id === parseInt(item.product_id));
+  onShortChange: (short: boolean) => void;
+  onChange: (field: string, value: string) => void;
+  onRemove: () => void;
+}) {
   const { locations: stockLocations, unallocated, isLoading: stockLoading } = useProductStockLocations(product?.id, false);
 
   const qty = parseInt(item.quantity);
@@ -53,60 +60,71 @@ function SaleItemRow({ item, idx, sellable, currency, canRemove, blocked, onChan
   }
   const short = !!product && !stockLoading && available !== undefined && !Number.isNaN(qty) && qty > 0 && qty > available;
 
+  const prevShort = useRef<boolean | null>(null);
   useEffect(() => {
-    onStockShort(idx, short);
-  }, [idx, short, onStockShort]);
+    if (prevShort.current !== short) {
+      prevShort.current = short;
+      onShortChange(short);
+    }
+  }, [short, onShortChange]);
+
+  const lineTotal = (parseInt(item.quantity) || 0) * (parseFloat(item.unit_price) || 0);
 
   return (
-    <div className="border border-border rounded-lg p-3 space-y-2">
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-        <div className="sm:col-span-4">
-          <label className="block text-xs font-medium text-muted mb-1.5">Product</label>
-          <select className="select text-sm" value={item.product_id} onChange={(e) => onChange(idx, "product_id", e.target.value)} required>
-            <option value="">Select product</option>
-            {sellable.map((p) => (
-              <option key={p.id} value={p.id}>{productLabel(p)} ({formatCurrency(p.unit_price, currency)})</option>
-            ))}
-          </select>
+    <div className="border border-border rounded-lg bg-surface p-3 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium text-sm text-ink truncate" title={product?.display_name}>
+            {product?.display_name || `Product #${item.product_id}`}
+          </p>
+          <p className="text-xs text-faint">{product?.sku}</p>
         </div>
-        <div className="sm:col-span-3">
-          <label className="flex items-center gap-1.5 text-xs font-medium text-muted mb-1.5">
-            Fulfill from
-            {stockLoading && <Loader2 size={10} className="animate-spin" />}
-          </label>
-          <select
-            className="select text-sm"
-            value={item.location_id}
-            onChange={(e) => onChange(idx, "location_id", e.target.value)}
-            disabled={!product}
-            aria-label="Fulfill from location"
-          >
+        <button type="button" onClick={onRemove} disabled={!canRemove} className="p-1 text-faint hover:text-red-600 dark:text-red-400 disabled:opacity-30" aria-label="Remove item">
+          <Trash2 size={15} />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div className="flex items-center rounded-lg border border-border overflow-hidden">
+          <button type="button" onClick={() => onChange("quantity", String(Math.max(1, (parseInt(item.quantity) || 1) - 1)))} className="p-1.5 text-muted hover:bg-app" aria-label="Decrease quantity">
+            <Minus size={14} />
+          </button>
+          <input
+            type="number"
+            className="w-14 text-center input !rounded-none !border-0 text-sm"
+            value={item.quantity}
+            onChange={(e) => onChange("quantity", e.target.value)}
+            min="1"
+            aria-label={`Quantity for ${product?.display_name || item.product_id}`}
+          />
+          <button type="button" onClick={() => onChange("quantity", String((parseInt(item.quantity) || 0) + 1))} className="p-1.5 text-muted hover:bg-app" aria-label="Increase quantity">
+            <Plus size={14} />
+          </button>
+        </div>
+        <label className="flex-1 flex items-center gap-1.5 text-xs text-muted">
+          <span className="shrink-0">Price</span>
+          <input type="number" className="input !py-1.5 text-sm w-full" value={item.unit_price} onChange={(e) => onChange("unit_price", e.target.value)} step="0.01" min="0" aria-label={`Unit price for ${product?.display_name || item.product_id}`} />
+        </label>
+        <span className="font-semibold text-sm whitespace-nowrap">{formatCurrency(lineTotal, currency)}</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <label className="flex-1 flex items-center gap-1.5 text-xs text-muted">
+          <span className="shrink-0">Fulfill from</span>
+          {stockLoading && <Loader2 size={10} className="animate-spin" />}
+          <select className="select !py-1 text-xs" value={item.location_id} onChange={(e) => onChange("location_id", e.target.value)} disabled={!product} aria-label="Fulfill from location">
             <option value="">Auto (any location)</option>
             {stockLocations.map((l) => (
               <option key={l.location_id} value={l.location_id.toString()}>{l.path} ({l.count})</option>
             ))}
           </select>
-        </div>
-        <div className="sm:col-span-2">
-          <label className="block text-xs font-medium text-muted mb-1.5">Qty</label>
-          <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity} onChange={(e) => onChange(idx, "quantity", e.target.value)} min="1" required />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="block text-xs font-medium text-muted mb-1.5">Price</label>
-          <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price} onChange={(e) => onChange(idx, "unit_price", e.target.value)} step="0.01" required />
-        </div>
-        <div className="sm:col-span-1 flex justify-end">
-          {canRemove && (
-            <button type="button" onClick={() => onRemove(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
-              <Trash2 size={16} />
-            </button>
-          )}
-        </div>
+        </label>
       </div>
+
       {blocked && (
         <div className="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-          <span>This product has a pending quality check and can't be sold until it's resolved.</span>
+          <span>Pending quality check — can't be sold until resolved.</span>
         </div>
       )}
       {short && available !== undefined && (
@@ -131,19 +149,14 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [customerId, setCustomerId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<LineItem[]>([{ ...EMPTY_ITEM }]);
+  const [items, setItems] = useState<LineItem[]>([]);
   const [stockShort, setStockShort] = useState<Set<number>>(new Set());
+  const [discount, setDiscount] = useState("");
+  const [amountReceived, setAmountReceived] = useState("");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("All");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
-
-  const handleStockShort = useCallback((idx: number, short: boolean) => {
-    setStockShort((prev) => {
-      const next = new Set(prev);
-      if (short) next.add(idx);
-      else next.delete(idx);
-      return next;
-    });
-  }, []);
 
   useEffect(() => {
     api.get("/customers", { params: { limit: PAGE_SIZE_PRODUCTS } }).then(({ data }) => setCustomers(data.items));
@@ -152,8 +165,35 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     api.get("/quality-checks", { params: { result: "pending", limit: PAGE_SIZE } }).then(({ data }) => setPendingQcs(data.items));
   }, []);
 
-  const selectable = selectableProducts(products);
-  const sellable = selectable.filter((p) => !p.is_serialized);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const selectable = useMemo(() => selectableProducts(products), [products]);
+  const sellable = useMemo(() => selectable.filter((p) => !p.is_serialized), [selectable]);
+
+  const blockedProductIds = useMemo(() => {
+    const set = new Set<number>();
+    for (const qc of pendingQcs) if (qc.product_id) set.add(qc.product_id);
+    return set;
+  }, [pendingQcs]);
+
+  const categories = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of sellable) if (p.category_name) names.add(p.category_name);
+    return ["All", ...[...names].sort()];
+  }, [sellable]);
+
+  const visibleProducts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return sellable.filter((p) => {
+      if (category !== "All" && p.category_name !== category) return false;
+      if (!q) return true;
+      return `${p.display_name} ${p.sku} ${p.barcode}`.toLowerCase().includes(q);
+    });
+  }, [sellable, query, category]);
 
   const isBlocked = (item: LineItem) => {
     const productId = parseInt(item.product_id);
@@ -165,27 +205,56 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     );
   };
 
-  const addItem = () => setItems([...items, { ...EMPTY_ITEM }]);
-  const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
+  const handleStockShort = useCallback((idx: number, short: boolean) => {
+    setStockShort((prev) => {
+      const has = prev.has(idx);
+      if (has === short) return prev;
+      const next = new Set(prev);
+      if (short) next.add(idx);
+      else next.delete(idx);
+      return next;
+    });
+  }, []);
 
-  const updateItem = (idx: number, field: string, value: string) => {
-    const updated = [...items];
-    (updated[idx] as any)[field] = value;
-    if (field === "product_id") {
-      const p = sellable.find((x) => x.id === parseInt(value));
-      if (p) updated[idx].unit_price = p.unit_price.toString();
-      updated[idx].location_id = "";
-    }
-    setItems(updated);
+  const addProduct = (p: Product) => {
+    setItems((prev) => {
+      const idx = prev.findIndex((i) => parseInt(i.product_id) === p.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], quantity: String((parseInt(next[idx].quantity) || 0) + 1) };
+        return next;
+      }
+      return [...prev, { product_id: p.id.toString(), quantity: "1", unit_price: p.unit_price.toString(), location_id: "" }];
+    });
   };
 
+  const updateItem = (idx: number, field: string, value: string) => {
+    setItems((prev) => {
+      const next = [...prev];
+      (next[idx] as any)[field] = value;
+      return next;
+    });
+  };
+
+  const removeItem = (idx: number) => setItems((prev) => prev.filter((_, i) => i !== idx));
+
   const subtotal = items.reduce((sum, i) => sum + (parseInt(i.quantity) || 0) * (parseFloat(i.unit_price) || 0), 0);
-  const tax = settings ? subtotal * settings.tax_rate / 100 : 0;
-  const total = subtotal + tax;
+  const discountAmount = Math.min(Math.max(parseFloat(discount) || 0, 0), subtotal);
+  const taxable = subtotal - discountAmount;
+  const tax = settings ? taxable * settings.tax_rate / 100 : 0;
+  const total = taxable + tax;
   const currency = settings?.currency_symbol || "$";
+
+  const cashReceived = parseFloat(amountReceived) || 0;
+  const change = cashReceived - total;
+  const cashShort = paymentMethod === "cash" && amountReceived.trim() !== "" && cashReceived < total;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (items.length === 0) {
+      addToast("Add at least one item to the sale", "error");
+      return;
+    }
     if (items.some((i) => !i.product_id)) {
       addToast("All line items must have a product selected", "error");
       return;
@@ -206,11 +275,20 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       addToast("A line item has a pending quality check and can't be sold yet", "error");
       return;
     }
+    if (discountAmount !== (parseFloat(discount) || 0)) {
+      addToast("Discount cannot exceed the subtotal", "error");
+      return;
+    }
+    if (cashShort) {
+      addToast("Amount received is less than the total", "error");
+      return;
+    }
     setSaving(true);
     try {
       await api.post("/sales", {
         customer_id: customerId ? parseInt(customerId) : null,
         payment_method: paymentMethod,
+        discount_amount: discountAmount,
         notes,
         items: items.map((i) => ({
           product_id: parseInt(i.product_id),
@@ -219,7 +297,9 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           location_id: i.location_id ? parseInt(i.location_id) : null,
         })),
       });
-      addToast("Sale completed", "success");
+      addToast(paymentMethod === "cash" && cashReceived >= total
+        ? `Sale completed — change due ${formatCurrency(Math.max(change, 0), currency)}`
+        : "Sale completed", "success");
       onSaved();
     } catch (err: any) {
       addToast(errorMessage(err, "Error processing sale"), "error");
@@ -228,77 +308,215 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   };
 
   return (
-    <Modal open onClose={onClose} title="New Sale" wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Customer</label>
-            <select className="select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-              <option value="">Select a customer (walk-in)</option>
-              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Payment Method</label>
-            <select className="select" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-              <option value="cash">Cash</option>
-              <option value="card">Card</option>
-              <option value="transfer">Bank Transfer</option>
-            </select>
-          </div>
+    <div className="fixed inset-0 z-50 bg-app flex flex-col" role="dialog" aria-modal="true" aria-label="Point of sale register">
+      <div className="flex items-center justify-between gap-4 px-6 py-3 border-b border-border bg-surface">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-bold text-ink">Register</h2>
+          <span className="text-xs text-muted hidden sm:inline">Tap a product to add it to the sale</span>
         </div>
-
-        <div>
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <label className="text-sm font-medium text-ink">Items</label>
-            <div className="flex gap-2 flex-wrap justify-end">
-              <BarcodeScanner onProductFound={(p) => {
-                if (p.is_serialized) { addToast("Serialized products can't be sold at checkout - create a shipment instead", "error"); return; }
-                if (isSelectable(p)) setItems([...items, { product_id: p.id.toString(), quantity: "1", unit_price: p.unit_price.toString(), location_id: "" }]); else addToast("Product has variants - scan a specific variant", "error");
-              }} placeholder="Scan to add item..." />
-              <button type="button" onClick={addItem} className="btn-secondary text-xs py-1 px-2">
-                Add Item
-              </button>
-            </div>
-          </div>
-          <div className="space-y-3">
-            {items.map((item, idx) => (
-              <SaleItemRow
-                key={idx}
-                item={item}
-                idx={idx}
-                sellable={sellable}
-                currency={currency}
-                canRemove={items.length > 1}
-                blocked={isBlocked(item)}
-                onChange={updateItem}
-                onRemove={removeItem}
-                onStockShort={handleStockShort}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="flex justify-end">
-          <div className="w-64 space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>{formatCurrency(subtotal, currency)}</span></div>
-            <div className="flex justify-between"><span className="text-muted">Tax ({settings?.tax_rate ?? 0}%)</span><span>{formatCurrency(tax, currency)}</span></div>
-            <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(total, currency)}</span></div>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">
-            {saving ? "Processing..." : `Complete Sale (${formatCurrency(total, currency)})`}
+        <div className="flex items-center gap-3">
+          <BarcodeScanner
+            onProductFound={(p) => {
+              if (p.is_serialized) { addToast("Serialized products can't be sold at checkout - create a shipment instead", "error"); return; }
+              if (isSelectable(p)) addProduct(p); else addToast("Product has variants - scan a specific variant", "error");
+            }}
+            placeholder="Scan to add item..."
+            autoFocus
+          />
+          <button type="button" onClick={onClose} className="btn-secondary flex items-center gap-1.5" aria-label="Close register">
+            <X size={16} />
+            <span className="hidden sm:inline">Close</span>
           </button>
         </div>
-      </form>
-    </Modal>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+        <section className="flex-1 flex flex-col overflow-hidden" aria-label="Product catalog">
+          <div className="px-6 py-3 border-b border-border bg-surface space-y-3">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+              <input
+                className="input pl-9"
+                placeholder="Search products by name, SKU or barcode..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search products"
+              />
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {categories.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCategory(c)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-full border whitespace-nowrap transition-colors ${
+                    category === c ? "bg-indigo-600 text-white border-indigo-600" : "bg-surface border-border text-muted hover:border-indigo-300"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6">
+            {sellable.length === 0 ? (
+              <p className="text-muted text-sm py-16 text-center">No sellable products found</p>
+            ) : visibleProducts.length === 0 ? (
+              <p className="text-muted text-sm py-16 text-center">No products match your search</p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                {visibleProducts.map((p) => {
+                  const blocked = blockedProductIds.has(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        if (blocked) {
+                          addToast(`'${p.display_name}' has a pending quality check and can't be sold yet`, "error");
+                          return;
+                        }
+                        addProduct(p);
+                      }}
+                      className={`text-left border rounded-xl p-4 bg-surface transition-colors relative ${
+                        blocked
+                          ? "border-amber-300 dark:border-amber-500/40 hover:border-amber-400"
+                          : "border-border hover:border-indigo-400 hover:shadow-sm"
+                      }`}
+                    >
+                      {blocked && (
+                        <span className="absolute top-2 right-2" title="Pending quality check">
+                          <AlertTriangle size={14} className="text-amber-500" />
+                        </span>
+                      )}
+                      <p className="font-semibold text-sm text-ink line-clamp-2">{p.display_name}</p>
+                      <p className="text-xs text-faint mt-0.5">{p.sku}</p>
+                      <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-2">{formatCurrency(p.unit_price, currency)}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <aside className="w-[380px] shrink-0 border-l border-border bg-surface flex flex-col" aria-label="Sale cart">
+          <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-5 py-4 border-b border-border space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Customer</label>
+                  <select className="select text-sm" value={customerId} onChange={(e) => setCustomerId(e.target.value)} aria-label="Customer">
+                    <option value="">Walk-in</option>
+                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Payment</label>
+                  <select className="select text-sm" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} aria-label="Payment method">
+                    {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <textarea className="input text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} aria-label="Sale notes" />
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+              {items.length === 0 ? (
+                <p className="text-muted text-sm text-center py-10">Cart is empty — tap a product to add it</p>
+              ) : (
+                items.map((item, idx) => (
+                  <CartLine
+                    key={idx}
+                    item={item}
+                    product={sellable.find((p) => p.id === parseInt(item.product_id))}
+                    currency={currency}
+                    canRemove={items.length > 1}
+                    blocked={isBlocked(item)}
+                    onShortChange={(short) => handleStockShort(idx, short)}
+                    onChange={(field, value) => updateItem(idx, field, value)}
+                    onRemove={() => removeItem(idx)}
+                  />
+                ))
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-border space-y-3 bg-app">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">Subtotal</span>
+                <span>{formatCurrency(subtotal, currency)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm gap-3">
+                <span className="text-muted shrink-0">Discount</span>
+                <div className="relative flex-1 max-w-[160px]">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-faint">{currency}</span>
+                  <input
+                    type="number"
+                    className="input pl-6 py-1.5 text-sm"
+                    placeholder="0.00"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    min="0"
+                    step="0.01"
+                    aria-label="Discount amount"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted">Tax ({settings?.tax_rate ?? 0}%)</span>
+                <span>{formatCurrency(tax, currency)}</span>
+              </div>
+              <div className="flex justify-between items-baseline border-t border-border pt-2">
+                <span className="font-semibold">Total</span>
+                <span className="text-2xl font-bold text-ink">{formatCurrency(total, currency)}</span>
+              </div>
+            </div>
+
+            {paymentMethod === "cash" && (
+              <div className="px-5 py-4 border-t border-border space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted">Cash received</span>
+                  <span className={`font-semibold ${cashShort ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                    Change {formatCurrency(Math.max(change, 0), currency)}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    className="input py-1.5 text-sm flex-1"
+                    placeholder="Amount received"
+                    value={amountReceived}
+                    onChange={(e) => setAmountReceived(e.target.value)}
+                    min="0"
+                    step="0.01"
+                    aria-label="Cash received"
+                  />
+                  <button type="button" onClick={() => setAmountReceived(total.toFixed(2))} className="btn-secondary text-xs px-2 py-1.5">Exact</button>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {[5, 10, 20, 50].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setAmountReceived((cashReceived + n).toFixed(2))}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-muted hover:bg-app"
+                    >
+                      +{n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="px-5 py-4 border-t border-border">
+              <button type="submit" disabled={saving} className="btn-primary w-full py-3 text-base font-semibold">
+                {saving ? "Processing..." : `Complete Sale · ${formatCurrency(total, currency)}`}
+              </button>
+            </div>
+          </form>
+        </aside>
+      </div>
+    </div>
   );
 }

@@ -470,18 +470,6 @@ describe("ProductDetail", () => {
       if (url === "/products/6/trace") {
         return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
       }
-      if (url === "/lots") {
-        return Promise.resolve({
-          data: {
-            items: [
-              { id: 10, product_id: 6, lot_number: "LOT-QS", status: "quarantined", on_hand: 2, quantity: 2, locations: ["Quarantine Area"], created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00" },
-            ],
-            total: 1,
-            page: 1,
-            pages: 1,
-          },
-        });
-      }
       if (url === "/serial-numbers") {
         return Promise.resolve({
           data: {
@@ -512,14 +500,15 @@ describe("ProductDetail", () => {
 
     renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Move LOT-QS" }));
+    expect(await screen.findByText("Quarantined Serials:")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Move quarantined serials" }));
 
-    expect(await screen.findByText("Move Quarantined Stock: LOT-QS")).toBeInTheDocument();
-    expect(await screen.findByText("SN-Q1")).toBeInTheDocument();
-    expect(screen.getByText("SN-Q2")).toBeInTheDocument();
+    expect(await screen.findByText("Move Quarantined Stock")).toBeInTheDocument();
+
+    const checkboxes = await screen.findAllByRole("checkbox");
+    expect(checkboxes.length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByLabelText("Quantity")).not.toBeInTheDocument();
 
-    const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[0]);
     fireEvent.click(checkboxes[1]);
     await screen.findByRole("option", { name: "Shelf B" });
@@ -532,10 +521,42 @@ describe("ProductDetail", () => {
         quantity: 2,
         from_location_id: 1,
         to_location_id: 2,
-        lot_id: 10,
         serial_ids: [1, 2],
         notes: "",
       })
     );
+  });
+
+  it("lists quarantined serials and releases one back to stock", async () => {
+    const product = makeProduct({ id: 6, sku: "SKU-6", name: "Serial Widget", is_serialized: true, quarantined_qty: 1 });
+    (api.put as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/products/6/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      if (url === "/serial-numbers") {
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 1, product_id: 6, serial_number: "SN-Q1", lot_id: 10, location_id: 1, status: "quarantined", location_name: "Quarantine Area", sold_at: null, lot_number: "LOT-QS", lot_status: "quarantined", product_name: "Serial Widget", created_at: "2026-01-01T00:00:00" },
+            ],
+            total: 1,
+            page: 1,
+            pages: 1,
+          },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    expect(await screen.findByText("Quarantined Serials:")).toBeInTheDocument();
+    expect(screen.getByText("SN-Q1")).toBeInTheDocument();
+    expect(screen.getByText("(Lot LOT-QS)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Release SN-Q1" }));
+    await waitFor(() => expect(putMock).toHaveBeenCalledWith("/serial-numbers/1/status", { status: "in_stock" }));
   });
 });

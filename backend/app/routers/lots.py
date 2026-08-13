@@ -15,8 +15,9 @@ from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.schemas.lot import LOT_STATUSES, LotOut, LotUpdate
 from app.schemas.stock_movement import StockMovementOut
+from app.services import inventory
 from app.services.auth import get_current_user, require_permission
-from app.services.inventory import expire_overdue_lots
+from app.services.csv_export import csv_response
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/lots", tags=["lots"], dependencies=[Depends(get_current_user)])
@@ -50,7 +51,7 @@ def list_lots(
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
-    expire_overdue_lots(db)
+    inventory.expire_overdue_lots(db)
     q = db.query(Lot).options(
         joinedload(Lot.product), joinedload(Lot.supplier),
         joinedload(Lot.stock_lines).joinedload(StockLine.location),
@@ -73,6 +74,50 @@ def list_lots(
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 
+@router.get("/export")
+def export_lots(
+    product_id: int | None = None,
+    status: str | None = None,
+    search: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    inventory.expire_overdue_lots(db)
+    q = db.query(Lot).options(
+        joinedload(Lot.product), joinedload(Lot.supplier),
+        joinedload(Lot.stock_lines).joinedload(StockLine.location),
+        joinedload(Lot.serial_numbers).joinedload(SerialNumber.location),
+    )
+    if product_id:
+        q = q.filter(Lot.product_id == product_id)
+    if status:
+        if status not in LOT_STATUSES:
+            raise HTTPException(status_code=400, detail=f"status must be one of {LOT_STATUSES}")
+        q = q.filter(Lot.status == status)
+    if search:
+        like = f"%{search}%"
+        q = q.join(Lot.product).filter(
+            Lot.lot_number.ilike(like) | Product.name.ilike(like) | Product.sku.ilike(like)
+        )
+    lots = q.order_by(Lot.created_at.desc()).all()
+    return csv_response(
+        "lots_report",
+        ["Lot #", "Product", "SKU", "Supplier", "Status", "Expiry", "Received", "On Hand", "Stock Lines", "Serials", "Created"],
+        [[
+            l.lot_number,
+            l.product.display_name if l.product else "",
+            l.product.sku if l.product else "",
+            l.supplier.name if l.supplier else "",
+            l.status,
+            l.expiry_date.strftime("%Y-%m-%d") if l.expiry_date else "",
+            l.received_date.strftime("%Y-%m-%d") if l.received_date else "",
+            l.on_hand,
+            len(l.stock_lines),
+            len(l.serial_numbers),
+            l.created_at.strftime("%Y-%m-%d %H:%M") if l.created_at else "",
+        ] for l in lots],
+    )
+
+
 @router.get("/{lot_id}", response_model=LotOut)
 def get_lot(lot_id: int, db: Session = Depends(get_db)):
     return _load_lot(db, lot_id)
@@ -84,15 +129,28 @@ def update_lot(lot_id: int, data: LotUpdate, db: Session = Depends(get_db), user
     updates = data.model_dump(exclude_unset=True)
     if updates.get("supplier_id") is not None:
         get_or_404(Supplier, updates["supplier_id"], db)
-    if "status" in updates and updates["status"] != lot.status:
-        allowed = ALLOWED_LOT_TRANSITIONS.get(lot.status, set())
+    prior_status = lot.status
+    if "status" in updates and updates["status"] != prior_status:
+        allowed = ALLOWED_LOT_TRANSITIONS.get(prior_status, set())
         if updates["status"] not in allowed:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid lot transition: '{lot.status}' -> '{updates['status']}' (allowed: {sorted(allowed) or 'none'})",
+                detail=f"Invalid lot transition: '{prior_status}' -> '{updates['status']}' (allowed: {sorted(allowed) or 'none'})",
             )
     for k, v in updates.items():
         setattr(lot, k, v)
+    if lot.status == "quarantined" and prior_status != "quarantined":
+        # Quarantining a serialized lot must also quarantine its serials so
+        # serialized units are not left as in-stock inside a blocked lot.
+        inventory.quarantine_lot_serials(db, lot)
+    if prior_status == "quarantined" and lot.status == "in_stock":
+        # Releasing a quarantined lot must also release its quarantined serials
+        # so serialized units are not left permanently stuck in quarantine.
+        inventory.release_lot_serials(
+            db, lot, user_id=user.id,
+            reference=f"Lot '{lot.lot_number}' released",
+            notes="Lot released from quarantine - serials restored to in stock",
+        )
     db.commit()
     db.refresh(lot)
     log_activity(db, user.id, user.username, "update", "lot", lot.id,

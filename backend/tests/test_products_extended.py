@@ -250,3 +250,99 @@ def test_update_product_quantity_cannot_go_negative_at_location(auth_headers):
     detail = client.get(f"/api/locations/{loc['id']}/detail", headers=auth_headers).json()
     lines = [sl for sl in detail["stock_lines"] if sl["product_id"] == p["id"]]
     assert lines[0]["quantity"] == 10
+
+
+def _make_serialized(auth_headers, sku):
+    return client.post("/api/products", json={
+        "location_id": 1, "sku": sku, "name": sku, "unit_price": 20.0, "cost_price": 10.0,
+        "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+
+
+def _receive(auth_headers, product_id, serials, lot_number):
+    resp = client.post("/api/receipts", json={"items": [{
+        "product_id": product_id, "quantity": len(serials),
+        "serial_numbers": serials, "lot_number": lot_number,
+    }]}, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def _lot(auth_headers, product_id, lot_number):
+    lots = client.get("/api/lots", params={"product_id": product_id}, headers=auth_headers).json()
+    return next(l for l in lots["items"] if l["lot_number"] == lot_number)
+
+
+def test_sellable_qty_for_serialized_product_counts_only_in_stock_serials(auth_headers):
+    prod = _make_serialized(auth_headers, "SELL-SER1")
+    _receive(auth_headers, prod["id"], ["SELL-S1-A1", "SELL-S1-A2", "SELL-S1-A3"], "LOT-SELL-A")
+    _receive(auth_headers, prod["id"], ["SELL-S1-B1", "SELL-S1-B2"], "LOT-SELL-B")
+    lot_b = _lot(auth_headers, prod["id"], "LOT-SELL-B")
+    assert client.put(f"/api/lots/{lot_b['id']}", json={"status": "quarantined"}, headers=auth_headers).status_code == 200
+
+    body = client.get("/api/products", params={"search": "SELL-SER1", "include_variants": "1"}, headers=auth_headers).json()
+    item = next(p for p in body["items"] if p["id"] == prod["id"])
+    # on-hand counts only in-stock serials (the quarantined pair is excluded)...
+    assert item["quantity"] == 3
+    # ...and sellable must match that, NOT quantity - quarantined (which would be 1).
+    assert item["quarantined_qty"] == 2
+    assert item["sellable_qty"] == 3
+
+    detail = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert detail["quantity"] == 3
+    assert detail["quarantined_qty"] == 2
+    assert detail["sellable_qty"] == 3
+
+
+def test_get_product_parent_aggregates_variant_derived_qty(auth_headers):
+    parent = client.post("/api/products", json={
+        "location_id": 1, "sku": "AGG-PARENT", "name": "Aggregate Group",
+        "unit_price": 10.0, "cost_price": 5.0, "barcode": "AGG-BARCODE",
+    }, headers=auth_headers).json()
+    v1 = client.post("/api/products", json={"location_id": 1,
+        "sku": "AGG-V1", "parent_id": parent["id"], "attributes": {"Color": "Red"},
+    }, headers=auth_headers).json()
+    v2 = client.post("/api/products", json={"location_id": 1,
+        "sku": "AGG-V2", "parent_id": parent["id"], "attributes": {"Color": "Blue"},
+    }, headers=auth_headers).json()
+
+    assert client.post("/api/receipts", json={"items": [{
+        "product_id": v1["id"], "quantity": 2, "lot_number": "LOT-AGG-1",
+    }, {
+        "product_id": v2["id"], "quantity": 1, "lot_number": "LOT-AGG-2",
+    }]}, headers=auth_headers).status_code == 201
+    lot1 = _lot(auth_headers, v1["id"], "LOT-AGG-1")
+    assert client.put(f"/api/lots/{lot1['id']}", json={"status": "quarantined"}, headers=auth_headers).status_code == 200
+
+    detail = client.get(f"/api/products/{parent['id']}", headers=auth_headers).json()
+    # Parent row aggregates its active variants' derived stock fields.
+    assert detail["quarantined_qty"] == 2
+    assert detail["expired_lot_qty"] == 0
+    assert detail["sellable_qty"] == 1
+
+    by_barcode = client.get("/api/products/barcode/AGG-BARCODE", headers=auth_headers)
+    assert by_barcode.status_code == 200
+    assert by_barcode.json()["quarantined_qty"] == 2
+
+
+def test_products_list_parent_row_keeps_own_derived_qty(auth_headers):
+    parent = client.post("/api/products", json={
+        "location_id": 1, "sku": "AGG-LIST", "name": "List Group",
+        "unit_price": 10.0, "cost_price": 5.0,
+    }, headers=auth_headers).json()
+    v1 = client.post("/api/products", json={"location_id": 1,
+        "sku": "AGG-LV1", "parent_id": parent["id"], "attributes": {"Color": "Red"},
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={"items": [{
+        "product_id": v1["id"], "quantity": 1, "lot_number": "LOT-AGG-L1",
+    }]}, headers=auth_headers).status_code == 201
+    lot = _lot(auth_headers, v1["id"], "LOT-AGG-L1")
+    assert client.put(f"/api/lots/{lot['id']}", json={"status": "quarantined"}, headers=auth_headers).status_code == 200
+
+    body = client.get("/api/products", params={"search": "AGG-LIST", "include_variants": "1"}, headers=auth_headers).json()
+    item = next(p for p in body["items"] if p["id"] == parent["id"])
+    assert item["quarantined_qty"] == 0
+    assert item["sellable_qty"] == 0
+    v = next(x for x in item["variants"] if x["id"] == v1["id"])
+    assert v["quarantined_qty"] == 1
+    assert v["sellable_qty"] == 0

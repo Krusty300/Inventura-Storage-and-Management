@@ -26,6 +26,7 @@ SHIP = "ship"
 SCRAP = "scrap"
 DEACTIVATE = "deactivate"
 ACTIVATE = "activate"
+RELEASE = "release"
 
 VALID_MOVEMENT_TYPES = {
     RECEIVE,
@@ -41,6 +42,7 @@ VALID_MOVEMENT_TYPES = {
     SCRAP,
     DEACTIVATE,
     ACTIVATE,
+    RELEASE,
     # Legacy types used by the existing API contract
     "in",
     "out",
@@ -177,31 +179,118 @@ def on_hand(
 
 
 def quarantined_qty_subquery():
-    """Scalar subquery: stock quantity held in quarantined lots for the correlated
-    Product row. Quarantined stock is on-hand but not sellable."""
-    return (
+    """Scalar subquery: quarantined quantity for the correlated Product row.
+
+    Bulk stock counts units held in quarantined lots; serialized products have
+    no stock lines, so the count of ``quarantined`` serial numbers is added.
+    Quarantined stock is on-hand but not sellable.
+    """
+    stock = (
         select(func.coalesce(func.sum(StockLine.quantity), 0))
         .join(Lot, StockLine.lot_id == Lot.id)
         .where(StockLine.product_id == Product.id, Lot.status == "quarantined")
         .scalar_subquery()
     )
+    serials = (
+        select(func.count(SerialNumber.id))
+        .where(SerialNumber.product_id == Product.id, SerialNumber.status == SERIAL_STATUS_QUARANTINED)
+        .scalar_subquery()
+    )
+    return func.coalesce(stock, 0) + func.coalesce(serials, 0)
 
 
 def quarantined_qty_by_product(db: Session, product_ids: list[int] | None = None) -> dict[int, int]:
-    """Map of product_id -> quantity held in quarantined lots.
+    """Map of product_id -> quantity held in quarantine.
+
+    Bulk units in quarantined lots plus quarantined serial numbers (serialized
+    products have no stock lines, so both sources must be counted).
 
     Optionally restricted to ``product_ids`` so a page of products can be
     annotated without scanning the whole stock_lines table.
     """
-    stmt = (
+    result: dict[int, int] = {}
+    stock_stmt = (
         select(StockLine.product_id, func.sum(StockLine.quantity))
         .join(Lot, StockLine.lot_id == Lot.id)
         .where(Lot.status == "quarantined")
     )
     if product_ids:
-        stmt = stmt.where(StockLine.product_id.in_(product_ids))
-    rows = db.execute(stmt.group_by(StockLine.product_id)).all()
-    return {int(r[0]): int(r[1] or 0) for r in rows}
+        stock_stmt = stock_stmt.where(StockLine.product_id.in_(product_ids))
+    for pid, qty in db.execute(stock_stmt.group_by(StockLine.product_id)).all():
+        result[int(pid)] = result.get(int(pid), 0) + int(qty or 0)
+    serial_stmt = (
+        select(SerialNumber.product_id, func.count(SerialNumber.id))
+        .where(SerialNumber.status == SERIAL_STATUS_QUARANTINED)
+    )
+    if product_ids:
+        serial_stmt = serial_stmt.where(SerialNumber.product_id.in_(product_ids))
+    for pid, qty in db.execute(serial_stmt.group_by(SerialNumber.product_id)).all():
+        result[int(pid)] = result.get(int(pid), 0) + int(qty or 0)
+    return result
+
+
+def sellable_qty_subquery():
+    """Scalar subquery: sellable quantity for the correlated Product row.
+
+    Bulk products sum positive stock lines held in ``in_stock`` lots (or no
+    lot); serialized products count ``in_stock`` serials whose lot is not
+    quarantined/expired. Product rows are either serialized or not, so exactly
+    one term applies. Replaces the old ``quantity - quarantined`` arithmetic,
+    which double-counted for serialized products (a quarantined serial is not
+    counted in ``Product.quantity``).
+    """
+    stock = (
+        select(func.coalesce(func.sum(StockLine.quantity), 0))
+        .outerjoin(Lot, StockLine.lot_id == Lot.id)
+        .where(
+            StockLine.product_id == Product.id,
+            (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+        )
+        .scalar_subquery()
+    )
+    serials = (
+        select(func.count(SerialNumber.id))
+        .outerjoin(Lot, SerialNumber.lot_id == Lot.id)
+        .where(
+            SerialNumber.product_id == Product.id,
+            SerialNumber.status == SERIAL_STATUS_IN_STOCK,
+            (SerialNumber.lot_id.is_(None)) | (Lot.status == "in_stock"),
+        )
+        .scalar_subquery()
+    )
+    return func.coalesce(stock, 0) + func.coalesce(serials, 0)
+
+
+def sellable_qty_by_product(db: Session, product_ids: list[int] | None = None) -> dict[int, int]:
+    """Map of product_id -> sellable quantity (bulk lines in in_stock lots plus
+    in_stock serials outside quarantined/expired lots). Mirrors
+    ``sellable_qty_subquery`` as a batched per-product lookup."""
+    result: dict[int, int] = {}
+    stock_stmt = (
+        select(StockLine.product_id, func.sum(StockLine.quantity))
+        .outerjoin(Lot, StockLine.lot_id == Lot.id)
+        .where(
+            StockLine.quantity > 0,
+            (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+        )
+    )
+    if product_ids:
+        stock_stmt = stock_stmt.where(StockLine.product_id.in_(product_ids))
+    for pid, qty in db.execute(stock_stmt.group_by(StockLine.product_id)).all():
+        result[int(pid)] = result.get(int(pid), 0) + int(qty or 0)
+    serial_stmt = (
+        select(SerialNumber.product_id, func.count(SerialNumber.id))
+        .outerjoin(Lot, SerialNumber.lot_id == Lot.id)
+        .where(
+            SerialNumber.status == SERIAL_STATUS_IN_STOCK,
+            (SerialNumber.lot_id.is_(None)) | (Lot.status == "in_stock"),
+        )
+    )
+    if product_ids:
+        serial_stmt = serial_stmt.where(SerialNumber.product_id.in_(product_ids))
+    for pid, qty in db.execute(serial_stmt.group_by(SerialNumber.product_id)).all():
+        result[int(pid)] = result.get(int(pid), 0) + int(qty or 0)
+    return result
 
 
 def expired_lot_qty_by_product(db: Session, product_ids: list[int] | None = None) -> dict[int, int]:
@@ -262,7 +351,7 @@ def sync_serialized_lot_status(db: Session, lot_id: int | None) -> None:
     lot = db.get(Lot, lot_id)
     if lot is None or lot.product is None or not lot.product.is_serialized:
         return
-    if lot.on_hand > 0:
+    if lot.on_hand > 0 and lot.status != "sold":
         return
     if lot.serial_count == 0 and lot.status == "in_stock":
         lot.status = "sold"
@@ -808,6 +897,102 @@ def auto_quarantine(db: Session, to_loc: Location, movements: list[StockMovement
             serial = db.get(SerialNumber, m.serial_id)
             if serial is not None and serial.status == SERIAL_STATUS_IN_STOCK:
                 serial.status = SERIAL_STATUS_QUARANTINED
+    # A quarantined serial leaves a serialized product's on-hand, so refresh the
+    # parity count for every affected serialized product (bulk stock lines are
+    # untouched - their quantity already includes quarantined lots).
+    for pid in {m.product_id for m in movements if m.serial_id is not None}:
+        product = db.get(Product, pid)
+        if product is not None and product.is_serialized:
+            db.flush()
+            product.quantity = on_hand(db, product_id=pid)
+
+
+def release_serial_from_quarantine(
+    db: Session,
+    *,
+    serial: SerialNumber,
+    user_id: int,
+    reference: str = "",
+    notes: str = "",
+) -> StockMovement:
+    """Return a quarantined serial to ``in_stock`` in place.
+
+    Posts a ``release`` journal entry so the unit's ledger history records the
+    change. If the serial belongs to a quarantined lot and no other quarantined
+    serial remains (and no failing quality check still references it), the lot
+    is released too so the unit is not left movement-blocked. Caller commits.
+    """
+    if serial.status != SERIAL_STATUS_QUARANTINED:
+        raise InventoryError(f"Serial '{serial.serial_number}' is not quarantined (status: {serial.status})")
+    movement = post_journal_entry(
+        db, product_id=serial.product_id, user_id=user_id, quantity_change=+1,
+        movement_type=RELEASE, to_location_id=serial.location_id,
+        lot_id=serial.lot_id, serial_id=serial.id,
+        reference_type="release", reference=reference, notes=notes,
+    )
+    _maybe_release_serial_lot(db, serial)
+    return movement
+
+
+def _maybe_release_serial_lot(db: Session, serial: SerialNumber) -> None:
+    """Release a quarantined lot once none of its serials are quarantined and no
+    failing quality check references it (keeps lot and serial states coherent)."""
+    if serial.lot is None or serial.lot.status != SERIAL_STATUS_QUARANTINED:
+        return
+    still_quarantined = db.query(SerialNumber.id).filter(
+        SerialNumber.lot_id == serial.lot.id,
+        SerialNumber.status == SERIAL_STATUS_QUARANTINED,
+    ).first()
+    if still_quarantined is not None:
+        return
+    from app.models.quality_check import QualityCheck
+    failing = db.query(QualityCheck.id).filter(
+        QualityCheck.lot_id == serial.lot.id, QualityCheck.result == "fail"
+    ).first()
+    if failing is None:
+        serial.lot.status = SERIAL_STATUS_IN_STOCK
+
+
+def quarantine_lot_serials(db: Session, lot: Lot) -> None:
+    """Cascade a lot-level quarantine to its serials (``in_stock`` -> ``quarantined``).
+
+    Keeps serialized lots coherent with ``auto_quarantine`` so a QC-failed lot's
+    units render as quarantined everywhere. Also refreshes the serialized
+    product's on-hand parity count (quarantined serials leave on-hand). Caller commits.
+    """
+    changed = False
+    for s in lot.serial_numbers:
+        if s.status == SERIAL_STATUS_IN_STOCK:
+            s.status = SERIAL_STATUS_QUARANTINED
+            changed = True
+    if changed:
+        product = db.get(Product, lot.product_id)
+        if product is not None and product.is_serialized:
+            db.flush()
+            product.quantity = on_hand(db, product_id=lot.product_id)
+
+
+def release_lot_serials(
+    db: Session,
+    lot: Lot,
+    *,
+    user_id: int,
+    reference: str = "",
+    notes: str = "",
+) -> list[StockMovement]:
+    """Release every quarantined serial of a lot back to ``in_stock``.
+
+    Used when a quarantined lot is released (manually or by a passing quality
+    check) so its units are not left permanently stuck. Posts a ``release``
+    movement per serial. Caller commits.
+    """
+    movements: list[StockMovement] = []
+    for s in lot.serial_numbers:
+        if s.status == SERIAL_STATUS_QUARANTINED:
+            movements.append(release_serial_from_quarantine(
+                db, serial=s, user_id=user_id, reference=reference, notes=notes,
+            ))
+    return movements
 
 
 def _post_line_transfer_pairs(

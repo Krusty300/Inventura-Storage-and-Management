@@ -392,3 +392,31 @@ def test_update_location_clears_code_and_parent(auth_headers):
     assert body["code"] is None
     assert body["parent_id"] is None
     assert body["path"] == child["name"]
+
+
+def test_location_counts_include_quarantined_serials(auth_headers):
+    src = _create_location(auth_headers, name="QC Src", code="QC-SRC").json()
+    qa = _create_location(auth_headers, name="QC QA", code="QC-QA", location_type="quarantine").json()
+    prod = client.post("/api/products", json={
+        "sku": "QC-SER", "name": "QC Ser", "unit_price": 1.0, "cost_price": 1.0,
+        "quantity": 0, "location_id": src["id"], "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={"items": [{
+        "product_id": prod["id"], "quantity": 2, "location_id": src["id"],
+        "serial_numbers": ["QC-SER-1", "QC-SER-2"], "lot_number": "LOT-QC-SER",
+    }]}, headers=auth_headers).status_code == 201
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+
+    resp = client.post("/api/stock-movements/quarantine", json={
+        "product_id": prod["id"], "serial_ids": [s["id"] for s in serials],
+        "from_location_id": src["id"], "to_location_id": qa["id"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+
+    locations = client.get("/api/locations", headers=auth_headers).json()["items"]
+    qa_row = next(l for l in locations if l["id"] == qa["id"])
+    assert qa_row["serial_count"] == 2
+    assert qa_row["total_quantity"] == 2
+    assert qa_row["stock_value"] == 2.0
+    src_row = next(l for l in locations if l["id"] == src["id"])
+    assert src_row["serial_count"] == 0

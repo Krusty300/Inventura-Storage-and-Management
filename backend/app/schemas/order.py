@@ -31,6 +31,10 @@ class OrderBulkEdit(BaseModel):
     notes: Optional[str] = None
 
 
+class ReorderLowStockRequest(BaseModel):
+    product_ids: Optional[list[int]] = None
+
+
 class OrderItemOut(BaseModel):
     id: int
     product_id: int

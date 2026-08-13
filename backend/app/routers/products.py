@@ -139,14 +139,14 @@ def list_products(
         else:
             q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date >= today, Product.expiry_date <= soon)
     if low_stock:
-        # match the dashboard definition: active, sellable (on-hand minus quarantined)
-        sellable = Product.quantity - func.coalesce(inventory.quarantined_qty_subquery(), 0)
+        # match the dashboard definition: active, sellable stock at or below reorder
+        sellable = inventory.sellable_qty_subquery()
         q = q.filter(Product.is_active == True)
         if include_variants:
             low_variant_parent_ids = select(Product.parent_id).where(
                 Product.parent_id.isnot(None),
                 Product.is_active == True,
-                Product.quantity - func.coalesce(inventory.quarantined_qty_subquery(), 0) <= Product.reorder_level,
+                inventory.sellable_qty_subquery() <= Product.reorder_level,
             )
             q = q.filter(
                 (Product.id.notin_(Product.variant_parent_id_subquery()) & (sellable <= Product.reorder_level))
@@ -191,13 +191,16 @@ def list_products(
             ids.update(v.id for v in p.variants)
     quarantined = inventory.quarantined_qty_by_product(db, list(ids)) if ids else {}
     expired = inventory.expired_lot_qty_by_product(db, list(ids)) if ids else {}
+    sellable = inventory.sellable_qty_by_product(db, list(ids)) if ids else {}
     for p in results:
         p.quarantined_qty = quarantined.get(p.id, 0)
         p.expired_lot_qty = expired.get(p.id, 0)
+        p.sellable_qty = sellable.get(p.id, 0)
         if include_variants and p.variants:
             for v in p.variants:
                 v.quarantined_qty = quarantined.get(v.id, 0)
                 v.expired_lot_qty = expired.get(v.id, 0)
+                v.sellable_qty = sellable.get(v.id, 0)
     return {"items": results, "total": total, "page": (skip // limit) + 1 if limit else 1, "pages": max(ceil(total / limit), 1) if limit else 1}
 
 
@@ -321,13 +324,27 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     ids = [p.id] + [v.id for v in p.variants]
     quarantined = inventory.quarantined_qty_by_product(db, ids)
     expired = inventory.expired_lot_qty_by_product(db, ids)
-    out.quarantined_qty = quarantined.get(p.id, 0)
-    out.expired_lot_qty = expired.get(p.id, 0)
+    sellable = inventory.sellable_qty_by_product(db, ids)
     if p.variants and out.variants:
+        # A parent's derived stock fields aggregate its active variants so the
+        # group renders a single coherent picture on the product detail screen.
+        quarantined[p.id] = quarantined.get(p.id, 0) + sum(
+            quarantined.get(v.id, 0) for v in p.variants if v.is_active
+        )
+        expired[p.id] = expired.get(p.id, 0) + sum(
+            expired.get(v.id, 0) for v in p.variants if v.is_active
+        )
+        sellable[p.id] = sellable.get(p.id, 0) + sum(
+            sellable.get(v.id, 0) for v in p.variants if v.is_active
+        )
         for v_orm, v_out in zip(p.variants, out.variants):
             v_out.location = _effective_location(v_orm)
             v_out.quarantined_qty = quarantined.get(v_orm.id, 0)
             v_out.expired_lot_qty = expired.get(v_orm.id, 0)
+            v_out.sellable_qty = sellable.get(v_orm.id, 0)
+    out.quarantined_qty = quarantined.get(p.id, 0)
+    out.expired_lot_qty = expired.get(p.id, 0)
+    out.sellable_qty = sellable.get(p.id, 0)
     return out
 
 
@@ -346,13 +363,27 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
     ids = [p.id] + [v.id for v in p.variants]
     quarantined = inventory.quarantined_qty_by_product(db, ids)
     expired = inventory.expired_lot_qty_by_product(db, ids)
-    out.quarantined_qty = quarantined.get(p.id, 0)
-    out.expired_lot_qty = expired.get(p.id, 0)
+    sellable = inventory.sellable_qty_by_product(db, ids)
     if p.variants and out.variants:
+        # A parent's derived stock fields aggregate its active variants so the
+        # group renders a single coherent picture on the product detail screen.
+        quarantined[p.id] = quarantined.get(p.id, 0) + sum(
+            quarantined.get(v.id, 0) for v in p.variants if v.is_active
+        )
+        expired[p.id] = expired.get(p.id, 0) + sum(
+            expired.get(v.id, 0) for v in p.variants if v.is_active
+        )
+        sellable[p.id] = sellable.get(p.id, 0) + sum(
+            sellable.get(v.id, 0) for v in p.variants if v.is_active
+        )
         for v_orm, v_out in zip(p.variants, out.variants):
             v_out.location = _effective_location(v_orm)
             v_out.quarantined_qty = quarantined.get(v_orm.id, 0)
             v_out.expired_lot_qty = expired.get(v_orm.id, 0)
+            v_out.sellable_qty = sellable.get(v_orm.id, 0)
+    out.quarantined_qty = quarantined.get(p.id, 0)
+    out.expired_lot_qty = expired.get(p.id, 0)
+    out.sellable_qty = sellable.get(p.id, 0)
     return out
 
 

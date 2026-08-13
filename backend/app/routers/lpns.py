@@ -10,6 +10,7 @@ from app.schemas.lpn import LPNCreate, LPNLoadIn, LPNOut, LPNUnloadIn, LPNUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
+from app.services.csv_export import csv_response
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change
 
@@ -90,6 +91,45 @@ def list_lpns(
     items = q.order_by(LPN.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [_serialize_lpn(db, l) for l in items], "total": total,
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.get("/export")
+def export_lpns(
+    search: str = Query(""),
+    location_id: int | None = None,
+    status: str | None = None,
+    db: Session = Depends(get_db),
+):
+    q = db.query(LPN).options(
+        joinedload(LPN.location), joinedload(LPN.stock_lines),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.product),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.lot),
+        joinedload(LPN.serial_numbers).joinedload(SerialNumber.location),
+    )
+    if search:
+        like = f"%{search}%"
+        q = q.filter(LPN.lpn_number.ilike(like))
+    if location_id:
+        q = q.filter(LPN.location_id == location_id)
+    if status:
+        q = q.filter(LPN.status == status)
+    rows = []
+    for l in q.order_by(LPN.created_at.desc()).all():
+        s = _serialize_lpn(db, l)
+        rows.append([
+            s["lpn_number"],
+            s["lpn_type"],
+            s["location_name"],
+            s["status"],
+            s["content_count"],
+            s["total_quantity"],
+            s["created_at"].strftime("%Y-%m-%d %H:%M") if s["created_at"] else "",
+        ])
+    return csv_response(
+        "lpns_report",
+        ["LPN #", "Type", "Location", "Status", "Items", "Total Qty", "Created"],
+        rows,
+    )
 
 
 @router.get("/{lpn_id}", response_model=LPNOut)

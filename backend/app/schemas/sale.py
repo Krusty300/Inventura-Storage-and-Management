@@ -15,6 +15,7 @@ class SaleCreate(BaseModel):
     customer_id: Optional[int] = None
     items: list[SaleItemCreate]
     payment_method: str = "cash"
+    discount_amount: float = Field(default=0.0, ge=0)
     notes: str = ""
 
 
@@ -43,6 +44,7 @@ class SaleOut(BaseModel):
     customer_id: Optional[int] = None
     user_id: int
     subtotal: float
+    discount_amount: float
     tax_amount: float
     total_amount: float
     status: str

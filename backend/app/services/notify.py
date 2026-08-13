@@ -38,7 +38,10 @@ def notify_low_stock(db: Session, product: Product) -> list[Notification]:
     s = _get_settings(db)
     if not s.low_stock_alerts:
         return []
-    if product.quantity > product.reorder_level:
+    # Deferred import: inventory.py imports notify_lot_expired from this module.
+    from app.services import inventory
+    sellable = inventory.sellable_qty_by_product(db, [product.id]).get(product.id, 0)
+    if sellable > product.reorder_level:
         return []
     title = f"Low stock: {product.display_name}"
     created = []
@@ -53,7 +56,7 @@ def notify_low_stock(db: Session, product: Product) -> list[Notification]:
             continue
         created.append(create_notification(
             db, admin.id, title,
-            f"Only {product.quantity} left (reorder level {product.reorder_level}).",
+            f"Only {sellable} left (reorder level {product.reorder_level}).",
             type="warning", link="/products",
         ))
     return created

@@ -120,6 +120,19 @@ export default function LocationDetail({ location, onClose }: Props) {
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot update lot", "error"),
   });
 
+  const releaseSerialMutation = useMutation({
+    mutationFn: (id: number) => api.put(`/serial-numbers/${id}/status`, { status: "in_stock" }),
+    onSuccess: () => {
+      addToast("Serial released from quarantine", "success");
+      queryClient.invalidateQueries({ queryKey: ["locations", "detail", location.id] });
+      queryClient.invalidateQueries({ queryKey: ["locations"] });
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+  });
+
   const { data: detail, isLoading } = useQuery({
     queryKey: ["locations", "detail", location.id],
     queryFn: async () => {
@@ -256,6 +269,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                         <th className="px-3 py-2 font-medium">LPN</th>
                         <th className="px-3 py-2 font-medium">Status</th>
                         <th className="px-3 py-2 font-medium text-right">Value</th>
+                        <th className="px-3 py-2 font-medium" />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -266,8 +280,23 @@ export default function LocationDetail({ location, onClose }: Props) {
                           <td className="px-3 py-2 text-muted">{s.sku}</td>
                           <td className="px-3 py-2 text-muted">{s.lot_number || "—"}{s.lot_status && s.lot_status !== "in_stock" ? <LotStatusBadge status={s.lot_status} /> : null}</td>
                           <td className="px-3 py-2 text-muted">{s.lpn_number || "—"}</td>
-                          <td className="px-3 py-2"><span className="badge badge-success">{s.status}</span></td>
+                          <td className="px-3 py-2"><SerialStatusBadge status={s.status} /></td>
                           <td className="px-3 py-2 text-right">{formatCurrency(s.value, currencySymbol)}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end">
+                              {can("serial_numbers.update") && s.status === "quarantined" && (
+                                <button
+                                  onClick={() => releaseSerialMutation.mutate(s.id)}
+                                  disabled={releaseSerialMutation.isPending}
+                                  className="p-1 text-faint hover:text-green-600 dark:text-green-400"
+                                  title="Release from quarantine"
+                                  aria-label={`Release ${s.serial_number}`}
+                                >
+                                  <ShieldCheck size={16} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -417,4 +446,15 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 function LotStatusBadge({ status }: { status: string }) {
   const cls = status === "quarantined" ? "badge-warning" : "badge-danger";
   return <span className={`badge ${cls} ml-1.5`}>{status}</span>;
+}
+
+function SerialStatusBadge({ status }: { status: string }) {
+  switch (status) {
+    case "in_stock": return <span className="badge badge-success">{status}</span>;
+    case "quarantined": return <span className="badge badge-warning">{status}</span>;
+    case "reserved": return <span className="badge badge-info">{status}</span>;
+    case "scrapped": return <span className="badge badge-danger">{status}</span>;
+    case "sold": return <span className="badge badge-neutral">{status}</span>;
+    default: return <span className="badge badge-neutral">{status}</span>;
+  }
 }

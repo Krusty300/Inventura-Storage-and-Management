@@ -48,13 +48,24 @@ def list_movements(search: str = Query(""), skip: int = 0, limit: int = 100, db:
 
 
 @router.get("/locations")
-def product_stock_locations(product_id: int = Query(...), db: Session = Depends(get_db)):
+def product_stock_locations(
+    product_id: int = Query(...),
+    include_quarantined: bool = False,
+    db: Session = Depends(get_db),
+):
     """Locations that currently hold stock of a product, for the transfer modal.
 
     Returns each location with its on-hand quantity and a per-lot breakdown so
     the UI can pre-fill the source location dropdown from the selected product.
+    With ``include_quarantined=True``, stock held in quarantined lots is counted
+    too (e.g. LPN-ing up stock already sitting in a quarantine area); each lot
+    entry carries its ``lot_status`` so callers can tell the two apart.
     """
     get_or_404(Product, product_id, db)
+    if include_quarantined:
+        lot_filter = Lot.status.in_(("in_stock", "quarantined"))
+    else:
+        lot_filter = Lot.status == "in_stock"
     stock = (
         db.query(
             StockLine.location_id,
@@ -65,7 +76,7 @@ def product_stock_locations(product_id: int = Query(...), db: Session = Depends(
         .filter(
             StockLine.product_id == product_id,
             StockLine.quantity > 0,
-            (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+            (StockLine.lot_id.is_(None)) | lot_filter,
         )
         .group_by(StockLine.location_id, StockLine.lot_id)
         .all()
@@ -101,6 +112,7 @@ def product_stock_locations(product_id: int = Query(...), db: Session = Depends(
             entry["lots"].append({
                 "lot_id": row.lot_id,
                 "lot_number": lot.lot_number if lot else "",
+                "lot_status": lot.status if lot else "",
                 "quantity": qty,
             })
 
@@ -120,7 +132,9 @@ def product_quarantined_locations(product_id: int = Query(...), lot_id: int | No
     """Locations holding quarantined stock of a product (optionally a single lot).
 
     Loose (non-LPN) quarantined stock only, matching what the quarantined-move
-    endpoint can relocate. Powers the Move Quarantined Stock location picker.
+    endpoint can relocate. Bulk units come from stock lines in quarantined lots;
+    serialized units are listed individually, so their locations are added from
+    ``quarantined`` serial numbers. Powers the Move Quarantined Stock picker.
     """
     get_or_404(Product, product_id, db)
     if lot_id is not None:
@@ -144,12 +158,29 @@ def product_quarantined_locations(product_id: int = Query(...), lot_id: int | No
         q = q.filter(StockLine.lot_id == lot_id)
     rows = q.group_by(StockLine.location_id, StockLine.lot_id).all()
 
-    location_ids = {r.location_id for r in rows}
+    serial_q = (
+        db.query(
+            SerialNumber.location_id,
+            SerialNumber.lot_id,
+            func.count(SerialNumber.id).label("count"),
+        )
+        .filter(
+            SerialNumber.product_id == product_id,
+            SerialNumber.status == inventory.SERIAL_STATUS_QUARANTINED,
+            SerialNumber.lpn_id.is_(None),
+            SerialNumber.location_id.isnot(None),
+        )
+    )
+    if lot_id is not None:
+        serial_q = serial_q.filter(SerialNumber.lot_id == lot_id)
+    serial_rows = serial_q.group_by(SerialNumber.location_id, SerialNumber.lot_id).all()
+
+    location_ids = {r.location_id for r in rows} | {r.location_id for r in serial_rows}
     locations = {
         l.id: l
         for l in db.query(Location).filter(Location.id.in_(location_ids)).all()
     } if location_ids else {}
-    lot_ids = {r.lot_id for r in rows if r.lot_id is not None}
+    lot_ids = {r.lot_id for r in rows if r.lot_id is not None} | {r.lot_id for r in serial_rows if r.lot_id is not None}
     lots = {
         l.id: l
         for l in db.query(Lot).filter(Lot.id.in_(lot_ids)).all()
@@ -170,7 +201,25 @@ def product_quarantined_locations(product_id: int = Query(...), lot_id: int | No
         entry["lots"].append({
             "lot_id": row.lot_id,
             "lot_number": lot.lot_number if lot else "",
+            "lot_status": lot.status if lot else "",
             "quantity": qty,
+        })
+    for row in serial_rows:
+        entry = by_location.setdefault(row.location_id, {
+            "location_id": row.location_id,
+            "path": "",
+            "name": "",
+            "quantity": 0,
+            "lots": [],
+        })
+        count = int(row.count or 0)
+        entry["quantity"] += count
+        lot = lots.get(row.lot_id)
+        entry["lots"].append({
+            "lot_id": row.lot_id,
+            "lot_number": lot.lot_number if lot else "",
+            "lot_status": lot.status if lot else "",
+            "quantity": count,
         })
 
     result = []

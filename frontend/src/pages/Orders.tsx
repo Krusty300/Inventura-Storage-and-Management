@@ -15,9 +15,9 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
+import { useExportCsv } from "../hooks/useExportCsv";
 import { formatCurrency } from "../utils/currency";
 import { errorMessage } from "../utils/errors";
-import { downloadBlob } from "../utils/download";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 
@@ -46,6 +46,7 @@ export default function Orders() {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const debouncedSearch = useDebounce(search, 300);
+  const { exportCsv } = useExportCsv();
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/orders/${id}`),
@@ -95,17 +96,8 @@ export default function Orders() {
     { name: "notes", label: "Notes", type: "text" },
   ];
 
-  const handleExport = async () => {
-    try {
-      const { data } = await api.get("/reports/export/orders", {
-        params: debouncedSearch ? { search: debouncedSearch } : {},
-        responseType: "blob",
-      });
-      downloadBlob(data, "orders_report.csv");
-      addToast("Orders exported to CSV", "success");
-    } catch (err: any) {
-      addToast(errorMessage(err, "Failed to export orders"), "error");
-    }
+  const handleExport = () => {
+    exportCsv("/reports/export/orders", "orders_report.csv", "Orders", debouncedSearch ? { search: debouncedSearch } : undefined);
   };
 
   const printPdf = async (o: Order) => {

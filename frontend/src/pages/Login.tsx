@@ -21,8 +21,16 @@ export default function Login() {
     try {
       await login(username, password, remember);
       navigate("/");
-    } catch {
-      setError("Invalid credentials");
+    } catch (err) {
+      const apiErr = err as { response?: { data?: { detail?: string } } };
+      const detail = apiErr.response?.data?.detail;
+      if (detail) {
+        setError(detail);
+      } else if (!apiErr.response) {
+        setError("Cannot reach the server. Is the backend running?");
+      } else {
+        setError("Invalid credentials");
+      }
     } finally {
       setSubmitting(false);
     }

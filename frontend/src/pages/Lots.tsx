@@ -12,6 +12,7 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useExportCsv } from "../hooks/useExportCsv";
 
 
 import { usePageSize } from "../hooks/usePageSize";
@@ -46,6 +47,14 @@ export default function Lots() {
   const { can } = useAuth();
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
+  const { exportCsv } = useExportCsv();
+
+  const handleExport = () => {
+    const params: Record<string, string> = {};
+    if (debouncedSearch) params.search = debouncedSearch;
+    if (status) params.status = status;
+    exportCsv("/lots/export", "lots_report.csv", "Lots report", params);
+  };
 
   const updateMutation = useMutation({
     mutationFn: ({ id, status: next }: { id: number; status: string }) =>
@@ -80,6 +89,7 @@ export default function Lots() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">Lots</h1>
+        <button onClick={handleExport} className="btn-secondary" aria-label="Export lots to CSV">Export</button>
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">

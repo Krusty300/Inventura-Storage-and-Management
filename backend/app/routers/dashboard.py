@@ -19,7 +19,8 @@ from app.models.stock_line import StockLine
 from app.models.lot import Lot
 from app.schemas.dashboard import DashboardStats
 from app.services.auth import get_current_user
-from app.services.inventory import TRANSFER_OUT, expire_overdue_lots, quarantined_qty_by_product, quarantined_qty_subquery
+from app.services import inventory
+from app.services.inventory import TRANSFER_OUT, SERIAL_STATUS_QUARANTINED, expire_overdue_lots, sellable_qty_subquery
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -28,8 +29,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     expire_overdue_lots(db)
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    quarantined = quarantined_qty_subquery()
-    sellable = Product.quantity - func.coalesce(quarantined, 0)
+    sellable = sellable_qty_subquery()
 
     total_products = db.query(func.count(Product.id)).filter(
         Product.is_active == True, Product.parent_id.is_(None)
@@ -73,6 +73,12 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         .scalar()
         or 0
     )
+    quarantined_units += (
+        db.query(func.count(SerialNumber.id))
+        .filter(SerialNumber.status == SERIAL_STATUS_QUARANTINED)
+        .scalar()
+        or 0
+    )
     serial_numbers_in_stock = db.query(func.count(SerialNumber.id)).filter(
         SerialNumber.status == "in_stock"
     ).scalar() or 0
@@ -94,7 +100,6 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         .limit(10)
         .all()
     )
-    low_stock_quarantined = quarantined_qty_by_product(db, [p.id for p in low_stock_products]) if low_stock_products else {}
     expiring_products = (
         db.query(Product)
         .filter(
@@ -163,7 +168,7 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
                 "name": p.display_name,
                 "sku": p.sku,
                 "quantity": p.quantity,
-                "sellable": max(0, p.quantity - low_stock_quarantined.get(p.id, 0)),
+                "sellable": inventory.on_hand(db, product_id=p.id, sellable_only=True),
                 "reorder_level": p.reorder_level,
             }
             for p in low_stock_products

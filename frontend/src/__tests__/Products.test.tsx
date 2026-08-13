@@ -124,12 +124,25 @@ describe("Products Page", () => {
 
   it("flags low stock based on sellable quantity excluding quarantined units", async () => {
     const items = [
-      makeProduct({ id: 7, sku: "LS-1", name: "Sellable Low", quantity: 10, reorder_level: 8, quarantined_qty: 4 }),
-      makeProduct({ id: 8, sku: "LS-2", name: "Sellable Fine", quantity: 10, reorder_level: 8, quarantined_qty: 1 }),
+      makeProduct({ id: 7, sku: "LS-1", name: "Sellable Low", quantity: 10, reorder_level: 8, quarantined_qty: 4, sellable_qty: 6 }),
+      makeProduct({ id: 8, sku: "LS-2", name: "Sellable Fine", quantity: 10, reorder_level: 8, quarantined_qty: 1, sellable_qty: 9 }),
     ];
     mockProducts(items);
     renderWithProviders(<Products />);
     await screen.findByText("Sellable Low");
     expect(screen.getByLabelText("Low stock")).toBeInTheDocument();
+  });
+
+  it("does not under-report sellable quantity for serialized products with quarantined serials", async () => {
+    // A serialized product's on-hand (quantity) already excludes quarantined
+    // serials, so sellable must not subtract quarantined_qty again.
+    mockProducts([makeProduct({
+      id: 12, sku: "SER-Q", name: "Serialized Quarantined",
+      quantity: 5, reorder_level: 4, quarantined_qty: 3, sellable_qty: 5, is_serialized: true,
+    })]);
+    renderWithProviders(<Products />);
+    await screen.findByText("Serialized Quarantined");
+    expect(screen.queryByLabelText("Low stock")).not.toBeInTheDocument();
+    expect(screen.getByText("Q3")).toBeInTheDocument();
   });
 });

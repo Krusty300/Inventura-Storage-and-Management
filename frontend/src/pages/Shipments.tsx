@@ -549,7 +549,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
         {current.status !== "shipped" && current.status !== "cancelled" && canCancel && (
           <div className="flex justify-end">
             <button onClick={() => run("cancel", `/shipments/${current.id}/cancel`, "Cancelled")} disabled={busy !== null} className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400 inline-flex items-center gap-1">
-              Cancel shipment
+              Cancel Shipment
             </button>
           </div>
         )}

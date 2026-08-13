@@ -119,4 +119,39 @@ describe("SerialNumbers Page", () => {
     expect(await screen.findByText("inactive")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Activate" })).toBeInTheDocument();
   });
+
+  it("releases a quarantined serial from the table row", async () => {
+    const putMock = api.put as ReturnType<typeof vi.fn>;
+    putMock.mockResolvedValue({ data: {} });
+    mockSerials([mockSerial({ status: "quarantined" })]);
+    renderWithProviders(<SerialNumbers />);
+    fireEvent.click(await screen.findByLabelText("Release SN-0001"));
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/serial-numbers/1/status", { status: "in_stock" }));
+  });
+
+  it("quarantines an in-stock serial by choosing a quarantine area", async () => {
+    const postMock = api.post as ReturnType<typeof vi.fn>;
+    postMock.mockResolvedValue({ data: { reference: "QAR-0001" } });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/serial-numbers") return Promise.resolve({ data: { items: [mockSerial()], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 9, path: "Quarantine Area", location_type: "quarantine", is_active: true }], total: 1, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<SerialNumbers />);
+    fireEvent.click(await screen.findByLabelText("Quarantine SN-0001"));
+    expect(await screen.findByText("Quarantine SN-0001")).toBeInTheDocument();
+    await screen.findByRole("option", { name: "Quarantine Area" });
+    fireEvent.change(screen.getByLabelText("Quarantine Location"), { target: { value: "9" } });
+    fireEvent.click(screen.getByRole("button", { name: "Quarantine Serial" }));
+    await vi.waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/stock-movements/quarantine", {
+        product_id: 1,
+        serial_ids: [1],
+        from_location_id: 2,
+        to_location_id: 9,
+        quantity: 1,
+        notes: "",
+      })
+    );
+  });
 });

@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Eye, Fingerprint } from "lucide-react";
+import { Eye, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, SerialNumber, StockMovement } from "../types";
@@ -8,9 +8,11 @@ import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import QuarantineSerialModal from "../components/QuarantineSerialModal";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useExportCsv } from "../hooks/useExportCsv";
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -43,7 +45,19 @@ export default function SerialNumbers() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [viewing, setViewing] = useState<SerialNumber | null>(null);
+  const [quarantining, setQuarantining] = useState<SerialNumber | null>(null);
   const debouncedSearch = useDebounce(search, 300);
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const { addToast } = useToast();
+  const { exportCsv } = useExportCsv();
+
+  const handleExport = () => {
+    const params: Record<string, string> = {};
+    if (debouncedSearch) params.search = debouncedSearch;
+    if (status) params.status = status;
+    exportCsv("/serial-numbers/export", "serial_numbers_report.csv", "Serial numbers report", params);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ["serial-numbers", debouncedSearch, status, page, pageSize],
@@ -58,10 +72,22 @@ export default function SerialNumbers() {
 
   const serials = data?.items || [];
 
+  const releaseMutation = useMutation({
+    mutationFn: (id: number) => api.put(`/serial-numbers/${id}/status`, { status: "in_stock" }),
+    onSuccess: () => {
+      addToast("Serial released from quarantine", "success");
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">Serial Numbers</h1>
+        <button onClick={handleExport} className="btn-secondary" aria-label="Export serial numbers to CSV">Export</button>
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">
@@ -109,7 +135,30 @@ export default function SerialNumbers() {
                 <td className="px-4 py-3">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
                 <td className="px-4 py-3 text-muted">{s.sold_at ? formatDate(s.sold_at) : "—"}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${s.serial_number}`}><Eye size={16} /></button>
+                  <div className="flex items-center gap-1">
+                    {can("serial_numbers.update") && s.status === "quarantined" && (
+                      <button
+                        onClick={() => releaseMutation.mutate(s.id)}
+                        disabled={releaseMutation.isPending}
+                        className="p-1 text-faint hover:text-green-600 dark:text-green-400"
+                        title="Release from quarantine"
+                        aria-label={`Release ${s.serial_number}`}
+                      >
+                        <ShieldCheck size={16} />
+                      </button>
+                    )}
+                    {can("stock.record") && s.status === "in_stock" && s.location_name && (
+                      <button
+                        onClick={() => setQuarantining(s)}
+                        className="p-1 text-faint hover:text-amber-600 dark:text-amber-400"
+                        title="Quarantine"
+                        aria-label={`Quarantine ${s.serial_number}`}
+                      >
+                        <ShieldX size={16} />
+                      </button>
+                    )}
+                    <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${s.serial_number}`}><Eye size={16} /></button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -121,6 +170,17 @@ export default function SerialNumbers() {
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
 
       {viewing && <SerialDetail serial={viewing} onClose={() => setViewing(null)} />}
+      {quarantining && (
+        <QuarantineSerialModal
+          serial={quarantining}
+          onClose={() => setQuarantining(null)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+            queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+            queryClient.invalidateQueries({ queryKey: ["products"] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -130,14 +190,21 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
   const { can } = useAuth();
   const { addToast } = useToast();
   const [status, setStatus] = useState(serial.status);
+  const [quarantining, setQuarantining] = useState(false);
 
   const statusMutation = useMutation({
     mutationFn: (next: string) => api.put(`/serial-numbers/${serial.id}/status`, { status: next }),
     onSuccess: (_res, next) => {
       setStatus(next);
-      addToast(`Serial ${serial.serial_number} ${next === "inactive" ? "deactivated" : "activated"}`, "success");
+      const message =
+        next === "inactive" ? `Serial ${serial.serial_number} deactivated`
+        : next === "in_stock" && serial.status === "quarantined" ? `Serial ${serial.serial_number} released from quarantine`
+        : `Serial ${serial.serial_number} activated`;
+      addToast(message, "success");
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
       queryClient.invalidateQueries({ queryKey: ["serial-movements", serial.id] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot update serial", "error"),
   });
@@ -150,7 +217,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
     },
   });
 
-  const canToggle = can("serial_numbers.update") && (status === "in_stock" || status === "inactive");
+  const canToggle = can("serial_numbers.update") && (status === "in_stock" || status === "inactive" || status === "quarantined");
 
   return (
     <Modal open onClose={onClose} title={`Serial ${serial.serial_number}`} wide>
@@ -210,6 +277,16 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
+          {canToggle && status === "quarantined" && (
+            <button onClick={() => statusMutation.mutate("in_stock")} disabled={statusMutation.isPending} className="btn-primary inline-flex items-center gap-1">
+              <ShieldCheck size={14} /> Release
+            </button>
+          )}
+          {canToggle && status === "in_stock" && serial.location_name && (
+            <button onClick={() => setQuarantining(true)} className="btn-secondary inline-flex items-center gap-1">
+              <ShieldX size={14} /> Quarantine
+            </button>
+          )}
           {canToggle && status === "in_stock" && (
             <button onClick={() => statusMutation.mutate("inactive")} disabled={statusMutation.isPending} className="btn-danger">
               Deactivate
@@ -223,6 +300,20 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
+      {quarantining && (
+        <QuarantineSerialModal
+          serial={{ ...serial, status }}
+          onClose={() => setQuarantining(false)}
+          onSaved={() => {
+            setQuarantining(false);
+            setStatus("quarantined");
+            queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+            queryClient.invalidateQueries({ queryKey: ["serial-movements", serial.id] });
+            queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+            queryClient.invalidateQueries({ queryKey: ["products"] });
+          }}
+        />
+      )}
     </Modal>
   );
 }

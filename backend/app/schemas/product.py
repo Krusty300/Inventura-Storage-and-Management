@@ -86,6 +86,7 @@ class ProductOut(BaseModel):
     total_quantity: int = 0
     quarantined_qty: int = 0
     expired_lot_qty: int = 0
+    sellable_qty: int = 0
     variants: list["ProductOut"] = []
 
     class Config:

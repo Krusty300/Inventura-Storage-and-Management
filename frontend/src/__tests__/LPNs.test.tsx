@@ -172,4 +172,43 @@ describe("LPNs Page", () => {
       lot_id: null,
     })));
   });
+
+  it("shows already-quarantined serials when loading into an LPN at a quarantine location", async () => {
+    const postMock = api.post as ReturnType<typeof vi.fn>;
+    postMock.mockResolvedValue({ data: {} });
+    getMock.mockImplementation((url: string, config?: { params?: Record<string, unknown> }) => {
+      if (url === "/lpns")
+        return Promise.resolve({ data: { items: [mockLPN({ contents: [], location_id: 2, location_name: "Quarantine Area" })], total: 1, page: 1, pages: 1 } });
+      if (url === "/lpns/1")
+        return Promise.resolve({ data: mockLPN({ contents: [], location_id: 2, location_name: "Quarantine Area" }) });
+      if (url === "/products")
+        return Promise.resolve({ data: { items: [{ id: 1, sku: "SG", name: "Serial Gadget", display_name: "Serial Gadget", is_active: true, is_serialized: true, is_variant: false, parent_id: null, location_id: 2 }] } });
+      if (url === "/locations")
+        return Promise.resolve({ data: { items: [{ id: 2, name: "Quarantine Area", path: "Quarantine Area", parent_id: null, location_type: "quarantine", is_active: true }] } });
+      if (url === "/serial-numbers") {
+        const status = config?.params?.status;
+        if (status === "in_stock") return Promise.resolve({ data: { items: [] } });
+        if (status === "quarantined")
+          return Promise.resolve({ data: { items: [
+            { id: 10, product_id: 1, serial_number: "SN-Q1", lot_id: null, location_id: 2, lpn_id: null, status: "quarantined", sold_at: null, location_name: "Quarantine Area", lot_number: "", lot_status: "in_stock", product_name: "Serial Gadget", created_at: "2026-01-01T10:00:00" },
+            { id: 11, product_id: 1, serial_number: "SN-Q2", lot_id: 5, location_id: 2, lpn_id: null, status: "quarantined", sold_at: null, location_name: "Quarantine Area", lot_number: "LOT-Q", lot_status: "quarantined", product_name: "Serial Gadget", created_at: "2026-01-01T10:00:00" },
+          ] } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<LPNs />);
+    fireEvent.click(await screen.findByLabelText("View LPN-0001"));
+    fireEvent.click(await screen.findByRole("button", { name: "Load Stock" }));
+
+    await screen.findByRole("option", { name: "Serial Gadget (SG) (Serialized)" });
+    const productSelect = screen.getAllByRole("combobox").find((c) =>
+      c.querySelector('option[value="1"]')
+    )!;
+    fireEvent.change(productSelect, { target: { value: "1" } });
+
+    expect(await screen.findByText("SN-Q1")).toBeInTheDocument();
+    expect(screen.getByText("SN-Q2")).toBeInTheDocument();
+    expect(screen.getAllByText("Q").length).toBeGreaterThan(0);
+  });
 });

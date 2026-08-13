@@ -30,6 +30,7 @@ export interface Product {
   total_quantity: number;
   quarantined_qty: number;
   expired_lot_qty: number;
+  sellable_qty: number;
   variants: Product[];
 }
 
@@ -429,6 +430,7 @@ export interface Sale {
   customer_id: number | null;
   user_id: number;
   subtotal: number;
+  discount_amount: number;
   tax_amount: number;
   total_amount: number;
   status: string;
@@ -498,6 +500,7 @@ export interface LocationTree extends Location {
 export interface StockLocationLot {
   lot_id: number;
   lot_number: string;
+  lot_status?: string;
   quantity: number;
 }
 

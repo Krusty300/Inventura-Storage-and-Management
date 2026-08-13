@@ -37,6 +37,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import GlobalSearch from "../components/GlobalSearch";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const TREND_OPTIONS = [7, 30, 90];
 
@@ -60,6 +61,8 @@ export default function Dashboard() {
   const [topProductsDays, setTopProductsDays] = useState(30);
   const [riskLeadTime, setRiskLeadTime] = useState(7);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [confirmReorder, setConfirmReorder] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const navigate = useNavigate();
   const { addToast } = useToast();
   const { user } = useAuth();
@@ -157,6 +160,22 @@ export default function Dashboard() {
     }).catch(() => {
       addToast("Failed to export dashboard PDF", "error");
     });
+  };
+
+  const reorderLowStock = async () => {
+    const ids = stats?.low_stock_products.map((p) => p.id) ?? [];
+    if (ids.length === 0) return;
+    setReordering(true);
+    try {
+      const { data } = await api.post("/orders/reorder-low-stock", { product_ids: ids });
+      addToast(`Created ${data.length} purchase order(s) for ${ids.length} low-stock item(s)`, "success");
+      setConfirmReorder(false);
+      fetchStats();
+      navigate("/orders");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to create purchase order", "error");
+    }
+    setReordering(false);
   };
 
   if (error && !stats) {
@@ -573,7 +592,14 @@ export default function Dashboard() {
         </div>
 
         <div className="card">
-          <h2 className="text-lg font-semibold mb-4">Low Stock Alerts</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Low Stock Alerts</h2>
+            {can(user?.role, "orders.create") && stats.low_stock_products.length > 0 && (
+              <button onClick={() => setConfirmReorder(true)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+                Create PO
+              </button>
+            )}
+          </div>
           <div className="space-y-3">
             {stats.low_stock_products.length === 0 && (
               <p className="text-muted text-sm">All products are well-stocked</p>
@@ -801,6 +827,16 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmReorder}
+        title="Create purchase orders for low stock?"
+        message={`${stats.low_stock_products.length} low-stock item(s) will be reordered up to their reorder level:\n${stats.low_stock_products.map((p) => `• ${p.name} (${p.sellable ?? p.quantity}/${p.reorder_level})`).join("\n")}`}
+        confirmLabel={reordering ? "Creating…" : "Create POs"}
+        confirmClass="btn-primary"
+        onConfirm={reorderLowStock}
+        onCancel={() => setConfirmReorder(false)}
+      />
     </div>
   );
 }

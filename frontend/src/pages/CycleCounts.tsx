@@ -351,11 +351,14 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
     count.items.map((i) => ({ product_id: i.product_id, counted_qty: i.counted_qty != null ? i.counted_qty.toString() : i.expected_qty.toString() }))
   );
   const [saving, setSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [onHandNow, setOnHandNow] = useState<Record<number, number>>({});
+  const [onHandLoaded, setOnHandLoaded] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
     if (count.location_id == null) return;
+    setOnHandLoaded(false);
     api
       .get(`/locations/${count.location_id}/detail`)
       .then(({ data }) => {
@@ -364,7 +367,8 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
         for (const s of data.serials || []) map[s.product_id] = (map[s.product_id] || 0) + 1;
         setOnHandNow(map);
       })
-      .catch(() => setOnHandNow({}));
+      .catch(() => setOnHandNow({}))
+      .finally(() => setOnHandLoaded(true));
   }, [count.location_id]);
 
   const changedItems = count.items.filter((item) => {
@@ -376,8 +380,32 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
     setRows(rows.map((r, i) => (i === idx ? { ...r, counted_qty: value } : r)));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const fillFromOnHand = () => {
+    const missing = count.items.filter((i) => onHandNow[i.product_id] == null).length;
+    setRows(rows.map((r) => {
+      const now = onHandNow[r.product_id];
+      return { ...r, counted_qty: now != null ? now.toString() : r.counted_qty };
+    }));
+    if (missing > 0) {
+      addToast(`${missing} item(s) had no on-hand data — kept current value`, "info");
+    } else {
+      addToast("Set all counted quantities to current on-hand", "success");
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    for (const r of rows) {
+      const qty = parseInt(r.counted_qty);
+      if (r.counted_qty === "" || isNaN(qty) || qty < 0) {
+        addToast("Enter a valid counted quantity for every item", "error");
+        return;
+      }
+    }
+    setShowPreview(true);
+  };
+
+  const doSubmit = async () => {
     setSaving(true);
     try {
       const { data } = await api.post(`/cycle-counts/${count.id}/submit`, {
@@ -398,63 +426,123 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
     setSaving(false);
   };
 
+  const mismatchCount = count.items.filter((item, idx) => {
+    const qty = parseInt(rows[idx]?.counted_qty) || 0;
+    return qty !== item.expected_qty;
+  }).length;
+
   return (
     <Modal open onClose={onClose} title={`Count ${count.cc_number}`} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {changedItems.length > 0 && (
-          <div className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">System on-hand changed since this count was created</p>
-            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300/80">
-              {changedItems.map((item) => `${item.product_name}: expected ${item.expected_qty}, on hand now ${onHandNow[item.product_id]}`).join("  ·  ")}
-            </p>
+      {showPreview ? (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">Review the counted quantities before posting the count adjustment to inventory.</p>
+          <div className="border border-border rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-app text-left">
+                  <th className="px-4 py-2 font-medium text-muted">Product</th>
+                  <th className="px-4 py-2 font-medium text-muted">Expected</th>
+                  <th className="px-4 py-2 font-medium text-muted">Counted</th>
+                  <th className="px-4 py-2 font-medium text-muted">Variance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {count.items.map((item, idx) => {
+                  const counted = parseInt(rows[idx]?.counted_qty) || 0;
+                  const variance = counted - item.expected_qty;
+                  return (
+                    <tr key={item.id}>
+                      <td className="px-4 py-2 font-medium">{item.product_name}</td>
+                      <td className="px-4 py-2">{item.expected_qty}</td>
+                      <td className="px-4 py-2">{counted}</td>
+                      <td className="px-4 py-2">
+                        {variance !== 0 && (
+                          <span className={variance > 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
+                            {variance > 0 ? "+" : ""}{variance}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        )}
-        <div className="divide-y divide-border border border-border rounded-lg max-h-[50vh] overflow-auto">
-          {count.items.map((item, idx) => {
-            const row = rows[idx];
-            const variance = (parseInt(row?.counted_qty) || 0) - item.expected_qty;
-            const now = onHandNow[item.product_id];
-            const onHandChanged = now != null && now !== item.expected_qty;
-            return (
-              <div key={item.id} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-center">
-                <div className="sm:col-span-5">
-                  <p className="text-sm font-medium">{item.product_name}</p>
-                </div>
-                <div className="sm:col-span-2 text-sm text-muted">
-                  Expected: {item.expected_qty}
-                  {onHandChanged && (
-                    <span className={`block text-xs font-medium ${onHandChanged ? "text-amber-600 dark:text-amber-400" : ""}`}>
-                      On hand now: {now}
-                    </span>
-                  )}
-                </div>
-                <div className="sm:col-span-3">
-                  <input
-                    type="number"
-                    min={0}
-                    className="input"
-                    value={row?.counted_qty ?? ""}
-                    onChange={(e) => setRow(idx, e.target.value)}
-                    aria-label={`Counted quantity for ${item.product_name}`}
-                  />
-                </div>
-                <div className="sm:col-span-2 text-sm">
-                  {variance !== 0 && (
-                    <span className={variance > 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
-                      {variance > 0 ? "+" : ""}{variance}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {mismatchCount > 0 ? (
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              {mismatchCount} item(s) have a variance and will be adjusted in inventory.
+            </p>
+          ) : (
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">No variances — inventory is consistent.</p>
+          )}
+          <div className="flex justify-end gap-3 pt-4">
+            <button type="button" onClick={() => setShowPreview(false)} className="btn-secondary">Back</button>
+            <button type="button" onClick={doSubmit} disabled={saving} className="btn-primary">{saving ? "Submitting..." : "Confirm & Submit"}</button>
+          </div>
         </div>
-        <p className="text-xs text-muted">Variance is posted to inventory as a COUNT adjustment when submitted.</p>
-        <div className="flex justify-end gap-3 pt-4">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Submitting..." : "Submit Count"}</button>
-        </div>
-      </form>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {changedItems.length > 0 && (
+            <div className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">System on-hand changed since this count was created</p>
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300/80">
+                {changedItems.map((item) => `${item.product_name}: expected ${item.expected_qty}, on hand now ${onHandNow[item.product_id]}`).join("  ·  ")}
+              </p>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-ink">Counted Quantities</p>
+            <button type="button" onClick={fillFromOnHand} disabled={!onHandLoaded} className="btn-secondary text-xs py-1 px-2">
+              Set all = on-hand
+            </button>
+          </div>
+          <div className="divide-y divide-border border border-border rounded-lg max-h-[50vh] overflow-auto">
+            {count.items.map((item, idx) => {
+              const row = rows[idx];
+              const variance = (parseInt(row?.counted_qty) || 0) - item.expected_qty;
+              const now = onHandNow[item.product_id];
+              const onHandChanged = now != null && now !== item.expected_qty;
+              return (
+                <div key={item.id} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-center">
+                  <div className="sm:col-span-5">
+                    <p className="text-sm font-medium">{item.product_name}</p>
+                  </div>
+                  <div className="sm:col-span-2 text-sm text-muted">
+                    Expected: {item.expected_qty}
+                    {onHandChanged && (
+                      <span className="block text-xs font-medium text-amber-600 dark:text-amber-400">
+                        On hand now: {now}
+                      </span>
+                    )}
+                  </div>
+                  <div className="sm:col-span-3">
+                    <input
+                      type="number"
+                      min={0}
+                      className="input"
+                      value={row?.counted_qty ?? ""}
+                      onChange={(e) => setRow(idx, e.target.value)}
+                      aria-label={`Counted quantity for ${item.product_name}`}
+                    />
+                  </div>
+                  <div className="sm:col-span-2 text-sm">
+                    {variance !== 0 && (
+                      <span className={variance > 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
+                        {variance > 0 ? "+" : ""}{variance}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted">Variance is posted to inventory as a COUNT adjustment when submitted.</p>
+          <div className="flex justify-end gap-3 pt-4">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">{saving ? "Submitting..." : "Submit Count"}</button>
+          </div>
+        </form>
+      )}
     </Modal>
   );
 }

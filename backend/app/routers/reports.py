@@ -23,7 +23,7 @@ from app.models.stock_line import StockLine
 from app.models.customer import Customer
 from app.models.settings import Settings
 from app.services.auth import get_current_user
-from app.services.inventory import SHIP, TRANSFER_OUT, quarantined_qty_by_product, quarantined_qty_subquery
+from app.services.inventory import SHIP, TRANSFER_OUT, sellable_qty_by_product, sellable_qty_subquery
 from app.services.pdf_helpers import (
     MARGIN,
     draw_header,
@@ -52,7 +52,7 @@ def parse_range(start_date: str | None, end_date: str | None) -> tuple[datetime 
 
 @router.get("/inventory-valuation")
 def inventory_valuation(db: Session = Depends(get_db)):
-    sellable = Product.quantity - func.coalesce(quarantined_qty_subquery(), 0)
+    sellable = sellable_qty_subquery()
     total_value = db.query(func.coalesce(func.sum(sellable * Product.cost_price), 0)).filter(
         Product.is_active == True
     ).scalar() or 0.0
@@ -329,8 +329,8 @@ def export_sales(search: str = Query(""), start_date: str | None = None, end_dat
     sales = q.order_by(Sale.created_at.desc()).all()
     return _csv_response(
         "sales_report",
-        ["Invoice", "Date", "Customer", "Subtotal", "Tax", "Total", "Payment", "Status", "Created By"],
-        [[s.invoice_number, s.created_at.strftime("%Y-%m-%d %H:%M"), s.customer_name or "", s.subtotal, s.tax_amount, s.total_amount, s.payment_method or "", s.status, s.username] for s in sales],
+        ["Invoice", "Date", "Customer", "Subtotal", "Discount", "Tax", "Total", "Payment", "Status", "Created By"],
+        [[s.invoice_number, s.created_at.strftime("%Y-%m-%d %H:%M"), s.customer_name or "", s.subtotal, s.discount_amount, s.tax_amount, s.total_amount, s.payment_method or "", s.status, s.username] for s in sales],
     )
 
 
@@ -386,7 +386,7 @@ def export_locations(search: str = Query(""), db: Session = Depends(get_db)):
 def exception_dashboard(db: Session = Depends(get_db)):
     active_parents = Product.variant_parent_id_subquery()
     sellable = (Product.is_active == True, Product.id.notin_(active_parents))
-    sellable_qty = Product.quantity - func.coalesce(quarantined_qty_subquery(), 0)
+    sellable_qty = sellable_qty_subquery()
 
     low_stock_rows = db.query(Product).options(
         joinedload(Product.category), joinedload(Product.supplier)
@@ -399,12 +399,14 @@ def exception_dashboard(db: Session = Depends(get_db)):
     zero_stock_rows = db.query(Product).filter(*sellable, sellable_qty <= 0).order_by(Product.name).limit(100).all()
     zero_stock = [{"id": p.id, "name": p.display_name, "sku": p.sku} for p in zero_stock_rows]
 
-    quarantined = db.query(Lot).options(joinedload(Lot.product)).filter(
+    quarantined = db.query(Lot).options(
+        joinedload(Lot.product), joinedload(Lot.stock_lines), joinedload(Lot.serial_numbers)
+    ).filter(
         Lot.status == "quarantined"
     ).order_by(Lot.received_date.desc()).limit(100).all()
     quarantined_lots = [{
         "id": l.id, "lot_number": l.lot_number, "product_name": l.product_name,
-        "product_id": l.product_id, "on_hand": sum(sl.quantity for sl in l.stock_lines),
+        "product_id": l.product_id, "on_hand": l.on_hand,
         "expiry_date": l.expiry_date, "received_date": l.received_date,
     } for l in quarantined]
 
@@ -499,12 +501,12 @@ def _stockout_risk_data(db: Session, lead_time_days: int = 7) -> tuple[list[dict
     products = db.query(Product).options(
         joinedload(Product.category), joinedload(Product.supplier)
     ).filter(Product.is_active == True, Product.id.notin_(active_parents)).all()
-    quarantined = quarantined_qty_by_product(db)
+    sellable = sellable_qty_by_product(db)
 
     items = []
     for p in products:
         demand = _avg_daily_demand(db, p.id)
-        on_hand = max(0, p.quantity - quarantined.get(p.id, 0))
+        on_hand = sellable.get(p.id, 0)
         days_of_supply = round(on_hand / demand, 1) if demand > 0 else None
         if demand <= 0:
             risk_level = "low"
@@ -538,7 +540,7 @@ def _stockout_risk_data(db: Session, lead_time_days: int = 7) -> tuple[list[dict
             "risk_level": risk_level,
         })
     order = {"high": 0, "medium": 1, "low": 2}
-    items.sort(key=lambda i: (order[i["risk_level"]], i["risk_score"]), reverse=True)
+    items.sort(key=lambda i: (order[i["risk_level"]], i["risk_score"]))
     summary = {
         "high": sum(1 for i in items if i["risk_level"] == "high"),
         "medium": sum(1 for i in items if i["risk_level"] == "medium"),
@@ -646,7 +648,7 @@ def export_products(
         soon = today + timedelta(days=30)
         q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date >= today, Product.expiry_date <= soon)
     if low_stock:
-        sellable = Product.quantity - func.coalesce(quarantined_qty_subquery(), 0)
+        sellable = sellable_qty_subquery()
         q = q.filter(Product.is_active == True, Product.id.notin_(Product.variant_parent_id_subquery()), sellable <= Product.reorder_level)  # noqa: E712
     products = q.order_by(Product.name).all()
     return _csv_response(
@@ -671,7 +673,7 @@ def dashboard_pdf(lead_time_days: int = 7, db: Session = Depends(get_db)):
 
     active_parents = Product.variant_parent_id_subquery()
     sellable = (Product.is_active == True, Product.id.notin_(active_parents))
-    sellable_qty = Product.quantity - func.coalesce(quarantined_qty_subquery(), 0)
+    sellable_qty = sellable_qty_subquery()
     today = datetime.now(timezone.utc)
     today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -696,7 +698,7 @@ def dashboard_pdf(lead_time_days: int = 7, db: Session = Depends(get_db)):
     ).scalar() or 0
 
     _, risk_summary = _stockout_risk_data(db, lead_time_days)
-    quarantined = quarantined_qty_by_product(db)
+    sellable_map = sellable_qty_by_product(db)
 
     low_stock_rows = db.query(Product).filter(
         *sellable, sellable_qty <= Product.reorder_level
@@ -736,7 +738,7 @@ def dashboard_pdf(lead_time_days: int = 7, db: Session = Depends(get_db)):
     ])
 
     if low_stock_rows:
-        rows = [[p.display_name, p.sku, str(max(0, p.quantity - quarantined.get(p.id, 0))), str(p.reorder_level)] for p in low_stock_rows]
+        rows = [[p.display_name, p.sku, str(sellable_map.get(p.id, 0)), str(p.reorder_level)] for p in low_stock_rows]
         y = draw_item_table(
             c, MARGIN, y, ["Low Stock Product", "SKU", "Qty", "Reorder"],
             ["l", "l", "r", "r"], [292, 120, 44, 48], rows,

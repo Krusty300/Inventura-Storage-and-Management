@@ -7,6 +7,7 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
+import { useExportCsv } from "../hooks/useExportCsv";
 
 interface ActivityLogEntry {
   id: number;
@@ -57,6 +58,15 @@ export default function ActivityLog() {
   const [entityFilter, setEntityFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
   const debouncedSearch = useDebounce(search, 300);
+  const { exportCsv } = useExportCsv();
+
+  const handleExport = () => {
+    const params: Record<string, string> = {};
+    if (entityFilter) params.entity_type = entityFilter;
+    if (actionFilter) params.action = actionFilter;
+    if (debouncedSearch) params.search = debouncedSearch;
+    exportCsv("/activity-logs/export", "activity_log_report.csv", "Activity log report", params);
+  };
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["activity-logs", page, entityFilter, actionFilter, debouncedSearch, pageSize],
@@ -76,6 +86,7 @@ export default function ActivityLog() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">Activity Log</h1>
+        <button onClick={handleExport} className="btn-secondary" aria-label="Export activity log to CSV">Export</button>
       </div>
 
       {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load activity log.</div>}

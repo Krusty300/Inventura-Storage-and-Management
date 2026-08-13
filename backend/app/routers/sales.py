@@ -229,6 +229,11 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
         if customer is None:
             raise HTTPException(status_code=400, detail=f"Customer {data.customer_id} not found")
 
+    subtotal = sum(i.quantity * i.unit_price for i in data.items)
+    discount_amount = float(data.discount_amount or 0)
+    if discount_amount > subtotal:
+        raise HTTPException(status_code=400, detail="Discount cannot exceed the sale subtotal")
+
     qty_needed: dict[tuple[int, int | None], int] = {}
     for item_data in data.items:
         key = (item_data.product_id, item_data.location_id)
@@ -266,17 +271,18 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
             raise HTTPException(status_code=400, detail=f"Insufficient stock for '{product.display_name}'")
         products[item_data.product_id] = product
 
-    subtotal = sum(i.quantity * i.unit_price for i in data.items)
+    taxable = subtotal - discount_amount
     tax_rate = get_tax_rate(db)
-    tax_amount = subtotal * tax_rate / 100
+    tax_amount = taxable * tax_rate / 100
 
     sale = Sale(
         invoice_number=generate_invoice_number(db),
         customer_id=data.customer_id,
         user_id=user.id,
         subtotal=subtotal,
+        discount_amount=discount_amount,
         tax_amount=tax_amount,
-        total_amount=subtotal + tax_amount,
+        total_amount=taxable + tax_amount,
         payment_method=data.payment_method,
         notes=data.notes,
     )
@@ -460,10 +466,13 @@ def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
     )
 
     tax_rate = s.tax_rate if s else 0
-    y = draw_totals(c, BODY_RIGHT, y, [
+    totals = [
         ("Subtotal", f"{currency}{float(sale.subtotal):.2f}"),
-        (f"Tax ({tax_rate}%)", f"{currency}{float(sale.tax_amount):.2f}"),
-    ], "Total", f"{currency}{float(sale.total_amount):.2f}")
+    ]
+    if sale.discount_amount:
+        totals.append(("Discount", f"-{currency}{float(sale.discount_amount):.2f}"))
+    totals.append((f"Tax ({tax_rate}%)", f"{currency}{float(sale.tax_amount):.2f}"))
+    y = draw_totals(c, BODY_RIGHT, y, totals, "Total", f"{currency}{float(sale.total_amount):.2f}")
 
     if sale.notes:
         draw_notes(c, MARGIN, y, sale.notes)

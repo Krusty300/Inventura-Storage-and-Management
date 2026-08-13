@@ -183,6 +183,7 @@ describe("CycleCounts Page", () => {
     renderWithProviders(<CycleCounts />);
     fireEvent.click(await screen.findByLabelText("Count CC-0001"));
     fireEvent.click(await screen.findByRole("button", { name: "Submit Count" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm & Submit" }));
     expect(await screen.findByText(/On-hand changed for 1 item/)).toBeInTheDocument();
   });
 });

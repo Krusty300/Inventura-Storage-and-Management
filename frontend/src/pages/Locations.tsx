@@ -13,8 +13,8 @@ import LocationDetail from "../components/LocationDetail";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../hooks/useSettings";
+import { useExportCsv } from "../hooks/useExportCsv";
 import { formatCurrency } from "../utils/currency";
-import { downloadBlob } from "../utils/download";
 import { errorMessage } from "../utils/errors";
 
 interface LocationForm {
@@ -51,6 +51,7 @@ export default function Locations() {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const q = search.trim().toLowerCase();
+  const { exportCsv } = useExportCsv();
 
   const { data: tree, isLoading } = useQuery({
     queryKey: ["locations", "tree"],
@@ -143,17 +144,8 @@ export default function Locations() {
   const expandAll = () => setExpanded(new Set(allIds));
   const collapseAll = () => setExpanded(new Set());
 
-  const handleExport = async () => {
-    try {
-      const { data } = await api.get("/reports/export/locations", {
-        params: search.trim() ? { search: search.trim() } : {},
-        responseType: "blob",
-      });
-      downloadBlob(data, "locations_report.csv");
-      addToast("Locations exported to CSV", "success");
-    } catch (err: any) {
-      addToast(errorMessage(err, "Failed to export locations"), "error");
-    }
+  const handleExport = () => {
+    exportCsv("/reports/export/locations", "locations_report.csv", "Locations", search.trim() ? { search: search.trim() } : undefined);
   };
 
   const renderNode = (node: LocationTree, depth: number, forceOpen: boolean) => {

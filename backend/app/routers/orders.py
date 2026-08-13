@@ -11,7 +11,7 @@ from app.models.product import Product
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
 from app.models.supplier import Supplier
-from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate
+from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate, ReorderLowStockRequest
 from app.services import forecasting, inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_admins
@@ -58,6 +58,56 @@ def auto_reorder(
     groups: dict[int | None, list[dict]] = {}
     for r in to_reorder:
         groups.setdefault(r["supplier_id"], []).append(r)
+    orders = _create_reorder_orders(
+        db, user, groups,
+        "Auto-generated reorder for {count} product(s) based on forecast demand",
+    )
+    broadcast_change("order", "created")
+    return orders
+
+
+@router.post("/reorder-low-stock", response_model=list[OrderOut])
+def reorder_low_stock(
+    payload: ReorderLowStockRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Create purchase order(s) to top low-stock products back up to their reorder level."""
+    sellable = inventory.sellable_qty_by_product(db)
+    q = db.query(Product).filter(
+        Product.is_active == True,  # noqa: E712
+        Product.id.notin_(Product.variant_parent_id_subquery()),
+    )
+    if payload.product_ids:
+        q = q.filter(Product.id.in_(payload.product_ids))
+    to_reorder: list[dict] = []
+    for p in q.all():
+        if p.reorder_level <= 0:
+            continue
+        on_hand = sellable.get(p.id, 0)
+        if on_hand > p.reorder_level:
+            continue
+        if not _has_active_location(db, p.id):
+            continue
+        to_reorder.append({
+            "product_id": p.id,
+            "supplier_id": p.supplier_id,
+            "suggested_order_qty": max(p.reorder_level - on_hand, 1),
+        })
+    if not to_reorder:
+        raise HTTPException(status_code=400, detail="No low-stock products need reordering")
+    groups: dict[int | None, list[dict]] = {}
+    for r in to_reorder:
+        groups.setdefault(r["supplier_id"], []).append(r)
+    orders = _create_reorder_orders(
+        db, user, groups,
+        "Auto-generated reorder for {count} low-stock product(s)",
+    )
+    broadcast_change("order", "created")
+    return orders
+
+
+def _create_reorder_orders(db: Session, user, groups: dict[int | None, list[dict]], notes_template: str) -> list[Order]:
     orders: list[Order] = []
     for supplier_id, group in groups.items():
         items = []
@@ -72,7 +122,7 @@ def auto_reorder(
         order = Order(
             order_number=generate_po_number(db), user_id=user.id,
             supplier_id=supplier_id,
-            notes=f"Auto-generated reorder for {len(group)} product(s) based on forecast demand",
+            notes=notes_template.format(count=len(group)),
         )
         db.add(order)
         db.flush()
@@ -88,7 +138,6 @@ def auto_reorder(
                      f"Auto-reorder '{o.order_number}'{supplier_tag} for {len(group)} product(s) (${total:.2f})")
         db.commit()
         orders.append(o)
-    broadcast_change("order", "created")
     return orders
 
 

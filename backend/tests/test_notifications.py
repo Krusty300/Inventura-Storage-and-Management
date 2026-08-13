@@ -56,6 +56,34 @@ def _low_stock_notifs(auth_headers):
             if n["type"] == "warning" and n["title"].startswith("Low stock:")]
 
 
+def _lot(auth_headers, product_id, lot_number):
+    lots = client.get("/api/lots", params={"product_id": product_id}, headers=auth_headers).json()
+    return next(l for l in lots["items"] if l["lot_number"] == lot_number)
+
+
+def _receive(auth_headers, product_id, qty, lot):
+    resp = client.post("/api/receipts", json={
+        "items": [{"product_id": product_id, "quantity": qty, "lot_number": lot}],
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+
+
+def test_low_stock_notification_uses_sellable_qty(auth_headers):
+    # Raw on-hand is 5 (above reorder level 4) but 3 of it is quarantined,
+    # so sellable (2) is at/below the reorder level -> must still notify.
+    prod = _make_product(auth_headers, sku="LOW-SELL", quantity=0, reorder_level=4)
+    _receive(auth_headers, prod["id"], 2, "LOT-SELL-S")
+    _receive(auth_headers, prod["id"], 3, "LOT-SELL-Q")
+    client.put(f"/api/lots/{_lot(auth_headers, prod['id'], 'LOT-SELL-Q')['id']}",
+               json={"status": "quarantined"}, headers=auth_headers)
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 5
+
+    client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
+    low = _low_stock_notifs(auth_headers)
+    assert len(low) == 1
+    assert f"reorder level 4" in low[0]["message"]
+
+
 def test_low_stock_notification_dedupe(auth_headers):
     prod = _make_product(auth_headers, sku="LOW-PROD", quantity=5, reorder_level=5)
     # First sale drops stock to 4 <= reorder level -> notification created

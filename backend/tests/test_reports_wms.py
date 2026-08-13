@@ -1,4 +1,4 @@
-from app.models import CycleCountItem, Lot
+from app.models import CycleCountItem, Lot, StockMovement, User
 from tests.conftest import TestingSessionLocal, client
 
 
@@ -138,6 +138,48 @@ def test_stockout_risk_counts_shipment_demand(auth_headers):
     assert row["on_hand"] == 0
     assert row["avg_daily_demand"] > 0
     assert row["risk_level"] == "high"
+
+
+def test_stockout_risk_sorted_high_first(auth_headers):
+    from datetime import datetime, timedelta, timezone
+
+    high = _make_product(auth_headers, "RISK-HIGH", reorder=5)
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": high["id"], "quantity": 2}],
+    }, headers=auth_headers).status_code == 201
+    med = _make_product(auth_headers, "RISK-MED", reorder=5)
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": med["id"], "quantity": 10}],
+    }, headers=auth_headers).status_code == 201
+    low = _make_product(auth_headers, "RISK-LOW", reorder=5)
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": low["id"], "quantity": 50}],
+    }, headers=auth_headers).status_code == 201
+
+    db = TestingSessionLocal()
+    try:
+        user = db.query(User).filter(User.username == "testuser").first()
+        since = datetime.now(timezone.utc) - timedelta(days=2)
+        # demand 2/day for high (2 on hand -> ~1 day of supply),
+        # 1/day for medium (10 on hand -> ~10 days), 1/day for low (50 on hand)
+        for pid, units in ((high["id"], 180), (med["id"], 90), (low["id"], 90)):
+            for _ in range(units):
+                db.add(StockMovement(
+                    product_id=pid, user_id=user.id, quantity_change=-1,
+                    movement_type="sale", created_at=since,
+                ))
+        db.commit()
+    finally:
+        db.close()
+
+    data = client.get("/api/reports/stockout-risk", headers=auth_headers).json()
+    rows = [i for i in data["items"] if i["sku"] in ("RISK-HIGH", "RISK-MED", "RISK-LOW")]
+    assert len(rows) == 3
+    assert {r["sku"]: r["risk_level"] for r in rows} == {
+        "RISK-HIGH": "high", "RISK-MED": "medium", "RISK-LOW": "low",
+    }
+    # high-risk items must be listed before medium before low
+    assert [r["risk_level"] for r in rows] == ["high", "medium", "low"]
 
 
 def test_exceptions_open_cycle_count_with_variance(auth_headers):

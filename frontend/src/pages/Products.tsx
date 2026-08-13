@@ -18,9 +18,9 @@ import EmptyState from "../components/EmptyState";
 import Pagination from "../components/Pagination";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSettings } from "../hooks/useSettings";
+import { useExportCsv } from "../hooks/useExportCsv";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-import { downloadBlob } from "../utils/download";
 import { formatCurrency } from "../utils/currency";
 import { parseLocalDate } from "../utils/date";
 import { hasVariants } from "../utils/variants";
@@ -61,6 +61,7 @@ export default function Products() {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const debouncedSearch = useDebounce(search, 300);
+  const { exportCsv } = useExportCsv();
 
   useEffect(() => {
     const s = searchParams.get("search");
@@ -147,19 +148,13 @@ export default function Products() {
     }
   }
 
-  const handleExport = async () => {
-    try {
-      const params: Record<string, string> = {};
-      if (debouncedSearch) params.search = debouncedSearch;
-      if (categoryFilter) params.category_id = categoryFilter;
-      if (expiryFilter) params.expiry = expiryFilter;
-      if (lowStock) params.low_stock = "1";
-      const { data } = await api.get("/reports/export/products", { params, responseType: "blob" });
-      downloadBlob(data, "products_report.csv");
-      addToast("Products exported to CSV", "success");
-    } catch {
-      addToast("Failed to export products", "error");
-    }
+  const handleExport = () => {
+    const params: Record<string, string> = {};
+    if (debouncedSearch) params.search = debouncedSearch;
+    if (categoryFilter) params.category_id = categoryFilter;
+    if (expiryFilter) params.expiry = expiryFilter;
+    if (lowStock) params.low_stock = "1";
+    exportCsv("/reports/export/products", "products_report.csv", "Products report", params);
   };
 
   const handleLabels = async () => {
@@ -213,7 +208,12 @@ export default function Products() {
     }
     return r.product.expired_lot_qty || 0;
   };
-  const sellableQtyOf = (r: DisplayRow) => qtyOf(r) - quarantinedQtyOf(r);
+  const sellableQtyOf = (r: DisplayRow) => {
+    if (r.kind === "parent" && hasVariants(r.product)) {
+      return (r.product.sellable_qty || 0) + r.product.variants.filter((v) => v.is_active).reduce((sum, v) => sum + (v.sellable_qty || 0), 0);
+    }
+    return r.product.sellable_qty || 0;
+  };
 
   const movementBadgeClass = (t: string) => {
     if (["in", "receive", "transfer_in", "sale_return", "count"].includes(t)) return "badge-success";

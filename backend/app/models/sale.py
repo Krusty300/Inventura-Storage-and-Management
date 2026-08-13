@@ -15,6 +15,7 @@ class Sale(Base):
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     subtotal: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
+    discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     tax_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     status: Mapped[str] = mapped_column(String(20), default="completed")

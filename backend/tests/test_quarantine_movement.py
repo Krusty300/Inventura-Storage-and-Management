@@ -150,7 +150,7 @@ def test_transfer_serial_rejects_quarantined_lot(auth_headers):
         "from_location_id": src["id"], "to_location_id": dst["id"],
     }, headers=auth_headers)
     assert resp.status_code == 400
-    assert "LOT-Q6" in resp.json()["detail"]
+    assert "quarantined" in resp.json()["detail"]
     assert serial["lot_status"] == "quarantined"
 
 

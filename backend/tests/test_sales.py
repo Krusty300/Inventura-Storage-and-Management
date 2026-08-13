@@ -29,6 +29,44 @@ def test_create_sale_decrements_stock_and_logs_movement(auth_headers):
     assert any(m["movement_type"] == "out" and m["quantity_change"] == -3 for m in movements)
 
 
+def test_sale_with_discount_reduces_tax_and_total(auth_headers):
+    from app.models import Settings
+
+    db = TestingSessionLocal()
+    try:
+        settings = db.query(Settings).first()
+        if settings is None:
+            settings = Settings(currency_symbol="$", tax_rate=10)
+            db.add(settings)
+        else:
+            settings.tax_rate = 10
+        db.commit()
+    finally:
+        db.close()
+
+    prod = _make_product(auth_headers)
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 20.00}],
+        "discount_amount": 30.0,
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["subtotal"] == 80.0
+    assert data["discount_amount"] == 30.0
+    assert data["tax_amount"] == 5.0  # (80 - 30) * 10%
+    assert data["total_amount"] == 55.0
+
+
+def test_sale_discount_over_subtotal_rejected(auth_headers):
+    prod = _make_product(auth_headers)
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "discount_amount": 99.0,
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "exceed" in resp.json()["detail"]
+
+
 def test_sale_requires_at_least_one_item(auth_headers):
     resp = _make_sale(auth_headers, [])
     assert resp.status_code == 400

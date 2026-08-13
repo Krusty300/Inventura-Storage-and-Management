@@ -29,7 +29,7 @@ from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/locations", tags=["locations"], dependencies=[Depends(get_current_user)])
 
-LOCATION_TYPES = {"bin", "zone", "aisle", "shelf", "storage", "receiving", "wip", "quarantine"}
+LOCATION_TYPES = {"bin", "zone", "aisle", "shelf", "storage", "receiving", "wip", "quarantine", "shipping"}
 
 
 def _validate_type(location_type: str):
@@ -63,7 +63,9 @@ def _stats_map(db: Session) -> tuple[dict, dict, dict, dict, dict, dict, dict]:
     )
     serial_counts = dict(
         db.query(SerialNumber.location_id, func.count(SerialNumber.id))
-        .filter(SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK)
+        .filter(SerialNumber.status.in_(
+            (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED)
+        ))
         .group_by(SerialNumber.location_id)
         .all()
     )
@@ -73,7 +75,9 @@ def _stats_map(db: Session) -> tuple[dict, dict, dict, dict, dict, dict, dict]:
             func.coalesce(func.sum(Product.cost_price), 0),
         )
         .join(Product, SerialNumber.product_id == Product.id)
-        .filter(SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK)
+        .filter(SerialNumber.status.in_(
+            (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED)
+        ))
         .group_by(SerialNumber.location_id)
         .all()
     )
@@ -84,7 +88,9 @@ def _stats_map(db: Session) -> tuple[dict, dict, dict, dict, dict, dict, dict]:
         db.query(SerialNumber.location_id, SerialNumber.lot_id)
         .filter(
             SerialNumber.lot_id.isnot(None),
-            SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK,
+            SerialNumber.status.in_(
+                (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED)
+            ),
         )
         .all()
     ):
@@ -232,7 +238,7 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
         .options(joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.lpn))
         .filter(
             SerialNumber.location_id == location_id,
-            SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK,
+            SerialNumber.status.in_([inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED]),
         )
         .order_by(SerialNumber.serial_number)
         .all()

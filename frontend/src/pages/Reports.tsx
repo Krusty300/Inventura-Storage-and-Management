@@ -12,10 +12,9 @@ import type {
   ProfitAnalysis, OrderSummary, SalesSummary, InventoryAging, StockoutRisk,
   TopCustomersReport, TopSuppliersReport, ManufacturingCostReport,
 } from "../types";
-import { useToast } from "../context/ToastContext";
 import { formatCurrency } from "../utils/currency";
-import { downloadBlob } from "../utils/download";
 import { useSettings } from "../hooks/useSettings";
+import { useExportCsv } from "../hooks/useExportCsv";
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
 
 const tabs = [
@@ -58,10 +57,10 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState<Tab>(tabs.some((t) => t.key === tabParam) ? (tabParam as Tab) : "valuation");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const { addToast } = useToast();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const dateInvalid = !!startDate && !!endDate && startDate > endDate;
+  const { exportCsv } = useExportCsv();
 
   const rangeParams = () => {
     const params: Record<string, string> = {};
@@ -138,17 +137,6 @@ export default function Reports() {
     queryFn: async () => (await api.get("/costing/report")).data,
   });
 
-  const exportCsv = async (path: string, filename: string) => {
-    if (dateInvalid) return;
-    try {
-      const { data } = await api.get(path, { params: rangeParams(), responseType: "blob" });
-      downloadBlob(data, filename);
-      addToast(`${filename} downloaded`, "success");
-    } catch {
-      addToast("Failed to export CSV", "error");
-    }
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -178,10 +166,10 @@ export default function Reports() {
               Clear
             </button>
           )}
-          <button onClick={() => exportCsv("/reports/export/sales", "sales_report.csv")} disabled={dateInvalid} className="btn-secondary text-sm py-1.5 flex items-center gap-1" aria-label="Export sales CSV">
+          <button onClick={() => exportCsv("/reports/export/sales", "sales_report.csv", undefined, rangeParams())} disabled={dateInvalid} className="btn-secondary text-sm py-1.5 flex items-center gap-1" aria-label="Export sales CSV">
             Export Sales
           </button>
-          <button onClick={() => exportCsv("/reports/export/movements", "stock_movements_report.csv")} disabled={dateInvalid} className="btn-secondary text-sm py-1.5 flex items-center gap-1" aria-label="Export movements CSV">
+          <button onClick={() => exportCsv("/reports/export/movements", "stock_movements_report.csv", undefined, rangeParams())} disabled={dateInvalid} className="btn-secondary text-sm py-1.5 flex items-center gap-1" aria-label="Export movements CSV">
             Export Movements
           </button>
         </div>

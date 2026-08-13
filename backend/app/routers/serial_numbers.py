@@ -11,6 +11,7 @@ from app.schemas.serial_number import SerialNumberOut, SerialStatusUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
+from app.services.csv_export import csv_response
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/serial-numbers", tags=["serial-numbers"], dependencies=[Depends(get_current_user)])
@@ -53,6 +54,45 @@ def list_serial_numbers(
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 
+@router.get("/export")
+def export_serial_numbers(
+    product_id: int | None = None,
+    status: str | None = None,
+    location_id: int | None = None,
+    no_location: bool = Query(False),
+    search: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    q = db.query(SerialNumber).options(
+        joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.location),
+    )
+    if product_id:
+        q = q.filter(SerialNumber.product_id == product_id)
+    if status:
+        q = q.filter(SerialNumber.status == status)
+    if location_id:
+        q = q.filter(SerialNumber.location_id == location_id)
+    if no_location:
+        q = q.filter(SerialNumber.location_id.is_(None))
+    if search:
+        like = f"%{search}%"
+        q = q.filter(SerialNumber.serial_number.ilike(like))
+    serials = q.order_by(SerialNumber.created_at.desc()).all()
+    return csv_response(
+        "serial_numbers_report",
+        ["Serial #", "Product", "SKU", "Status", "Location", "Lot", "Created"],
+        [[
+            s.serial_number,
+            s.product_name,
+            s.product.sku if s.product else "",
+            s.status,
+            s.location_name,
+            s.lot_number,
+            s.created_at.strftime("%Y-%m-%d %H:%M") if s.created_at else "",
+        ] for s in serials],
+    )
+
+
 @router.get("/{serial_id}", response_model=SerialNumberOut)
 def get_serial_number(serial_id: int, db: Session = Depends(get_db)):
     return _load_serial(db, serial_id)
@@ -61,14 +101,32 @@ def get_serial_number(serial_id: int, db: Session = Depends(get_db)):
 @router.put("/{serial_id}/status", response_model=SerialNumberOut)
 def update_serial_status(serial_id: int, data: SerialStatusUpdate, db: Session = Depends(get_db),
                          user=Depends(require_permission("serial_numbers.update"))):
-    """Toggle an individual serial between in_stock and inactive.
+    """Toggle an individual serial between in_stock and inactive, or release it
+    from quarantine.
 
-    Only in_stock <-> inactive is allowed; terminal states (sold, scrapped) and
-    process states (reserved, quarantined) are managed by their own flows. Each
-    toggle is written to the ledger as a deactivate/activate movement.
+    ``in_stock <-> inactive`` and ``quarantined -> in_stock`` are allowed;
+    terminal states (sold, scrapped) and process states (reserved, quarantined)
+    are otherwise managed by their own flows. Each toggle is written to the
+    ledger as a deactivate/activate/release movement.
     """
     serial = _load_serial(db, serial_id)
-    if data.status not in (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_INACTIVE):
+    allowed = {inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_INACTIVE}
+    if data.status == inventory.SERIAL_STATUS_IN_STOCK and serial.status == inventory.SERIAL_STATUS_QUARANTINED:
+        movement = inventory.release_serial_from_quarantine(
+            db, serial=serial, user_id=user.id,
+            reference=f"Serial {serial.serial_number} released",
+            notes="Serial unit manually released from quarantine",
+        )
+        db.commit()
+        serial = _load_serial(db, serial_id)
+        log_activity(db, user.id, user.username, "update", "serial_number", serial.id,
+                     f"Released serial '{serial.serial_number}' from quarantine (movement {movement.id})")
+        db.commit()
+        broadcast_change("product", "updated")
+        broadcast_change("lot", "updated")
+        broadcast_change("stock_movement", "created")
+        return serial
+    if data.status not in allowed:
         raise HTTPException(status_code=400, detail="Serial status can only be toggled between 'in_stock' and 'inactive'")
     if data.status == inventory.SERIAL_STATUS_INACTIVE:
         if serial.status == inventory.SERIAL_STATUS_INACTIVE:

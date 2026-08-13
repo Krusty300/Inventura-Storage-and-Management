@@ -8,6 +8,7 @@ from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models import Lot, Location, Product, QualityCheck
 from app.schemas.quality_check import QC_RESULTS, QualityCheckCreate, QualityCheckOut, QualityCheckUpdate
+from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change
@@ -29,9 +30,11 @@ def _quarantine_lot(db: Session, lot: Lot) -> None:
     if lot.status != "in_stock":
         raise HTTPException(status_code=400, detail=f"Cannot quarantine lot '{lot.lot_number}' in status '{lot.status}'")
     lot.status = "quarantined"
+    # Cascade to the lot's serials so serialized units render as quarantined too.
+    inventory.quarantine_lot_serials(db, lot)
 
 
-def _release_lot_if_clear(db: Session, lot: Lot) -> None:
+def _release_lot_if_clear(db: Session, lot: Lot, user_id: int) -> None:
     """Restore a quarantined lot to sellable stock once no failing quality check
     still references it (e.g. after its only failing check is updated to pass)."""
     if lot.status != "quarantined":
@@ -41,6 +44,12 @@ def _release_lot_if_clear(db: Session, lot: Lot) -> None:
     ).first()
     if still_failing is None:
         lot.status = "in_stock"
+        # Cascade so the lot's quarantined serials return to sellable stock too.
+        inventory.release_lot_serials(
+            db, lot, user_id=user_id,
+            reference=f"Lot '{lot.lot_number}' released",
+            notes="Quality check passed - lot and serials restored to in stock",
+        )
 
 
 @router.get("")
@@ -139,7 +148,7 @@ def update_quality_check(qc_id: int, data: QualityCheckUpdate, db: Session = Dep
         _quarantine_lot(db, qc.lot)
     db.commit()
     if qc.result == "pass" and qc.lot_id is not None:
-        _release_lot_if_clear(db, qc.lot)
+        _release_lot_if_clear(db, qc.lot, user.id)
         db.commit()
     qc = _load_qc(db, qc.id)
     log_activity(db, user.id, user.username, "update", "quality_check", qc.id,
@@ -159,7 +168,7 @@ def delete_quality_check(qc_id: int, db: Session = Depends(get_db), user=Depends
     db.delete(qc)
     db.commit()
     if was_fail and lot is not None:
-        _release_lot_if_clear(db, lot)
+        _release_lot_if_clear(db, lot, user.id)
         db.commit()
     log_activity(db, user.id, user.username, "delete", "quality_check", qc.id, f"Deleted quality check '{qc.qc_number}'")
     db.commit()

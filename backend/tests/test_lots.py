@@ -123,3 +123,28 @@ def test_invalid_lot_status_rejected(auth_headers):
     lot = _lot_for(auth_headers, prod["id"], "LOT-BAD")
     resp = client.put(f"/api/lots/{lot['id']}", json={"status": "exploded"}, headers=auth_headers)
     assert resp.status_code == 422
+
+
+def test_update_lot_quarantine_cascades_to_serials(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "LOT-SERC", "name": "LOT-SERC", "unit_price": 20.0, "cost_price": 10.0,
+        "quantity": 0, "is_serialized": True,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={"items": [{
+        "product_id": prod["id"], "quantity": 2,
+        "serial_numbers": ["LOT-SERC-1", "LOT-SERC-2"], "lot_number": "LOT-SERC",
+    }]}, headers=auth_headers).status_code == 201
+    lot = _lot_for(auth_headers, prod["id"], "LOT-SERC")
+
+    resp = client.put(f"/api/lots/{lot['id']}", json={"status": "quarantined"}, headers=auth_headers)
+    assert resp.status_code == 200
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert all(s["status"] == "quarantined" for s in serials)
+    detail = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert detail["quantity"] == 0
+    assert detail["quarantined_qty"] == 2
+
+    resp = client.put(f"/api/lots/{lot['id']}", json={"status": "in_stock"}, headers=auth_headers)
+    assert resp.status_code == 200
+    serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert all(s["status"] == "in_stock" for s in serials)

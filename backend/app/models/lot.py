@@ -42,7 +42,9 @@ class Lot(Base):
 
     @property
     def on_hand(self) -> int:
-        return sum(sl.quantity for sl in self.stock_lines)
+        return sum(sl.quantity for sl in self.stock_lines) + sum(
+            1 for s in self.serial_numbers if s.status in ("in_stock", "quarantined")
+        )
 
     @property
     def serial_count(self) -> int:

@@ -14,6 +14,7 @@ import { useDateFormat } from "../hooks/useDateFormat";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
+import { useExportCsv } from "../hooks/useExportCsv";
 import { productLabel } from "../utils/variants";
 
 import { usePageSize } from "../hooks/usePageSize";
@@ -30,6 +31,11 @@ export default function LPNs() {
   const { can } = useAuth();
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
+  const { exportCsv } = useExportCsv();
+
+  const handleExport = () => {
+    exportCsv("/lpns/export", "lpns_report.csv", "LPNs report", debouncedSearch ? { search: debouncedSearch } : undefined);
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/lpns/${id}`),
@@ -65,11 +71,14 @@ export default function LPNs() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">LPNs (Pallets & Totes)</h1>
-        {can("lpns.create") && (
-          <button onClick={() => setShowForm(true)} className="btn-primary">
-            Create LPN
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <button onClick={handleExport} className="btn-secondary" aria-label="Export LPNs to CSV">Export</button>
+          {can("lpns.create") && (
+            <button onClick={() => setShowForm(true)} className="btn-primary">
+              Create LPN
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-2 flex-wrap">
@@ -480,11 +489,15 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
   const activeLocations = (locations || []).filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path));
   const sourceLocation = activeLocations.find((l) => l.id === from_location_id);
   const sourceIsQuarantine = sourceLocation?.location_type === "quarantine";
+  const isMovableLot = (s: SerialNumber) =>
+    !s.lot_status || s.lot_status === "in_stock" || (sourceIsQuarantine && s.lot_status === "quarantined");
 
   const { data: stockLocations } = useQuery({
-    queryKey: ["stock-locations", "lpn-load", product_id],
+    queryKey: ["stock-locations", "lpn-load", product_id, isLoad && sourceIsQuarantine ? "quarantine" : "stock"],
     queryFn: async () => {
-      const { data } = await api.get("/stock-movements/locations", { params: { product_id } });
+      const { data } = await api.get("/stock-movements/locations", {
+        params: { product_id, include_quarantined: sourceIsQuarantine || undefined },
+      });
       return (data?.locations || []) as StockLocation[];
     },
     enabled: !!product_id && !isSerialized && isLoad,
@@ -496,7 +509,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
       const { data } = await api.get("/serial-numbers", {
         params: { product_id, location_id: from_location_id, status: "in_stock", limit: PAGE_SIZE },
       });
-      return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && (!s.lot_status || s.lot_status === "in_stock"));
+      return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && isMovableLot(s));
     },
     enabled: !!product_id && isSerialized && isLoad && from_location_id != null,
   });
@@ -507,7 +520,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
       const { data } = await api.get("/serial-numbers", {
         params: { product_id, location_id: from_location_id, status: "quarantined", limit: PAGE_SIZE },
       });
-      return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && s.lot_status === "quarantined");
+      return (data.items as SerialNumber[]).filter((s) => s.lpn_id == null && isMovableLot(s));
     },
     enabled: !!product_id && isSerialized && isLoad && from_location_id != null && sourceIsQuarantine,
   });
@@ -627,7 +640,11 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
               <select className="select" value={lot_id} onChange={(e) => setLotId(e.target.value)}>
                 <option value="">Any lot</option>
                 {isLoad
-                  ? (loadLocation?.lots || []).map((l) => <option key={l.lot_id} value={l.lot_id}>{l.lot_number} ({l.quantity})</option>)
+                  ? (loadLocation?.lots || []).map((l) => (
+                      <option key={l.lot_id} value={l.lot_id}>
+                        {l.lot_number} ({l.quantity}){l.lot_status === "quarantined" ? " - quarantined" : ""}
+                      </option>
+                    ))
                   : lpn.contents.filter((c) => c.product_id === Number(product_id)).map((c, i) => (
                       <option key={`${c.lot_id ?? "nolot"}-${i}`} value={c.lot_id ?? ""}>{c.lot_number || "No lot"} ({c.quantity})</option>
                     ))}

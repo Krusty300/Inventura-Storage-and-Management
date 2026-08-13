@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Lot, Product, ProductTrace } from "../types";
+import type { Lot, Product, ProductTrace, SerialNumber } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -50,23 +50,51 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   const { addToast } = useToast();
   const [showMoveUnallocated, setShowMoveUnallocated] = useState(false);
   const [moveQuarantinedLot, setMoveQuarantinedLot] = useState<Lot | null>(null);
+  const [moveQuarantinedSerialized, setMoveQuarantinedSerialized] = useState(false);
   const [confirmStatus, setConfirmStatus] = useState(false);
   const [isActive, setIsActive] = useState(product.is_active);
   const currencySymbol = settings?.currency_symbol || "$";
-  const qty = hasVariants(product) ? product.total_quantity : product.quantity;
-  const expiredLotQty = product.expired_lot_qty || 0;
-  const quarantinedQty = product.quarantined_qty || 0;
   const { locations, unallocated } = useProductStockLocations(product.id, product.is_serialized);
 
+  const { data: liveProduct } = useQuery({
+    queryKey: ["product", product.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/products/${product.id}`);
+      return data as Product;
+    },
+    initialData: product,
+  });
+  const active = liveProduct || product;
+  const qty = hasVariants(active) ? active.total_quantity : active.quantity;
+  const expiredLotQty = active.expired_lot_qty || 0;
+  const quarantinedQty = active.quarantined_qty || 0;
+
+  const quarantinedLotsIds = hasVariants(product)
+    ? [product.id, ...product.variants.filter((v) => v.is_active).map((v) => v.id)]
+    : [product.id];
   const { data: quarantinedLotsData } = useQuery({
     queryKey: ["product-quarantined-lots", product.id],
     queryFn: async () => {
-      const { data } = await api.get("/lots", { params: { product_id: product.id, status: "quarantined", limit: 50 } });
-      return (data?.items || []) as Lot[];
+      const results = await Promise.all(
+        quarantinedLotsIds.map((pid) =>
+          api.get("/lots", { params: { product_id: pid, status: "quarantined", limit: 50 } })
+        )
+      );
+      return results.flatMap((r) => (r.data?.items || []) as Lot[]);
     },
-    enabled: quarantinedQty > 0,
+    enabled: !product.is_serialized,
   });
-  const quarantinedLots = quarantinedLotsData || [];
+  const quarantinedLots = (quarantinedLotsData || []).filter((l) => l.status === "quarantined");
+
+  const { data: quarantinedSerialsData } = useQuery({
+    queryKey: ["product-quarantined-serials", product.id],
+    queryFn: async () => {
+      const { data } = await api.get("/serial-numbers", { params: { product_id: product.id, status: "quarantined", limit: 100 } });
+      return (data?.items || []) as SerialNumber[];
+    },
+    enabled: product.is_serialized,
+  });
+  const quarantinedSerials = (quarantinedSerialsData || []).filter((s) => s.status === "quarantined");
 
   const statusBadges = (
     <>
@@ -87,6 +115,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
     mutationFn: (id: number) => api.put(`/lots/${id}`, { status: "in_stock" }),
     onSuccess: () => {
       addToast("Lot released", "success");
+      queryClient.invalidateQueries({ queryKey: ["product", product.id] });
       queryClient.invalidateQueries({ queryKey: ["product-quarantined-lots"] });
       queryClient.invalidateQueries({ queryKey: ["product-stock-locations"] });
       queryClient.invalidateQueries({ queryKey: ["lots"] });
@@ -96,11 +125,28 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release lot", "error"),
   });
 
+  const releaseSerial = useMutation({
+    mutationFn: (id: number) => api.put(`/serial-numbers/${id}/status`, { status: "in_stock" }),
+    onSuccess: () => {
+      addToast("Serial released", "success");
+      queryClient.invalidateQueries({ queryKey: ["product", product.id] });
+      queryClient.invalidateQueries({ queryKey: ["product-quarantined-serials"] });
+      queryClient.invalidateQueries({ queryKey: ["product-quarantined-lots"] });
+      queryClient.invalidateQueries({ queryKey: ["product-stock-locations"] });
+      queryClient.invalidateQueries({ queryKey: ["lots"] });
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+  });
+
   const toggleStatus = useMutation({
     mutationFn: () => api.put(`/products/${product.id}`, { is_active: !isActive }),
     onSuccess: () => {
       setIsActive((prev) => !prev);
       addToast("Product status updated", "success");
+      queryClient.invalidateQueries({ queryKey: ["product", product.id] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });
       queryClient.invalidateQueries({ queryKey: ["trace", product.id] });
@@ -228,7 +274,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           </div>
         )}
 
-        {quarantinedQty > 0 && (
+        {!product.is_serialized && quarantinedLots.length > 0 && (
           <div>
             <span className="text-sm text-muted">Quarantined Lots:</span>
             <ul className="mt-1 space-y-1">
@@ -253,6 +299,38 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
                     {can("stock.record") && (
                       <button onClick={() => setMoveQuarantinedLot(lot)} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label={`Move ${lot.lot_number}`}>
                         Move
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {product.is_serialized && quarantinedSerials.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm text-muted">Quarantined Serials:</span>
+              {can("stock.record") && (
+                <button onClick={() => setMoveQuarantinedSerialized(true)} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label="Move quarantined serials">
+                  Move
+                </button>
+              )}
+            </div>
+            <ul className="mt-1 space-y-1">
+              {quarantinedSerials.map((s) => (
+                <li key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 text-sm">
+                  <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400 min-w-0">
+                    <ShieldAlert size={14} className="shrink-0" />
+                    <span className="font-mono font-medium truncate">{s.serial_number}</span>
+                    {s.lot_number && <span className="text-muted">(Lot {s.lot_number})</span>}
+                    {s.location_name && <span className="text-muted">· {s.location_name}</span>}
+                  </span>
+                  <span className="inline-flex flex-wrap items-center justify-end gap-1 shrink-0">
+                    {can("serial_numbers.update") && (
+                      <button onClick={() => releaseSerial.mutate(s.id)} disabled={releaseSerial.isPending} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label={`Release ${s.serial_number}`}>
+                        Release
                       </button>
                     )}
                   </span>
@@ -336,6 +414,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           isSerialized={product.is_serialized}
           onClose={() => setShowMoveUnallocated(false)}
           onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["product", product.id] });
             queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });
             queryClient.invalidateQueries({ queryKey: ["trace", product.id] });
           }}
@@ -344,16 +423,37 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
 
       {moveQuarantinedLot && (
         <MoveQuarantinedModal
-          productId={product.id}
-          productName={product.display_name}
+          productId={moveQuarantinedLot.product_id}
+          productName={moveQuarantinedLot.product_name || product.display_name}
           lotId={moveQuarantinedLot.id}
           lotNumber={moveQuarantinedLot.lot_number}
           isSerialized={product.is_serialized}
           onClose={() => setMoveQuarantinedLot(null)}
           onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["product", product.id] });
             queryClient.invalidateQueries({ queryKey: ["product-quarantined-lots"] });
             queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });
             queryClient.invalidateQueries({ queryKey: ["lots"] });
+            queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+            queryClient.invalidateQueries({ queryKey: ["products"] });
+            queryClient.invalidateQueries({ queryKey: ["trace", product.id] });
+          }}
+        />
+      )}
+
+      {moveQuarantinedSerialized && (
+        <MoveQuarantinedModal
+          productId={product.id}
+          productName={product.display_name}
+          isSerialized
+          onClose={() => setMoveQuarantinedSerialized(false)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ["product", product.id] });
+            queryClient.invalidateQueries({ queryKey: ["product-quarantined-serials"] });
+            queryClient.invalidateQueries({ queryKey: ["product-quarantined-lots"] });
+            queryClient.invalidateQueries({ queryKey: ["product-stock-locations", product.id, product.is_serialized] });
+            queryClient.invalidateQueries({ queryKey: ["lots"] });
+            queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
             queryClient.invalidateQueries({ queryKey: ["exceptions"] });
             queryClient.invalidateQueries({ queryKey: ["products"] });
             queryClient.invalidateQueries({ queryKey: ["trace", product.id] });

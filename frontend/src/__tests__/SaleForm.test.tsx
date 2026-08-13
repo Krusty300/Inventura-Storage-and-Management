@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
-import { renderWithProviders, makeProduct } from "./testUtils";
+import { renderWithProviders, makeProduct, makeVariant } from "./testUtils";
 import api from "../api/client";
 
 vi.mock("../api/client", () => ({
@@ -12,33 +12,42 @@ import SaleForm from "../components/SaleForm";
 const getMock = api.get as ReturnType<typeof vi.fn>;
 const postMock = api.post as ReturnType<typeof vi.fn>;
 
+const LOCATIONS = [
+  { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
+  { location_id: 2, path: "Store B", is_active: true, quantity: 8, lots: [] },
+];
+
+function mockCatalog(products: ReturnType<typeof makeProduct>[], qcs: any[] = [], locations: any[] = LOCATIONS) {
+  getMock.mockImplementation((url: string) => {
+    if (url === "/customers") return Promise.resolve({ data: { items: [] } });
+    if (url === "/products") return Promise.resolve({ data: { items: products } });
+    if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+    if (url === "/quality-checks") return Promise.resolve({ data: { items: qcs, total: qcs.length, page: 1, pages: 1 } });
+    if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations, unallocated: 0 } });
+    return Promise.reject(new Error(`Unexpected call: ${url}`));
+  });
+}
+
 describe("SaleForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
   });
 
-  it("submits a sale with the selected product", async () => {
+  it("adds a product from the catalog and completes the sale", async () => {
     const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
-    getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
-      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
-      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
-        { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
-      ], unallocated: 0 } });
-      return Promise.reject(new Error(`Unexpected call: ${url}`));
-    });
+    mockCatalog([widget]);
     postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
-    const productSelect = screen.getAllByRole("combobox")[2];
-    fireEvent.change(productSelect, { target: { value: "7" } });
-    fireEvent.change(screen.getByPlaceholderText("Qty"), { target: { value: "3" } });
+    const tile = await screen.findByRole("button", { name: /Widget/ });
+    fireEvent.click(tile);
+    expect(screen.getByLabelText("Quantity for Widget")).toHaveValue(1);
+    await screen.findByText(/Tax \(10%\)/);
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
-      items: [{ product_id: 7, quantity: 3, unit_price: 10, location_id: null }],
+      customer_id: null,
+      discount_amount: 0,
+      items: [{ product_id: 7, quantity: 1, unit_price: 10, location_id: null }],
     })));
   });
 
@@ -52,58 +61,70 @@ describe("SaleForm", () => {
     });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
     expect(await screen.findByRole("option", { name: "Acme Corp" })).toBeInTheDocument();
+    const customerSelect = screen.getByLabelText("Customer");
+    fireEvent.change(customerSelect, { target: { value: "1" } });
+    expect(customerSelect).toHaveValue("1");
   });
 
-  it("blocks submission when a line item has no product", async () => {
-    getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
-      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
-      return Promise.reject(new Error(`Unexpected call: ${url}`));
-    });
+  it("blocks submission when the cart is empty", async () => {
+    mockCatalog([]);
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
     const submit = await screen.findByRole("button", { name: /Complete Sale/ });
     fireEvent.click(submit);
-    await vi.waitFor(() => expect(postMock).not.toHaveBeenCalled());
+    expect(await screen.findByText(/Add at least one item to the sale/)).toBeInTheDocument();
+    expect(postMock).not.toHaveBeenCalled();
   });
 
-  it("excludes serialized products from the product dropdown", async () => {
+  it("excludes serialized products from the catalog", async () => {
     const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
     const serialized = makeProduct({ id: 8, name: "Serial Gadget", sku: "SKU-8", is_serialized: true });
-    getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [widget, serialized] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
-      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
-      return Promise.reject(new Error(`Unexpected call: ${url}`));
-    });
+    mockCatalog([widget, serialized]);
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: /Serial Gadget/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Widget/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Serial Gadget/ })).not.toBeInTheDocument();
   });
 
-  it("lists stock locations with on-hand counts and sends the selected location", async () => {
+  it("shows variants instead of a parent product with variants", async () => {
+    const parent = makeProduct({ id: 7, name: "Shirt", sku: "SKU-7", unit_price: 10 });
+    const red = makeVariant(parent, { id: 8, display_name: "Shirt - Red", unit_price: 12 });
+    parent.variants = [{ ...red }];
+    mockCatalog([parent]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    expect(await screen.findByRole("button", { name: /Shirt - Red/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Shirt\s(?!-)/ })).not.toBeInTheDocument();
+  });
+
+  it("filters the catalog by search", async () => {
     const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
-    getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
-      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
-      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
-        { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
-        { location_id: 2, path: "Store B", is_active: true, quantity: 8, lots: [] },
-      ], unallocated: 0 } });
-      return Promise.reject(new Error(`Unexpected call: ${url}`));
-    });
+    const gadget = makeProduct({ id: 9, name: "Gadget", sku: "SKU-9", unit_price: 15 });
+    mockCatalog([widget, gadget]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    await screen.findByRole("button", { name: /Widget/ });
+    fireEvent.change(screen.getByLabelText("Search products"), { target: { value: "SKU-9" } });
+    expect(await screen.findByRole("button", { name: /Gadget/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Widget/ })).not.toBeInTheDocument();
+  });
+
+  it("filters the catalog by category", async () => {
+    const phone = makeProduct({ id: 7, name: "Phone", sku: "SKU-7", category_name: "Electronics" });
+    const hammer = makeProduct({ id: 9, name: "Hammer", sku: "SKU-9", category_name: "Tools" });
+    mockCatalog([phone, hammer]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    await screen.findByRole("button", { name: /Phone/ });
+    fireEvent.click(screen.getByRole("button", { name: "Electronics" }));
+    expect(await screen.findByRole("button", { name: /Phone/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Hammer/ })).not.toBeInTheDocument();
+  });
+
+  it("lists stock locations in the cart line and sends the selected location", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
     postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
-    const productSelect = screen.getAllByRole("combobox")[2];
-    fireEvent.change(productSelect, { target: { value: "7" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    const locationSelect = screen.getByLabelText("Fulfill from location");
     expect(await screen.findByRole("option", { name: /Warehouse A \(12\)/ })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /Store B \(8\)/ })).toBeInTheDocument();
-    const locationSelect = screen.getAllByRole("combobox")[3];
     fireEvent.change(locationSelect, { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
@@ -111,79 +132,98 @@ describe("SaleForm", () => {
     })));
   });
 
-  it("resets the location when the product changes", async () => {
+  it("increases quantity with the stepper", async () => {
     const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
-    const gadget = makeProduct({ id: 9, name: "Gadget", sku: "SKU-9", unit_price: 15 });
-    getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [widget, gadget] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
-      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
-      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
-        { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
-      ], unallocated: 0 } });
-      return Promise.reject(new Error(`Unexpected call: ${url}`));
-    });
+    mockCatalog([widget]);
     postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
-    const productSelect = screen.getAllByRole("combobox")[2];
-    fireEvent.change(productSelect, { target: { value: "7" } });
-    await screen.findByRole("option", { name: /Warehouse A \(12\)/ });
-    fireEvent.change(screen.getAllByRole("combobox")[3], { target: { value: "1" } });
-    fireEvent.change(productSelect, { target: { value: "9" } });
-    expect(screen.getAllByRole("combobox")[3]).toHaveValue("");
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.click(screen.getByLabelText("Increase quantity"));
+    expect(screen.getByLabelText("Quantity for Widget")).toHaveValue(2);
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
-      items: [{ product_id: 9, quantity: 1, unit_price: 15, location_id: null }],
+      items: [{ product_id: 7, quantity: 2, unit_price: 10, location_id: null }],
     })));
   });
 
-  it("warns and blocks submission when the product has a pending quality check", async () => {
+  it("applies a discount to the sale", async () => {
     const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
-    getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
-      if (url === "/quality-checks") return Promise.resolve({ data: { items: [{
-        id: 1, qc_number: "QC-1", product_id: 7, lot_id: null, location_id: null,
-        work_order_id: null, batch_number: "", result: "pending", notes: "",
-        checked_by: 1, checked_at: null, created_at: "", product_name: "Widget",
-        lot_number: "", location_name: "", wo_number: "", checker_username: "",
-      }], total: 1, page: 1, pages: 1 } });
-      return Promise.reject(new Error(`Unexpected call: ${url}`));
-    });
+    mockCatalog([widget]);
+    postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
-    const productSelect = screen.getAllByRole("combobox")[2];
-    fireEvent.change(productSelect, { target: { value: "7" } });
-    expect(await screen.findByText(/pending quality check/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByLabelText("Discount amount"), { target: { value: "2" } });
+    expect(await screen.findByText("$8.80")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
-    await vi.waitFor(() => expect(postMock).not.toHaveBeenCalled());
+    await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
+      discount_amount: 2,
+    })));
+  });
+
+  it("blocks a discount larger than the subtotal", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByLabelText("Discount amount"), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    expect(await screen.findByText(/Discount cannot exceed the subtotal/)).toBeInTheDocument();
+    expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it("shows cash change and submits when sufficient", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
+    postMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByLabelText("Cash received"), { target: { value: "20" } });
+    expect(await screen.findByText("Change $9.00")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
+      payment_method: "cash",
+      items: [{ product_id: 7, quantity: 1, unit_price: 10, location_id: null }],
+    })));
+  });
+
+  it("blocks submission when cash received is less than the total", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByLabelText("Cash received"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    expect(await screen.findByText(/Amount received is less than the total/)).toBeInTheDocument();
+    expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it("warns and blocks a product with a pending quality check", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget], [{
+      id: 1, qc_number: "QC-1", product_id: 7, lot_id: null, location_id: null,
+      work_order_id: null, batch_number: "", result: "pending", notes: "",
+      checked_by: 1, checked_at: null, created_at: "", product_name: "Widget",
+      lot_number: "", location_name: "", wo_number: "", checker_username: "",
+    }]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    const tile = await screen.findByRole("button", { name: /Widget/ });
+    fireEvent.click(tile);
+    expect(await screen.findByText(/pending quality check and can't be sold yet/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    expect(postMock).not.toHaveBeenCalled();
   });
 
   it("allows a sale when the pending quality check belongs to a different product", async () => {
     const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
-    getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
-      if (url === "/quality-checks") return Promise.resolve({ data: { items: [{
-        id: 2, qc_number: "QC-2", product_id: 99, lot_id: null, location_id: null,
-        work_order_id: null, batch_number: "", result: "pending", notes: "",
-        checked_by: 1, checked_at: null, created_at: "", product_name: "Other",
-        lot_number: "", location_name: "", wo_number: "", checker_username: "",
-      }], total: 1, page: 1, pages: 1 } });
-      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
-        { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
-      ], unallocated: 0 } });
-      return Promise.reject(new Error(`Unexpected call: ${url}`));
-    });
+    mockCatalog([widget], [{
+      id: 2, qc_number: "QC-2", product_id: 99, lot_id: null, location_id: null,
+      work_order_id: null, batch_number: "", result: "pending", notes: "",
+      checked_by: 1, checked_at: null, created_at: "", product_name: "Other",
+      lot_number: "", location_name: "", wo_number: "", checker_username: "",
+    }]);
     postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
-    const productSelect = screen.getAllByRole("combobox")[2];
-    fireEvent.change(productSelect, { target: { value: "7" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
       items: [{ product_id: 7, quantity: 1, unit_price: 10, location_id: null }],
@@ -192,24 +232,14 @@ describe("SaleForm", () => {
 
   it("warns and blocks submission when a line item exceeds available stock", async () => {
     const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
-    getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
-      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
-      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [
-        { location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] },
-      ], unallocated: 0 } });
-      return Promise.reject(new Error(`Unexpected call: ${url}`));
-    });
+    mockCatalog([widget], [], [{ location_id: 1, path: "Warehouse A", is_active: true, quantity: 12, lots: [] }]);
     postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByRole("option", { name: /Widget/ })).toBeInTheDocument();
-    const productSelect = screen.getAllByRole("combobox")[2];
-    fireEvent.change(productSelect, { target: { value: "7" } });
-    fireEvent.change(screen.getByPlaceholderText("Qty"), { target: { value: "99" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByLabelText("Quantity for Widget"), { target: { value: "99" } });
     expect(await screen.findByText(/Only 12 total available/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
-    await vi.waitFor(() => expect(postMock).not.toHaveBeenCalled());
+    expect(await screen.findByText(/exceed the available stock/)).toBeInTheDocument();
+    expect(postMock).not.toHaveBeenCalled();
   });
 });

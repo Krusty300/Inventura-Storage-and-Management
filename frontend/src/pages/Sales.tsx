@@ -15,7 +15,7 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
-import { downloadBlob } from "../utils/download";
+import { useExportCsv } from "../hooks/useExportCsv";
 import { formatCurrency } from "../utils/currency";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -37,6 +37,7 @@ export default function Sales() {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const debouncedSearch = useDebounce(search, 300);
+  const { exportCsv } = useExportCsv();
 
   const { data, isLoading } = useQuery({
     queryKey: ["sales", debouncedSearch, page, pageSize],
@@ -65,17 +66,8 @@ export default function Sales() {
     { name: "notes", label: "Notes", type: "text" },
   ];
 
-  const handleExport = async () => {
-    try {
-      const { data } = await api.get("/reports/export/sales", {
-        params: debouncedSearch ? { search: debouncedSearch } : {},
-        responseType: "blob",
-      });
-      downloadBlob(data, "sales_report.csv");
-      addToast("Sales exported to CSV", "success");
-    } catch {
-      addToast("Failed to export sales", "error");
-    }
+  const handleExport = () => {
+    exportCsv("/reports/export/sales", "sales_report.csv", "Sales report", debouncedSearch ? { search: debouncedSearch } : undefined);
   };
 
   const printPdf = (id: number) => {
