@@ -204,7 +204,9 @@ def list_sessions(
     current_user: User = Depends(get_current_user),
 ):
     current_jti = _current_jti(credentials)
-    sessions = db.query(UserSession).filter(UserSession.user_id == current_user.id).order_by(UserSession.created_at.desc()).all()
+    sessions = db.query(UserSession).filter(UserSession.user_id == current_user.id).order_by(
+        UserSession.created_at.desc(), UserSession.id.desc()
+    ).all()
     out = []
     for s in sessions:
         item = SessionOut.model_validate(s)
