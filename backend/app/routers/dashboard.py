@@ -18,11 +18,11 @@ from app.models.serial_number import SerialNumber
 from app.models.stock_line import StockLine
 from app.models.lot import Lot
 from app.schemas.dashboard import DashboardStats
-from app.services.auth import get_current_user
+from app.services.auth import get_current_user, require_permission
 from app.services import inventory
 from app.services.inventory import TRANSFER_OUT, SERIAL_STATUS_QUARANTINED, expire_overdue_lots, sellable_qty_subquery
 
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(require_permission("dashboard.view"))])
 
 
 @router.get("/stats", response_model=DashboardStats)

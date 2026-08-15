@@ -31,6 +31,7 @@ export interface Product {
   quarantined_qty: number;
   expired_lot_qty: number;
   sellable_qty: number;
+  reserved_qty: number;
   variants: Product[];
 }
 
@@ -292,6 +293,7 @@ export interface SerialNumber {
   lot_number: string;
   lot_status: string;
   product_name: string;
+  reference: string;
   created_at: string;
 }
 
@@ -305,6 +307,7 @@ export interface Lot {
   status: string;
   on_hand: number;
   serial_count: number;
+  reserved_count: number;
   supplier_name: string;
   product_name: string;
   created_at: string;
@@ -429,6 +432,7 @@ export interface User {
   username: string;
   email: string;
   role: string;
+  permissions?: string[] | null;
   is_active?: boolean;
   avatar_url?: string;
   last_login_at?: string | null;

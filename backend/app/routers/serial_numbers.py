@@ -10,17 +10,38 @@ from app.models.stock_movement import StockMovement
 from app.schemas.serial_number import SerialNumberOut, SerialStatusUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.csv_export import csv_response
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/serial-numbers", tags=["serial-numbers"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/serial-numbers", tags=["serial-numbers"], dependencies=[Depends(require_permission("serial_numbers.view"))])
 
 
 def _load_serial(db: Session, serial_id: int) -> SerialNumber:
     return get_or_404(SerialNumber, serial_id, db, options=[
         joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.location),
     ])
+
+
+def _latest_references(db: Session, serial_ids: list[int]) -> dict[int, str]:
+    """Map of serial_id -> latest work-order reference (issue/release) for it."""
+    if not serial_ids:
+        return {}
+    rows = (
+        db.query(StockMovement.serial_id, StockMovement.reference)
+        .filter(
+            StockMovement.serial_id.in_(serial_ids),
+            StockMovement.movement_type.in_([inventory.ISSUE, inventory.RELEASE]),
+            StockMovement.reference_type == "work_order",
+            StockMovement.reference != "",
+        )
+        .order_by(StockMovement.created_at.desc(), StockMovement.id.desc())
+        .all()
+    )
+    refs: dict[int, str] = {}
+    for serial_id, reference in rows:
+        refs.setdefault(int(serial_id), reference)
+    return refs
 
 
 @router.get("")
@@ -50,6 +71,9 @@ def list_serial_numbers(
         q = q.filter(SerialNumber.serial_number.ilike(like))
     total = q.count()
     items = q.order_by(SerialNumber.created_at.desc()).offset(skip).limit(limit).all()
+    refs = _latest_references(db, [s.id for s in items])
+    for s in items:
+        s.reference = refs.get(s.id, "")
     return {"items": [SerialNumberOut.model_validate(s) for s in items], "total": total,
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
@@ -95,7 +119,9 @@ def export_serial_numbers(
 
 @router.get("/{serial_id}", response_model=SerialNumberOut)
 def get_serial_number(serial_id: int, db: Session = Depends(get_db)):
-    return _load_serial(db, serial_id)
+    serial = _load_serial(db, serial_id)
+    serial.reference = _latest_references(db, [serial.id]).get(serial.id, "")
+    return serial
 
 
 @router.put("/{serial_id}/status", response_model=SerialNumberOut)
@@ -158,6 +184,42 @@ def update_serial_status(serial_id: int, data: SerialStatusUpdate, db: Session =
     db.commit()
     broadcast_change("product", "updated")
     broadcast_change("stock_movement", "created")
+    return serial
+
+
+@router.post("/{serial_id}/release", response_model=SerialNumberOut)
+def release_serial(serial_id: int, db: Session = Depends(get_db),
+                   user=Depends(require_permission("serial_numbers.update"))):
+    """Return a reserved or quarantined serial to ``in_stock``.
+
+    Reserved serials (issued to a work order) go back to the location they were
+    issued from; quarantined serials are released in place. Only ``reserved``
+    and ``quarantined`` serials can be released this way.
+    """
+    serial = _load_serial(db, serial_id)
+    if serial.status == inventory.SERIAL_STATUS_RESERVED:
+        movement = inventory.release_serial_from_reserved(
+            db, serial=serial, user_id=user.id,
+            reference=f"Serial {serial.serial_number} released",
+            notes="Serial unit released from work order",
+        )
+    elif serial.status == inventory.SERIAL_STATUS_QUARANTINED:
+        movement = inventory.release_serial_from_quarantine(
+            db, serial=serial, user_id=user.id,
+            reference=f"Serial {serial.serial_number} released",
+            notes="Serial unit manually released from quarantine",
+        )
+    else:
+        raise HTTPException(status_code=400, detail=f"Only reserved or quarantined serials can be released (current: {serial.status})")
+    db.commit()
+    serial = _load_serial(db, serial_id)
+    log_activity(db, user.id, user.username, "update", "serial_number", serial.id,
+                 f"Released serial '{serial.serial_number}' (movement {movement.id})")
+    db.commit()
+    broadcast_change("product", "updated")
+    broadcast_change("lot", "updated")
+    broadcast_change("stock_movement", "created")
+    broadcast_change("work_order", "updated")
     return serial
 
 

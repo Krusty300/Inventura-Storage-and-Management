@@ -1,4 +1,4 @@
-const ALL_PERMISSIONS = [
+export const ALL_PERMISSIONS = [
   "dashboard.view",
   "products.view",
   "products.create",
@@ -145,4 +145,47 @@ const ROLE_PERMISSIONS: Record<string, ReadonlySet<string>> = {
 export function can(role: string | undefined, permission: string): boolean {
   if (!role) return false;
   return ROLE_PERMISSIONS[role]?.has(permission) ?? false;
+}
+
+type PermissionUser = { role?: string; permissions?: string[] | null } | null | undefined;
+
+export function effectivePermissions(user: PermissionUser): Set<string> {
+  if (!user) return new Set();
+  if (user.role === "admin") return new Set(ALL_PERMISSIONS);
+  const custom = user.permissions;
+  if (custom && custom.length > 0) {
+    return new Set([...custom, "profile.view"]);
+  }
+  return new Set([...(ROLE_PERMISSIONS[user.role ?? "worker"] ?? []), "profile.view"]);
+}
+
+export function canUser(user: PermissionUser, permission: string): boolean {
+  return effectivePermissions(user).has(permission);
+}
+
+export interface PermissionGroup {
+  resource: string;
+  label: string;
+  permissions: string[];
+}
+
+function humanize(resource: string): string {
+  return resource
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function permissionGroups(): PermissionGroup[] {
+  const groups = new Map<string, string[]>();
+  for (const perm of ALL_PERMISSIONS) {
+    const resource = perm.split(".")[0];
+    const list = groups.get(resource) ?? [];
+    list.push(perm);
+    groups.set(resource, list);
+  }
+  return [...groups.entries()].map(([resource, permissions]) => ({
+    resource,
+    label: humanize(resource),
+    permissions: [...permissions].sort(),
+  }));
 }

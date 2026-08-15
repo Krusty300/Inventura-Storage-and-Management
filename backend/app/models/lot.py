@@ -51,6 +51,10 @@ class Lot(Base):
         return sum(1 for s in self.serial_numbers if s.status == "in_stock")
 
     @property
+    def reserved_count(self) -> int:
+        return sum(1 for s in self.serial_numbers if s.status == "reserved")
+
+    @property
     def locations(self) -> list[str]:
         """Distinct location paths holding this lot's stock (bulk lines and serials)."""
         locs: list[str] = []

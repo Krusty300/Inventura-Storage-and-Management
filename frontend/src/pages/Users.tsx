@@ -1,10 +1,11 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Shield, ShieldOff, Eye, KeyRound, Trash2, UserCheck, Download } from "lucide-react";
+import { Shield, ShieldOff, ShieldCheck, Eye, KeyRound, Trash2, UserCheck, Download } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, User } from "../types";
 import UserDetail from "../components/UserDetail";
+import PermissionsEditor from "../components/PermissionsEditor";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
@@ -34,6 +35,7 @@ export default function Users() {
   const [resetting, setResetting] = useState<User | null>(null);
   const [deleting, setDeleting] = useState<User | null>(null);
   const [reactivating, setReactivating] = useState<User | null>(null);
+  const [editingPermissions, setEditingPermissions] = useState<User | null>(null);
   const [confirming, setConfirming] = useState<{ user: User; role: string } | null>(null);
   const queryClient = useQueryClient();
   const { can, user } = useAuth();
@@ -206,6 +208,9 @@ export default function Users() {
                     <span className="inline-flex items-center gap-1">
                       {u.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : <ShieldOff size={14} className="text-faint" />}
                       <span className={`badge ${u.role === "admin" ? "badge-info" : "badge-warning"}`}>{u.role}</span>
+                      {u.role !== "admin" && u.permissions && u.permissions.length > 0 && (
+                        <span className="badge badge-success" title={`${u.permissions.length} custom permission(s)`}>Custom</span>
+                      )}
                     </span>
                   )}
                 </td>
@@ -232,6 +237,9 @@ export default function Users() {
                       {u.is_active && can("users.update") && (!user || u.id !== user.id) && (
                         <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400">Edit</button>
                       )}
+                      {u.is_active && u.role !== "admin" && can("users.update") && (!user || u.id !== user.id) && (
+                        <button onClick={() => setEditingPermissions(u)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title="Manage permissions" aria-label={`Manage permissions for ${u.username}`}><ShieldCheck size={16} /></button>
+                      )}
                     </div>
                   )}
                 </td>
@@ -243,6 +251,14 @@ export default function Users() {
       </div>
 
       {viewing && <UserDetail user={viewing} onClose={() => setViewing(null)} />}
+
+      {editingPermissions && (
+        <PermissionsEditor
+          user={editingPermissions}
+          onClose={() => setEditingPermissions(null)}
+          onSaved={() => { setEditingPermissions(null); queryClient.invalidateQueries({ queryKey: ["users"] }); }}
+        />
+      )}
 
       {showCreate && (
         <CreateUserModal

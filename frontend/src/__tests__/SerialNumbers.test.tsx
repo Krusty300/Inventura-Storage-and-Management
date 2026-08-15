@@ -129,6 +129,15 @@ describe("SerialNumbers Page", () => {
     await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/serial-numbers/1/status", { status: "in_stock" }));
   });
 
+  it("releases a reserved serial from the table row via the release endpoint", async () => {
+    const postMock = api.post as ReturnType<typeof vi.fn>;
+    postMock.mockResolvedValue({ data: {} });
+    mockSerials([mockSerial({ status: "reserved", reference: "WO-1001" })]);
+    renderWithProviders(<SerialNumbers />);
+    fireEvent.click(await screen.findByLabelText("Release SN-0001 from work order"));
+    await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/serial-numbers/1/release"));
+  });
+
   it("quarantines an in-stock serial by choosing a quarantine area", async () => {
     const postMock = api.post as ReturnType<typeof vi.fn>;
     postMock.mockResolvedValue({ data: { reference: "QAR-0001" } });

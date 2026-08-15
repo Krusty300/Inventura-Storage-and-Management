@@ -11,7 +11,7 @@ from app.models import ASN, ASNItem, LPN, Location, Lot, Product, SerialNumber, 
 from app.models.settings import Settings
 from app.schemas.asn import ASNCreate, ASNOut, ASNReceiveRequest, ASNUpdate
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
@@ -20,7 +20,7 @@ from app.services.pdf_helpers import (
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
-router = APIRouter(prefix="/api/asns", tags=["asns"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/asns", tags=["asns"], dependencies=[Depends(require_permission("asns.view"))])
 
 
 def _load_asn(db: Session, asn_id: int) -> ASN:

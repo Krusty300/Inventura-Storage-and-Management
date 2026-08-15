@@ -81,7 +81,7 @@ def test_low_stock_notification_uses_sellable_qty(auth_headers):
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
     low = _low_stock_notifs(auth_headers)
     assert len(low) == 1
-    assert f"reorder level 4" in low[0]["message"]
+    assert "reorder level 4" in low[0]["message"]
 
 
 def test_low_stock_notification_dedupe(auth_headers):

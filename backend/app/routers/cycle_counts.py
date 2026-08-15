@@ -11,7 +11,7 @@ from app.models import CycleCount, CycleCountItem, Location, Product
 from app.models.settings import Settings
 from app.schemas.cycle_count import CycleCountCreate, CycleCountOut, CycleCountSubmit, CycleCountUpdate
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
@@ -20,7 +20,7 @@ from app.services.pdf_helpers import (
 )
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/cycle-counts", tags=["cycle-counts"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/cycle-counts", tags=["cycle-counts"], dependencies=[Depends(require_permission("cycle_counts.view"))])
 
 
 def _load_cc(db: Session, cc_id: int) -> CycleCount:

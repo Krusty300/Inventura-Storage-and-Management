@@ -6,10 +6,10 @@ from app.constants import MAX_PAGE_SIZE_LOOKUP
 from app.database import get_db
 from app.models.category import Category
 from app.schemas.category import CategoryBulkEdit, CategoryCreate, CategoryOut, CategoryTree, CategoryUpdate
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/categories", tags=["categories"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/categories", tags=["categories"], dependencies=[Depends(require_permission("categories.view"))])
 
 
 @router.get("")

@@ -24,10 +24,10 @@ from app.models import (
 )
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/locations", tags=["locations"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/locations", tags=["locations"], dependencies=[Depends(require_permission("locations.view"))])
 
 LOCATION_TYPES = {"bin", "zone", "aisle", "shelf", "storage", "receiving", "wip", "quarantine", "shipping"}
 

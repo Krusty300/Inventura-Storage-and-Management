@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, String, Text, func
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -9,12 +9,15 @@ from app.models.types import UTCDateTime
 
 class StockMovement(Base):
     __tablename__ = "stock_movements"
+    __table_args__ = (
+        Index("ix_stock_movements_reference", "reference_type", "reference"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     quantity_change: Mapped[int] = mapped_column(Integer, nullable=False)
-    movement_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    movement_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     from_location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True, index=True)
     to_location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True, index=True)
     lot_id: Mapped[int | None] = mapped_column(ForeignKey("lots.id"), nullable=True, index=True)

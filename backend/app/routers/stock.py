@@ -23,12 +23,12 @@ from app.schemas.stock_movement import (
     StockMovementUpdate,
 )
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.notify import notify_expiring, notify_low_stock
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
-router = APIRouter(prefix="/api/stock-movements", tags=["stock-movements"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/stock-movements", tags=["stock-movements"], dependencies=[Depends(require_permission("stock.view"))])
 
 
 @router.get("")

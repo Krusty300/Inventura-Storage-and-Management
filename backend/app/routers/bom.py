@@ -7,10 +7,10 @@ from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models import BOM, BOMItem, Product, WorkOrder
 from app.schemas.bom import BOMCreate, BOMOut, BOMUpdate
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/boms", tags=["boms"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/boms", tags=["boms"], dependencies=[Depends(require_permission("bom.view"))])
 
 
 def _load_bom(db: Session, bom_id: int) -> BOM:

@@ -517,7 +517,6 @@ class TestValidation:
             )
 
     def test_negative_allocation_raises(self, db):
-        user = _make_user(db)
         product = _make_product(db, "SKU-17")
 
         with pytest.raises(InventoryError, match="non-negative"):

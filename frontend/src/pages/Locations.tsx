@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronRight, ChevronDown, MapPin, Pencil, Trash2, Package, Eye, FolderOpen, Folder } from "lucide-react";
+import { ChevronRight, ChevronDown, MapPin, Pencil, Trash2, Package, Eye, FolderOpen, Folder, FileText } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
@@ -94,6 +94,14 @@ export default function Locations() {
     }, { replace: true });
   };
 
+  const printLabel = (id: number) => {
+    api.get(`/labels/location/${id}`, { responseType: "blob" }).then(({ data }) => {
+      const url = URL.createObjectURL(data);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    });
+  };
+
   const closeDetail = () => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -179,6 +187,9 @@ export default function Locations() {
             <span>{node.lot_count ?? 0} lots</span>
           </span>
           <div className="flex gap-1">
+            <button onClick={() => printLabel(node.id)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print label ${node.path}`}>
+              <FileText size={14} />
+            </button>
             <button onClick={() => openDetail(node)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${node.path}`}>
               <Eye size={14} />
             </button>

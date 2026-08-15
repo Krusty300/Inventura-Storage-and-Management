@@ -102,7 +102,8 @@ def test_lpn_detail_includes_serialized_items(auth_headers):
     assert all(s["product_name"] == "LPN Ser2" for s in contents["serials"])
     lst = client.get("/api/lpns", headers=auth_headers).json()
     match = next(l for l in lst["items"] if l["id"] == lpn["id"])
-    assert len(match["serials"]) == 2
+    assert match["content_count"] == 2
+    assert match["total_quantity"] == 2
 
 
 def test_move_lpn_moves_serials(auth_headers):

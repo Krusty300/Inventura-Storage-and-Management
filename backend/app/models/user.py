@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, func
+from sqlalchemy import JSON, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="worker")
+    permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     avatar_url: Mapped[str] = mapped_column(String(500), default="")
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

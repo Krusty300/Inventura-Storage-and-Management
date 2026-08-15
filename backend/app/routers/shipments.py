@@ -12,12 +12,12 @@ from app.models.settings import Settings
 from app.schemas.sale import SaleOut
 from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentPickRequest, ShipmentUpdate
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.routers.sales import _apply_sale_locations, generate_invoice_number, get_tax_rate
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/shipments", tags=["shipments"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/shipments", tags=["shipments"], dependencies=[Depends(require_permission("shipments.view"))])
 
 PICKABLE_STATUSES = ("draft", "picking")
 PACKABLE_STATUSES = ("picking",)

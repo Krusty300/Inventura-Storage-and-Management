@@ -17,15 +17,10 @@ import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
 import { useExportCsv } from "../hooks/useExportCsv";
 import { formatCurrency } from "../utils/currency";
+import { statusBadge } from "../utils/statusBadges";
 import { errorMessage } from "../utils/errors";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-
-const statusColors: Record<string, string> = {
-  pending: "badge-warning",
-  received: "badge-success",
-  cancelled: "badge-danger",
-};
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -170,7 +165,7 @@ export default function Orders() {
                   {formatDate(o.created_at)}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`badge ${statusColors[o.status] || "badge-info"}`}>{o.status}</span>
+                  <span className={`badge ${statusBadge(o.status)}`}>{o.status}</span>
                 </td>
                 <td className="px-4 py-3">{formatCurrency(o.total_amount, currencySymbol)}</td>
                 <td className="px-4 py-3">

@@ -152,5 +152,20 @@ def permissions_for_role(role: str) -> frozenset:
     return ROLE_PERMISSIONS.get(role, frozenset())
 
 
+def permissions_for_user(user) -> frozenset:
+    """Effective permission set for a user.
+
+    Admins always hold every permission. Workers fall back to the role
+    defaults unless the account has a custom ``permissions`` allowlist, in
+    which case that list (validated against known permissions) is used.
+    """
+    if getattr(user, "role", None) == "admin":
+        return ALL_PERMISSIONS
+    custom = getattr(user, "permissions", None)
+    if custom:
+        return frozenset(p for p in custom if p in ALL_PERMISSIONS)
+    return permissions_for_role(getattr(user, "role", "worker"))
+
+
 def has_permission(role: str, permission: str) -> bool:
     return permission in permissions_for_role(role)

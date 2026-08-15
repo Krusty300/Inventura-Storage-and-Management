@@ -9,11 +9,11 @@ from app.database import get_db
 from app.models import Lot, Location, Product, QualityCheck
 from app.schemas.quality_check import QC_RESULTS, QualityCheckCreate, QualityCheckOut, QualityCheckUpdate
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/quality-checks", tags=["quality-checks"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/quality-checks", tags=["quality-checks"], dependencies=[Depends(require_permission("quality_checks.view"))])
 
 
 def _load_qc(db: Session, qc_id: int) -> QualityCheck:

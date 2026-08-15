@@ -1,4 +1,4 @@
-from app.models import Location, Product, StockLine, StockMovement
+from app.models import Location, StockLine
 from app.services import inventory
 from tests.conftest import TestingSessionLocal, client
 

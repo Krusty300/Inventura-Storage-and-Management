@@ -114,4 +114,22 @@ describe("Layout", () => {
     expect(aside).not.toHaveAttribute("aria-hidden");
     expect(aside).not.toHaveStyle("width: 0px");
   });
+
+  it("hides admin-only nav items for default workers", () => {
+    localStorage.setItem("user", JSON.stringify({ id: 1, username: "worker", email: "w@example.com", role: "worker" }));
+    renderLayout();
+    expect(screen.getByText("Products")).toBeInTheDocument();
+    expect(screen.getByText("Reports")).toBeInTheDocument();
+    expect(screen.queryByText("Users")).not.toBeInTheDocument();
+  });
+
+  it("limits nav to a worker's custom permission allowlist", () => {
+    localStorage.setItem("user", JSON.stringify({ id: 1, username: "worker", email: "w@example.com", role: "worker", permissions: ["products.view"] }));
+    renderLayout();
+    expect(screen.getByText("Products")).toBeInTheDocument();
+    expect(screen.queryByText("Reports")).not.toBeInTheDocument();
+    expect(screen.queryByText("Orders")).not.toBeInTheDocument();
+    expect(screen.queryByText("Users")).not.toBeInTheDocument();
+    expect(screen.getByText("Profile")).toBeInTheDocument();
+  });
 });

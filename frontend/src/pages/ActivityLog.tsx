@@ -9,6 +9,7 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useExportCsv } from "../hooks/useExportCsv";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
+import { statusBadge } from "../utils/statusBadges";
 
 interface ActivityLogEntry {
   id: number;
@@ -21,24 +22,6 @@ interface ActivityLogEntry {
   details: string;
   created_at: string;
 }
-
-const actionColors: Record<string, string> = {
-  create: "badge-success",
-  update: "badge-info",
-  delete: "badge-danger",
-  pick: "badge-warning",
-  pack: "badge-info",
-  ship: "badge-success",
-  complete: "badge-success",
-  cancel: "badge-neutral",
-  release: "badge-info",
-  start: "badge-warning",
-  move: "badge-info",
-  load: "badge-warning",
-  unload: "badge-info",
-  reset_password: "badge-danger",
-  logout_all: "badge-neutral",
-};
 
 const entityLabels: Record<string, string> = {
   product: "Product",
@@ -133,7 +116,7 @@ export default function ActivityLog() {
                   </td>
                   <td className="px-4 py-3 text-muted">{log.username || `User #${log.user_id}`}</td>
                   <td className="px-4 py-3">
-                    <span className={`badge ${actionColors[log.action] || "badge-neutral"} capitalize`}>{log.action.replace("_", " ")}</span>
+                    <span className={`badge ${statusBadge(log.action)} capitalize`}>{log.action.replace("_", " ")}</span>
                   </td>
                   <td className="px-4 py-3 text-muted">{entityLabels[log.entity_type] || log.entity_type}</td>
                   <td className="px-4 py-3 text-ink">{log.description}</td>

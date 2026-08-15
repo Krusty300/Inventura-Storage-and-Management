@@ -553,7 +553,6 @@ def create_lpns(db, locs):
 
 
 def create_lpn_stock(db, users, by_sku, lots, lpns, locs):
-    admin = next(u for u in users if u.role == "admin")
     worker = next(u for u in users if u.role == "worker")
     plans = [
         ("OFF-010", "PAL-1001", "B-03-01", 40, None),

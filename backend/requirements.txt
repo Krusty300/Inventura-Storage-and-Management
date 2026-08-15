@@ -11,4 +11,6 @@ reportlab==4.0.4
 svglib==1.5.1
 python-barcode==0.15.1
 pytest==7.4.3
+pytest-xdist==3.8.0
 httpx==0.25.2
+ruff==0.1.6

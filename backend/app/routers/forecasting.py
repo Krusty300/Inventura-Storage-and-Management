@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.product import Product
 from app.services import forecasting
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.utils import get_or_404
 
-router = APIRouter(prefix="/api/forecasting", tags=["forecasting"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/forecasting", tags=["forecasting"], dependencies=[Depends(require_permission("forecasting.view"))])
 
 
 @router.get("/replenishment")

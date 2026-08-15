@@ -4,7 +4,7 @@ import csv
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -14,15 +14,15 @@ from app.models.supplier import Supplier
 from app.models.location import Location
 from app.routers.locations import _with_counts
 from app.models.stock_movement import StockMovement
-from app.models.order import Order, OrderItem
+from app.models.order import Order
 from app.models.sale import Sale, SaleItem
 from app.models.lot import Lot
-from app.models.asn import ASN, ASNItem
-from app.models.cycle_count import CycleCount, CycleCountItem
+from app.models.asn import ASN
+from app.models.cycle_count import CycleCount
 from app.models.stock_line import StockLine
 from app.models.customer import Customer
 from app.models.settings import Settings
-from app.services.auth import get_current_user
+from app.services.auth import require_permission
 from app.services.inventory import SHIP, TRANSFER_OUT, sellable_qty_by_product, sellable_qty_subquery
 from app.services.pdf_helpers import (
     MARGIN,
@@ -34,7 +34,7 @@ from app.services.pdf_helpers import (
     render_pdf,
 )
 
-router = APIRouter(prefix="/api/reports", tags=["reports"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/reports", tags=["reports"], dependencies=[Depends(require_permission("reports.view"))])
 
 
 def parse_range(start_date: str | None, end_date: str | None) -> tuple[datetime | None, datetime | None]:
@@ -260,21 +260,31 @@ def order_summary(db: Session = Depends(get_db)):
 @router.get("/sales-summary")
 def sales_summary(start_date: str | None = None, end_date: str | None = None, db: Session = Depends(get_db)):
     start, end = parse_range(start_date, end_date)
-    q = db.query(Sale)
+    id_q = select(Sale.id)
     if start:
-        q = q.filter(Sale.created_at >= start)
+        id_q = id_q.where(Sale.created_at >= start)
     if end:
-        q = q.filter(Sale.created_at <= end)
-    sales = q.order_by(Sale.created_at.desc()).all()
-
-    total_revenue = sum(float(s.total_amount) for s in sales if s.status != "refunded")
-    total_tax = sum(float(s.tax_amount) for s in sales if s.status != "refunded")
-    completed = [s for s in sales if s.status == "completed"]
-    refunded = sum(1 for s in sales if s.status == "refunded")
-
-    by_payment: dict[str, int] = {}
-    for s in completed:
-        by_payment[s.payment_method or "unknown"] = by_payment.get(s.payment_method or "unknown", 0) + 1
+        id_q = id_q.where(Sale.created_at <= end)
+    in_range = id_q.scalar_subquery()
+    total_revenue = db.query(func.coalesce(func.sum(Sale.total_amount), 0)).filter(
+        Sale.id.in_(in_range), Sale.status != "refunded"
+    ).scalar() or 0.0
+    total_tax = db.query(func.coalesce(func.sum(Sale.tax_amount), 0)).filter(
+        Sale.id.in_(in_range), Sale.status != "refunded"
+    ).scalar() or 0.0
+    total_sales = db.query(func.count(Sale.id)).filter(
+        Sale.id.in_(in_range), Sale.status == "completed"
+    ).scalar() or 0
+    total_refunds = db.query(func.count(Sale.id)).filter(
+        Sale.id.in_(in_range), Sale.status == "refunded"
+    ).scalar() or 0
+    by_payment = (
+        db.query(Sale.payment_method, func.count(Sale.id))
+        .filter(Sale.id.in_(in_range), Sale.status == "completed")
+        .group_by(Sale.payment_method)
+        .order_by(func.count(Sale.id).desc())
+        .all()
+    )
 
     item_rows = (
         db.query(
@@ -295,11 +305,11 @@ def sales_summary(start_date: str | None = None, end_date: str | None = None, db
     ).limit(15).all()
 
     return {
-        "total_sales": len(completed),
-        "total_refunds": refunded,
-        "total_revenue": round(total_revenue, 2),
-        "total_tax": round(total_tax, 2),
-        "by_payment_method": [{"method": k, "count": v} for k, v in by_payment.items()],
+        "total_sales": int(total_sales),
+        "total_refunds": int(total_refunds),
+        "total_revenue": round(float(total_revenue), 2),
+        "total_tax": round(float(total_tax), 2),
+        "by_payment_method": [{"method": k or "unknown", "count": int(v)} for k, v in by_payment],
         "top_products": [{"name": r[0], "quantity_sold": int(r[1] or 0), "revenue": float(r[2] or 0)} for r in item_rows],
     }
 
@@ -446,31 +456,57 @@ def exception_dashboard(db: Session = Depends(get_db)):
     }
 
 
-def _avg_daily_demand(db: Session, product_id: int, days: int = 90) -> float:
+def _outgoing_qty_by_product(db: Session, product_ids: list[int], days: int = 90) -> dict[int, float]:
+    """Total units moved out per product over the last ``days`` days, in one query."""
+    if not product_ids:
+        return {}
     since = datetime.now(timezone.utc) - timedelta(days=days)
-    out_qty = db.query(func.coalesce(func.sum(func.abs(StockMovement.quantity_change)), 0)).filter(
-        StockMovement.product_id == product_id,
+    rows = db.query(
+        StockMovement.product_id,
+        func.coalesce(func.sum(func.abs(StockMovement.quantity_change)), 0),
+    ).filter(
+        StockMovement.product_id.in_(product_ids),
         StockMovement.created_at >= since,
         StockMovement.quantity_change < 0,
         StockMovement.movement_type.in_(["sale", "out", SHIP]),
-    ).scalar() or 0
-    return float(out_qty) / days
+    ).group_by(StockMovement.product_id).all()
+    return {pid: float(qty) for pid, qty in rows}
+
+
+def _avg_daily_demand(db: Session, product_id: int, days: int = 90) -> float:
+    return _outgoing_qty_by_product(db, [product_id], days).get(product_id, 0.0) / days
 
 
 @router.get("/inventory-aging")
 def inventory_aging(db: Session = Depends(get_db)):
     lots = db.query(Lot).options(joinedload(Lot.product)).order_by(Lot.received_date.desc()).all()
+    if not lots:
+        return {"items": [], "total": 0}
+    lot_ids = [lot.id for lot in lots]
+
+    on_hand_by_lot = dict(
+        db.query(StockLine.lot_id, func.sum(StockLine.quantity))
+        .filter(StockLine.lot_id.in_(lot_ids))
+        .group_by(StockLine.lot_id)
+        .all()
+    )
+    last_movement_by_lot = dict(
+        db.query(StockMovement.lot_id, func.max(StockMovement.created_at))
+        .filter(StockMovement.lot_id.in_(lot_ids))
+        .group_by(StockMovement.lot_id)
+        .all()
+    )
+    outgoing_by_product = _outgoing_qty_by_product(db, [lot.product_id for lot in lots])
+
     result = []
     for lot in lots:
-        on_hand = sum(sl.quantity for sl in lot.stock_lines)
+        on_hand = on_hand_by_lot.get(lot.id) or 0
         if on_hand <= 0:
             continue
-        last = db.query(func.max(StockMovement.created_at)).filter(
-            StockMovement.lot_id == lot.id
-        ).scalar()
+        last = last_movement_by_lot.get(lot.id)
         age_ref = last or datetime.combine(lot.received_date, datetime.min.time())
         age_days = max((datetime.now(timezone.utc) - age_ref).days, 0)
-        daily_out = _avg_daily_demand(db, lot.product_id)
+        daily_out = outgoing_by_product.get(lot.product_id, 0.0) / 90
         days_of_stock = round(on_hand / daily_out, 1) if daily_out > 0 else None
         result.append({
             "lot_id": lot.id,
@@ -502,10 +538,11 @@ def _stockout_risk_data(db: Session, lead_time_days: int = 7) -> tuple[list[dict
         joinedload(Product.category), joinedload(Product.supplier)
     ).filter(Product.is_active == True, Product.id.notin_(active_parents)).all()
     sellable = sellable_qty_by_product(db)
+    outgoing_by_product = _outgoing_qty_by_product(db, [p.id for p in products])
 
     items = []
     for p in products:
-        demand = _avg_daily_demand(db, p.id)
+        demand = outgoing_by_product.get(p.id, 0.0) / 90
         on_hand = sellable.get(p.id, 0)
         days_of_supply = round(on_hand / demand, 1) if demand > 0 else None
         if demand <= 0:

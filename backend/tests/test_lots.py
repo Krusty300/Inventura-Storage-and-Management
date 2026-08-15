@@ -141,8 +141,11 @@ def test_update_lot_quarantine_cascades_to_serials(auth_headers):
     serials = client.get("/api/serial-numbers", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
     assert all(s["status"] == "quarantined" for s in serials)
     detail = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
-    assert detail["quantity"] == 0
+    # quarantined serials stay on-hand (parity with bulk quarantined lots), so
+    # Qty is unchanged and the pair becomes the quarantined breakdown
+    assert detail["quantity"] == 2
     assert detail["quarantined_qty"] == 2
+    assert detail["sellable_qty"] == 0
 
     resp = client.put(f"/api/lots/{lot['id']}", json={"status": "in_stock"}, headers=auth_headers)
     assert resp.status_code == 200

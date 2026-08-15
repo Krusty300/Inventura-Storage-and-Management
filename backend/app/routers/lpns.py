@@ -3,18 +3,18 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
-from app.constants import MAX_PAGE_SIZE, MAX_PAGE_SIZE_PICKER
+from app.constants import MAX_PAGE_SIZE_PICKER
 from app.database import get_db
 from app.models import LPN, Location, Lot, Product, SerialNumber, StockLine, StockMovement
 from app.schemas.lpn import LPNCreate, LPNLoadIn, LPNOut, LPNUnloadIn, LPNUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.csv_export import csv_response
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/lpns", tags=["lpns"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/lpns", tags=["lpns"], dependencies=[Depends(require_permission("lpns.view"))])
 
 
 def _load_lpn(db: Session, lpn_id: int) -> LPN:
@@ -27,29 +27,31 @@ def _load_lpn(db: Session, lpn_id: int) -> LPN:
     ])
 
 
-def _serialize_lpn(db: Session, lpn: LPN) -> dict:
+def _serialize_lpn(db: Session, lpn: LPN, include_contents: bool = True) -> dict:
     contents = []
+    serials = []
     total_qty = 0
     for sl in lpn.stock_lines:
         total_qty += sl.quantity
-        contents.append({
-            "product_id": sl.product_id,
-            "product_name": sl.product.display_name if sl.product else "",
-            "lot_id": sl.lot_id,
-            "lot_number": sl.lot.lot_number if sl.lot else "",
-            "quantity": sl.quantity,
-        })
-    serials = []
-    for s in lpn.serial_numbers:
-        serials.append({
-            "serial_id": s.id,
-            "product_id": s.product_id,
-            "product_name": s.product_name,
-            "serial_number": s.serial_number,
-            "lot_number": s.lot_number,
-            "status": s.status,
-            "location_name": s.location_name,
-        })
+        if include_contents:
+            contents.append({
+                "product_id": sl.product_id,
+                "product_name": sl.product.display_name if sl.product else "",
+                "lot_id": sl.lot_id,
+                "lot_number": sl.lot.lot_number if sl.lot else "",
+                "quantity": sl.quantity,
+            })
+    if include_contents:
+        for s in lpn.serial_numbers:
+            serials.append({
+                "serial_id": s.id,
+                "product_id": s.product_id,
+                "product_name": s.product_name,
+                "serial_number": s.serial_number,
+                "lot_number": s.lot_number,
+                "status": s.status,
+                "location_name": s.location_name,
+            })
     return {
         "id": lpn.id,
         "lpn_number": lpn.lpn_number,
@@ -58,8 +60,8 @@ def _serialize_lpn(db: Session, lpn: LPN) -> dict:
         "status": lpn.status,
         "created_at": lpn.created_at,
         "location_name": lpn.location_name,
-        "content_count": len(contents) + len(serials),
-        "total_quantity": total_qty + len(serials),
+        "content_count": len(lpn.stock_lines) + len(lpn.serial_numbers),
+        "total_quantity": total_qty + len(lpn.serial_numbers),
         "contents": contents,
         "serials": serials,
     }
@@ -89,7 +91,7 @@ def list_lpns(
         q = q.filter(LPN.status == status)
     total = q.count()
     items = q.order_by(LPN.created_at.desc()).offset(skip).limit(limit).all()
-    return {"items": [_serialize_lpn(db, l) for l in items], "total": total,
+    return {"items": [_serialize_lpn(db, l, include_contents=False) for l in items], "total": total,
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 
@@ -115,7 +117,7 @@ def export_lpns(
         q = q.filter(LPN.status == status)
     rows = []
     for l in q.order_by(LPN.created_at.desc()).all():
-        s = _serialize_lpn(db, l)
+        s = _serialize_lpn(db, l, include_contents=False)
         rows.append([
             s["lpn_number"],
             s["lpn_type"],

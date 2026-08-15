@@ -167,4 +167,46 @@ describe("Users Page", () => {
       expect(getMock).toHaveBeenCalledWith("/users", expect.objectContaining({ params: expect.objectContaining({ include_inactive: "true" }) }))
     );
   });
+
+  it("saves custom permissions for a worker through the editor", async () => {
+    mockUsers([{ id: 2, username: "alice", email: "alice@example.com", role: "worker", last_login_at: null, created_at: "2026-01-01T00:00:00" }]);
+    putMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<Users />);
+    fireEvent.click(await screen.findByLabelText("Manage permissions for alice"));
+    expect(screen.getByRole("dialog", { name: "Edit permissions" })).toBeInTheDocument();
+    const viewCheckbox = screen.getByLabelText("products.view");
+    expect(viewCheckbox).not.toBeChecked();
+    fireEvent.click(viewCheckbox);
+    fireEvent.click(screen.getByRole("button", { name: "Save Permissions" }));
+    await vi.waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith("/users/2", { permissions: expect.arrayContaining(["products.view"]) })
+    );
+  });
+
+  it("pre-fills the editor with an existing custom allowlist", async () => {
+    mockUsers([{ id: 2, username: "alice", email: "alice@example.com", role: "worker", permissions: ["products.view", "orders.view"], last_login_at: null, created_at: "2026-01-01T00:00:00" }]);
+    putMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<Users />);
+    fireEvent.click(await screen.findByLabelText("Manage permissions for alice"));
+    expect(screen.getByLabelText("products.view")).toBeChecked();
+    expect(screen.getByLabelText("orders.view")).toBeChecked();
+    expect(screen.getByLabelText("reports.view")).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Save Permissions" }));
+    await vi.waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith("/users/2", { permissions: expect.arrayContaining(["products.view", "orders.view"]) })
+    );
+  });
+
+  it("shows a Custom badge for workers with custom permissions", async () => {
+    mockUsers([{ id: 2, username: "alice", email: "alice@example.com", role: "worker", permissions: ["products.view"], last_login_at: null, created_at: "2026-01-01T00:00:00" }]);
+    renderWithProviders(<Users />);
+    expect(await screen.findByText("Custom")).toBeInTheDocument();
+  });
+
+  it("does not offer permission editing for admins", async () => {
+    mockUsers([{ id: 2, username: "carol", email: "carol@example.com", role: "admin", created_at: "2026-01-01T00:00:00" }]);
+    renderWithProviders(<Users />);
+    await screen.findByText("carol");
+    expect(screen.queryByLabelText("Manage permissions for carol")).not.toBeInTheDocument();
+  });
 });

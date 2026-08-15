@@ -5,7 +5,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
-from app.constants import MAX_PAGE_SIZE, MAX_PAGE_SIZE_PICKER
+from app.constants import MAX_PAGE_SIZE_PICKER
 from app.database import get_db
 from app.models.order import Order
 from app.models.product import Product
@@ -17,10 +17,10 @@ from app.schemas.supplier import (
     SupplierBulkEdit, SupplierCreate, SupplierImportResult, SupplierListItem, SupplierOut,
     SupplierStats, SupplierUpdate,
 )
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/suppliers", tags=["suppliers"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/suppliers", tags=["suppliers"], dependencies=[Depends(require_permission("suppliers.view"))])
 
 
 def _find_duplicate(db: Session, name: str, email: str, exclude_id: int | None = None) -> Supplier | None:

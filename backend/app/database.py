@@ -102,6 +102,8 @@ def run_migrations():
             conn.execute(text("ALTER TABLE users ADD COLUMN last_login_at DATETIME"))
         if users_cols is not None and "avatar_url" not in users_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500) DEFAULT ''"))
+        if users_cols is not None and "permissions" not in users_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN permissions TEXT"))
         if serial_cols is not None and "lpn_id" not in serial_cols:
             conn.execute(text("ALTER TABLE serial_numbers ADD COLUMN lpn_id INTEGER"))
         if qc_cols is not None and "location_id" not in qc_cols:
@@ -182,6 +184,23 @@ def run_migrations():
             ):
                 if col not in settings_cols:
                     conn.execute(text(f"ALTER TABLE settings ADD COLUMN {col} {ddl}"))
+
+        # Idempotently create indexes on existing databases (create_all covers
+        # fresh ones; existing tables need explicit index creation).
+        index_statements: list[str] = []
+        if "stock_movements" in table_names:
+            index_statements += [
+                "CREATE INDEX IF NOT EXISTS ix_stock_movements_movement_type ON stock_movements(movement_type)",
+                "CREATE INDEX IF NOT EXISTS ix_stock_movements_reference ON stock_movements(reference_type, reference)",
+            ]
+        if "sales" in table_names:
+            index_statements.append("CREATE INDEX IF NOT EXISTS ix_sales_status ON sales(status)")
+        if "orders" in table_names:
+            index_statements.append("CREATE INDEX IF NOT EXISTS ix_orders_status ON orders(status)")
+        if "activity_logs" in table_names:
+            index_statements.append("CREATE INDEX IF NOT EXISTS ix_activity_logs_entity_id ON activity_logs(entity_id)")
+        for stmt in index_statements:
+            conn.execute(text(stmt))
 
 
 def get_db():

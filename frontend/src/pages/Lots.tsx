@@ -2,7 +2,7 @@ import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
-import { Eye, FlaskConical, ShieldCheck, ShieldX, CalendarX } from "lucide-react";
+import { Eye, FlaskConical, ShieldCheck, ShieldX, CalendarX, FileText } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Lot, PaginatedResponse, StockMovement } from "../types";
@@ -60,7 +60,7 @@ export default function Lots() {
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot update lot", "error"),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["lots", debouncedSearch, status, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
@@ -77,12 +77,26 @@ export default function Lots() {
     updateMutation.mutate({ id: lot.id, status: next });
   };
 
+  const printLabel = (id: number) => {
+    api.get(`/labels/lot/${id}`, { responseType: "blob" }).then(({ data }) => {
+      const url = URL.createObjectURL(data);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">Lots</h1>
         <button onClick={handleExport} className="btn-secondary" aria-label="Export lots to CSV">Export</button>
       </div>
+
+      {isError && (
+        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          Failed to load lots: {(error as any)?.message}
+        </div>
+      )}
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
@@ -131,12 +145,18 @@ export default function Lots() {
                 <td className="px-4 py-3">
                   {l.on_hand}
                   {l.serial_count > 0 && <span className="ml-1 text-xs text-muted">({l.serial_count} serial)</span>}
+                  {l.reserved_count > 0 && (
+                    <span className="badge badge-info ml-1" title={`${l.reserved_count} serial(s) reserved for work orders`}>
+                      R{l.reserved_count}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-muted">{l.expiry_date ? formatDate(l.expiry_date) : "—"}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(l.received_date)}</td>
                 <td className="px-4 py-3 whitespace-nowrap"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
+                    <button onClick={() => printLabel(l.id)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print label ${l.lot_number}`}><FileText size={16} /></button>
                     <button onClick={() => setViewing(l)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${l.lot_number}`}><Eye size={16} /></button>
                     {can("lots.update") && l.status === "in_stock" && (
                       <button onClick={() => changeStatus(l, "quarantined")} className="p-1 text-faint hover:text-amber-600 dark:text-amber-400" title="Quarantine" aria-label={`Quarantine ${l.lot_number}`}><ShieldX size={16} /></button>

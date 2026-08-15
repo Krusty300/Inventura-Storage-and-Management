@@ -27,7 +27,7 @@ from app.services.pdf_helpers import (
 )
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(require_permission("sales.view"))])
 
 
 def generate_invoice_number(db: Session) -> str:

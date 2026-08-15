@@ -59,7 +59,7 @@ export default function ASNs() {
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["asns", debouncedSearch, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
@@ -92,6 +92,12 @@ export default function ASNs() {
           </button>
         )}
       </div>
+
+      {isError && (
+        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          Failed to load ASNs: {(error as any)?.message}
+        </div>
+      )}
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">

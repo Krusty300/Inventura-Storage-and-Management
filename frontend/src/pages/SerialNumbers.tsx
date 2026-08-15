@@ -26,6 +26,7 @@ const STATUS_FILTERS = [
   { value: "quarantined", label: "Quarantined" },
   { value: "inactive", label: "Inactive" },
   { value: "scrapped", label: "Scrapped" },
+  { value: "consumed", label: "Consumed" },
 ] as const;
 
 export default function SerialNumbers() {
@@ -49,7 +50,7 @@ export default function SerialNumbers() {
     exportCsv("/serial-numbers/export", "serial_numbers_report.csv", "Serial numbers report", params);
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["serial-numbers", debouncedSearch, status, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
@@ -73,12 +74,29 @@ export default function SerialNumbers() {
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
   });
 
+  const releaseFromWorkOrderMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/serial-numbers/${id}/release`),
+    onSuccess: () => {
+      addToast("Serial released from work order", "success");
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial from work order", "error"),
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-ink">Serial Numbers</h1>
         <button onClick={handleExport} className="btn-secondary" aria-label="Export serial numbers to CSV">Export</button>
       </div>
+
+      {isError && (
+        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          Failed to load serial numbers: {(error as any)?.message}
+        </div>
+      )}
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
@@ -107,6 +125,7 @@ export default function SerialNumbers() {
               <th scope="col" className="px-4 py-3 font-medium text-muted">Lot</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Reference</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Sold</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
@@ -123,9 +142,21 @@ export default function SerialNumbers() {
                 <td className="px-4 py-3 text-muted">{s.lot_number || "—"}</td>
                 <td className="px-4 py-3 text-muted">{s.location_name || "—"}</td>
                 <td className="px-4 py-3">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
+                <td className="px-4 py-3 text-muted">{s.reference || "—"}</td>
                 <td className="px-4 py-3 text-muted">{s.sold_at ? formatDate(s.sold_at) : "—"}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
+                    {can("serial_numbers.update") && s.status === "reserved" && (
+                      <button
+                        onClick={() => releaseFromWorkOrderMutation.mutate(s.id)}
+                        disabled={releaseFromWorkOrderMutation.isPending}
+                        className="p-1 text-faint hover:text-green-600 dark:text-green-400"
+                        title="Release from work order"
+                        aria-label={`Release ${s.serial_number} from work order`}
+                      >
+                        <ShieldCheck size={16} />
+                      </button>
+                    )}
                     {can("serial_numbers.update") && s.status === "quarantined" && (
                       <button
                         onClick={() => releaseMutation.mutate(s.id)}
@@ -208,12 +239,25 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
     },
   });
 
-  const canToggle = can("serial_numbers.update") && (status === "in_stock" || status === "inactive" || status === "quarantined");
+  const canToggle = can("serial_numbers.update") && (status === "in_stock" || status === "inactive" || status === "quarantined" || status === "reserved");
+
+  const releaseFromWorkOrderMutation = useMutation({
+    mutationFn: () => api.post(`/serial-numbers/${serial.id}/release`),
+    onSuccess: () => {
+      setStatus("in_stock");
+      addToast(`Serial ${serial.serial_number} released from work order`, "success");
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["serial-movements", serial.id] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial from work order", "error"),
+  });
 
   return (
     <Modal open onClose={onClose} title={`Serial ${serial.serial_number}`} wide>
       <div className="space-y-4">
-        <div className="grid grid-cols-4 gap-4 text-sm">
+        <div className="grid grid-cols-5 gap-4 text-sm">
           <div>
             <p className="text-muted">Product</p>
             <p className="font-medium">{serial.product_name}</p>
@@ -229,6 +273,10 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
           <div>
             <p className="text-muted">Status</p>
             <p className="font-medium">{statusBadge(status) ? <span className={`badge ${statusBadge(status)}`}>{status}</span> : <span className="capitalize">{status}</span>}</p>
+          </div>
+          <div>
+            <p className="text-muted">Reference</p>
+            <p className="font-medium">{serial.reference || "—"}</p>
           </div>
         </div>
 
@@ -248,6 +296,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
                   <th className="px-4 py-2 font-medium text-muted">Date</th>
                   <th className="px-4 py-2 font-medium text-muted">Type</th>
                   <th className="px-4 py-2 font-medium text-muted">Qty</th>
+                  <th className="px-4 py-2 font-medium text-muted">Reference</th>
                   <th className="px-4 py-2 font-medium text-muted">User</th>
                 </tr>
               </thead>
@@ -259,6 +308,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
                     <td className={`px-4 py-2 ${m.quantity_change < 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                       {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}
                     </td>
+                    <td className="px-4 py-2 text-muted">{m.reference || "—"}</td>
                     <td className="px-4 py-2 text-muted">{m.username}</td>
                   </tr>
                 ))}
@@ -268,6 +318,11 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
+          {canToggle && status === "reserved" && (
+            <button onClick={() => releaseFromWorkOrderMutation.mutate()} disabled={releaseFromWorkOrderMutation.isPending} className="btn-primary inline-flex items-center gap-1">
+              <ShieldCheck size={14} /> Release from Work Order
+            </button>
+          )}
           {canToggle && status === "quarantined" && (
             <button onClick={() => statusMutation.mutate("in_stock")} disabled={statusMutation.isPending} className="btn-primary inline-flex items-center gap-1">
               <ShieldCheck size={14} /> Release

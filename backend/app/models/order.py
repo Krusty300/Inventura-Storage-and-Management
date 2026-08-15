@@ -14,7 +14,7 @@ class Order(Base):
     order_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    status: Mapped[str] = mapped_column(String(30), default="pending")
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)

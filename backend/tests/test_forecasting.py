@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 
 from tests.conftest import client
 
-from app.services import forecasting
 from app.services.forecasting import (
     forecast_daily_demand,
     reorder_point,

@@ -9,6 +9,15 @@ def _register(auth_headers, username, email, password="testpass123"):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _register_custom(auth_headers, username, email, permissions, password="testpass123"):
+    client.post("/api/users", json={
+        "username": username, "email": email, "password": password, "role": "worker",
+        "permissions": permissions,
+    }, headers=auth_headers)
+    token = client.post("/api/auth/login", json={"username": username, "password": password}).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _make_product(headers, sku="PERM-PROD", quantity=10):
     return client.post("/api/products", json={"location_id": 1, 
         "sku": sku, "name": sku, "unit_price": 10.0, "cost_price": 5.0, "quantity": quantity,
@@ -183,5 +192,53 @@ def test_unknown_role_has_no_permissions():
     db.close()
     token = client.post("/api/auth/login", json={"username": "ghost", "password": "testpass123"}).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
-    assert client.get("/api/products", headers=headers).status_code == 200
+    assert client.get("/api/products", headers=headers).status_code == 403
     assert client.post("/api/products", json={"location_id": 1, "sku": "GHOST-1", "name": "G", "unit_price": 1.0}, headers=headers).status_code == 403
+
+
+# --- Per-user permission overrides ---------------------------------------
+
+def test_custom_worker_permissions_replace_role_defaults(auth_headers):
+    worker = _register_custom(auth_headers, "w_custom", "w_custom@example.com", ["products.view", "products.create"])
+    resp = client.post("/api/products", json={"location_id": 1, "sku": "CUSTOM-1", "name": "C", "unit_price": 1.0}, headers=worker)
+    assert resp.status_code == 201
+    # Granting a custom allowlist drops the default worker permissions not listed
+    assert client.get("/api/dashboard/stats", headers=worker).status_code == 403
+    assert client.post("/api/sales", json={"items": [{"product_id": resp.json()["id"], "quantity": 1, "unit_price": 10.0}]}, headers=worker).status_code == 403
+
+
+def test_worker_with_empty_permissions_falls_back_to_defaults(auth_headers):
+    worker = _register_custom(auth_headers, "w_defaults", "w_defaults@example.com", [])
+    assert client.get("/api/products", headers=worker).status_code == 200
+
+
+def test_admin_can_restrict_worker_access_and_reset(auth_headers):
+    created = client.post("/api/users", json={
+        "username": "w_restrict", "email": "w_restrict@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers)
+    assert created.status_code == 201
+    uid = created.json()["id"]
+    restricted = client.put(f"/api/users/{uid}", json={
+        "permissions": ["dashboard.view", "locations.view"],
+    }, headers=auth_headers)
+    assert restricted.status_code == 200
+    assert restricted.json()["permissions"] == ["dashboard.view", "locations.view"]
+
+    token = client.post("/api/auth/login", json={"username": "w_restrict", "password": "testpass123"}).json()["access_token"]
+    worker = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/products", headers=worker).status_code == 403
+    assert client.get("/api/locations", headers=worker).status_code == 200
+
+    reset = client.put(f"/api/users/{uid}", json={"permissions": []}, headers=auth_headers)
+    assert reset.status_code == 200
+    assert reset.json()["permissions"] is None
+    assert client.get("/api/products", headers=worker).status_code == 200
+
+
+def test_admin_cannot_set_unknown_permission(auth_headers):
+    created = client.post("/api/users", json={
+        "username": "w_badperm", "email": "w_badperm@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers)
+    uid = created.json()["id"]
+    resp = client.put(f"/api/users/{uid}", json={"permissions": ["nonsense.none"]}, headers=auth_headers)
+    assert resp.status_code == 400

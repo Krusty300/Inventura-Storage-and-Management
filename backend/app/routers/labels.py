@@ -2,7 +2,7 @@ import io
 
 import barcode as pybarcode
 from barcode.writer import SVGWriter
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from reportlab.graphics import renderPDF
 from reportlab.lib.units import inch

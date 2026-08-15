@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.session import UserSession
 from app.models.user import User
-from app.services.permissions import has_permission
+from app.services.permissions import permissions_for_user
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
@@ -72,10 +72,11 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_permission(permission: str):
-    """Dependency factory: require the current user's role to grant `permission`."""
+    """Dependency factory: require the current user's effective permissions to
+    grant `permission` (role defaults, or the account's custom allowlist)."""
 
     def checker(current_user: User = Depends(get_current_user)) -> User:
-        if not has_permission(current_user.role, permission):
+        if permission not in permissions_for_user(current_user):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return current_user
 

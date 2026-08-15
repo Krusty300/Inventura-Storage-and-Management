@@ -205,7 +205,7 @@ def test_serialized_output_links_to_serialized_component_serial(auth_headers):
     assert completed.status_code == 200
 
     comp_serials = _list_serials(auth_headers, comp["id"])
-    assert comp_serials[0]["status"] == "reserved"
+    assert comp_serials[0]["status"] == "consumed"
 
     gene = client.get(f"/api/work-orders/{wo['id']}/genealogy", headers=auth_headers).json()
     assert gene["component_lots"] and gene["component_lots"][0]["lot_number"] == "SL-1"

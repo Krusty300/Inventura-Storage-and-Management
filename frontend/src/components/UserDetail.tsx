@@ -5,6 +5,7 @@ import { Shield, ShieldOff } from "lucide-react";
 import api from "../api/client";
 import Modal from "./Modal";
 import type { PaginatedResponse, User } from "../types";
+import { statusBadge } from "../utils/statusBadges";
 
 interface ActivityLogEntry {
   id: number;
@@ -22,13 +23,6 @@ interface Props {
   user: User;
   onClose: () => void;
 }
-
-const actionColors: Record<string, string> = {
-  create: "badge-success",
-  update: "badge-info",
-  delete: "badge-danger",
-  reset_password: "badge-warning",
-};
 
 export default function UserDetail({ user, onClose }: Props) {
   const formatDate = useDateFormat();
@@ -90,7 +84,7 @@ export default function UserDetail({ user, onClose }: Props) {
             <ul className="divide-y divide-border max-h-72 overflow-y-auto">
               {logs.map((log) => (
                 <li key={log.id} className="py-2 flex items-start gap-2">
-                  <span className={`badge shrink-0 ${actionColors[log.action] || "badge-info"}`}>{log.action}</span>
+                  <span className={`badge shrink-0 ${statusBadge(log.action)}`}>{log.action}</span>
                   <div className="min-w-0">
                     <p className="text-ink">{log.description}</p>
                     <p className="text-xs text-muted">

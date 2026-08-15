@@ -7,6 +7,7 @@ import api from "../api/client";
 import Modal from "./Modal";
 import type { Location, PaginatedResponse } from "../types";
 import { formatCurrency } from "../utils/currency";
+import { statusBadge } from "../utils/statusBadges";
 import { useSettings } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -90,12 +91,6 @@ interface Props {
   location: Location;
   onClose: () => void;
 }
-
-const actionColors: Record<string, string> = {
-  create: "badge-success",
-  update: "badge-info",
-  delete: "badge-danger",
-};
 
 type Tab = "stock" | "lpns" | "activity";
 
@@ -414,7 +409,7 @@ export default function LocationDetail({ location, onClose }: Props) {
               <ul className="divide-y divide-border max-h-72 overflow-y-auto">
                 {logs.map((log) => (
                   <li key={log.id} className="py-2 flex items-start gap-2">
-                    <span className={`badge shrink-0 ${actionColors[log.action] || "badge-info"}`}>{log.action}</span>
+                    <span className={`badge shrink-0 ${statusBadge(log.action)}`}>{log.action}</span>
                     <div className="min-w-0">
                       <p className="text-ink">{log.description}</p>
                       <p className="text-xs text-muted">
@@ -446,17 +441,9 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 }
 
 function LotStatusBadge({ status }: { status: string }) {
-  const cls = status === "quarantined" ? "badge-warning" : "badge-danger";
-  return <span className={`badge ${cls} ml-1.5`}>{status}</span>;
+  return <span className={`badge ${statusBadge(status)} ml-1.5`}>{status}</span>;
 }
 
 function SerialStatusBadge({ status }: { status: string }) {
-  switch (status) {
-    case "in_stock": return <span className="badge badge-success">{status}</span>;
-    case "quarantined": return <span className="badge badge-warning">{status}</span>;
-    case "reserved": return <span className="badge badge-info">{status}</span>;
-    case "scrapped": return <span className="badge badge-danger">{status}</span>;
-    case "sold": return <span className="badge badge-neutral">{status}</span>;
-    default: return <span className="badge badge-neutral">{status}</span>;
-  }
+  return <span className={`badge ${statusBadge(status)}`}>{status}</span>;
 }

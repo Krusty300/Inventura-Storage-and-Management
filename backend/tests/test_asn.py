@@ -1,4 +1,3 @@
-from app.models import Location
 from tests.conftest import TestingSessionLocal, client
 
 

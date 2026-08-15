@@ -10,9 +10,9 @@ from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models import BOM, BOMItem, Location, Lot, LotLink, Product, SerialNumber, StockMovement, WorkOrder, WorkOrderItem
 from app.models.settings import Settings
-from app.schemas.work_order import WORK_ORDER_STATUSES, WorkOrderComplete, WorkOrderCreate, WorkOrderOut, WorkOrderUpdate
+from app.schemas.work_order import WorkOrderComplete, WorkOrderCreate, WorkOrderOut, WorkOrderUpdate
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
     BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
@@ -20,7 +20,7 @@ from app.services.pdf_helpers import (
 )
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/work-orders", tags=["work-orders"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/work-orders", tags=["work-orders"], dependencies=[Depends(require_permission("work_orders.view"))])
 
 
 def _load_wo(db: Session, wo_id: int) -> WorkOrder:
@@ -116,6 +116,75 @@ def _issue_component(db: Session, wo: WorkOrder, item: WorkOrderItem, quantity: 
     if remaining > 0:
         raise inventory.InventoryError(f"Insufficient stock for component '{item.product_name}': need {quantity}")
     item.quantity_issued += quantity
+
+
+def _revert_component_issues(db: Session, wo: WorkOrder, user_id: int) -> int:
+    """Return component stock issued to a work order back to its source locations.
+
+    Serialized components are restored via ``release_serial_from_reserved`` (back
+    to the location they were issued from); bulk components get a positive
+    ``release`` journal entry restoring each source stock line. Resets each
+    item's ``quantity_issued`` to zero. Returns the number of movements reverted.
+    """
+    movements = (
+        db.query(StockMovement)
+        .filter(
+            StockMovement.reference_type == "work_order",
+            StockMovement.reference == wo.wo_number,
+            StockMovement.movement_type == inventory.ISSUE,
+        )
+        .order_by(StockMovement.id.desc())
+        .all()
+    )
+    for m in movements:
+        if m.serial_id is not None:
+            serial = db.get(SerialNumber, m.serial_id)
+            if serial is not None and serial.status == inventory.SERIAL_STATUS_RESERVED:
+                inventory.release_serial_from_reserved(
+                    db, serial=serial, user_id=user_id,
+                    reference=wo.wo_number, notes=f"Cancelled {wo.wo_number} - component returned to stock",
+                )
+        else:
+            inventory.post_journal_entry(
+                db,
+                product_id=m.product_id,
+                user_id=user_id,
+                quantity_change=-m.quantity_change,
+                movement_type=inventory.RELEASE,
+                to_location_id=m.from_location_id if m.from_location_id is not None else m.to_location_id,
+                lot_id=m.lot_id,
+                lpn_id=m.lpn_id,
+                reference_type="work_order",
+                reference=wo.wo_number,
+                notes=f"Cancelled {wo.wo_number} - component returned to stock",
+            )
+    for item in wo.items:
+        item.quantity_issued = 0
+    return len(movements)
+
+
+def _consume_issued_serials(db: Session, wo: WorkOrder) -> int:
+    """Flip reserved component serials issued to a completed work order to
+    ``consumed`` so they leave stock and render as used. Returns the count."""
+    movements = (
+        db.query(StockMovement)
+        .filter(
+            StockMovement.reference_type == "work_order",
+            StockMovement.reference == wo.wo_number,
+            StockMovement.movement_type == inventory.ISSUE,
+            StockMovement.serial_id.isnot(None),
+        )
+        .all()
+    )
+    consumed = 0
+    for m in movements:
+        serial = db.get(SerialNumber, m.serial_id)
+        if serial is None or serial.product_id != m.product_id:
+            continue
+        if serial.status in (inventory.SERIAL_STATUS_RESERVED, inventory.SERIAL_STATUS_INACTIVE):
+            serial.status = inventory.SERIAL_STATUS_CONSUMED
+            consumed += 1
+    return consumed
 
 
 def _create_lot_links(db: Session, wo: WorkOrder, fg_lot_id: int) -> None:
@@ -327,7 +396,7 @@ def _movement_lot_row(m: StockMovement) -> dict:
 
 @router.post("", response_model=WorkOrderOut, status_code=201)
 def create_work_order(data: WorkOrderCreate, db: Session = Depends(get_db), user=Depends(require_permission("work_orders.create"))):
-    output = _validate_output(db, data.product_id)
+    _validate_output(db, data.product_id)
     if data.bom_id is not None and data.items:
         raise HTTPException(status_code=400, detail="Provide either a BOM reference or explicit component lines, not both")
     wo = WorkOrder(
@@ -476,6 +545,7 @@ def complete_work_order(wo_id: int, data: WorkOrderComplete, db: Session = Depen
                 reference=wo.wo_number,
                 notes=f"Received from {wo.wo_number}" + (" (backflushed)" if data.backflush else ""),
             )
+        _consume_issued_serials(db, wo)
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -495,12 +565,20 @@ def complete_work_order(wo_id: int, data: WorkOrderComplete, db: Session = Depen
 @router.post("/{wo_id}/cancel", response_model=WorkOrderOut)
 def cancel_work_order(wo_id: int, db: Session = Depends(get_db), user=Depends(require_permission("work_orders.update"))):
     wo = _load_wo(db, wo_id)
-    if wo.status != "planned":
-        raise HTTPException(status_code=400, detail="Only planned work orders can be cancelled")
+    if wo.status not in ("planned", "released", "in_progress"):
+        raise HTTPException(status_code=400, detail="Only planned, released, or in-progress work orders can be cancelled")
+    try:
+        if wo.status != "planned":
+            _revert_component_issues(db, wo, user.id)
+    except inventory.InventoryError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     wo.status = "cancelled"
     db.commit()
     wo = _load_wo(db, wo.id)
     log_activity(db, user.id, user.username, "cancel", "work_order", wo.id, f"Cancelled work order '{wo.wo_number}'")
     db.commit()
     broadcast_change("work_order", "updated")
+    broadcast_change("stock_movement", "created")
+    broadcast_change("product", "updated")
     return wo

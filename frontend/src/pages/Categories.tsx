@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { Pencil, Trash2, Eye } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Pencil, Trash2, Eye, ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_PRODUCTS } from "../utils/constants";
-import type { Category, PaginatedResponse } from "../types";
+import type { Category, CategoryTree, PaginatedResponse } from "../types";
 import CategoryDetail from "../components/CategoryDetail";
 import CategoryForm from "../components/CategoryForm";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -29,6 +29,8 @@ export default function Categories() {
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [viewing, setViewing] = useState<Category | null>(null);
   const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [view, setView] = useState<"table" | "tree">("table");
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const { can } = useAuth();
@@ -51,6 +53,75 @@ export default function Categories() {
       return data as PaginatedResponse<Category>;
     },
   });
+
+  const { data: tree } = useQuery({
+    queryKey: ["categories", "tree"],
+    queryFn: async () => {
+      const { data } = await api.get("/categories/tree");
+      return data as CategoryTree[];
+    },
+  });
+
+  const q = search.trim().toLowerCase();
+
+  const matches = (n: CategoryTree) =>
+    n.name.toLowerCase().includes(q) ||
+    (n.description || "").toLowerCase().includes(q);
+
+  const filterTree = (nodes: CategoryTree[]): CategoryTree[] =>
+    nodes
+      .filter((n) => matches(n) || filterTree(n.subcategories || []).length > 0)
+      .map((n) => ({ ...n, subcategories: filterTree(n.subcategories || []) }));
+
+  const visibleTree = q ? filterTree(tree || []) : tree || [];
+  const isSearching = q.length > 0;
+
+  const allTreeIds = useMemo(() => {
+    const ids: number[] = [];
+    const walk = (nodes: CategoryTree[]) => (nodes || []).forEach((n) => { ids.push(n.id); walk(n.subcategories || []); });
+    walk(tree || []);
+    return ids;
+  }, [tree]);
+
+  const toggleTree = (id: number) => {
+    const next = new Set(expanded);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setExpanded(next);
+  };
+
+  const expandAll = () => setExpanded(new Set(allTreeIds));
+  const collapseAll = () => setExpanded(new Set());
+
+  const renderNode = (node: CategoryTree, depth: number, forceOpen: boolean) => {
+    const hasChildren = (node.subcategories?.length || 0) > 0;
+    const isOpen = forceOpen || expanded.has(node.id);
+    return (
+      <div key={node.id}>
+        <div
+          className="flex items-center gap-2 px-3 py-2 hover:bg-app border-b border-border"
+          style={{ paddingLeft: `${depth * 24 + 12}px` }}
+        >
+          <button
+            onClick={() => toggleTree(node.id)}
+            disabled={!hasChildren}
+            className="text-faint disabled:opacity-30"
+            aria-label={isOpen ? "Collapse" : "Expand"}
+          >
+            {hasChildren ? (isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />) : <span className="inline-block w-4" />}
+          </button>
+          <span className="font-medium text-ink">{node.name}</span>
+          <span className="text-sm text-muted truncate">{node.description}</span>
+          <div className="ml-auto flex gap-2">
+            <button onClick={() => setViewing(node)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${node.name}`}><Eye size={16} /></button>
+            <button onClick={() => { setEditing(node); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${node.name}`}><Pencil size={16} /></button>
+            <button onClick={() => setDeleting(node)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${node.name}`}><Trash2 size={16} /></button>
+          </div>
+        </div>
+        {isOpen && hasChildren && (node.subcategories || []).map((child) => renderNode(child, depth + 1, forceOpen))}
+      </div>
+    );
+  };
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/categories/${id}`),
@@ -103,17 +174,44 @@ export default function Categories() {
 
       {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load categories: {(error as any)?.message}</div>}
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search categories" />
         </div>
+        <div role="group" aria-label="View mode" className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
+          <button
+            onClick={() => setView("table")}
+            className={`px-3 py-1 rounded-md text-sm transition-colors ${view === "table" ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
+          >
+            Table
+          </button>
+          <button
+            onClick={() => setView("tree")}
+            className={`px-3 py-1 rounded-md text-sm transition-colors ${view === "tree" ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
+          >
+            Tree
+          </button>
+        </div>
+        {view === "tree" && (
+          <>
+            <button onClick={expandAll} className="btn-secondary inline-flex items-center gap-1 text-sm" aria-label="Expand all categories">
+              <FolderOpen size={14} /> Expand all
+            </button>
+            <button onClick={collapseAll} className="btn-secondary inline-flex items-center gap-1 text-sm" aria-label="Collapse all categories">
+              <Folder size={14} /> Collapse all
+            </button>
+          </>
+        )}
       </div>
 
-      <BulkActionBar count={selectedIds.size} canEdit={can("categories.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+      {view === "table" && (
+        <BulkActionBar count={selectedIds.size} canEdit={can("categories.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
+      )}
 
-      <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm" role="grid" aria-label="Categories table">
+      {view === "table" ? (
+        <div className="card overflow-hidden p-0">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm" role="grid" aria-label="Categories table">
           <thead>
             <tr className="bg-app text-left">
               <th scope="col" className="px-4 py-3">
@@ -147,10 +245,22 @@ export default function Categories() {
             ))}
           </tbody>
         </table>
+          </div>
         </div>
-      </div>
+      ) : visibleTree.length === 0 ? (
+        <EmptyState title={q ? "No matching categories" : "No categories"} message={q ? `Nothing matched "${search}".` : "Create your first category to organize products."} actionLabel={q ? undefined : "Add Category"} onAction={q ? undefined : () => { setEditing(null); setShowForm(true); }} />
+      ) : (
+        <div className="card overflow-hidden p-0">
+          <div className="overflow-x-auto">
+            <div className="px-4 py-3 bg-app border-b text-sm text-muted">Category hierarchy</div>
+            {visibleTree.map((node) => renderNode(node, 0, isSearching))}
+          </div>
+        </div>
+      )}
 
-      <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
+      {view === "table" && (
+        <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
+      )}
 
       {showForm && (
         <CategoryForm

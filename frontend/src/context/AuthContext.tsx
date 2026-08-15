@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import api from "../api/client";
-import { can as canHelper } from "../utils/permissions";
+import { canUser } from "../utils/permissions";
 import type { User } from "../types";
 
 interface AuthContextType {
@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const can = (permission: string) => canHelper(user?.role, permission);
+  const can = (permission: string) => canUser(user, permission);
 
   return (
     <AuthContext.Provider value={{ user, token, login, register, logout, updateUser, loading, can }}>

@@ -2,6 +2,7 @@ import { Printer } from "lucide-react";
 import api from "../api/client";
 import type { Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
+import { statusBadge } from "../utils/statusBadges";
 import { useSettings } from "../hooks/useSettings";
 import Modal from "./Modal";
 import { useToast } from "../context/ToastContext";
@@ -11,12 +12,6 @@ interface Props {
   sale: Sale;
   onClose: () => void;
 }
-
-const statusColors: Record<string, string> = {
-  completed: "badge-success",
-  refunded: "badge-danger",
-  void: "badge-danger",
-};
 
 export default function SaleDetail({ sale, onClose }: Props) {
   const formatDateTime = useDateTimeFormat();
@@ -41,7 +36,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
             <p className="text-muted">Cashier: <span className="font-medium text-ink">{sale.username}</span></p>
           </div>
           <div className="space-y-1 text-right">
-            <span className={`badge ${statusColors[sale.status] || "badge-info"}`}>{sale.status}</span>
+            <span className={`badge ${statusBadge(sale.status)}`}>{sale.status}</span>
             <p className="text-muted">Payment: <span className="font-medium text-ink capitalize">{sale.payment_method}</span></p>
           </div>
         </div>

@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.notification import Notification
 from app.schemas.notification import NotificationOut
-from app.services.auth import get_current_user
+from app.services.auth import get_current_user, require_permission
 from app.utils import broadcast_change, get_or_404
 
-router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+router = APIRouter(prefix="/api/notifications", tags=["notifications"], dependencies=[Depends(require_permission("notifications.view"))])
 
 
 @router.get("", response_model=list[NotificationOut])

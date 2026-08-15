@@ -1,4 +1,3 @@
-from datetime import date
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,11 +15,11 @@ from app.models.supplier import Supplier
 from app.schemas.lot import LOT_STATUSES, LotOut, LotUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.csv_export import csv_response
 from app.utils import get_or_404, log_activity, broadcast_change
 
-router = APIRouter(prefix="/api/lots", tags=["lots"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/lots", tags=["lots"], dependencies=[Depends(require_permission("lots.view"))])
 
 # Controlled status transitions. A lot can only move between states along these
 # edges; QC failures quarantine, and a release restores sellable stock. The

@@ -13,7 +13,7 @@ from app.models.settings import Settings
 from app.models.supplier import Supplier
 from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate, ReorderLowStockRequest
 from app.services import forecasting, inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.notify import notify_admins
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
@@ -22,7 +22,7 @@ from app.services.pdf_helpers import (
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
-router = APIRouter(prefix="/api/orders", tags=["orders"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/orders", tags=["orders"], dependencies=[Depends(require_permission("orders.view"))])
 
 
 ORDER_STATUSES = ("pending", "received", "cancelled")

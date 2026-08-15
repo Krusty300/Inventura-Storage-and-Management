@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.settings import Settings
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 
-router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_permission("settings.view"))])
 
 
 class SettingsUpdate(BaseModel):

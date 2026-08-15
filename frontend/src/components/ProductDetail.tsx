@@ -68,6 +68,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   const qty = hasVariants(active) ? active.total_quantity : active.quantity;
   const expiredLotQty = active.expired_lot_qty || 0;
   const quarantinedQty = active.quarantined_qty || 0;
+  const reservedQty = active.reserved_qty || 0;
 
   const quarantinedLotsIds = hasVariants(product)
     ? [product.id, ...product.variants.filter((v) => v.is_active).map((v) => v.id)]
@@ -96,8 +97,23 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   });
   const quarantinedSerials = (quarantinedSerialsData || []).filter((s) => s.status === "quarantined");
 
+  const { data: reservedSerialsData } = useQuery({
+    queryKey: ["product-reserved-serials", product.id],
+    queryFn: async () => {
+      const { data } = await api.get("/serial-numbers", { params: { product_id: product.id, status: "reserved", limit: 100 } });
+      return (data?.items || []) as SerialNumber[];
+    },
+    enabled: product.is_serialized,
+  });
+  const reservedSerials = (reservedSerialsData || []).filter((s) => s.status === "reserved");
+
   const statusBadges = (
     <>
+      {reservedQty > 0 && (
+        <span className="badge badge-info" title={`${reservedQty} unit(s) reserved for work orders`}>
+          Reserved {reservedQty}
+        </span>
+      )}
       {quarantinedQty > 0 && (
         <span className="badge badge-warning" title={`${quarantinedQty} unit(s) in quarantined lots`}>
           Quarantined {quarantinedQty}
@@ -137,6 +153,22 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+  });
+
+  const releaseReservedSerial = useMutation({
+    mutationFn: (id: number) => api.post(`/serial-numbers/${id}/release`),
+    onSuccess: () => {
+      addToast("Serial released from work order", "success");
+      queryClient.invalidateQueries({ queryKey: ["product", product.id] });
+      queryClient.invalidateQueries({ queryKey: ["product-reserved-serials"] });
+      queryClient.invalidateQueries({ queryKey: ["product-stock-locations"] });
+      queryClient.invalidateQueries({ queryKey: ["lots"] });
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["work-orders"] });
     },
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
   });
@@ -202,6 +234,10 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           <div>
             <span className="text-muted">{hasVariants(product) ? "Total Quantity:" : "Quantity:"}</span>
             <p className={`font-medium ${qty <= product.reorder_level ? "text-red-600 dark:text-red-400" : ""}`}>{qty}</p>
+          </div>
+          <div>
+            <span className="text-muted">Sellable:</span>
+            <p className="font-medium" title={`Available to allocate from ${qty} total on hand`}>{active.sellable_qty || 0}</p>
           </div>
           <div>
             <span className="text-muted">Reorder Level:</span>
@@ -330,6 +366,31 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
                   <span className="inline-flex flex-wrap items-center justify-end gap-1 shrink-0">
                     {can("serial_numbers.update") && (
                       <button onClick={() => releaseSerial.mutate(s.id)} disabled={releaseSerial.isPending} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label={`Release ${s.serial_number}`}>
+                        Release
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {product.is_serialized && reservedSerials.length > 0 && (
+          <div>
+            <span className="text-sm text-muted">Reserved Serials:</span>
+            <ul className="mt-1 space-y-1">
+              {reservedSerials.map((s) => (
+                <li key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-sky-200 dark:border-sky-500/30 bg-sky-50 dark:bg-sky-500/10 px-3 py-1.5 text-sm">
+                  <span className="inline-flex items-center gap-1.5 text-sky-700 dark:text-sky-400 min-w-0">
+                    <PackageOpen size={14} className="shrink-0" />
+                    <span className="font-mono font-medium truncate">{s.serial_number}</span>
+                    {s.lot_number && <span className="text-muted">(Lot {s.lot_number})</span>}
+                    {s.location_name && <span className="text-muted">· {s.location_name}</span>}
+                  </span>
+                  <span className="inline-flex flex-wrap items-center justify-end gap-1 shrink-0">
+                    {can("serial_numbers.update") && (
+                      <button onClick={() => releaseReservedSerial.mutate(s.id)} disabled={releaseReservedSerial.isPending} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label={`Release ${s.serial_number}`}>
                         Release
                       </button>
                     )}

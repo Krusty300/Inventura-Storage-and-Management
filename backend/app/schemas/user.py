@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
 class UserCreate(BaseModel):
@@ -21,6 +21,7 @@ class UserOut(BaseModel):
     username: str
     email: str
     role: str
+    permissions: list[str] | None = None
     is_active: bool = True
     avatar_url: str = ""
     last_login_at: datetime | None = None

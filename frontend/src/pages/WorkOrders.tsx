@@ -133,6 +133,9 @@ export default function WorkOrders() {
                         <button onClick={() => run(() => api.post(`/work-orders/${w.id}/cancel`), `${w.wo_number} cancelled`)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${w.wo_number}`}><XCircle size={16} /></button>
                       </>
                     )}
+                    {(w.status === "released" || w.status === "in_progress") && can("work_orders.update") && (
+                      <button onClick={() => run(() => api.post(`/work-orders/${w.id}/cancel`), `${w.wo_number} cancelled`)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${w.wo_number}`}><XCircle size={16} /></button>
+                    )}
                     {w.status === "planned" && can("work_orders.release") && (
                       <button onClick={() => run(() => api.post(`/work-orders/${w.id}/release`), `${w.wo_number} released`)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Release ${w.wo_number}`}><Rocket size={16} /></button>
                     )}

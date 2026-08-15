@@ -131,18 +131,22 @@ describe("Products Page", () => {
     renderWithProviders(<Products />);
     await screen.findByText("Sellable Low");
     expect(screen.getByLabelText("Low stock")).toBeInTheDocument();
+    expect(screen.getByText("S6")).toBeInTheDocument();
+    expect(screen.getByText("S9")).toBeInTheDocument();
   });
 
-  it("does not under-report sellable quantity for serialized products with quarantined serials", async () => {
-    // A serialized product's on-hand (quantity) already excludes quarantined
-    // serials, so sellable must not subtract quarantined_qty again.
+  it("counts quarantined serials in on-hand and keeps sellable as the in-stock subset", async () => {
+    // Serialized on-hand (quantity) includes quarantined serials (parity with
+    // bulk, where quarantined lots stay on-hand); sellable is the in-stock subset,
+    // so it is qty - quarantined, shown via the S badge.
     mockProducts([makeProduct({
       id: 12, sku: "SER-Q", name: "Serialized Quarantined",
-      quantity: 5, reorder_level: 4, quarantined_qty: 3, sellable_qty: 5, is_serialized: true,
+      quantity: 8, reorder_level: 4, quarantined_qty: 3, sellable_qty: 5, is_serialized: true,
     })]);
     renderWithProviders(<Products />);
     await screen.findByText("Serialized Quarantined");
     expect(screen.queryByLabelText("Low stock")).not.toBeInTheDocument();
     expect(screen.getByText("Q3")).toBeInTheDocument();
+    expect(screen.getByText("S5")).toBeInTheDocument();
   });
 });

@@ -55,6 +55,7 @@ SERIAL_STATUS_SOLD = "sold"
 SERIAL_STATUS_QUARANTINED = "quarantined"
 SERIAL_STATUS_SCRAPPED = "scrapped"
 SERIAL_STATUS_INACTIVE = "inactive"
+SERIAL_STATUS_CONSUMED = "consumed"
 
 
 def validate_serial_movable(
@@ -155,10 +156,15 @@ def on_hand(
     if product.is_serialized:
         stmt = (
             select(func.count(SerialNumber.id))
-            .where(SerialNumber.product_id == product_id, SerialNumber.status == SERIAL_STATUS_IN_STOCK)
+            .where(
+                SerialNumber.product_id == product_id,
+                SerialNumber.status.in_([SERIAL_STATUS_IN_STOCK, SERIAL_STATUS_QUARANTINED]),
+            )
         )
         if sellable_only:
-            stmt = stmt.outerjoin(Lot, SerialNumber.lot_id == Lot.id).where(
+            stmt = stmt.where(SerialNumber.status == SERIAL_STATUS_IN_STOCK).outerjoin(
+                Lot, SerialNumber.lot_id == Lot.id
+            ).where(
                 (SerialNumber.lot_id.is_(None)) | (Lot.status == "in_stock")
             )
         if location_id is not None:
@@ -166,7 +172,12 @@ def on_hand(
         if lot_id is not None:
             stmt = stmt.where(SerialNumber.lot_id == lot_id)
         return int(db.execute(stmt).scalar() or 0)
-    stmt = select(func.coalesce(func.sum(StockLine.quantity), 0)).where(StockLine.product_id == product_id)
+    stmt = select(func.coalesce(func.sum(StockLine.quantity), 0)).where(
+        StockLine.product_id == product_id,
+        (StockLine.location_id.is_(None))
+        | (Location.location_type.is_(None))
+        | (Location.location_type != "wip"),
+    ).outerjoin(Location, StockLine.location_id == Location.id)
     if sellable_only:
         stmt = stmt.outerjoin(Lot, StockLine.lot_id == Lot.id).where(
             (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock")
@@ -242,9 +253,13 @@ def sellable_qty_subquery():
     stock = (
         select(func.coalesce(func.sum(StockLine.quantity), 0))
         .outerjoin(Lot, StockLine.lot_id == Lot.id)
+        .outerjoin(Location, StockLine.location_id == Location.id)
         .where(
             StockLine.product_id == Product.id,
             (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+            (StockLine.location_id.is_(None))
+            | (Location.location_type.is_(None))
+            | (Location.location_type != "wip"),
         )
         .scalar_subquery()
     )
@@ -269,9 +284,13 @@ def sellable_qty_by_product(db: Session, product_ids: list[int] | None = None) -
     stock_stmt = (
         select(StockLine.product_id, func.sum(StockLine.quantity))
         .outerjoin(Lot, StockLine.lot_id == Lot.id)
+        .outerjoin(Location, StockLine.location_id == Location.id)
         .where(
             StockLine.quantity > 0,
             (StockLine.lot_id.is_(None)) | (Lot.status == "in_stock"),
+            (StockLine.location_id.is_(None))
+            | (Location.location_type.is_(None))
+            | (Location.location_type != "wip"),
         )
     )
     if product_ids:
@@ -293,21 +312,65 @@ def sellable_qty_by_product(db: Session, product_ids: list[int] | None = None) -
     return result
 
 
+def reserved_qty_by_product(db: Session, product_ids: list[int] | None = None) -> dict[int, int]:
+    """Map of product_id -> quantity reserved for work orders.
+
+    Serialized products count serials with status ``reserved`` (issued to an
+    open work order); bulk products have no reservation state, so only the
+    serialized term contributes. Reserved units are on hand but not sellable.
+
+    Optionally restricted to ``product_ids`` so a page of products can be
+    annotated without scanning the whole serial_numbers table.
+    """
+    result: dict[int, int] = {}
+    serial_stmt = (
+        select(SerialNumber.product_id, func.count(SerialNumber.id))
+        .where(SerialNumber.status == SERIAL_STATUS_RESERVED)
+    )
+    if product_ids:
+        serial_stmt = serial_stmt.where(SerialNumber.product_id.in_(product_ids))
+    for pid, qty in db.execute(serial_stmt.group_by(SerialNumber.product_id)).all():
+        result[int(pid)] = result.get(int(pid), 0) + int(qty or 0)
+    return result
+
+
 def expired_lot_qty_by_product(db: Session, product_ids: list[int] | None = None) -> dict[int, int]:
     """Map of product_id -> quantity held in expired lots.
 
+    Bulk units in expired lots plus ``in_stock`` serials whose lot is expired
+    (serialized products have no stock lines, so both sources must be counted).
+    Both legs exclude WIP-held stock so the E badge stays a breakdown of on-hand.
+    Only ``in_stock`` serials count - reserved/sold units are no longer on hand.
+
     Optionally restricted to ``product_ids`` so a page of products can be
-    annotated without scanning the whole stock_lines table.
+    annotated without scanning the whole stock_lines/serial_numbers tables.
     """
-    stmt = (
+    result: dict[int, int] = {}
+    stock_stmt = (
         select(StockLine.product_id, func.sum(StockLine.quantity))
         .join(Lot, StockLine.lot_id == Lot.id)
-        .where(Lot.status == "expired")
+        .outerjoin(Location, StockLine.location_id == Location.id)
+        .where(
+            Lot.status == "expired",
+            (StockLine.location_id.is_(None))
+            | (Location.location_type.is_(None))
+            | (Location.location_type != "wip"),
+        )
     )
     if product_ids:
-        stmt = stmt.where(StockLine.product_id.in_(product_ids))
-    rows = db.execute(stmt.group_by(StockLine.product_id)).all()
-    return {int(r[0]): int(r[1] or 0) for r in rows}
+        stock_stmt = stock_stmt.where(StockLine.product_id.in_(product_ids))
+    for pid, qty in db.execute(stock_stmt.group_by(StockLine.product_id)).all():
+        result[int(pid)] = result.get(int(pid), 0) + int(qty or 0)
+    serial_stmt = (
+        select(SerialNumber.product_id, func.count(SerialNumber.id))
+        .join(Lot, SerialNumber.lot_id == Lot.id)
+        .where(Lot.status == "expired", SerialNumber.status == SERIAL_STATUS_IN_STOCK)
+    )
+    if product_ids:
+        serial_stmt = serial_stmt.where(SerialNumber.product_id.in_(product_ids))
+    for pid, qty in db.execute(serial_stmt.group_by(SerialNumber.product_id)).all():
+        result[int(pid)] = result.get(int(pid), 0) + int(qty or 0)
+    return result
 
 
 def expire_overdue_lots(db: Session) -> int:
@@ -507,6 +570,8 @@ def post_journal_entry(
         if serial is None or serial.product_id != product_id:
             raise InventoryError("Serial number does not match product")
         if quantity_change > 0:
+            if serial.status == SERIAL_STATUS_SCRAPPED:
+                raise InventoryError("Scrapped serials cannot be returned to stock")
             serial.status = SERIAL_STATUS_IN_STOCK
             serial.sold_at = None
             if to_location_id is not None:
@@ -514,6 +579,19 @@ def post_journal_entry(
             if lpn_id is not None or movement_type == TRANSFER_IN:
                 serial.lpn_id = lpn_id
         else:
+            if serial.status in (
+                SERIAL_STATUS_RESERVED,
+                SERIAL_STATUS_INACTIVE,
+                SERIAL_STATUS_SOLD,
+                SERIAL_STATUS_SCRAPPED,
+            ):
+                raise InventoryError(
+                    f"Serial '{serial.serial_number}' is {serial.status} and cannot be moved"
+                )
+            if serial.status == SERIAL_STATUS_QUARANTINED and movement_type != TRANSFER_OUT:
+                raise InventoryError(
+                    f"Serial '{serial.serial_number}' is quarantined and cannot be moved that way"
+                )
             if movement_type == SALE or movement_type == SHIP:
                 serial.status = SERIAL_STATUS_SOLD
                 serial.sold_at = datetime.now(timezone.utc)
@@ -523,6 +601,8 @@ def post_journal_entry(
                     serial.location_id = to_location_id
             elif movement_type == ISSUE:
                 serial.status = SERIAL_STATUS_RESERVED
+                if to_location_id is not None:
+                    serial.location_id = to_location_id
             elif movement_type == SCRAP:
                 serial.status = SERIAL_STATUS_SCRAPPED
             elif movement_type == DEACTIVATE:
@@ -897,9 +977,9 @@ def auto_quarantine(db: Session, to_loc: Location, movements: list[StockMovement
             serial = db.get(SerialNumber, m.serial_id)
             if serial is not None and serial.status == SERIAL_STATUS_IN_STOCK:
                 serial.status = SERIAL_STATUS_QUARANTINED
-    # A quarantined serial leaves a serialized product's on-hand, so refresh the
-    # parity count for every affected serialized product (bulk stock lines are
-    # untouched - their quantity already includes quarantined lots).
+    # A quarantined serial stays on a serialized product's on-hand (matching
+    # bulk, where quarantined lots are still counted), so the parity count does
+    # not change; refresh it for every affected serialized product anyway.
     for pid in {m.product_id for m in movements if m.serial_id is not None}:
         product = db.get(Product, pid)
         if product is not None and product.is_serialized:
@@ -953,12 +1033,49 @@ def _maybe_release_serial_lot(db: Session, serial: SerialNumber) -> None:
         serial.lot.status = SERIAL_STATUS_IN_STOCK
 
 
+def release_serial_from_reserved(
+    db: Session,
+    *,
+    serial: SerialNumber,
+    user_id: int,
+    reference: str = "",
+    notes: str = "",
+) -> StockMovement:
+    """Return a reserved (work-order-issued) serial to ``in_stock`` at the
+    location it was issued from.
+
+    Looks up the most recent ``issue`` journal entry for the serial and restores
+    it to that movement's ``from_location_id`` (falling back to the serial's
+    current location). Posts a positive ``release`` journal entry so the unit's
+    ledger history records the change. Caller commits.
+    """
+    if serial.status != SERIAL_STATUS_RESERVED:
+        raise InventoryError(f"Serial '{serial.serial_number}' is not reserved (status: {serial.status})")
+    issue = (
+        db.query(StockMovement)
+        .filter(
+            StockMovement.serial_id == serial.id,
+            StockMovement.movement_type == ISSUE,
+        )
+        .order_by(StockMovement.created_at.desc(), StockMovement.id.desc())
+        .first()
+    )
+    location_id = issue.from_location_id if issue is not None else serial.location_id
+    return post_journal_entry(
+        db, product_id=serial.product_id, user_id=user_id, quantity_change=+1,
+        movement_type=RELEASE, to_location_id=location_id,
+        lot_id=serial.lot_id, serial_id=serial.id,
+        reference_type="release", reference=reference, notes=notes,
+    )
+
+
 def quarantine_lot_serials(db: Session, lot: Lot) -> None:
     """Cascade a lot-level quarantine to its serials (``in_stock`` -> ``quarantined``).
 
     Keeps serialized lots coherent with ``auto_quarantine`` so a QC-failed lot's
-    units render as quarantined everywhere. Also refreshes the serialized
-    product's on-hand parity count (quarantined serials leave on-hand). Caller commits.
+    units render as quarantined everywhere. Quarantined serials remain on a
+    serialized product's on-hand (matching bulk), so the parity count is just
+    refreshed, not decremented. Caller commits.
     """
     changed = False
     for s in lot.serial_numbers:

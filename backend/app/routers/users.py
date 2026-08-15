@@ -12,6 +12,7 @@ from app.models.user import User
 from app.schemas.user import UserOut
 from app.services.auth import get_current_user, require_permission, hash_password, verify_password
 from app.services.password_policy import validate_password
+from app.services.permissions import ALL_PERMISSIONS
 from app.utils import log_activity
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -24,6 +25,7 @@ class UserUpdateAdmin(BaseModel):
     email: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    permissions: Optional[list[str]] = None
 
 
 class UserCreateAdmin(BaseModel):
@@ -31,6 +33,7 @@ class UserCreateAdmin(BaseModel):
     email: str
     password: str
     role: str = "worker"
+    permissions: Optional[list[str]] = None
 
 
 class PasswordChange(BaseModel):
@@ -97,6 +100,14 @@ def get_user(
     return _get_user_or_404(db, user_id)
 
 
+def _validate_permissions(permissions: list[str] | None) -> None:
+    if not permissions:
+        return
+    unknown = [p for p in permissions if p not in ALL_PERMISSIONS]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown permissions: {', '.join(sorted(unknown))}")
+
+
 @router.post("", response_model=UserOut, status_code=201)
 def create_user(
     data: UserCreateAdmin,
@@ -105,6 +116,7 @@ def create_user(
 ):
     if data.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(VALID_ROLES))}")
+    _validate_permissions(data.permissions)
     password_error = validate_password(data.password)
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)
@@ -115,6 +127,7 @@ def create_user(
         email=data.email,
         password_hash=hash_password(data.password),
         role=data.role,
+        permissions=data.permissions,
     )
     db.add(user)
     db.commit()
@@ -134,6 +147,9 @@ def update_user(
 ):
     u = _get_user_or_404(db, user_id, include_inactive=True)
     updates = data.model_dump(exclude_unset=True)
+    if "permissions" in updates:
+        _validate_permissions(updates["permissions"])
+        updates["permissions"] = updates["permissions"] or None
     if "role" in updates:
         if updates["role"] not in VALID_ROLES:
             raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(VALID_ROLES))}")

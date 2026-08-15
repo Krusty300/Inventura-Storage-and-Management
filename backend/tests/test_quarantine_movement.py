@@ -86,7 +86,6 @@ def test_transfer_only_consumes_sellable_lot_when_mixed(auth_headers):
     _receive(auth_headers, prod["id"], 3, src["id"], lot="LOT-Q3")
     _receive(auth_headers, prod["id"], 5, src["id"], lot="LOT-S3")
     lot_q = _lot(auth_headers, prod["id"], "LOT-Q3")
-    lot_s = _lot(auth_headers, prod["id"], "LOT-S3")
     _set_status(auth_headers, lot_q["id"], "quarantined")
 
     resp = client.post("/api/stock-movements/transfer", json={
@@ -393,7 +392,7 @@ def test_quarantine_move_serialized(auth_headers):
     assert client.get(f"/api/lots/{lot['id']}", headers=auth_headers).json()["status"] == "quarantined"
     serial = client.get(f"/api/serial-numbers/{serial['id']}", headers=auth_headers).json()
     assert serial["status"] == "quarantined"
-    assert serial["location_name"] == f"Quarantine QM-Q5"
+    assert serial["location_name"] == "Quarantine QM-Q5"
 
 
 def test_transfer_to_quarantine_area_auto_quarantines(auth_headers):

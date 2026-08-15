@@ -231,13 +231,13 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [action, setAction] = useState<"load" | "unload" | "activity" | null>(null);
 
-  const { data: live } = useQuery({
-    queryKey: ["lpn", lpn.id],
+  const { data: live, isLoading: contentsLoading } = useQuery({
+    queryKey: ["lpn", lpn.id, "contents"],
     queryFn: async () => {
-      const { data } = await api.get(`/lpns/${lpn.id}`);
+      const { data } = await api.get(`/lpns/${lpn.id}/contents`);
       return data as LPN;
     },
-    initialData: lpn,
+    placeholderData: lpn,
   });
 
   const current = live || lpn;
@@ -246,7 +246,7 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
   const hasContents = contents.length > 0 || serials.length > 0;
 
   const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["lpn", lpn.id] });
+    queryClient.invalidateQueries({ queryKey: ["lpn", lpn.id, "contents"] });
     queryClient.invalidateQueries({ queryKey: ["lpn", lpn.id, "movements"] });
     queryClient.invalidateQueries({ queryKey: ["lpns"] });
     queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -280,7 +280,9 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
               <p className="font-medium capitalize">{current.status}</p>
             </div>
           </div>
-          {!hasContents ? (
+          {contentsLoading ? (
+            <p className="text-sm text-muted">Loading contents...</p>
+          ) : !hasContents ? (
             <p className="text-sm text-muted">This LPN has no contents yet. Use "Load Stock" to add stock from a location, or receive into it via a receipt.</p>
           ) : (
             <>

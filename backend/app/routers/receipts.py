@@ -16,7 +16,7 @@ from app.models.settings import Settings
 from app.models.supplier import Supplier
 from app.schemas.receipt import ReceiptCreate, ReceiptOut
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
@@ -25,7 +25,7 @@ from app.services.pdf_helpers import (
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
-router = APIRouter(prefix="/api/receipts", tags=["receipts"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/receipts", tags=["receipts"], dependencies=[Depends(require_permission("receipts.view"))])
 
 
 def _load_receipt(db: Session, receipt_id: int) -> Receipt:

@@ -1,14 +1,26 @@
+import os
+
+# CI has no backend/.env: supply a valid secret before any app module imports
+# Settings (which rejects the placeholder default at construction time).
+os.environ.setdefault("SECRET_KEY", "a" * 64)
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
 from app.models.user import User
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_inventory.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# One in-memory SQLite shared by every session in this process (StaticPool keeps
+# a single connection alive so the database survives between requests). Each
+# pytest-xdist worker gets its own engine/DB, so tests can run in parallel.
+SQLALCHEMY_DATABASE_URL = "sqlite://"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, poolclass=StaticPool, connect_args={"check_same_thread": False}
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

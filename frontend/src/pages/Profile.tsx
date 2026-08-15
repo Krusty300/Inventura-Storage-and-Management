@@ -64,7 +64,7 @@ export default function Profile() {
 
   useEffect(() => {
     loadSessions();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

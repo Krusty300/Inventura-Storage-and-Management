@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, model_validator
 
 
 class ProductCreate(BaseModel):
@@ -87,6 +87,7 @@ class ProductOut(BaseModel):
     quarantined_qty: int = 0
     expired_lot_qty: int = 0
     sellable_qty: int = 0
+    reserved_qty: int = 0
     variants: list["ProductOut"] = []
 
     class Config:

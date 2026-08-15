@@ -1,7 +1,9 @@
-import io
+from datetime import date
 from pathlib import Path
 
-from tests.conftest import client
+from tests.conftest import TestingSessionLocal, client
+
+from app.models.product import Product
 
 
 def _make_product(auth_headers, sku, **kwargs):
@@ -282,14 +284,16 @@ def test_sellable_qty_for_serialized_product_counts_only_in_stock_serials(auth_h
 
     body = client.get("/api/products", params={"search": "SELL-SER1", "include_variants": "1"}, headers=auth_headers).json()
     item = next(p for p in body["items"] if p["id"] == prod["id"])
-    # on-hand counts only in-stock serials (the quarantined pair is excluded)...
-    assert item["quantity"] == 3
-    # ...and sellable must match that, NOT quantity - quarantined (which would be 1).
+    # on-hand counts in-stock plus quarantined serials (parity with bulk, where
+    # quarantined lots stay on-hand) - the quarantined pair is a breakdown of Qty.
+    assert item["quantity"] == 5
     assert item["quarantined_qty"] == 2
+    # sellable is the on-hand subset that can actually be allocated: in-stock
+    # serials in a live (in_stock) lot, i.e. 3 - not quantity - quarantined (1).
     assert item["sellable_qty"] == 3
 
     detail = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
-    assert detail["quantity"] == 3
+    assert detail["quantity"] == 5
     assert detail["quarantined_qty"] == 2
     assert detail["sellable_qty"] == 3
 
@@ -346,3 +350,60 @@ def test_products_list_parent_row_keeps_own_derived_qty(auth_headers):
     v = next(x for x in item["variants"] if x["id"] == v1["id"])
     assert v["quarantined_qty"] == 1
     assert v["sellable_qty"] == 0
+
+
+def test_expired_lot_qty_counts_in_stock_serials_in_expired_lots(auth_headers):
+    """Serialized products carry no stock lines, so the E badge must count the
+    in_stock serials sitting in an expired lot (expiring a lot leaves the serial
+    status untouched)."""
+    prod = _make_serialized(auth_headers, "EXP-SER1")
+    _receive(auth_headers, prod["id"], ["EXP-S1-A1", "EXP-S1-A2", "EXP-S1-A3"], "LOT-EXP-A")
+    _receive(auth_headers, prod["id"], ["EXP-S1-B1", "EXP-S1-B2"], "LOT-FRESH-B")
+    lot_a = _lot(auth_headers, prod["id"], "LOT-EXP-A")
+    assert client.put(f"/api/lots/{lot_a['id']}", json={"expiry_date": "2020-01-01"}, headers=auth_headers).status_code == 200
+
+    # the list endpoint flips the overdue in_stock lot to expired
+    body = client.get("/api/products", params={"search": "EXP-SER1", "include_variants": 1}, headers=auth_headers).json()
+    item = next(p for p in body["items"] if p["id"] == prod["id"])
+    assert item["expired_lot_qty"] == 3
+
+    detail = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert detail["expired_lot_qty"] == 3
+    assert detail["quantity"] == 5
+    assert detail["sellable_qty"] == 2
+
+
+def test_expired_filter_matches_expired_lots_not_static_product_expiry(auth_headers):
+    """The products 'expired' filter must agree with the E badge: match on stock
+    held in an expired lot (bulk and serialized), not on a past static
+    Product.expiry_date that may no longer correspond to any actual stock."""
+    bulk = client.post("/api/products", json={"location_id": 1,
+        "sku": "EXP-FILTER-BULK", "name": "Exp Filter Bulk", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={"items": [{
+        "product_id": bulk["id"], "quantity": 3, "lot_number": "LOT-FB-OLD", "expiry_date": "2020-01-01",
+    }]}, headers=auth_headers).status_code == 201
+
+    ser = _make_serialized(auth_headers, "EXP-FILTER-SER")
+    _receive(auth_headers, ser["id"], ["EXP-FS-A1", "EXP-FS-A2"], "LOT-FS-OLD")
+    lot = _lot(auth_headers, ser["id"], "LOT-FS-OLD")
+    assert client.put(f"/api/lots/{lot['id']}", json={"expiry_date": "2020-01-01"}, headers=auth_headers).status_code == 200
+
+    # product whose static expiry has passed but which holds no stock in an
+    # expired lot (fresh lot, no expiry) must NOT be listed as expired
+    ghost = client.post("/api/products", json={"location_id": 1,
+        "sku": "EXP-FILTER-GHOST", "name": "Exp Filter Ghost", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={"items": [{
+        "product_id": ghost["id"], "quantity": 2, "lot_number": "LOT-FG-FRESH",
+    }]}, headers=auth_headers).status_code == 201
+    db = TestingSessionLocal()
+    db.query(Product).filter(Product.id == ghost["id"]).update({"expiry_date": date(2020, 1, 1)})
+    db.commit()
+    db.close()
+
+    body = client.get("/api/products", params={"expiry": "expired", "include_variants": 1, "limit": 100}, headers=auth_headers).json()
+    matches = {p["id"]: p for p in body["items"]}
+    assert bulk["id"] in matches and matches[bulk["id"]]["expired_lot_qty"] == 3
+    assert ser["id"] in matches and matches[ser["id"]]["expired_lot_qty"] == 2
+    assert ghost["id"] not in matches

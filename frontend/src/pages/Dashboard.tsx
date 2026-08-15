@@ -31,7 +31,7 @@ import type {
   PaginatedResponse,
 } from "../types";
 import { formatCurrency } from "../utils/currency";
-import { can } from "../utils/permissions";
+import { canUser } from "../utils/permissions";
 import { useSettings } from "../hooks/useSettings";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
@@ -302,7 +302,7 @@ export default function Dashboard() {
         <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {quickActions
-            .filter((a) => can(user?.role, a.permission))
+            .filter((a) => canUser(user, a.permission))
             .map((a) => (
               <button
                 key={a.label}
@@ -594,7 +594,7 @@ export default function Dashboard() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Low Stock Alerts</h2>
-            {can(user?.role, "orders.create") && stats.low_stock_products.length > 0 && (
+            {canUser(user, "orders.create") && stats.low_stock_products.length > 0 && (
               <button onClick={() => setConfirmReorder(true)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
                 Create PO
               </button>

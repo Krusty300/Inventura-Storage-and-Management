@@ -18,6 +18,7 @@ from app.constants import MAX_PAGE_SIZE_PRODUCTS
 from app.database import get_db
 from app.models.category import Category
 from app.models.location import Location
+from app.models.lot import Lot
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
@@ -28,7 +29,7 @@ from app.models.work_order import WorkOrder, WorkOrderItem
 from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.notify import notify_expiring, notify_low_stock
 from app.utils import get_or_404, log_activity, broadcast_change
 
@@ -44,7 +45,7 @@ from app.services.pdf_helpers import FONT, BOLD, INK, MONO, MUTED, FAINT, PAGE_H
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-router = APIRouter(prefix="/api/products", tags=["products"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/products", tags=["products"], dependencies=[Depends(require_permission("products.view"))])
 
 
 def _effective_location(product: Product) -> str:
@@ -63,6 +64,30 @@ def _effective_location(product: Product) -> str:
     if product.location_id and product.default_location:
         return product.default_location.path
     return product.location or ""
+
+
+def _has_expired_stock(pid_col):
+    """True when the product row ``pid_col`` holds stock in an expired lot.
+
+    Bulk units sit on stock lines in an expired lot; serialized units are
+    ``in_stock`` serials whose lot expired (``expire_overdue_lots`` leaves the
+    serial status untouched). Mirrors ``expired_lot_qty_by_product`` so the
+    list filter and the E badge answer the same question.
+    """
+    bulk = exists(
+        select(StockLine.product_id)
+        .join(Lot, StockLine.lot_id == Lot.id)
+        .where(StockLine.product_id == pid_col, Lot.status == "expired", StockLine.quantity > 0)
+    )
+    serial = exists(
+        select(SerialNumber.product_id)
+        .join(Lot, SerialNumber.lot_id == Lot.id)
+        .where(
+            SerialNumber.product_id == pid_col, Lot.status == "expired",
+            SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK,
+        )
+    )
+    return bulk | serial
 
 
 def validate_refs(db: Session, category_id: Optional[int], supplier_id: Optional[int]) -> None:
@@ -123,13 +148,15 @@ def list_products(
     today = date.today()
     soon = today + timedelta(days=30)
     if expiry == "expired":
+        # Lot-based to match the E badge: a product is "expired" when it holds
+        # stock in an expired lot, not when its static expiry_date has passed.
         if include_variants:
             q = q.filter(
-                (Product.expiry_date.isnot(None) & (Product.expiry_date < today))
-                | Product.variants.any(Product.expiry_date.isnot(None), Product.expiry_date < today)
+                _has_expired_stock(Product.id)
+                | Product.variants.any(_has_expired_stock(Product.id))
             )
         else:
-            q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date < today)
+            q = q.filter(_has_expired_stock(Product.id))
     elif expiry == "expiring":
         if include_variants:
             q = q.filter(
@@ -192,15 +219,18 @@ def list_products(
     quarantined = inventory.quarantined_qty_by_product(db, list(ids)) if ids else {}
     expired = inventory.expired_lot_qty_by_product(db, list(ids)) if ids else {}
     sellable = inventory.sellable_qty_by_product(db, list(ids)) if ids else {}
+    reserved = inventory.reserved_qty_by_product(db, list(ids)) if ids else {}
     for p in results:
         p.quarantined_qty = quarantined.get(p.id, 0)
         p.expired_lot_qty = expired.get(p.id, 0)
         p.sellable_qty = sellable.get(p.id, 0)
+        p.reserved_qty = reserved.get(p.id, 0)
         if include_variants and p.variants:
             for v in p.variants:
                 v.quarantined_qty = quarantined.get(v.id, 0)
                 v.expired_lot_qty = expired.get(v.id, 0)
                 v.sellable_qty = sellable.get(v.id, 0)
+                v.reserved_qty = reserved.get(v.id, 0)
     return {"items": results, "total": total, "page": (skip // limit) + 1 if limit else 1, "pages": max(ceil(total / limit), 1) if limit else 1}
 
 
@@ -249,7 +279,6 @@ def barcode_labels(ids: str = "", db: Session = Depends(get_db)):
         q = q.filter(Product.id.in_(id_list))
     products = q.order_by(Product.name).all()
 
-    LABEL_W, LABEL_H = 2.25 * inch, 1.0 * inch
     MARGIN_X, MARGIN_Y = 0.5 * inch, 0.5 * inch
     COLS, ROWS = 3, 8
     GAP_X, GAP_Y = 0.25 * inch, 0.125 * inch
@@ -325,6 +354,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     quarantined = inventory.quarantined_qty_by_product(db, ids)
     expired = inventory.expired_lot_qty_by_product(db, ids)
     sellable = inventory.sellable_qty_by_product(db, ids)
+    reserved = inventory.reserved_qty_by_product(db, ids)
     if p.variants and out.variants:
         # A parent's derived stock fields aggregate its active variants so the
         # group renders a single coherent picture on the product detail screen.
@@ -337,14 +367,19 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         sellable[p.id] = sellable.get(p.id, 0) + sum(
             sellable.get(v.id, 0) for v in p.variants if v.is_active
         )
+        reserved[p.id] = reserved.get(p.id, 0) + sum(
+            reserved.get(v.id, 0) for v in p.variants if v.is_active
+        )
         for v_orm, v_out in zip(p.variants, out.variants):
             v_out.location = _effective_location(v_orm)
             v_out.quarantined_qty = quarantined.get(v_orm.id, 0)
             v_out.expired_lot_qty = expired.get(v_orm.id, 0)
             v_out.sellable_qty = sellable.get(v_orm.id, 0)
+            v_out.reserved_qty = reserved.get(v_orm.id, 0)
     out.quarantined_qty = quarantined.get(p.id, 0)
     out.expired_lot_qty = expired.get(p.id, 0)
     out.sellable_qty = sellable.get(p.id, 0)
+    out.reserved_qty = reserved.get(p.id, 0)
     return out
 
 
@@ -364,6 +399,7 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
     quarantined = inventory.quarantined_qty_by_product(db, ids)
     expired = inventory.expired_lot_qty_by_product(db, ids)
     sellable = inventory.sellable_qty_by_product(db, ids)
+    reserved = inventory.reserved_qty_by_product(db, ids)
     if p.variants and out.variants:
         # A parent's derived stock fields aggregate its active variants so the
         # group renders a single coherent picture on the product detail screen.
@@ -376,14 +412,19 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
         sellable[p.id] = sellable.get(p.id, 0) + sum(
             sellable.get(v.id, 0) for v in p.variants if v.is_active
         )
+        reserved[p.id] = reserved.get(p.id, 0) + sum(
+            reserved.get(v.id, 0) for v in p.variants if v.is_active
+        )
         for v_orm, v_out in zip(p.variants, out.variants):
             v_out.location = _effective_location(v_orm)
             v_out.quarantined_qty = quarantined.get(v_orm.id, 0)
             v_out.expired_lot_qty = expired.get(v_orm.id, 0)
             v_out.sellable_qty = sellable.get(v_orm.id, 0)
+            v_out.reserved_qty = reserved.get(v_orm.id, 0)
     out.quarantined_qty = quarantined.get(p.id, 0)
     out.expired_lot_qty = expired.get(p.id, 0)
     out.sellable_qty = sellable.get(p.id, 0)
+    out.reserved_qty = reserved.get(p.id, 0)
     return out
 
 

@@ -363,6 +363,22 @@ describe("ProductDetail", () => {
     expect(screen.queryByText(/Expired/)).not.toBeInTheDocument();
   });
 
+  it("shows the sellable quantity in the detail grid", async () => {
+    const product = makeProduct({ id: 18, sku: "SKU-18", name: "Sellable Widget", quantity: 20, quarantined_qty: 3, sellable_qty: 13 });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/products/18/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    expect(await screen.findByText("Sellable:")).toBeInTheDocument();
+    expect(screen.getByText("13")).toBeInTheDocument();
+  });
+
   it("shows quarantined lots with a release quick action", async () => {
     const product = makeProduct({ id: 5, sku: "SKU-5", name: "Widget", quarantined_qty: 3 });
     getMock.mockImplementation((url: string) => {
@@ -558,5 +574,39 @@ describe("ProductDetail", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Release SN-Q1" }));
     await waitFor(() => expect(putMock).toHaveBeenCalledWith("/serial-numbers/1/status", { status: "in_stock" }));
+  });
+
+  it("lists reserved serials and releases one from its work order", async () => {
+    const product = makeProduct({ id: 6, sku: "SKU-6", name: "Serial Widget", is_serialized: true, reserved_qty: 1 });
+    const postMock = api.post as ReturnType<typeof vi.fn>;
+    postMock.mockResolvedValue({ data: {} });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/products/6/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      if (url === "/serial-numbers") {
+        return Promise.resolve({
+          data: {
+            items: [
+              { id: 2, product_id: 6, serial_number: "SN-R1", lot_id: 10, location_id: 1, status: "reserved", location_name: "Aisle A", sold_at: null, lot_number: "LOT-RS", lot_status: "in_stock", product_name: "Serial Widget", reference: "WO-1001", created_at: "2026-01-01T00:00:00" },
+            ],
+            total: 1,
+            page: 1,
+            pages: 1,
+          },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
+
+    expect(await screen.findByText("Reserved Serials:")).toBeInTheDocument();
+    expect(screen.getByText("SN-R1")).toBeInTheDocument();
+    expect(screen.getByText("(Lot LOT-RS)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Release SN-R1" }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/serial-numbers/2/release"));
   });
 });

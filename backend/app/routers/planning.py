@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, Query
 from app.database import get_db
 from app.models import BOM, BOMItem, Product, WorkOrder
 from app.services import inventory
-from app.services.auth import get_current_user
+from app.services.auth import require_permission
 from app.utils import get_or_404
 
-router = APIRouter(prefix="/api/planning", tags=["planning"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/planning", tags=["planning"], dependencies=[Depends(require_permission("planning.view"))])
 
 OPEN_WO_STATUSES = ("planned", "released", "in_progress")
 

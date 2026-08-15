@@ -214,6 +214,12 @@ export default function Products() {
     }
     return r.product.sellable_qty || 0;
   };
+  const reservedQtyOf = (r: DisplayRow) => {
+    if (r.kind === "parent" && hasVariants(r.product)) {
+      return (r.product.reserved_qty || 0) + r.product.variants.filter((v) => v.is_active).reduce((sum, v) => sum + (v.reserved_qty || 0), 0);
+    }
+    return r.product.reserved_qty || 0;
+  };
 
   const movementBadgeClass = (t: string) => {
     if (["in", "receive", "transfer_in", "sale_return", "count"].includes(t)) return "badge-success";
@@ -329,6 +335,7 @@ export default function Products() {
                 const quarantined = quarantinedQtyOf(r);
                 const expired = expiredLotQtyOf(r);
                 const sellable = sellableQtyOf(r);
+                const reserved = reservedQtyOf(r);
                 const isLowStock = sellable <= p.reorder_level && !isGroup;
                 const isCollapsed = isGroup && collapsed.has(p.id);
                 return (
@@ -380,6 +387,11 @@ export default function Products() {
                         <span className={isLowStock ? "text-red-600 dark:text-red-400 font-medium" : ""}>
                           {qty}
                         </span>
+                        {sellable < qty && (
+                          <span className="badge badge-success" title={`${sellable} of ${qty} unit(s) available to allocate`}>
+                            S{sellable}
+                          </span>
+                        )}
                         {quarantined > 0 && (
                           <span className="badge badge-warning" title={`${quarantined} unit(s) in quarantined lots`}>
                             Q{quarantined}
@@ -388,6 +400,11 @@ export default function Products() {
                         {expired > 0 && (
                           <span className="badge badge-danger" title={`${expired} unit(s) in expired lots`}>
                             E{expired}
+                          </span>
+                        )}
+                        {reserved > 0 && (
+                          <span className="badge badge-info" title={`${reserved} unit(s) reserved for work orders`}>
+                            R{reserved}
                           </span>
                         )}
                       </div>

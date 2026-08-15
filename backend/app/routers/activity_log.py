@@ -6,10 +6,10 @@ from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models.activity_log import ActivityLog
 from app.schemas.activity_log import ActivityLogOut
-from app.services.auth import get_current_user
-from app.services.csv_export import csv_response
+from app.services.auth import get_current_user, require_permission
+from app.services.csv_export import csv_stream_response
 
-router = APIRouter(prefix="/api/activity-logs", tags=["activity-logs"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/api/activity-logs", tags=["activity-logs"], dependencies=[Depends(require_permission("activity.view"))])
 
 
 @router.get("")
@@ -55,16 +55,16 @@ def export_logs(
         query = query.filter(ActivityLog.entity_id == entity_id)
     if action:
         query = query.filter(ActivityLog.action == action)
-    logs = query.order_by(ActivityLog.created_at.desc()).all()
-    return csv_response(
+    logs = query.order_by(ActivityLog.created_at.desc()).yield_per(500)
+    return csv_stream_response(
         "activity_log_report",
         ["Date", "User", "Action", "Entity Type", "Entity ID", "Description"],
-        [[
+        ([
             l.created_at.strftime("%Y-%m-%d %H:%M") if l.created_at else "",
             l.username or "",
             l.action,
             l.entity_type,
             l.entity_id if l.entity_id is not None else "",
             l.description or "",
-        ] for l in logs],
+        ] for l in logs),
     )

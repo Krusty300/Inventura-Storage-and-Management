@@ -18,6 +18,7 @@ class SerialNumberOut(BaseModel):
     lot_number: str = ""
     lot_status: str = ""
     location_name: str = ""
+    reference: str = ""
 
     class Config:
         from_attributes = True

@@ -18,7 +18,7 @@ class Sale(Base):
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     tax_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
-    status: Mapped[str] = mapped_column(String(20), default="completed")
+    status: Mapped[str] = mapped_column(String(20), default="completed", index=True)
     payment_method: Mapped[str] = mapped_column(String(20), default="cash")
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
