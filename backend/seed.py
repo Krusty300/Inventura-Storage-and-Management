@@ -1062,6 +1062,19 @@ def create_work_orders(db, users, by_sku, boms, locs):
             work_order_id=completed.id, product_id=item.product_id,
             quantity_required=item.quantity * 20, quantity_issued=item.quantity * 20,
         ))
+    # Backflush: actually issue every required component to WIP so the ledger,
+    # component stock and item.quantity_issued stay in sync (mirrors the
+    # complete/backflush endpoint).
+    for item in boms[1].items:
+        product = db.get(Product, item.product_id)
+        allocation = inventory.allocate_lots(
+            db, product_id=item.product_id, quantity=item.quantity * 20)
+        for lot_id, take, source_location, lpn_id in allocation:
+            _post(db, worker, product, -take, inventory.ISSUE,
+                  days_ago(8, hour=10), from_loc=source_location, to_loc=locs["WIP"].id,
+                  lot=lot_id, lpn=lpn_id,
+                  ref_type="work_order", ref="WO-0001",
+                  notes="Issued to WO-0001 (backflushed)")
     # Receive the finished good (20 chargers) into A-02-01 with a lot.
     lot = Lot(product_id=by_sku["TECH-004"].id, lot_number="FG-4001", status="in_stock",
               received_date=days_ago(7).date())
