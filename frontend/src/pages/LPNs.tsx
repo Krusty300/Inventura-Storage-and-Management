@@ -9,6 +9,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
@@ -48,7 +49,7 @@ export default function LPNs() {
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot delete LPN", "error"),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["lpns", debouncedSearch, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
@@ -105,6 +106,8 @@ export default function LPNs() {
           <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={7} />
+            ) : isError ? (
+              <ErrorState onRetry={() => queryClient.invalidateQueries({ queryKey: ["lpns"] })} />
             ) : lpns.length === 0 ? (
               <EmptyState title="No LPNs yet" message="Create LPNs to track pallets and totes through the warehouse." actionLabel="Create LPN" onAction={() => setShowForm(true)} />
             ) : lpns.map((l) => (
@@ -112,8 +115,8 @@ export default function LPNs() {
                 <td className="px-4 py-3 font-medium">{l.lpn_number}</td>
                 <td className="px-4 py-3 text-muted capitalize">{l.lpn_type}</td>
                 <td className="px-4 py-3 text-muted">{l.location_name || "—"}</td>
-                <td className="px-4 py-3"><span className={`badge ${l.status === "active" ? "badge-success" : "badge-info"}`}>{l.status}</span></td>
-                <td className="px-4 py-3">{l.content_count}</td>
+                <td className="px-4 py-3"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
+                <td className="px-4 py-3">{l.content_count === 0 ? <span className="badge badge-neutral">Empty</span> : l.content_count}</td>
                 <td className="px-4 py-3">{l.total_quantity}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
@@ -447,6 +450,15 @@ function LpnActivity({ lpnId, onClose }: { lpnId: number; onClose: () => void })
   );
 }
 
+interface LocationProduct {
+  product_id: number;
+  name: string;
+  sku: string;
+  is_serialized: boolean;
+  quantity: number;
+  serial_count: number;
+}
+
 function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockMode; onClose: () => void; onSaved: () => void }) {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
@@ -493,6 +505,23 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
     },
     enabled: !!product_id && !isSerialized && isLoad,
   });
+
+  const { data: locationProducts } = useQuery({
+    queryKey: ["locations", "products", from_location_id, sourceIsQuarantine ? "quarantine" : "stock"],
+    queryFn: async () => {
+      const { data } = await api.get(`/locations/${from_location_id}/products`, {
+        params: { include_quarantined: sourceIsQuarantine || undefined },
+      });
+      return (data?.items || []) as LocationProduct[];
+    },
+    enabled: isLoad && from_location_id != null,
+  });
+  const productsAtLocation = new Set((locationProducts || []).map((p) => p.product_id));
+  const loadableProducts = !isLoad
+    ? candidateProducts
+    : from_location_id == null
+      ? []
+      : candidateProducts.filter((p) => productsAtLocation.has(p.id));
 
   const { data: looseSerials } = useQuery({
     queryKey: ["serial-numbers", "lpn-load", product_id, from_location_id],
@@ -579,10 +608,14 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Product *</label>
-            <select className="select" value={product_id} onChange={(e) => { setProductId(e.target.value); setLotId(""); setSerialIds([]); }}>
-              <option value="">Select...</option>
-              {candidateProducts.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""}</option>)}
-            </select>
+            {isLoad && from_location_id == null ? (
+              <div className="input bg-app">Select a source location first</div>
+            ) : (
+              <select className="select" value={product_id} onChange={(e) => { setProductId(e.target.value); setLotId(""); setSerialIds([]); }}>
+                <option value="">Select...</option>
+                {loadableProducts.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""}</option>)}
+              </select>
+            )}
           </div>
           {isSerialized ? (
             <div>
@@ -605,7 +638,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
             lpn.location_id == null ? (
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Source Location *</label>
-                <select className="select" value={sourceOverride} onChange={(e) => setSourceOverride(e.target.value)} required>
+                <select className="select" value={sourceOverride} onChange={(e) => { setSourceOverride(e.target.value); setProductId(""); setLotId(""); setSerialIds([]); }} required>
                   <option value="">Select...</option>
                   {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
                 </select>

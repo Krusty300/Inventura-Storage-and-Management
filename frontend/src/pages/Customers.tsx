@@ -19,6 +19,7 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 import { formatCurrency } from "../utils/currency";
+import { parseLocalDate } from "../utils/date";
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -72,6 +73,14 @@ export default function Customers() {
 
   const customers = data?.items || [];
   const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(customers);
+
+  const recencyClass = (date: string | null | undefined) => {
+    if (!date) return "text-muted";
+    const days = Math.floor((Date.now() - parseLocalDate(date).getTime()) / 86400000);
+    if (days <= 30) return "text-emerald-600 dark:text-emerald-400";
+    if (days <= 90) return "text-muted";
+    return "text-amber-600 dark:text-amber-400";
+  };
 
   const bulkFields: BulkFieldConfig[] = [
     { name: "phone", label: "Phone", type: "text" },
@@ -176,13 +185,14 @@ export default function Customers() {
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Orders</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Total Spent</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Avg Order</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Last Purchase</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                <Skeleton rows={5} cols={9} />
+                <Skeleton rows={5} cols={10} />
               ) : customers.length === 0 ? (
                 <EmptyState title="No customers found" message="Add your first customer to get started." actionLabel="Add Customer" onAction={() => { setEditing(null); setShowForm(true); }} />
               ) : customers.map((c) => (
@@ -194,8 +204,12 @@ export default function Customers() {
                     {c.name}
                     {!c.is_active && <span className="badge badge-warning ml-2">Inactive</span>}
                   </td>
-                  <td className="px-4 py-3 text-muted">{c.phone}</td>
-                  <td className="px-4 py-3 text-muted">{c.email}</td>
+                  <td className="px-4 py-3">
+                    {c.phone ? <a href={`tel:${c.phone}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{c.phone}</a> : <span className="text-muted">—</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {c.email ? <a href={`mailto:${c.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{c.email}</a> : <span className="text-muted">—</span>}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`badge ${c.customer_type === "frequent" ? "badge-success" : "badge-info"}`}>
                       {c.customer_type}
@@ -204,6 +218,9 @@ export default function Customers() {
                   <td className="px-4 py-3 text-muted">{c.total_sales ?? 0}</td>
                   <td className="px-4 py-3 text-muted">{formatCurrency(c.total_spent ?? 0)}</td>
                   <td className="px-4 py-3 text-muted">
+                    {c.total_sales ? formatCurrency((c.total_spent ?? 0) / c.total_sales) : "—"}
+                  </td>
+                  <td className={`px-4 py-3 ${recencyClass(c.last_purchase_at)}`}>
                     {c.last_purchase_at ? formatDate(c.last_purchase_at) : "Never"}
                   </td>
                   <td className="px-4 py-3">

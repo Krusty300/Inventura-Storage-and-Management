@@ -180,7 +180,7 @@ export default function Settings() {
             <Toggle label="Require QC Before Shipping" checked={form.require_qc_before_ship} onChange={(v) => set("require_qc_before_ship", v)}
               description="Block picking and shipping if a pending quality check exists for the product (failed quality checks always block)" />
             <Toggle label="Auto-Allocate Stock" checked={form.auto_allocate_stock} onChange={(v) => set("auto_allocate_stock", v)}
-              description="Automatically reserve stock when a shipment is created" />
+              description="Automatically allocate stock to fulfill a shipment when it is created" />
             <Toggle label="Enforce FEFO (First Expired, First Out)" checked={form.enforce_fefo} onChange={(v) => set("enforce_fefo", v)}
               description="Allocate stock by earliest expiry date. Disable for FIFO by registration order." />
           </fieldset>

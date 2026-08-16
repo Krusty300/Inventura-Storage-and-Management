@@ -20,6 +20,7 @@ class Sale(Base):
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     status: Mapped[str] = mapped_column(String(20), default="completed", index=True)
     payment_method: Mapped[str] = mapped_column(String(20), default="cash")
+    payment_provider: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())

@@ -20,6 +20,7 @@ from app.schemas.sale import SaleBulkEdit, SaleCreate, SaleOut
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_admins, notify_low_stock
+from app.services.payment_methods import validate_payment
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
     BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
@@ -235,6 +236,11 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
     if discount_amount > subtotal:
         raise HTTPException(status_code=400, detail="Discount cannot exceed the sale subtotal")
 
+    try:
+        payment_provider = validate_payment(data.payment_method, data.payment_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     qty_needed: dict[tuple[int, int | None], int] = {}
     for item_data in data.items:
         key = (item_data.product_id, item_data.location_id)
@@ -285,6 +291,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
         tax_amount=tax_amount,
         total_amount=taxable + tax_amount,
         payment_method=data.payment_method,
+        payment_provider=payment_provider,
         notes=data.notes,
     )
     db.add(sale)
@@ -435,11 +442,14 @@ def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
     ) if ln]
 
     c, buf = new_canvas(f"Invoice {sale.invoice_number}")
+    payment = sale.payment_method
+    if sale.payment_method == "mobile_money" and sale.payment_provider:
+        payment = f"mobile_money ({sale.payment_provider})"
     meta = [
         ("Invoice #:", sale.invoice_number),
         ("Date:", sale.created_at.strftime("%b %d, %Y")),
         ("Cashier:", sale.username or "\u2014"),
-        ("Payment:", sale.payment_method),
+        ("Payment:", payment),
     ]
     body_y = draw_header(c, "INVOICE", meta, store_lines)
 

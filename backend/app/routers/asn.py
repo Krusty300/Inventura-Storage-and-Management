@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
-from app.models import ASN, ASNItem, LPN, Location, Lot, Product, SerialNumber, Supplier
+from app.models import ASN, ASNItem, LPN, Location, Lot, Product, SerialNumber, StockMovement, Supplier
 from app.models.settings import Settings
 from app.schemas.asn import ASNCreate, ASNOut, ASNReceiveRequest, ASNUpdate
 from app.services import inventory
@@ -203,6 +203,7 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail="Cannot receive a cancelled ASN")
 
     by_product = {item.product_id: item for item in asn.items}
+    movements_by_location: dict[int, list[StockMovement]] = {}
     try:
         for line in data.items:
             asn_item = by_product.get(line.product_id)
@@ -261,7 +262,7 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                     )
                     db.add(serial)
                     db.flush()
-                    inventory.post_journal_entry(
+                    movement = inventory.post_journal_entry(
                         db, product_id=product.id, user_id=user.id,
                         quantity_change=1, movement_type=inventory.RECEIVE,
                         to_location_id=line.location_id or product.location_id,
@@ -271,11 +272,12 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                         reference_type="asn", reference=asn.asn_number,
                         notes=data.notes or asn.notes,
                     )
+                    movements_by_location.setdefault(line.location_id or product.location_id, []).append(movement)
                 received = line.received_qty
             else:
                 if line.serial_numbers:
                     raise HTTPException(status_code=400, detail=f"'{product.display_name}' is not serialized - remove serial numbers")
-                inventory.post_journal_entry(
+                movement = inventory.post_journal_entry(
                     db, product_id=product.id, user_id=user.id,
                     quantity_change=line.received_qty, movement_type=inventory.RECEIVE,
                     to_location_id=line.location_id or product.location_id,
@@ -284,6 +286,7 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                     reference_type="asn", reference=asn.asn_number,
                     notes=data.notes or asn.notes,
                 )
+                movements_by_location.setdefault(line.location_id or product.location_id, []).append(movement)
                 received = line.received_qty
 
             asn_item.received_qty += received
@@ -294,6 +297,11 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Receiving directly into a quarantine-typed area blocks the lot/serials
+    # from selling, matching the LPN move/load/unload flows.
+    for loc_id, movements in movements_by_location.items():
+        inventory.auto_quarantine(db, db.get(Location, loc_id), movements)
 
     if all(i.received_qty >= i.expected_qty for i in asn.items):
         asn.status = "received"

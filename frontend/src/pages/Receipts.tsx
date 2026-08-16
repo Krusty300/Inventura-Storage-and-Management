@@ -13,6 +13,8 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 import { useToast } from "../context/ToastContext";
+import { useSettings } from "../hooks/useSettings";
+import { formatCurrency } from "../utils/currency";
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -27,6 +29,8 @@ export default function Receipts() {
   const { addToast } = useToast();
   const { can } = useAuth();
   const debouncedSearch = useDebounce(search, 300);
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["receipts", debouncedSearch, page, pageSize],
@@ -94,6 +98,7 @@ export default function Receipts() {
               <th scope="col" className="px-4 py-3 font-medium text-muted">Receipt #</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Items</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Total Cost</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
@@ -101,7 +106,7 @@ export default function Receipts() {
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={6} />
+              <Skeleton rows={5} cols={7} />
             ) : receipts.length === 0 ? (
               <EmptyState title="No receipts yet" message="Record receiving to bring stock into inventory." actionLabel="Record Receipt" onAction={() => setShowForm(true)} />
             ) : receipts.map((r) => (
@@ -109,8 +114,9 @@ export default function Receipts() {
                 <td className="px-4 py-3 font-medium">{r.receipt_number}</td>
                 <td className="px-4 py-3 text-muted">{r.supplier_name || "—"}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(r.created_at)}</td>
+                <td className="px-4 py-3">{r.items.length}</td>
                 <td className="px-4 py-3">{r.total_quantity}</td>
-                <td className="px-4 py-3">{r.total_cost.toFixed(2)}</td>
+                <td className="px-4 py-3">{formatCurrency(r.total_cost, currencySymbol)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => printPdf(r)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print receipt ${r.receipt_number}`}>

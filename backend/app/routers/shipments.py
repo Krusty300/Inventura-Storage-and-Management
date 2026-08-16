@@ -13,6 +13,7 @@ from app.schemas.sale import SaleOut
 from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentPickRequest, ShipmentUpdate
 from app.services import inventory
 from app.services.auth import require_permission
+from app.services.payment_methods import validate_payment
 from app.routers.sales import _apply_sale_locations, generate_invoice_number, get_tax_rate
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change
@@ -433,6 +434,7 @@ def ship_shipment(
 def create_sale_from_shipment(
     shipment_id: int,
     payment_method: str = Query("cash"),
+    payment_provider: str | None = Query(None),
     db: Session = Depends(get_db),
     user=Depends(require_permission("sales.create")),
 ):
@@ -441,6 +443,10 @@ def create_sale_from_shipment(
         raise HTTPException(status_code=400, detail="Only shipped shipments can generate an invoice")
     if shipment.sale_id is not None:
         raise HTTPException(status_code=400, detail=f"Shipment already linked to invoice '{shipment.invoice_number}'")
+    try:
+        payment_provider = validate_payment(payment_method, payment_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     sale_items = []
     subtotal = 0.0
     for item in shipment.items:
@@ -463,6 +469,7 @@ def create_sale_from_shipment(
         total_amount=round(subtotal + tax_amount, 2),
         status="completed",
         payment_method=payment_method,
+        payment_provider=payment_provider,
         notes=f"Invoice created from shipment {shipment.shipment_number}",
     )
     db.add(sale)

@@ -46,3 +46,12 @@ const STATUS_CLASSES: Record<string, string> = {
 export function statusBadge(status: string): string {
   return STATUS_CLASSES[status] ?? "badge-info";
 }
+
+const INBOUND = ["in", "receive", "transfer_in", "sale_return", "count", "create"];
+const OUTBOUND = ["out", "sale", "transfer_out", "issue", "backflush", "return", "ship", "scrap"];
+
+export function movementBadgeClass(type: string): string {
+  if (INBOUND.includes(type)) return "badge-success";
+  if (OUTBOUND.includes(type)) return "badge-danger";
+  return "badge-info";
+}

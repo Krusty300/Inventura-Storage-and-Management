@@ -23,6 +23,9 @@ class OrderUpdate(BaseModel):
     items: Optional[list[OrderItemCreate]] = None
     serial_numbers: Optional[dict[int, list[str]]] = None
     receive_locations: Optional[dict[int, int]] = None
+    lot_numbers: Optional[dict[int, str]] = None
+    expiry_dates: Optional[dict[int, str]] = None
+    lpn_ids: Optional[dict[int, int]] = None
 
 
 class OrderBulkEdit(BaseModel):

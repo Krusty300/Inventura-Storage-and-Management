@@ -49,7 +49,7 @@ describe("SerialNumbers Page", () => {
     expect(screen.getByText("Widget")).toBeInTheDocument();
     expect(screen.getByText("LOT-0001")).toBeInTheDocument();
     expect(screen.getByText("Aisle A")).toBeInTheDocument();
-    expect(screen.getByText("in_stock")).toBeInTheDocument();
+    expect(screen.getByText("in stock")).toBeInTheDocument();
   });
 
   it("shows empty state when no serial numbers", async () => {

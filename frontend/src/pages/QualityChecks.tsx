@@ -5,12 +5,14 @@ import { Eye, Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE } from "../utils/constants";
+import { statusBadge } from "../utils/statusBadges";
 import type { Lot, PaginatedResponse, QualityCheck } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -23,6 +25,7 @@ import { usePageSize } from "../hooks/usePageSize";
 export default function QualityChecks() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+  const [result, setResult] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
@@ -34,11 +37,12 @@ export default function QualityChecks() {
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["quality-checks", debouncedSearch, page, pageSize],
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["quality-checks", debouncedSearch, result, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (result) params.result = result;
       const { data } = await api.get("/quality-checks", { params });
       return data as PaginatedResponse<QualityCheck>;
     },
@@ -80,6 +84,12 @@ export default function QualityChecks() {
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by QC number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search quality checks" />
         </div>
+        <select className="select w-auto" value={result} onChange={(e) => { setResult(e.target.value); setPage(1); }} aria-label="Filter by result">
+          <option value="">All results</option>
+          <option value="pending">Pending</option>
+          <option value="pass">Pass</option>
+          <option value="fail">Fail</option>
+        </select>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -101,6 +111,8 @@ export default function QualityChecks() {
           <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={9} />
+            ) : isError ? (
+              <ErrorState onRetry={refresh} />
             ) : checks.length === 0 ? (
               <EmptyState title="No quality checks yet" message="Record a QC result to keep lot quality controlled. Failing a check quarantines its lot." actionLabel={can("quality_checks.create") ? "New Check" : undefined} onAction={can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
             ) : checks.map((qc) => (
@@ -292,7 +304,7 @@ function QualityCheckDetail({ qc, onClose }: { qc: QualityCheck; onClose: () => 
           </div>
           <div>
             <p className="text-muted">Result</p>
-            <p className="font-medium capitalize">{qc.result}</p>
+            <p className="font-medium"><span className={`badge ${statusBadge(qc.result)}`}>{qc.result}</span></p>
           </div>
           <div>
             <p className="text-muted">Batch Number</p>

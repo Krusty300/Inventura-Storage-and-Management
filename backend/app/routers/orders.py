@@ -1,3 +1,4 @@
+from datetime import date
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,10 +7,13 @@ from sqlalchemy.orm import Session, joinedload
 from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
 from app.models.location import Location
+from app.models.lot import Lot
+from app.models.lpn import LPN
 from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
+from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate, ReorderLowStockRequest
 from app.services import forecasting, inventory
@@ -23,6 +27,16 @@ from app.services.pdf_helpers import (
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
 router = APIRouter(prefix="/api/orders", tags=["orders"], dependencies=[Depends(require_permission("orders.view"))])
+
+
+def _parse_expiry_date(value: str | None) -> date | None:
+    """Parse an optional YYYY-MM-DD expiry date sent with a receive request."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid expiry date '{value}' - use YYYY-MM-DD")
 
 
 ORDER_STATUSES = ("pending", "received", "cancelled")
@@ -352,6 +366,10 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
         ])
         serials_by_product = data.serial_numbers or {}
         receive_locations = data.receive_locations or {}
+        lot_numbers = data.lot_numbers or {}
+        expiry_dates = data.expiry_dates or {}
+        lpn_ids = data.lpn_ids or {}
+        movements_by_location: dict[int, list[StockMovement]] = {}
         try:
             for item in o.items:
                 product = item.product
@@ -366,6 +384,47 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                         raise HTTPException(status_code=400, detail=f"Receive location '{loc.path}' for '{product.display_name}' is inactive")
                 else:
                     loc_id = require_active_location(db, product)
+
+                # Optional LPN: must exist, be active, and (if it already has a
+                # home) sit at the receive location. An unplaced LPN is adopted
+                # by the receive location, mirroring the LPN load flow.
+                lpn_id = lpn_ids.get(product.id)
+                if lpn_id is not None:
+                    lpn = get_or_404(LPN, lpn_id, db)
+                    if lpn.status != "active":
+                        raise HTTPException(status_code=400, detail=f"LPN '{lpn.lpn_number}' is {lpn.status}")
+                    if lpn.location_id is not None and lpn.location_id != loc_id:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"LPN '{lpn.lpn_number}' is at '{lpn.location_name}' - receive into that location or pick another LPN",
+                        )
+                    if lpn.location_id is None:
+                        lpn.location_id = loc_id
+                        db.flush()
+
+                # Optional lot: reuse an existing lot for the product or create
+                # one, carrying the supplier and any expiry date provided.
+                lot = None
+                lot_number = (lot_numbers.get(product.id) or "").strip()
+                if lot_number:
+                    lot = db.query(Lot).filter(
+                        Lot.product_id == product.id, Lot.lot_number == lot_number
+                    ).first()
+                    if lot is None:
+                        lot = Lot(
+                            product_id=product.id,
+                            lot_number=lot_number,
+                            expiry_date=_parse_expiry_date(expiry_dates.get(product.id)),
+                            supplier_id=o.supplier_id,
+                        )
+                        db.add(lot)
+                        db.flush()
+                    else:
+                        expiry = _parse_expiry_date(expiry_dates.get(product.id))
+                        if expiry is not None and lot.expiry_date is None:
+                            lot.expiry_date = expiry
+                lot_id = lot.id if lot else None
+
                 if product.is_serialized:
                     serials = [s.strip() for s in serials_by_product.get(product.id, []) if s and s.strip()]
                     if not serials:
@@ -387,32 +446,43 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                         if existing:
                             raise inventory.InventoryError(f"Serial number '{sn}' is already registered for '{product.display_name}'")
                     for sn in serials:
-                        serial = SerialNumber(product_id=product.id, serial_number=sn, location_id=loc_id)
+                        serial = SerialNumber(
+                            product_id=product.id, serial_number=sn,
+                            lot_id=lot_id, location_id=loc_id, lpn_id=lpn_id,
+                        )
                         db.add(serial)
                         db.flush()
-                        inventory.post_journal_entry(
+                        movement = inventory.post_journal_entry(
                             db, product_id=product.id, user_id=user.id,
                             quantity_change=1, movement_type="in",
-                            serial_id=serial.id,
+                            serial_id=serial.id, lot_id=lot_id, lpn_id=lpn_id,
                             to_location_id=loc_id,
                             reference_type="purchase_order",
                             reference=f"Order {o.order_number}",
                         )
+                        movements_by_location.setdefault(loc_id, []).append(movement)
                 else:
                     if serials_by_product.get(product.id):
                         raise inventory.InventoryError(
                             f"'{product.display_name}' is not serialized - remove its serial numbers"
                         )
-                    inventory.post_journal_entry(
+                    movement = inventory.post_journal_entry(
                         db, product_id=product.id, user_id=user.id,
                         quantity_change=item.quantity, movement_type="in",
+                        lot_id=lot_id, lpn_id=lpn_id,
                         to_location_id=loc_id,
                         reference_type="purchase_order",
                         reference=f"Order {o.order_number}",
                     )
+                    movements_by_location.setdefault(loc_id, []).append(movement)
         except inventory.InventoryError as exc:
             db.rollback()
             raise HTTPException(status_code=400, detail=str(exc))
+
+        # Receiving directly into a quarantine-typed area blocks the lot/serials
+        # from selling, matching the LPN move/load/unload flows.
+        for loc_id, movements in movements_by_location.items():
+            inventory.auto_quarantine(db, db.get(Location, loc_id), movements)
 
     db.commit()
     db.refresh(o)

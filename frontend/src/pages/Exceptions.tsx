@@ -7,6 +7,7 @@ import type { ExceptionsReport, LotGenealogy } from "../types";
 import Skeleton from "../components/Skeleton";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
+import ErrorState from "../components/ErrorState";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
@@ -15,7 +16,8 @@ type Section = "low_stock" | "zero_stock" | "quarantined_lots" | "open_cycle_cou
 
 export default function Exceptions() {
   const [section, setSection] = useState<Section>("low_stock");
-  const { data, isLoading } = useQuery({
+  const queryClient = useQueryClient();
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["exceptions"],
     queryFn: async () => {
       const { data } = await api.get("/reports/exceptions");
@@ -32,6 +34,7 @@ export default function Exceptions() {
   ];
 
   if (isLoading) return <Skeleton variant="rows" rows={8} cols={4} />;
+  if (isError) return <ErrorState variant="block" title="Failed to load exceptions" onRetry={() => queryClient.invalidateQueries({ queryKey: ["exceptions"] })} />;
   if (!data) return null;
 
   return (

@@ -2,7 +2,7 @@ import { useDateFormat } from "../hooks/useDateFormat";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Package, MapPin, ClipboardList, ShieldCheck, ShieldX } from "lucide-react";
+import { Package, MapPin, ClipboardList, PackageOpen, ShieldCheck, ShieldX } from "lucide-react";
 import api from "../api/client";
 import Modal from "./Modal";
 import type { Location, PaginatedResponse } from "../types";
@@ -126,6 +126,20 @@ export default function LocationDetail({ location, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+  });
+
+  const releaseReservedSerialMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/serial-numbers/${id}/release`),
+    onSuccess: () => {
+      addToast("Serial released from work order", "success");
+      queryClient.invalidateQueries({ queryKey: ["locations", "detail", location.id] });
+      queryClient.invalidateQueries({ queryKey: ["locations"] });
+      queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["work-orders"] });
     },
     onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
   });
@@ -290,6 +304,17 @@ export default function LocationDetail({ location, onClose }: Props) {
                                   aria-label={`Release ${s.serial_number}`}
                                 >
                                   <ShieldCheck size={16} />
+                                </button>
+                              )}
+                              {can("serial_numbers.update") && s.status === "reserved" && (
+                                <button
+                                  onClick={() => releaseReservedSerialMutation.mutate(s.id)}
+                                  disabled={releaseReservedSerialMutation.isPending}
+                                  className="p-1 text-faint hover:text-green-600 dark:text-green-400"
+                                  title="Release from work order"
+                                  aria-label={`Release ${s.serial_number} from work order`}
+                                >
+                                  <PackageOpen size={16} />
                                 </button>
                               )}
                             </div>

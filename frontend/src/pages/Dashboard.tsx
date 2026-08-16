@@ -32,12 +32,14 @@ import type {
 } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { canUser } from "../utils/permissions";
+import { movementBadgeClass } from "../utils/statusBadges";
 import { useSettings } from "../hooks/useSettings";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import GlobalSearch from "../components/GlobalSearch";
 import ConfirmDialog from "../components/ConfirmDialog";
+import ProgressBar from "../components/ProgressBar";
 
 const TREND_OPTIONS = [7, 30, 90];
 
@@ -562,6 +564,7 @@ export default function Dashboard() {
                     <ArrowDownRight className="text-red-500" size={16} />
                   )}
                   <span className="font-medium">{m.product_name}</span>
+                  <span className={`badge ${movementBadgeClass(m.movement_type)}`}>{m.movement_type}</span>
                 </div>
                 <span className={m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                   {m.quantity_change > 0 ? "+" : ""}
@@ -604,18 +607,23 @@ export default function Dashboard() {
             {stats.low_stock_products.length === 0 && (
               <p className="text-muted text-sm">All products are well-stocked</p>
             )}
-            {stats.low_stock_products.map((p) => (
-              <div key={p.id} className="flex items-center justify-between text-sm">
-                <div>
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-muted ml-2">({p.sku})</span>
+            {stats.low_stock_products.map((p) => {
+              const qty = p.sellable ?? p.quantity;
+              const critical = qty <= 0 || qty <= p.reorder_level / 2;
+              return (
+                <div key={p.id} className="flex items-center justify-between text-sm">
+                  <div>
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-muted ml-2">({p.sku})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`badge ${critical ? "badge-danger" : "badge-warning"}`}>{critical ? "Critical" : "Low"}</span>
+                    <span className="text-red-600 dark:text-red-400 font-medium">{qty}</span>
+                    <span className="text-faint">/ {p.reorder_level}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-red-600 dark:text-red-400 font-medium">{p.sellable ?? p.quantity}</span>
-                  <span className="text-faint">/ {p.reorder_level}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -726,9 +734,9 @@ export default function Dashboard() {
                     {s.customer_name && <span className="text-muted ml-2">{s.customer_name}</span>}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-muted">{s.total_picked}/{s.total_quantity} picked</span>
+                    <ProgressBar value={s.total_picked} max={s.total_quantity} label={`Pick progress for ${s.shipment_number}`} />
                     <span className={`text-xs px-2 py-0.5 rounded-full ${s.status === "packed" ? "bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : s.status === "picking" ? "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-subtle text-muted"}`}>
-                      {s.status}
+                      {s.status.replace("_", " ")}
                     </span>
                   </div>
                 </div>
@@ -754,7 +762,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-muted">{w.quantity} units</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">{w.status}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">{w.status.replace("_", " ")}</span>
                   </div>
                 </div>
               ))}

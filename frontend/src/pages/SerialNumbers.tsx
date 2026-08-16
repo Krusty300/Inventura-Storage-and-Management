@@ -2,7 +2,7 @@ import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
-import { Eye, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, SerialNumber, StockMovement } from "../types";
@@ -29,10 +29,21 @@ const STATUS_FILTERS = [
   { value: "consumed", label: "Consumed" },
 ] as const;
 
+const SORTABLE_COLUMNS = [
+  { key: "serial_number", label: "Serial #" },
+  { key: "status", label: "Status" },
+  { key: "created_at", label: "Created" },
+  { key: "sold_at", label: "Sold" },
+] as const;
+
+type SortKey = (typeof SORTABLE_COLUMNS)[number]["key"];
+
 export default function SerialNumbers() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [status, setStatus] = useState("");
+  const [sort, setSort] = useState<SortKey>("created_at");
+  const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [viewing, setViewing] = useState<SerialNumber | null>(null);
@@ -43,19 +54,37 @@ export default function SerialNumbers() {
   const { addToast } = useToast();
   const { exportCsv } = useExportCsv();
 
+  const toggleSort = (key: SortKey) => {
+    if (sort === key) {
+      setOrder(order === "asc" ? "desc" : "asc");
+    } else {
+      setSort(key);
+      setOrder("asc");
+    }
+    setPage(1);
+  };
+
   const handleExport = () => {
     const params: Record<string, string> = {};
     if (debouncedSearch) params.search = debouncedSearch;
     if (status) params.status = status;
+    if (sort !== "created_at" || order !== "desc") {
+      params.sort = sort;
+      params.order = order;
+    }
     exportCsv("/serial-numbers/export", "serial_numbers_report.csv", "Serial numbers report", params);
   };
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["serial-numbers", debouncedSearch, status, page, pageSize],
+    queryKey: ["serial-numbers", debouncedSearch, status, sort, order, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
       if (status) params.status = status;
+      if (sort !== "created_at" || order !== "desc") {
+        params.sort = sort;
+        params.order = order;
+      }
       const { data } = await api.get("/serial-numbers", { params });
       return data as PaginatedResponse<SerialNumber>;
     },
@@ -120,30 +149,40 @@ export default function SerialNumbers() {
         <table className="w-full text-sm" role="grid" aria-label="Serial numbers table">
           <thead>
             <tr className="bg-app text-left">
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Serial #</th>
+              {SORTABLE_COLUMNS.map((c) => (
+                <th key={c.key} scope="col" className="px-4 py-3 font-medium text-muted">
+                  <button
+                    onClick={() => toggleSort(c.key)}
+                    className="inline-flex items-center gap-1 hover:text-ink"
+                    aria-label={`Sort by ${c.label}`}
+                  >
+                    {c.label}
+                    {sort === c.key ? (order === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-40" />}
+                  </button>
+                </th>
+              ))}
               <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Lot</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Reference</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Sold</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={7} />
+              <Skeleton rows={5} cols={9} />
             ) : serials.length === 0 ? (
               <EmptyState title="No serial numbers yet" message="Serialized products are tracked individually. Record a receipt for a serialized product to create serial numbers." />
             ) : serials.map((s) => (
               <tr key={s.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium font-mono">{s.serial_number}</td>
+                <td className="px-4 py-3"><span className={`badge ${statusBadge(s.status)}`}>{s.status.replace("_", " ")}</span></td>
+                <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
+                <td className="px-4 py-3 text-muted">{s.sold_at ? formatDate(s.sold_at) : "—"}</td>
                 <td className="px-4 py-3 text-muted">{s.product_name}</td>
                 <td className="px-4 py-3 text-muted">{s.lot_number || "—"}</td>
                 <td className="px-4 py-3 text-muted">{s.location_name || "—"}</td>
-                <td className="px-4 py-3">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
                 <td className="px-4 py-3 text-muted">{s.reference || "—"}</td>
-                <td className="px-4 py-3 text-muted">{s.sold_at ? formatDate(s.sold_at) : "—"}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
                     {can("serial_numbers.update") && s.status === "reserved" && (
@@ -272,7 +311,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
           </div>
           <div>
             <p className="text-muted">Status</p>
-            <p className="font-medium">{statusBadge(status) ? <span className={`badge ${statusBadge(status)}`}>{status}</span> : <span className="capitalize">{status}</span>}</p>
+            <p className="font-medium"><span className={`badge ${statusBadge(status)}`}>{status.replace("_", " ")}</span></p>
           </div>
           <div>
             <p className="text-muted">Reference</p>

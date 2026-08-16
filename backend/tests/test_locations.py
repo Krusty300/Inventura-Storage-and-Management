@@ -1,4 +1,4 @@
-from app.models import StockLine, User
+from app.models import SerialNumber, StockLine, User
 from app.services import inventory
 from tests.conftest import TestingSessionLocal, client
 
@@ -280,6 +280,24 @@ def test_location_detail_includes_serialized(auth_headers):
     assert detail["serials"][0]["value"] == 5.0
 
 
+def test_location_detail_includes_reserved_serials(auth_headers):
+    loc = _create_location(auth_headers, code="SERRES-1").json()
+    prod = _serialized_at(auth_headers, loc, "SERRES-P", ["S-RES-1"])
+    db = TestingSessionLocal()
+    try:
+        serial = db.query(SerialNumber).filter(SerialNumber.product_id == prod["id"]).first()
+        serial.status = inventory.SERIAL_STATUS_RESERVED
+        db.commit()
+    finally:
+        db.close()
+
+    detail = client.get(f"/api/locations/{loc['id']}/detail", headers=auth_headers).json()
+    reserved = [s for s in detail["serials"] if s["status"] == "reserved"]
+    assert len(reserved) == 1
+    assert reserved[0]["serial_number"] == "S-RES-1"
+    assert reserved[0]["product_name"] == prod["name"]
+
+
 def test_location_detail_serialized_lpn_total_quantity(auth_headers):
     """The location detail must count serialized units held inside an LPN."""
     loc = _create_location(auth_headers, code="SERLPN-1").json()
@@ -293,6 +311,68 @@ def test_location_detail_serialized_lpn_total_quantity(auth_headers):
     detail = client.get(f"/api/locations/{loc['id']}/detail", headers=auth_headers).json()
     match = next(l for l in detail["lpns"] if l["id"] == lpn["id"])
     assert match["total_quantity"] == 2
+
+
+def test_location_products_lists_stocked_items(auth_headers):
+    loc = _create_location(auth_headers, code="PRODLOC-1").json()
+    other = _create_location(auth_headers, code="PRODLOC-2").json()
+    here = client.post("/api/products", json={
+        "location_id": 1, "sku": "PRODLOC-H", "name": "Here", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    away = client.post("/api/products", json={
+        "location_id": 1, "sku": "PRODLOC-A", "name": "Away", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": here["id"], "quantity": 4, "location_id": loc["id"]}],
+    }, headers=auth_headers).status_code == 201
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": away["id"], "quantity": 7, "location_id": other["id"]}],
+    }, headers=auth_headers).status_code == 201
+
+    body = client.get(f"/api/locations/{loc['id']}/products", headers=auth_headers).json()
+    assert [i["product_id"] for i in body["items"]] == [here["id"]]
+    assert body["items"][0]["name"] == here["name"]
+    assert body["items"][0]["sku"] == here["sku"]
+    assert body["items"][0]["quantity"] == 4
+    assert body["items"][0]["is_serialized"] is False
+
+    other_body = client.get(f"/api/locations/{other['id']}/products", headers=auth_headers).json()
+    assert [i["product_id"] for i in other_body["items"]] == [away["id"]]
+
+
+def test_location_products_includes_serialized(auth_headers):
+    loc = _create_location(auth_headers, code="PRODSER-1").json()
+    prod = _serialized_at(auth_headers, loc, "PRODSER-P", ["PS-1", "PS-2", "PS-3"])
+    body = client.get(f"/api/locations/{loc['id']}/products", headers=auth_headers).json()
+    assert [i["product_id"] for i in body["items"]] == [prod["id"]]
+    assert body["items"][0]["is_serialized"] is True
+    assert body["items"][0]["serial_count"] == 3
+    assert body["items"][0]["quantity"] == 0
+
+
+def test_location_products_excludes_quarantined_stock(auth_headers):
+    loc = _create_location(auth_headers, code="PRODQ-1").json()
+    prod = client.post("/api/products", json={
+        "location_id": 1, "sku": "PRODQ-P", "name": "Quarantined", "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 5, "location_id": loc["id"], "lot_number": "PRODQ-LOT"}],
+    }, headers=auth_headers).status_code == 201
+    lots = client.get("/api/lots", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    lot_id = next(l["id"] for l in lots if l["lot_number"] == "PRODQ-LOT")
+    assert client.put(f"/api/lots/{lot_id}", json={"status": "quarantined"}, headers=auth_headers).status_code == 200
+
+    default = client.get(f"/api/locations/{loc['id']}/products", headers=auth_headers).json()
+    assert default["items"] == []
+
+    included = client.get(f"/api/locations/{loc['id']}/products", params={"include_quarantined": True}, headers=auth_headers).json()
+    assert [i["product_id"] for i in included["items"]] == [prod["id"]]
+    assert included["items"][0]["quantity"] == 5
+
+
+def test_location_products_unknown_location_404(auth_headers):
+    resp = client.get("/api/locations/99999/products", headers=auth_headers)
+    assert resp.status_code == 404
 
 
 def test_location_delete_blocked_with_serials(auth_headers):

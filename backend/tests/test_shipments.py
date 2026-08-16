@@ -515,6 +515,48 @@ def test_shipment_create_sale_invoice(auth_headers):
     assert client.get(f"/api/products/{p['id']}", headers=auth_headers).json()["quantity"] == 3
 
 
+def test_shipment_create_sale_mobile_money(auth_headers):
+    p = _make_product(auth_headers, "SHP-MM")
+    loc = _make_location(auth_headers, "SHP-MM-LOC")
+    assert _receive(auth_headers, p["id"], 4, loc["id"]).status_code == 201
+    sid = _create_shipment(auth_headers, [(p["id"], 2)]).json()["id"]
+    client.post(f"/api/shipments/{sid}/pick", headers=auth_headers)
+    client.post(f"/api/shipments/{sid}/pack", headers=auth_headers)
+    client.post(f"/api/shipments/{sid}/ship", headers=auth_headers)
+
+    resp = client.post(
+        f"/api/shipments/{sid}/create-sale",
+        params={"payment_method": "mobile_money", "payment_provider": "t-kash"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    sale = resp.json()
+    assert sale["payment_method"] == "mobile_money"
+    assert sale["payment_provider"] == "t-kash"
+
+    shipment = client.get(f"/api/shipments/{sid}", headers=auth_headers).json()
+    assert shipment["payment_method"] == "mobile_money"
+    assert shipment["payment_provider"] == "t-kash"
+
+
+def test_shipment_create_sale_mobile_money_requires_provider(auth_headers):
+    p = _make_product(auth_headers, "SHP-MM-REQ")
+    loc = _make_location(auth_headers, "SHP-MM-REQ-LOC")
+    assert _receive(auth_headers, p["id"], 4, loc["id"]).status_code == 201
+    sid = _create_shipment(auth_headers, [(p["id"], 2)]).json()["id"]
+    client.post(f"/api/shipments/{sid}/pick", headers=auth_headers)
+    client.post(f"/api/shipments/{sid}/pack", headers=auth_headers)
+    client.post(f"/api/shipments/{sid}/ship", headers=auth_headers)
+
+    resp = client.post(
+        f"/api/shipments/{sid}/create-sale",
+        params={"payment_method": "mobile_money"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 400
+    assert "payment_provider is required" in resp.json()["detail"]
+
+
 def test_create_sale_requires_shipped(auth_headers):
     p = _make_product(auth_headers, "SHP-INV-DRAFT")
     loc = _make_location(auth_headers, "SHP-INV-DRAFT-LOC")

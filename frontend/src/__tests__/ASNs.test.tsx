@@ -68,7 +68,7 @@ describe("ASNs Page", () => {
     expect(await screen.findByText("ASN-0001")).toBeInTheDocument();
     expect(screen.getByText("Acme Supplies")).toBeInTheDocument();
     expect(screen.getByText("pending")).toBeInTheDocument();
-    expect(screen.getByText("0/10")).toBeInTheDocument();
+    expect(screen.getByLabelText("Receive progress for ASN-0001")).toBeInTheDocument();
   });
 
   it("shows admin actions for admins", async () => {

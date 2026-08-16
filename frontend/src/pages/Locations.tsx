@@ -9,6 +9,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import Modal from "../components/Modal";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
 import LocationDetail from "../components/LocationDetail";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -53,7 +54,7 @@ export default function Locations() {
   const q = search.trim().toLowerCase();
   const { exportCsv } = useExportCsv();
 
-  const { data: tree, isLoading } = useQuery({
+  const { data: tree, isLoading, isError } = useQuery({
     queryKey: ["locations", "tree"],
     queryFn: async () => {
       const { data } = await api.get("/locations/tree");
@@ -166,6 +167,8 @@ export default function Locations() {
         <div
           className="flex items-center gap-2 px-3 py-2 hover:bg-app border-b border-border"
           style={{ paddingLeft: `${depth * 24 + 12}px` }}
+          role="treeitem"
+          aria-label={`${node.path} — ${node.location_type}${node.is_active ? "" : ", inactive"}`}
         >
           <button
             onClick={() => toggle(node.id)}
@@ -178,7 +181,7 @@ export default function Locations() {
           <MapPin size={16} className={node.is_active ? "text-indigo-500" : "text-faint"} />
           <span className="font-medium text-ink">{node.path}</span>
           <span className="text-xs text-faint capitalize">{node.location_type}</span>
-          {!node.is_active && <span className="text-xs text-faint">(inactive)</span>}
+          {!node.is_active && <span className="badge badge-neutral">Inactive</span>}
           <span className="ml-auto flex items-center gap-3 text-xs text-muted" aria-label={`${node.path} stats`}>
             <span className="flex items-center gap-1"><Package size={12} />{node.stock_line_count} lines</span>
             <span>{node.total_quantity} units</span>
@@ -266,6 +269,8 @@ export default function Locations() {
 
       {isLoading ? (
         <Skeleton variant="rows" rows={5} cols={3} />
+      ) : isError ? (
+        <ErrorState variant="block" onRetry={() => queryClient.invalidateQueries({ queryKey: ["locations"] })} />
       ) : visibleTree.length === 0 ? (
         <EmptyState
           variant="block"
@@ -278,7 +283,9 @@ export default function Locations() {
         <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">
             <div className="px-4 py-3 bg-app border-b text-sm text-muted">Warehouse tree</div>
-            {visibleTree.map((node) => renderNode(node, 0, isSearching))}
+            <div role="tree" aria-label="Warehouse location tree">
+              {visibleTree.map((node) => renderNode(node, 0, isSearching))}
+            </div>
           </div>
         </div>
       )}

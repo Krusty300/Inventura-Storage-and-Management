@@ -16,3 +16,11 @@ MAX_PAGE_SIZE_PICKER = 500
 
 # Frontend product pickers request up to this many rows in one go.
 MAX_PAGE_SIZE_PRODUCTS = 1000
+
+# Payment methods accepted when completing a sale (register checkout or
+# shipment invoice creation). "mobile_money" requires a provider from
+# MOBILE_MONEY_PROVIDERS.
+PAYMENT_METHODS = ["cash", "card", "transfer", "mobile_money"]
+
+# Sub-providers selectable when payment_method == "mobile_money".
+MOBILE_MONEY_PROVIDERS = ["m-pesa", "airtel_money", "t-kash"]

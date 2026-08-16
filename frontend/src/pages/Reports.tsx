@@ -13,6 +13,7 @@ import type {
   TopCustomersReport, TopSuppliersReport, ManufacturingCostReport,
 } from "../types";
 import { formatCurrency } from "../utils/currency";
+import { paymentLabel } from "../utils/payments";
 import { useSettings } from "../hooks/useSettings";
 import { useExportCsv } from "../hooks/useExportCsv";
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
@@ -651,7 +652,7 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
-                <Pie data={data.by_payment_method} dataKey="count" nameKey="method" cx="50%" cy="50%" outerRadius={90} label={({ name, value }: any) => `${name}: ${value}`}>
+                <Pie data={data.by_payment_method.map((x) => ({ ...x, label: paymentLabel(x.method) }))} dataKey="count" nameKey="label" cx="50%" cy="50%" outerRadius={90} label={({ name, value }: any) => `${name}: ${value}`}>
                   {data.by_payment_method.map((_, i) => (
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
                   ))}

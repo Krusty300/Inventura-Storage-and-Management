@@ -12,10 +12,12 @@ import StockLocationHints from "../components/StockLocationHints";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import ProgressBar from "../components/ProgressBar";
 import { useDebounce } from "../hooks/useDebounce";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
+import { parseLocalDate } from "../utils/date";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
@@ -82,6 +84,14 @@ export default function ASNs() {
     }
   };
 
+  const arrivalBadge = (date: string | null) => {
+    if (!date) return <span className="text-muted">—</span>;
+    const days = Math.ceil((parseLocalDate(date).getTime() - Date.now()) / 86400000);
+    if (days < 0) return <span className="badge badge-danger">Overdue {formatDate(date)}</span>;
+    if (days <= 3) return <span className="badge badge-warning">Due {formatDate(date)}</span>;
+    return <span className="text-muted text-xs">{formatDate(date)}</span>;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -127,9 +137,11 @@ export default function ASNs() {
               <tr key={a.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{a.asn_number}</td>
                 <td className="px-4 py-3 text-muted">{a.supplier_name || "—"}</td>
-                <td className="px-4 py-3 text-muted">{a.expected_arrival ? formatDate(a.expected_arrival) : "—"}</td>
-                <td className="px-4 py-3"><span className={`badge ${statusBadge(a.status)}`}>{a.status}</span></td>
-                <td className="px-4 py-3 text-muted">{a.total_received}/{a.total_expected}</td>
+                <td className="px-4 py-3">{arrivalBadge(a.expected_arrival)}</td>
+                <td className="px-4 py-3 whitespace-nowrap"><span className={`badge ${statusBadge(a.status)}`}>{a.status.replace("_", " ")}</span></td>
+                <td className="px-4 py-3">
+                  <ProgressBar value={a.total_received} max={a.total_expected} label={`Receive progress for ${a.asn_number}`} />
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => printPdf(a)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${a.asn_number}`}><Printer size={16} /></button>
@@ -405,7 +417,7 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
           </div>
           <div>
             <p className="text-muted">Status</p>
-            <p className="font-medium capitalize">{asn.status}</p>
+            <p className="font-medium"><span className={`badge ${statusBadge(asn.status)}`}>{asn.status.replace("_", " ")}</span></p>
           </div>
         </div>
         {asn.notes && <p className="text-sm text-muted">{asn.notes}</p>}
@@ -427,7 +439,7 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
                   <td className="px-4 py-2">{item.expected_qty}</td>
                   <td className="px-4 py-2">{item.received_qty}</td>
                   <td className="px-4 py-2">{item.unit_cost.toFixed(2)}</td>
-                  <td className="px-4 py-2"><span className="badge badge-info">{item.status}</span></td>
+                  <td className="px-4 py-2"><span className={`badge ${statusBadge(item.status)}`}>{item.status.replace("_", " ")}</span></td>
                 </tr>
               ))}
             </tbody>

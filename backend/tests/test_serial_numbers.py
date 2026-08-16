@@ -46,6 +46,31 @@ def test_serial_movements(auth_headers):
                and m["reference"] == receipt["receipt_number"] for m in movements)
 
 
+def test_serial_lot_filter(auth_headers):
+    prod = _make_serialized_product(auth_headers, sku="SER-LOT")
+    assert _receive_serials(auth_headers, prod["id"], ["SER-LOT-1"]).status_code == 201
+    resp = client.post("/api/receipts", json={
+        "items": [{
+            "product_id": prod["id"], "quantity": 1,
+            "serial_numbers": ["SER-LOT-2"], "lot_number": "LOT-SER-1",
+        }],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    lots = client.get("/api/lots", params={"product_id": prod["id"]}, headers=auth_headers).json()["items"]
+    assert len(lots) == 1
+    lot_id = lots[0]["id"]
+    filtered = client.get("/api/serial-numbers", params={"lot_id": lot_id}, headers=auth_headers).json()
+    assert filtered["total"] == 1
+    assert all(s["lot_id"] == lot_id and s["serial_number"] == "SER-LOT-2" for s in filtered["items"])
+
+
+def test_serial_list_accepts_lookup_limit(auth_headers):
+    prod = _make_serialized_product(auth_headers, sku="SER-LOOKUP")
+    assert _receive_serials(auth_headers, prod["id"], ["SER-LOOKUP-1"]).status_code == 201
+    resp = client.get("/api/serial-numbers", params={"limit": 5000}, headers=auth_headers)
+    assert resp.status_code == 200
+
+
 def test_serial_status_filter(auth_headers):
     prod = _make_serialized_product(auth_headers, sku="SER-STAT")
     _receive_serials(auth_headers, prod["id"], ["SER-STAT-1", "SER-STAT-2"])

@@ -1,6 +1,8 @@
 import type { Receipt } from "../types";
 import Modal from "./Modal";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
+import { useSettings } from "../hooks/useSettings";
+import { formatCurrency } from "../utils/currency";
 
 interface Props {
   receipt: Receipt;
@@ -9,6 +11,8 @@ interface Props {
 
 export default function ReceiptDetail({ receipt, onClose }: Props) {
   const formatDateTime = useDateTimeFormat();
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
   return (
     <Modal open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} wide>
       <div className="space-y-4">
@@ -43,7 +47,7 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
                 <tr key={item.id}>
                   <td className="px-4 py-2 font-medium">{item.product_name}</td>
                   <td className="px-4 py-2">{item.quantity}</td>
-                  <td className="px-4 py-2">{item.unit_cost.toFixed(2)}</td>
+                  <td className="px-4 py-2">{formatCurrency(item.unit_cost, currencySymbol)}</td>
                   <td className="px-4 py-2 text-muted">{item.lot_number || "—"}</td>
                   <td className="px-4 py-2 text-muted">{item.location_name || "—"}</td>
                 </tr>
@@ -53,7 +57,7 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
         </div>
         <div className="flex justify-between text-sm font-medium">
           <span>Total quantity: {receipt.total_quantity}</span>
-          <span>Total cost: {receipt.total_cost.toFixed(2)}</span>
+          <span>Total cost: {formatCurrency(receipt.total_cost, currencySymbol)}</span>
         </div>
         <div className="flex justify-end pt-2">
           <button onClick={onClose} className="btn-secondary">Close</button>

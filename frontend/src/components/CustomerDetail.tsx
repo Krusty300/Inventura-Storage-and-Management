@@ -4,6 +4,7 @@ import Modal from "./Modal";
 import api from "../api/client";
 import type { Customer, CustomerStats, FrequentProduct, PaginatedResponse, Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
+import { paymentLabel } from "../utils/payments";
 
 interface Props {
   customer: Customer;
@@ -149,7 +150,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
                     <tr key={sale.id}>
                       <td className="px-3 py-2 font-medium">{sale.invoice_number}</td>
                       <td className="px-3 py-2 text-muted">{formatDate(sale.created_at)}</td>
-                      <td className="px-3 py-2 text-muted">{sale.payment_method}</td>
+                      <td className="px-3 py-2 text-muted">{paymentLabel(sale.payment_method, sale.payment_provider)}</td>
                       <td className="px-3 py-2">{formatCurrency(sale.total_amount)}</td>
                       <td className="px-3 py-2">
                         <span className={`badge ${sale.status === "completed" ? "badge-success" : sale.status === "refunded" ? "badge-warning" : "badge-info"}`}>

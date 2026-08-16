@@ -1,10 +1,10 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import api from "../api/client";
-import { PAGE_SIZE_LOOKUP } from "../utils/constants";
-import type { Order } from "../types";
+import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
+import type { LPN, Order, OrderItem } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -20,26 +20,150 @@ interface Props {
   onUpdated: () => void;
 }
 
-function ReceiveLocationHints({
-  productId,
-  isSerialized,
-  selectedPath,
-  onSelect,
+interface LocationOption {
+  id: number;
+  path: string;
+}
+
+interface ReceiveEntry {
+  location: string;
+  lpn_number: string;
+  lpn_id?: number;
+  lot_number: string;
+  expiry_date: string;
+  serials: string;
+}
+
+const emptyEntry: ReceiveEntry = {
+  location: "",
+  lpn_number: "",
+  lot_number: "",
+  expiry_date: "",
+  serials: "",
+};
+
+function useLocationLpns(locationPath: string, locations: LocationOption[]) {
+  const locationId = useMemo(() => {
+    if (!locationPath) return undefined;
+    return locations.find((l) => l.path === locationPath)?.id;
+  }, [locationPath, locations]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["lpns", "by-location", locationId],
+    queryFn: async () => {
+      const { data } = await api.get("/lpns", { params: { location_id: locationId, limit: PAGE_SIZE_PICKER } });
+      return (data.items || []) as LPN[];
+    },
+    enabled: !!locationId,
+  });
+  return { lpns: data ?? [], isLoading };
+}
+
+function ReceiveRow({
+  item,
+  locations,
+  globalLpns,
+  entry,
+  onChange,
 }: {
-  productId: number;
-  isSerialized: boolean;
-  selectedPath: string;
-  onSelect: (path: string) => void;
+  item: OrderItem;
+  locations: LocationOption[];
+  globalLpns: LPN[];
+  entry: ReceiveEntry;
+  onChange: (patch: Partial<ReceiveEntry>) => void;
 }) {
-  const { locations, isLoading } = useProductStockLocations(productId, isSerialized);
+  const { locations: stockLocations, isLoading: stockLoading } = useProductStockLocations(item.product_id, item.is_serialized);
+  const { lpns, isLoading: lpnsLoading } = useLocationLpns(entry.location, locations);
+  const pickerLpns = entry.location ? lpns : globalLpns;
+
+  useEffect(() => {
+    if (entry.location) return;
+    if (stockLocations.length === 1) {
+      onChange({ location: stockLocations[0].path });
+    }
+  }, [stockLocations]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!entry.location || entry.lpn_number) return;
+    if (lpns.length === 1) {
+      onChange({ lpn_number: lpns[0].lpn_number, lpn_id: lpns[0].id });
+    }
+  }, [lpns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!entry.lpn_number || entry.lpn_id) return;
+    const match = lpns.find((l) => l.lpn_number === entry.lpn_number);
+    if (match) onChange({ lpn_id: match.id });
+  }, [lpns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLocationChange = (v: string) => {
+    onChange({ location: v, lpn_number: "", lpn_id: undefined });
+  };
+
+  const handleLpnChange = (v: string) => {
+    const trimmed = v.trim();
+    const fromLocation = lpns.find((l) => l.lpn_number === trimmed);
+    const match = fromLocation ?? globalLpns.find((l) => l.lpn_number === trimmed);
+    onChange({ lpn_number: v, lpn_id: match?.id });
+  };
+
   return (
-    <StockLocationHints
-      locations={locations}
-      isSerialized={isSerialized}
-      selectedPath={selectedPath}
-      onSelect={onSelect}
-      isLoading={isLoading}
-    />
+    <div className="space-y-1.5">
+      <label className="block text-sm text-muted">{item.product_name}</label>
+      <LocationPicker value={entry.location} onChange={handleLocationChange} placeholder="Location (defaults to product location)" />
+      <StockLocationHints
+        locations={stockLocations}
+        isSerialized={item.is_serialized}
+        selectedPath={entry.location}
+        onSelect={handleLocationChange}
+        isLoading={stockLoading}
+      />
+      <input
+        className="input"
+        list={`order-lpn-options-${item.id}`}
+        placeholder="LPN (optional)"
+        value={entry.lpn_number}
+        onChange={(e) => handleLpnChange(e.target.value)}
+        aria-label={`LPN for ${item.product_name}`}
+      />
+      <datalist id={`order-lpn-options-${item.id}`}>
+        {pickerLpns.map((l) => (
+          <option key={l.id} value={l.lpn_number}>
+            {l.content_count === 0 ? "empty pallet" : `${l.total_quantity} units`}
+          </option>
+        ))}
+      </datalist>
+      {entry.location && lpnsLoading && <p className="text-xs text-faint mt-1">Loading LPNs...</p>}
+      {entry.location && !lpnsLoading && lpns.length === 0 && (
+        <p className="text-xs text-faint mt-1">No LPNs at this location - create one to receive onto a pallet</p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <input
+          className="input"
+          placeholder="Lot number (optional)"
+          value={entry.lot_number}
+          onChange={(e) => onChange({ lot_number: e.target.value })}
+          aria-label={`Lot number for ${item.product_name}`}
+        />
+        <input
+          type="date"
+          className="input"
+          value={entry.expiry_date}
+          onChange={(e) => onChange({ expiry_date: e.target.value })}
+          aria-label={`Expiry date for ${item.product_name}`}
+        />
+      </div>
+      {item.is_serialized && (
+        <textarea
+          className="input font-mono text-xs"
+          rows={3}
+          value={entry.serials}
+          onChange={(e) => onChange({ serials: e.target.value })}
+          placeholder={`Enter ${item.quantity} serial number(s), one per line`}
+          aria-label={`Serial numbers for ${item.product_name}`}
+        />
+      )}
+    </div>
   );
 }
 
@@ -47,8 +171,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const formatDate = useDateFormat();
   const [confirming, setConfirming] = useState<string | null>(null);
   const [receiving, setReceiving] = useState(false);
-  const [serials, setSerials] = useState<Record<number, string>>({});
-  const [receiveLocations, setReceiveLocations] = useState<Record<number, string>>({});
+  const [receiveEntries, setReceiveEntries] = useState<Record<number, ReceiveEntry>>({});
   const { addToast } = useToast();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
@@ -57,7 +180,15 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
     queryKey: ["locations", "order-picker"],
     queryFn: async () => {
       const { data } = await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } });
-      return (data.items || []) as { id: number; path: string }[];
+      return (data.items || []) as LocationOption[];
+    },
+  });
+
+  const { data: lpnOptions } = useQuery({
+    queryKey: ["lpns", "order-picker"],
+    queryFn: async () => {
+      const { data } = await api.get("/lpns", { params: { limit: PAGE_SIZE_LOOKUP } });
+      return (data.items || []) as LPN[];
     },
   });
 
@@ -88,23 +219,44 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
     const payload: Record<string, unknown> = { status: "received" };
 
     const receive_locations: Record<number, number> = {};
+    const lot_numbers: Record<number, string> = {};
+    const expiry_dates: Record<number, string> = {};
+    const lpn_ids: Record<number, number> = {};
     for (const item of order.items) {
-      const path = (receiveLocations[item.product_id] || "").trim();
-      if (!path) continue;
-      const loc = (locationOptions || []).find((l) => l.path === path);
-      if (!loc) {
-        addToast(`Unknown location for ${item.product_name} - pick from the dropdown`, "error");
-        return;
+      const entry = receiveEntries[item.product_id] || emptyEntry;
+      const path = (entry.location || "").trim();
+      if (path) {
+        const loc = (locationOptions || []).find((l) => l.path === path);
+        if (!loc) {
+          addToast(`Unknown location for ${item.product_name} - pick from the dropdown`, "error");
+          return;
+        }
+        receive_locations[item.product_id] = loc.id;
       }
-      receive_locations[item.product_id] = loc.id;
+      const lot = (entry.lot_number || "").trim();
+      if (lot) lot_numbers[item.product_id] = lot;
+      const exp = (entry.expiry_date || "").trim();
+      if (exp) expiry_dates[item.product_id] = exp;
+      const lpn = (entry.lpn_number || "").trim();
+      if (lpn) {
+        if (!entry.lpn_id) {
+          addToast(`Unknown LPN "${lpn}" for ${item.product_name}`, "error");
+          return;
+        }
+        lpn_ids[item.product_id] = entry.lpn_id;
+      }
     }
     if (Object.keys(receive_locations).length > 0) payload.receive_locations = receive_locations;
+    if (Object.keys(lot_numbers).length > 0) payload.lot_numbers = lot_numbers;
+    if (Object.keys(expiry_dates).length > 0) payload.expiry_dates = expiry_dates;
+    if (Object.keys(lpn_ids).length > 0) payload.lpn_ids = lpn_ids;
 
     if (needsSerials) {
       const serialPayload: Record<number, string[]> = {};
       let missing = false;
       for (const item of serializedItems) {
-        const list = (serials[item.product_id] || "")
+        const entry = receiveEntries[item.product_id] || emptyEntry;
+        const list = (entry.serials || "")
           .split(/[\n,]+/)
           .map((s) => s.trim())
           .filter(Boolean);
@@ -195,30 +347,19 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
           <div className="bg-app rounded-lg p-4 space-y-3">
             <p className="text-sm font-medium text-ink">Choose a location to receive into (optional - defaults to each product's location)</p>
             {order.items.map((item) => (
-              <div key={item.id} className="space-y-1.5">
-                <label className="block text-sm text-muted">{item.product_name}</label>
-                <LocationPicker
-                  value={receiveLocations[item.product_id] || ""}
-                  onChange={(v) => setReceiveLocations({ ...receiveLocations, [item.product_id]: v })}
-                  placeholder="Location (defaults to product location)"
-                />
-                <ReceiveLocationHints
-                  productId={item.product_id}
-                  isSerialized={item.is_serialized}
-                  selectedPath={receiveLocations[item.product_id] || ""}
-                  onSelect={(p) => setReceiveLocations({ ...receiveLocations, [item.product_id]: p })}
-                />
-                {item.is_serialized && (
-                  <textarea
-                    className="input font-mono text-xs"
-                    rows={3}
-                    value={serials[item.product_id] || ""}
-                    onChange={(e) => setSerials({ ...serials, [item.product_id]: e.target.value })}
-                    placeholder={`Enter ${item.quantity} serial number(s), one per line`}
-                    aria-label={`Serial numbers for ${item.product_name}`}
-                  />
-                )}
-              </div>
+              <ReceiveRow
+                key={item.id}
+                item={item}
+                locations={locationOptions || []}
+                globalLpns={lpnOptions || []}
+                entry={receiveEntries[item.product_id] || emptyEntry}
+                onChange={(patch) =>
+                  setReceiveEntries((prev) => ({
+                    ...prev,
+                    [item.product_id]: { ...(prev[item.product_id] || emptyEntry), ...patch },
+                  }))
+                }
+              />
             ))}
             <div className="flex gap-2">
               <button onClick={handleReceive} className="btn-primary text-sm px-3 py-1.5">Receive Order</button>

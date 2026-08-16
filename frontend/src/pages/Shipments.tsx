@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useState } from "react";
-import { Eye, FileText, Pencil, Trash2, XCircle } from "lucide-react";
+import { Eye, Pencil, Trash2, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
@@ -19,6 +19,9 @@ import type { Product } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { usePageSize } from "../hooks/usePageSize";
+import { useSettings } from "../hooks/useSettings";
+import { formatCurrency } from "../utils/currency";
+import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS, paymentLabel } from "../utils/payments";
 
 export default function Shipments() {
   const formatDate = useDateFormat();
@@ -143,19 +146,20 @@ export default function Shipments() {
                   <tr key={s.id} className="hover:bg-app">
                     <td className="px-4 py-3 font-medium">{s.shipment_number}</td>
                     <td className="px-4 py-3 text-muted">{s.customer_name || "—"}</td>
-                    <td className="px-4 py-3"><span className={`badge ${statusBadge(s.status)} capitalize`}>{s.status}</span></td>
+                    <td className="px-4 py-3"><span className={`badge ${statusBadge(s.status)}`}>{s.status.replace("_", " ")}</span></td>
                     <td className="px-4 py-3">{s.items.length}</td>
                     <td className="px-4 py-3">{s.total_quantity}</td>
                     <td className="px-4 py-3 text-muted">{s.invoice_number || "—"}</td>
-                    <td className="px-4 py-3 text-muted">{s.carrier || "—"}{s.tracking_number ? ` / ${s.tracking_number}` : ""}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {s.carrier && <span className="badge badge-info">{s.carrier}</span>}
+                        {s.tracking_number && <span className="badge bg-subtle text-ink border border-border font-mono">{s.tracking_number}</span>}
+                        {!s.carrier && !s.tracking_number && <span className="text-muted">—</span>}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
-                        {s.status === "draft" && (
-                          <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`Draft ${s.shipment_number}`}>
-                            <FileText size={16} />
-                          </button>
-                        )}
                         <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`View ${s.shipment_number}`}>
                           <Eye size={16} />
                         </button>
@@ -377,9 +381,12 @@ function serializedLineStatus(item: ShipmentItem) {
 
 function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; onClose: () => void; onChanged: () => void }) {
   const formatDate = useDateFormat();
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
   const [carrier, setCarrier] = useState(shipment.carrier);
   const [tracking, setTracking] = useState(shipment.tracking_number);
   const [paymentMethod, setPaymentMethod] = useState(shipment.payment_method || "cash");
+  const [paymentProvider, setPaymentProvider] = useState(shipment.payment_provider || MOBILE_MONEY_PROVIDERS[0].value);
   const [busy, setBusy] = useState<string | null>(null);
   const [pickingSerials, setPickingSerials] = useState(false);
   const { addToast } = useToast();
@@ -443,7 +450,12 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   const createSale = async () => {
     setBusy("invoice");
     try {
-      const { data } = await api.post(`/shipments/${current.id}/create-sale`, null, { params: { payment_method: paymentMethod } });
+      const { data } = await api.post(`/shipments/${current.id}/create-sale`, null, {
+        params: {
+          payment_method: paymentMethod,
+          payment_provider: paymentMethod === "mobile_money" ? paymentProvider : null,
+        },
+      });
       addToast(`Invoice ${data.invoice_number} created`, "success");
       refresh();
     } catch (err: any) {
@@ -456,13 +468,23 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
     <Modal open onClose={onClose} title={current.shipment_number} wide>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
-          <div><p className="text-muted">Status</p><p className="font-medium capitalize">{current.status}</p></div>
+          <div><p className="text-muted">Status</p><p className="font-medium"><span className={`badge ${statusBadge(current.status)}`}>{current.status.replace("_", " ")}</span></p></div>
           <div><p className="text-muted">Customer</p><p className="font-medium">{current.customer_name || "—"}</p></div>
-          <div><p className="text-muted">Carrier</p><p className="font-medium">{current.carrier || "—"}</p></div>
-          <div><p className="text-muted">Tracking</p><p className="font-medium">{current.tracking_number || "—"}</p></div>
+          <div>
+            <p className="text-muted">Carrier</p>
+            <p className="font-medium">
+              {current.carrier ? <span className="badge badge-info">{current.carrier}</span> : <span className="text-muted">—</span>}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted">Tracking</p>
+            <p className="font-medium">
+              {current.tracking_number ? <span className="badge bg-subtle text-ink border border-border font-mono">{current.tracking_number}</span> : <span className="text-muted">—</span>}
+            </p>
+          </div>
           <div><p className="text-muted">Invoice</p><p className="font-medium">{current.invoice_number || "—"}</p></div>
-          <div><p className="text-muted">Payment</p><p className="font-medium capitalize">{current.payment_method || "—"}</p></div>
-          <div><p className="text-muted">Amount</p><p className="font-medium">{current.total_amount ? `$${current.total_amount.toFixed(2)}` : "—"}</p></div>
+          <div><p className="text-muted">Payment</p><p className="font-medium">{paymentLabel(current.payment_method, current.payment_provider) || "—"}</p></div>
+          <div><p className="text-muted">Amount</p><p className="font-medium">{current.total_amount ? formatCurrency(current.total_amount, currencySymbol) : "—"}</p></div>
           <div><p className="text-muted">Created By</p><p className="font-medium">{current.username}</p></div>
           <div><p className="text-muted">Created</p><p className="font-medium">{formatDate(current.created_at)}</p></div>
         </div>
@@ -540,11 +562,17 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Payment Method</label>
               <select className="select" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} aria-label="Payment method">
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="transfer">Bank Transfer</option>
+                {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </div>
+            {paymentMethod === "mobile_money" && (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Mobile Money Provider</label>
+                <select className="select" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} aria-label="Mobile money provider">
+                  {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
+              </div>
+            )}
             <button onClick={createSale} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
               Create Invoice
             </button>

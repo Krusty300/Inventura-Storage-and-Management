@@ -14,6 +14,9 @@ import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useSettings } from "../hooks/useSettings";
+import { formatCurrency } from "../utils/currency";
+import ErrorState from "../components/ErrorState";
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -30,8 +33,10 @@ export default function Boms() {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const debouncedSearch = useDebounce(search, 300);
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["boms", debouncedSearch, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
@@ -91,14 +96,16 @@ export default function Boms() {
           <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={7} />
+            ) : isError ? (
+              <ErrorState onRetry={refresh} />
             ) : boms.length === 0 ? (
               <EmptyState title="No BOMs yet" message="Create a bill of materials to define how a product is manufactured." actionLabel="New BOM" onAction={() => { setEditing(null); setShowForm(true); }} />
             ) : boms.map((b) => (
               <tr key={b.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{b.name || b.product_name}</td>
                 <td className="px-4 py-3 text-muted">{b.product_name}</td>
-                <td className="px-4 py-3">{b.item_count}</td>
-                <td className="px-4 py-3">{b.total_cost.toFixed(2)}</td>
+                <td className="px-4 py-3">{b.item_count} {b.item_count === 1 ? "component" : "components"}</td>
+                <td className="px-4 py-3">{formatCurrency(b.total_cost, currencySymbol)}</td>
                 <td className="px-4 py-3"><span className={`badge ${b.is_active ? "badge-success" : "badge-danger"}`}>{b.is_active ? "Active" : "Inactive"}</span></td>
                 <td className="px-4 py-3 text-muted">{formatDate(b.updated_at)}</td>
                 <td className="px-4 py-3">
@@ -263,6 +270,8 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
 }
 
 function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
   const { data: cost } = useQuery({
     queryKey: ["product-cost", bom.product_id],
     queryFn: async () => {
@@ -282,9 +291,9 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
           </div>
           <div>
             <p className="text-muted">Rolled-Up Unit Cost {rolledUp !== undefined && rolledUp !== bom.total_cost && (
-              <span className="text-faint font-normal">(direct: {bom.total_cost.toFixed(2)})</span>
+              <span className="text-faint font-normal">(direct: {formatCurrency(bom.total_cost, currencySymbol)})</span>
             )}</p>
-            <p className="font-medium">{rolledUp !== undefined ? rolledUp.toFixed(2) : bom.total_cost.toFixed(2)}</p>
+            <p className="font-medium">{rolledUp !== undefined ? formatCurrency(rolledUp, currencySymbol) : formatCurrency(bom.total_cost, currencySymbol)}</p>
           </div>
           {bom.description && (
             <div className="col-span-2">
@@ -312,10 +321,10 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
                     <td className="px-4 py-2 font-medium">{item.product_name}</td>
                     <td className="px-4 py-2">{item.quantity}</td>
                     <td className="px-4 py-2">
-                      {unit.toFixed(2)}
-                      {rolled !== undefined && rolled !== item.unit_cost && <span className="text-faint text-xs"> (direct {item.unit_cost.toFixed(2)})</span>}
+                      {formatCurrency(unit, currencySymbol)}
+                      {rolled !== undefined && rolled !== item.unit_cost && <span className="text-faint text-xs"> (direct {formatCurrency(item.unit_cost, currencySymbol)})</span>}
                     </td>
-                    <td className="px-4 py-2">{(item.quantity * unit).toFixed(2)}</td>
+                    <td className="px-4 py-2">{formatCurrency(item.quantity * unit, currencySymbol)}</td>
                   </tr>
                 );
               })}

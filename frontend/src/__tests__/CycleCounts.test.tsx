@@ -67,7 +67,7 @@ describe("CycleCounts Page", () => {
     renderWithProviders(<CycleCounts />);
     expect(await screen.findByText("CC-0001")).toBeInTheDocument();
     expect(screen.getByText("Warehouse A")).toBeInTheDocument();
-    expect(screen.getByText("in_progress")).toBeInTheDocument();
+    expect(screen.getByText("in progress")).toBeInTheDocument();
     expect(screen.getByText("15")).toBeInTheDocument();
     expect(screen.getByText("-2")).toBeInTheDocument();
   });

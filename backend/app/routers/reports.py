@@ -339,8 +339,8 @@ def export_sales(search: str = Query(""), start_date: str | None = None, end_dat
     sales = q.order_by(Sale.created_at.desc()).all()
     return _csv_response(
         "sales_report",
-        ["Invoice", "Date", "Customer", "Subtotal", "Discount", "Tax", "Total", "Payment", "Status", "Created By"],
-        [[s.invoice_number, s.created_at.strftime("%Y-%m-%d %H:%M"), s.customer_name or "", s.subtotal, s.discount_amount, s.tax_amount, s.total_amount, s.payment_method or "", s.status, s.username] for s in sales],
+        ["Invoice", "Date", "Customer", "Subtotal", "Discount", "Tax", "Total", "Payment", "Payment Provider", "Status", "Created By"],
+        [[s.invoice_number, s.created_at.strftime("%Y-%m-%d %H:%M"), s.customer_name or "", s.subtotal, s.discount_amount, s.tax_amount, s.total_amount, s.payment_method or "", s.payment_provider or "", s.status, s.username] for s in sales],
     )
 
 

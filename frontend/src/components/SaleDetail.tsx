@@ -2,6 +2,7 @@ import { Printer } from "lucide-react";
 import api from "../api/client";
 import type { Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
+import { paymentLabel } from "../utils/payments";
 import { statusBadge } from "../utils/statusBadges";
 import { useSettings } from "../hooks/useSettings";
 import Modal from "./Modal";
@@ -37,7 +38,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
           </div>
           <div className="space-y-1 text-right">
             <span className={`badge ${statusBadge(sale.status)}`}>{sale.status}</span>
-            <p className="text-muted">Payment: <span className="font-medium text-ink capitalize">{sale.payment_method}</span></p>
+            <p className="text-muted">Payment: <span className="font-medium text-ink">{paymentLabel(sale.payment_method, sale.payment_provider)}</span></p>
           </div>
         </div>
 

@@ -238,7 +238,11 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
         .options(joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.lpn))
         .filter(
             SerialNumber.location_id == location_id,
-            SerialNumber.status.in_([inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED]),
+            SerialNumber.status.in_([
+                inventory.SERIAL_STATUS_IN_STOCK,
+                inventory.SERIAL_STATUS_QUARANTINED,
+                inventory.SERIAL_STATUS_RESERVED,
+            ]),
         )
         .order_by(SerialNumber.serial_number)
         .all()
@@ -323,6 +327,72 @@ def location_detail(location_id: int, db: Session = Depends(get_db)):
             "lot_number": m.lot.lot_number if m.lot else "",
             "created_at": m.created_at.isoformat(),
         } for m in movements],
+    }
+
+
+@router.get("/{location_id}/products")
+def location_products(
+    location_id: int,
+    include_quarantined: bool = False,
+    db: Session = Depends(get_db),
+):
+    """Products that have stock available at a location, for filtering pickers
+    (e.g. the LPN load product dropdown). Mirrors ``product_stock_locations``
+    in reverse: location-first instead of product-first."""
+    get_or_404(Location, location_id, db)
+    if include_quarantined:
+        lot_filter = Lot.status.in_(("in_stock", "quarantined"))
+        serial_statuses = (inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED)
+    else:
+        lot_filter = Lot.status == "in_stock"
+        serial_statuses = (inventory.SERIAL_STATUS_IN_STOCK,)
+
+    stock = (
+        db.query(
+            StockLine.product_id,
+            func.coalesce(func.sum(StockLine.quantity), 0).label("quantity"),
+        )
+        .outerjoin(Lot, StockLine.lot_id == Lot.id)
+        .filter(
+            StockLine.location_id == location_id,
+            StockLine.quantity > 0,
+            (StockLine.lot_id.is_(None)) | lot_filter,
+        )
+        .group_by(StockLine.product_id)
+        .all()
+    )
+    serials = (
+        db.query(SerialNumber.product_id, func.count(SerialNumber.id))
+        .outerjoin(Lot, SerialNumber.lot_id == Lot.id)
+        .filter(
+            SerialNumber.location_id == location_id,
+            SerialNumber.status.in_(serial_statuses),
+            (SerialNumber.lot_id.is_(None)) | lot_filter,
+        )
+        .group_by(SerialNumber.product_id)
+        .all()
+    )
+    qty_by_product = {row.product_id: int(row.quantity or 0) for row in stock}
+    serial_by_product = {product_id: count for product_id, count in serials}
+    product_ids = set(qty_by_product) | set(serial_by_product)
+    if not product_ids:
+        return {"items": []}
+    products = {
+        p.id: p
+        for p in db.query(Product).filter(Product.id.in_(product_ids)).all()
+    }
+    return {
+        "items": [
+            {
+                "product_id": pid,
+                "name": products[pid].display_name if pid in products else "",
+                "sku": products[pid].sku if pid in products else "",
+                "is_serialized": bool(products[pid].is_serialized) if pid in products else False,
+                "quantity": qty_by_product.get(pid, 0),
+                "serial_count": serial_by_product.get(pid, 0),
+            }
+            for pid in sorted(product_ids)
+        ]
     }
 
 

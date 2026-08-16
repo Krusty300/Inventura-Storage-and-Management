@@ -349,3 +349,152 @@ def test_order_pdf_generated(auth_headers):
 def test_order_pdf_not_found(auth_headers):
     assert client.get("/api/orders/99999/pdf", headers=auth_headers).status_code == 404
 
+
+def test_receive_order_creates_lot(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-LOT1", "name": "Lot Create", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 6, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "lot_numbers": {prod["id"]: "LOT-NEW-1"},
+        "expiry_dates": {prod["id"]: "2027-06-30"},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    lots = client.get(f"/api/lots?product_id={prod['id']}", headers=auth_headers).json()["items"]
+    assert len(lots) == 1
+    assert lots[0]["lot_number"] == "LOT-NEW-1"
+    assert lots[0]["status"] == "in_stock"
+    assert lots[0]["on_hand"] == 6
+    assert lots[0]["expiry_date"] == "2027-06-30"
+    movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
+    assert any(m["lot_id"] == lots[0]["id"] and m["quantity_change"] == 6 for m in movements)
+
+
+def test_receive_order_reuses_existing_lot(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-LOT2", "name": "Lot Reuse", "cost_price": 5.00}, headers=auth_headers).json()
+    order1 = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 5.00}]}, headers=auth_headers).json()
+    assert client.put(f"/api/orders/{order1['id']}", json={
+        "status": "received", "lot_numbers": {prod["id"]: "LOT-REUSE"},
+    }, headers=auth_headers).status_code == 200
+    lots = client.get(f"/api/lots?product_id={prod['id']}", headers=auth_headers).json()["items"]
+    assert len(lots) == 1
+    lot_id = lots[0]["id"]
+    order2 = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 3, "unit_price": 5.00}]}, headers=auth_headers).json()
+    assert client.put(f"/api/orders/{order2['id']}", json={
+        "status": "received", "lot_numbers": {prod["id"]: "LOT-REUSE"},
+    }, headers=auth_headers).status_code == 200
+    lots = client.get(f"/api/lots?product_id={prod['id']}", headers=auth_headers).json()["items"]
+    assert len(lots) == 1
+    assert lots[0]["id"] == lot_id
+    assert lots[0]["on_hand"] == 7
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 7
+
+
+def test_receive_order_with_invalid_expiry_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-LOTEXP", "name": "Bad Expiry", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "lot_numbers": {prod["id"]: "LOT-BADEXP"},
+        "expiry_dates": {prod["id"]: "not-a-date"},
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "pending"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 0
+
+
+def test_receive_order_into_lpn(auth_headers):
+    loc = client.post("/api/locations", json={"name": "Pallet Staging", "code": "PSTG"}, headers=auth_headers).json()
+    lpn = client.post("/api/lpns", json={"lpn_number": "LPN-ORD1", "location_id": loc["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-LPN", "name": "LPN Item", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 5, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "receive_locations": {prod["id"]: loc["id"]},
+        "lpn_ids": {prod["id"]: lpn["id"]},
+        "lot_numbers": {prod["id"]: "LOT-LPN"},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    updated = client.get(f"/api/lpns/{lpn['id']}", headers=auth_headers).json()
+    assert updated["total_quantity"] == 5
+    assert any(c["product_id"] == prod["id"] and c["quantity"] == 5 and c["lot_number"] == "LOT-LPN" for c in updated["contents"])
+    movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
+    assert any(m["lpn_id"] == lpn["id"] and m["quantity_change"] == 5 for m in movements)
+
+
+def test_receive_order_unknown_lpn_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-BADLPN", "name": "Bad LPN Item", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={"status": "received", "lpn_ids": {prod["id"]: 99999}}, headers=auth_headers)
+    assert resp.status_code == 404
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "pending"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 0
+
+
+def test_receive_order_lpn_at_wrong_location_rejected(auth_headers):
+    other = client.post("/api/locations", json={"name": "Other Bay", "code": "OBAY"}, headers=auth_headers).json()
+    target = client.post("/api/locations", json={"name": "Target Dock", "code": "TDOCK"}, headers=auth_headers).json()
+    lpn = client.post("/api/lpns", json={"lpn_number": "LPN-ORD2", "location_id": other["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-LPNLOC", "name": "LPN Loc Item", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "receive_locations": {prod["id"]: target["id"]},
+        "lpn_ids": {prod["id"]: lpn["id"]},
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "lpn" in resp.json()["detail"].lower()
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "pending"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 0
+
+
+def test_receive_order_into_quarantine_area_quarantines_lot(auth_headers):
+    qloc = client.post("/api/locations", json={"name": "Quarantine Bay", "code": "QBAY", "location_type": "quarantine"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-QRCV", "name": "Q Req Item", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "receive_locations": {prod["id"]: qloc["id"]},
+        "lot_numbers": {prod["id"]: "LOT-Q"},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    lots = client.get(f"/api/lots?product_id={prod['id']}", headers=auth_headers).json()["items"]
+    assert len(lots) == 1
+    assert lots[0]["status"] == "quarantined"
+    assert lots[0]["on_hand"] == 4
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 4
+
+
+def test_receive_serialized_order_into_lpn(auth_headers):
+    loc = client.post("/api/locations", json={"name": "Ser Pallet", "code": "SPAL"}, headers=auth_headers).json()
+    lpn = client.post("/api/lpns", json={"lpn_number": "LPN-ORD3", "location_id": loc["id"]}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-SERLPN", "name": "Ser LPN Item", "cost_price": 5.00, "is_serialized": True}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "receive_locations": {prod["id"]: loc["id"]},
+        "lpn_ids": {prod["id"]: lpn["id"]},
+        "serial_numbers": {prod["id"]: ["SER-LPN-A", "SER-LPN-B"]},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    serials = client.get(f"/api/serial-numbers?product_id={prod['id']}", headers=auth_headers).json()
+    assert len(serials["items"]) == 2
+    assert all(s["lpn_id"] == lpn["id"] for s in serials["items"])
+    updated = client.get(f"/api/lpns/{lpn['id']}", headers=auth_headers).json()
+    assert updated["total_quantity"] == 2
+    assert {s["serial_number"] for s in updated["serials"]} == {"SER-LPN-A", "SER-LPN-B"}
+
+
+def test_receive_serialized_order_into_quarantine_quarantines_serials(auth_headers):
+    qloc = client.post("/api/locations", json={"name": "Ser Quarantine", "code": "SQR", "location_type": "quarantine"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-SERQR", "name": "Ser Q Item", "cost_price": 5.00, "is_serialized": True}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}]}, headers=auth_headers).json()
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "receive_locations": {prod["id"]: qloc["id"]},
+        "serial_numbers": {prod["id"]: ["SER-Q1", "SER-Q2"]},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    serials = client.get(f"/api/serial-numbers?product_id={prod['id']}", headers=auth_headers).json()
+    assert len(serials["items"]) == 2
+    assert all(s["status"] == "quarantined" for s in serials["items"])
+

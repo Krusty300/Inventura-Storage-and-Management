@@ -31,6 +31,7 @@ const baseShipment = (status: string): Shipment => ({
   username: "tester",
   invoice_number: "",
   payment_method: "",
+  payment_provider: null,
   total_amount: 150,
   total_quantity: 3,
   total_picked: 0,
@@ -136,6 +137,42 @@ describe("Shipments", () => {
     await waitFor(() =>
       expect(postMock).toHaveBeenCalledWith("/shipments/1/create-sale", null, expect.objectContaining({
         params: expect.objectContaining({ payment_method: "card" }),
+      }))
+    );
+  });
+
+  it("sends the mobile money provider when creating the invoice", async () => {
+    let status = "draft";
+    getMock.mockImplementation((url: string) => {
+      if (url === "/shipments") return Promise.resolve({ data: { items: [{ ...baseShipment(status) }], total: 1, page: 1, pages: 1 } });
+      if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 1, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 1 } });
+      if (url === "/shipments/1") return Promise.resolve({ data: baseShipment(status) });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    postMock.mockImplementation((url: string) => {
+      if (url === "/shipments/1/pick") { status = "picking"; return Promise.resolve({}); }
+      if (url === "/shipments/1/pack") { status = "packed"; return Promise.resolve({}); }
+      if (url === "/shipments/1/ship") { status = "shipped"; return Promise.resolve({}); }
+      if (url === "/shipments/1/create-sale") return Promise.resolve({ data: { invoice_number: "INV-2", payment_method: "mobile_money", payment_provider: "airtel_money" } });
+      return Promise.reject(new Error(`Unexpected post: ${url}`));
+    });
+
+    renderWithProviders(<Shipments />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /View/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pack" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Product Shipping" }));
+
+    expect(await screen.findByRole("combobox", { name: "Payment method" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
+    expect(screen.getByRole("combobox", { name: "Mobile money provider" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Mobile money provider" }), { target: { value: "airtel_money" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Invoice" }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/shipments/1/create-sale", null, expect.objectContaining({
+        params: expect.objectContaining({ payment_method: "mobile_money", payment_provider: "airtel_money" }),
       }))
     );
   });
@@ -259,7 +296,7 @@ describe("Shipments", () => {
     );
   });
 
-  it("shows a draft icon for draft shipments but not for shipped ones, and opens the detail when clicked", async () => {
+  it("shows a status badge for draft and shipped shipments, and opens the detail when clicked", async () => {
     getMock.mockImplementation((url: string) => {
       if (url === "/shipments")
         return Promise.resolve({ data: { items: [baseShipment("draft"), { ...baseShipment("shipped"), id: 2, shipment_number: "SHP-200" }], total: 2, page: 1, pages: 1 } });
@@ -268,11 +305,10 @@ describe("Shipments", () => {
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     renderWithProviders(<Shipments />);
-    const draftAction = await screen.findByLabelText("Draft SHP-100");
-    expect(draftAction).toBeInTheDocument();
-    expect(screen.queryByLabelText("Draft SHP-200")).not.toBeInTheDocument();
+    expect(await screen.findByText("draft")).toBeInTheDocument();
+    expect(screen.getByText("shipped")).toBeInTheDocument();
 
-    fireEvent.click(draftAction);
+    fireEvent.click(screen.getByLabelText("View SHP-100"));
     expect(await screen.findByRole("button", { name: "Pick" })).toBeInTheDocument();
   });
 });

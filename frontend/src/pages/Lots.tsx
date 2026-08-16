@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Eye, FlaskConical, ShieldCheck, ShieldX, CalendarX, FileText } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Lot, PaginatedResponse, StockMovement } from "../types";
+import type { Lot, PaginatedResponse, SerialNumber, StockMovement } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
@@ -15,6 +15,8 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useExportCsv } from "../hooks/useExportCsv";
+import { parseLocalDate } from "../utils/date";
+import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 
 
 import { usePageSize } from "../hooks/usePageSize";
@@ -85,6 +87,14 @@ export default function Lots() {
     });
   };
 
+  const expiryBadge = (expiry: string | null) => {
+    if (!expiry) return <span className="text-faint">—</span>;
+    const days = Math.ceil((parseLocalDate(expiry).getTime() - Date.now()) / 86400000);
+    if (days < 0) return <span className="badge badge-danger">Expired</span>;
+    if (days <= 30) return <span className="badge badge-warning">Expires {formatDate(expiry)}</span>;
+    return <span className="text-muted text-xs">{formatDate(expiry)}</span>;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -143,15 +153,19 @@ export default function Lots() {
                 <td className="px-4 py-3 text-muted">{l.supplier_name || "—"}</td>
                 <td className="px-4 py-3 text-muted">{l.locations?.length ? l.locations.join(", ") : "—"}</td>
                 <td className="px-4 py-3">
-                  {l.on_hand}
-                  {l.serial_count > 0 && <span className="ml-1 text-xs text-muted">({l.serial_count} serial)</span>}
+                  <span className="font-medium">{l.on_hand}</span>
+                  {l.serial_count > 0 && (
+                    <span className="badge badge-success ml-1" title={`${l.serial_count} of ${l.on_hand} unit(s) on hand are serialized`}>
+                      S{l.serial_count}
+                    </span>
+                  )}
                   {l.reserved_count > 0 && (
                     <span className="badge badge-info ml-1" title={`${l.reserved_count} serial(s) reserved for work orders`}>
                       R{l.reserved_count}
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-muted">{l.expiry_date ? formatDate(l.expiry_date) : "—"}</td>
+                <td className="px-4 py-3">{expiryBadge(l.expiry_date)}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(l.received_date)}</td>
                 <td className="px-4 py-3 whitespace-nowrap"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
                 <td className="px-4 py-3">
@@ -204,6 +218,15 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
     },
   });
 
+  const { data: serials, isLoading: serialsLoading } = useQuery({
+    queryKey: ["lot-serials", lot.id],
+    queryFn: async () => {
+      const { data } = await api.get("/serial-numbers", { params: { lot_id: lot.id, status: "in_stock", limit: PAGE_SIZE_LOOKUP } });
+      return (data.items || []) as SerialNumber[];
+    },
+    enabled: lot.serial_count > 0,
+  });
+
   return (
     <Modal open onClose={onClose} title={`Lot ${lot.lot_number}`} wide>
       <div className="space-y-4">
@@ -241,6 +264,39 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
             <p className="font-medium">{lot.serial_count}</p>
           </div>
         </div>
+
+        {lot.serial_count > 0 && (
+          <div className="border border-border rounded-lg overflow-hidden">
+            <div className="bg-app px-4 py-2 flex items-center gap-2">
+              <FlaskConical size={14} className="text-muted" />
+              <span className="text-sm font-medium text-ink">Serials on hand ({lot.serial_count})</span>
+            </div>
+            {serialsLoading ? (
+              <p className="text-sm text-muted px-4 py-3">Loading serials...</p>
+            ) : !serials || serials.length === 0 ? (
+              <p className="text-sm text-muted px-4 py-3">No in-stock serials for this lot.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-app text-left">
+                    <th className="px-4 py-2 font-medium text-muted">Serial #</th>
+                    <th className="px-4 py-2 font-medium text-muted">Location</th>
+                    <th className="px-4 py-2 font-medium text-muted">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {serials.map((s) => (
+                    <tr key={s.id}>
+                      <td className="px-4 py-2 font-mono text-xs">{s.serial_number}</td>
+                      <td className="px-4 py-2 text-muted">{s.location_name || "Unallocated"}</td>
+                      <td className="px-4 py-2"><span className={`badge ${statusBadge(s.status)}`}>{s.status.replace("_", " ")}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
 
         <div className="border border-border rounded-lg overflow-hidden">
           <div className="bg-app px-4 py-2 flex items-center gap-2">

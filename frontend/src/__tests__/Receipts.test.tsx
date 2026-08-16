@@ -94,7 +94,7 @@ describe("Receipts Page", () => {
     expect(await screen.findByText("RCV-0001")).toBeInTheDocument();
     expect(screen.getByText("Acme Supplies")).toBeInTheDocument();
     expect(screen.getByText("120")).toBeInTheDocument();
-    expect(screen.getByText("150.50")).toBeInTheDocument();
+    expect(screen.getByText("$150.50")).toBeInTheDocument();
   });
 
   it("shows admin actions for admins", async () => {

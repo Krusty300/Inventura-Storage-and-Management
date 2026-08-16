@@ -9,6 +9,7 @@ import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { formatCurrency } from "../utils/currency";
 import { errorMessage } from "../utils/errors";
 import { isSelectable, selectableProducts } from "../utils/variants";
+import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS } from "../utils/payments";
 
 interface Props {
   onClose: () => void;
@@ -24,11 +25,6 @@ interface LineItem {
 
 type LineField = "quantity" | "unit_price" | "location_id";
 
-const PAYMENT_METHODS = [
-  { value: "cash", label: "Cash" },
-  { value: "card", label: "Card" },
-  { value: "transfer", label: "Bank Transfer" },
-];
 function CartLine({
   item,
   product,
@@ -157,6 +153,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [pendingQcs, setPendingQcs] = useState<QualityCheck[]>([]);
   const [customerId, setCustomerId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentProvider, setPaymentProvider] = useState(MOBILE_MONEY_PROVIDERS[0].value);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<LineItem[]>([]);
   const [stockShort, setStockShort] = useState<Set<number>>(new Set());
@@ -324,6 +321,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       await api.post("/sales", {
         customer_id: customerId ? parseInt(customerId) : null,
         payment_method: paymentMethod,
+        payment_provider: paymentMethod === "mobile_money" ? paymentProvider : null,
         discount_amount: discountAmount,
         notes,
         items: items.map((i) => ({
@@ -479,6 +477,14 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   </select>
                 </div>
               </div>
+              {paymentMethod === "mobile_money" && (
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Mobile Money Provider</label>
+                  <select className="select text-sm" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} aria-label="Mobile money provider">
+                    {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </select>
+                </div>
+              )}
               <textarea className="input text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} aria-label="Sale notes" />
             </div>
 

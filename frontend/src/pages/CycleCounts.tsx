@@ -10,6 +10,7 @@ import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
@@ -31,7 +32,7 @@ export default function CycleCounts() {
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["cycle-counts", debouncedSearch, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
@@ -88,16 +89,18 @@ export default function CycleCounts() {
           <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={7} />
+            ) : isError ? (
+              <ErrorState onRetry={() => queryClient.invalidateQueries({ queryKey: ["cycle-counts"] })} />
             ) : counts.length === 0 ? (
               <EmptyState title="No cycle counts yet" message="Create a cycle count to verify on-hand stock against the system." actionLabel="New Count" onAction={() => setShowForm(true)} />
             ) : counts.map((c) => (
               <tr key={c.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{c.cc_number}</td>
                 <td className="px-4 py-3 text-muted">{c.location_name || "All"}</td>
-                <td className="px-4 py-3"><span className={`badge ${statusBadge(c.status)}`}>{c.status}</span></td>
+                <td className="px-4 py-3"><span className={`badge ${statusBadge(c.status)}`}>{c.status.replace("_", " ")}</span></td>
                 <td className="px-4 py-3">{c.total_expected}</td>
                 <td className="px-4 py-3">
-                  <span className={c.total_variance !== 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-muted"}>
+                  <span className={c.total_variance !== 0 ? `${c.total_variance > 0 ? "text-orange-600 dark:text-orange-400" : "text-red-600 dark:text-red-400"} font-medium` : "text-muted"}>
                     {c.total_variance > 0 ? "+" : ""}{c.total_variance}
                   </span>
                 </td>
@@ -299,7 +302,7 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
           </div>
           <div>
             <p className="text-muted">Status</p>
-            <p className="font-medium capitalize">{count.status}</p>
+            <p className="font-medium"><span className={`badge ${statusBadge(count.status)}`}>{count.status.replace("_", " ")}</span></p>
           </div>
           <div>
             <p className="text-muted">Completed</p>
@@ -324,12 +327,12 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
                   <td className="px-4 py-2">{item.expected_qty}</td>
                   <td className="px-4 py-2">{item.counted_qty ?? "—"}</td>
                   <td className="px-4 py-2">
-                    <span className={item.variance !== 0 ? "text-orange-600 dark:text-orange-400 font-medium" : "text-muted"}>
+                    <span className={item.variance !== 0 ? `${item.variance > 0 ? "text-orange-600 dark:text-orange-400" : "text-red-600 dark:text-red-400"} font-medium` : "text-muted"}>
                       {item.variance !== 0 && item.variance > 0 ? "+" : ""}{item.variance}
                     </span>
                   </td>
                   <td className="px-4 py-2">
-                    <span className={`badge ${item.status === "ok" ? "badge-success" : item.status === "mismatch" ? "badge-warning" : "badge-info"}`}>{item.status}</span>
+                    <span className={`badge ${statusBadge(item.status)}`}>{item.status.replace("_", " ")}</span>
                   </td>
                 </tr>
               ))}

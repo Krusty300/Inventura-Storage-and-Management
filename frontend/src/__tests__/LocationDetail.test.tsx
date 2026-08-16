@@ -11,6 +11,7 @@ vi.mock("../api/client", () => ({
 import LocationDetail from "../components/LocationDetail";
 
 const getMock = api.get as ReturnType<typeof vi.fn>;
+const postMock = api.post as ReturnType<typeof vi.fn>;
 const putMock = api.put as ReturnType<typeof vi.fn>;
 
 function makeLocation(overrides: Partial<Location> = {}): Location {
@@ -105,5 +106,38 @@ describe("LocationDetail", () => {
     expect(await screen.findByText("SN-1001")).toBeInTheDocument();
     expect(screen.getByText("Serialized items (1)")).toBeInTheDocument();
     expect(screen.queryByText("No stock at this location.")).not.toBeInTheDocument();
+  });
+
+  it("shows reserved serials with a release-from-work-order action", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/locations/5/detail") {
+        return Promise.resolve({
+          data: {
+            location: makeLocation(),
+            stock_lines: [],
+            lpns: [],
+            serials: [
+              { id: 8, product_id: 1, product_name: "Ser Widget", sku: "SKU-SER", serial_number: "SN-RSV", lot_number: "LOT-W", lot_id: 12, lot_status: "in_stock", status: "reserved", unit_cost: 1, value: 1 },
+            ],
+            scrapped_serials: [],
+            movements: [],
+          },
+        });
+      }
+      if (url === "/activity-logs") {
+        return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<LocationDetail location={makeLocation()} onClose={() => {}} />);
+
+    expect(await screen.findByText("SN-RSV")).toBeInTheDocument();
+    expect(screen.getByText("reserved")).toBeInTheDocument();
+    expect(screen.getByLabelText("Release SN-RSV from work order")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Release SN-RSV from work order"));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/serial-numbers/8/release"));
   });
 });

@@ -13,6 +13,7 @@ from app.models.product import Product
 from app.models.receipt import Receipt, ReceiptItem
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
+from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.schemas.receipt import ReceiptCreate, ReceiptOut
 from app.services import inventory
@@ -144,6 +145,7 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
 
     total_quantity = 0
     total_cost = 0.0
+    movements_by_location: dict[int, list[StockMovement]] = {}
     try:
         for item in data.items:
             product = get_or_404(Product, item.product_id, db)
@@ -199,7 +201,7 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
                     )
                     db.add(serial)
                     db.flush()
-                    inventory.post_journal_entry(
+                    movement = inventory.post_journal_entry(
                         db, product_id=product.id, user_id=user.id,
                         quantity_change=1, movement_type=inventory.RECEIVE,
                         to_location_id=item.location_id or product.location_id,
@@ -209,11 +211,12 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
                         reference_type="receipt", reference=receipt.receipt_number,
                         notes=data.notes,
                     )
+                    movements_by_location.setdefault(item.location_id or product.location_id, []).append(movement)
                 quantity = item.quantity
             else:
                 if item.serial_numbers:
                     raise HTTPException(status_code=400, detail=f"'{product.display_name}' is not serialized - remove serial numbers")
-                inventory.post_journal_entry(
+                movement = inventory.post_journal_entry(
                     db, product_id=product.id, user_id=user.id,
                     quantity_change=item.quantity, movement_type=inventory.RECEIVE,
                     to_location_id=item.location_id or product.location_id,
@@ -222,6 +225,7 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
                     reference_type="receipt", reference=receipt.receipt_number,
                     notes=data.notes,
                 )
+                movements_by_location.setdefault(item.location_id or product.location_id, []).append(movement)
                 quantity = item.quantity
 
             db.add(ReceiptItem(
@@ -234,6 +238,10 @@ def create_receipt(data: ReceiptCreate, db: Session = Depends(get_db), user=Depe
             ))
             total_quantity += quantity
             total_cost += quantity * item.unit_cost
+        # Receiving directly into a quarantine-typed area blocks the lot/serials
+        # from selling, matching the LPN move/load/unload flows.
+        for loc_id, movements in movements_by_location.items():
+            inventory.auto_quarantine(db, db.get(Location, loc_id), movements)
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))

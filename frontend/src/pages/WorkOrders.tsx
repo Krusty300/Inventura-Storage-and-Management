@@ -10,6 +10,8 @@ import Modal from "../components/Modal";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
+import ProgressBar from "../components/ProgressBar";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
@@ -32,7 +34,7 @@ export default function WorkOrders() {
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["work-orders", debouncedSearch, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
@@ -108,6 +110,8 @@ export default function WorkOrders() {
           <tbody className="divide-y divide-border">
             {isLoading ? (
               <Skeleton rows={5} cols={8} />
+            ) : isError ? (
+              <ErrorState onRetry={refresh} />
             ) : wos.length === 0 ? (
               <EmptyState title="No work orders yet" message="Plan a work order to build a product from a BOM or component list." actionLabel="New Work Order" onAction={() => { setEditing(null); setShowForm(true); }} />
             ) : wos.map((w) => (
@@ -117,11 +121,14 @@ export default function WorkOrders() {
                 <td className="px-4 py-3">{w.quantity}</td>
                 <td className="px-4 py-3"><span className={`badge ${priorityBadge(w.priority)}`}>{w.priority}</span></td>
                 <td className="px-4 py-3">
-                  <span className={!w.fully_issued && w.status !== "planned" ? "text-orange-600 dark:text-orange-400" : ""}>
-                    {w.total_issued}/{w.total_required}
-                  </span>
+                  <ProgressBar
+                    value={w.total_issued}
+                    max={w.total_required}
+                    tone={!w.fully_issued && w.status !== "planned" ? "warning" : undefined}
+                    label={`Issue progress for ${w.wo_number}`}
+                  />
                 </td>
-                <td className="px-4 py-3"><span className={`badge ${statusBadge(w.status)}`}>{w.status}</span></td>
+                <td className="px-4 py-3"><span className={`badge ${statusBadge(w.status)}`}>{w.status.replace("_", " ")}</span></td>
                 <td className="px-4 py-3 text-muted">{formatDate(w.created_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
@@ -370,7 +377,7 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
           </div>
           <div>
             <p className="text-muted">Status</p>
-            <p className="font-medium capitalize">{wo.status}</p>
+            <p className="font-medium"><span className={`badge ${statusBadge(wo.status)}`}>{wo.status.replace("_", " ")}</span></p>
           </div>
           <div>
             <p className="text-muted">Created By</p>

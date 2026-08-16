@@ -450,6 +450,7 @@ export interface Sale {
   total_amount: number;
   status: string;
   payment_method: string;
+  payment_provider: string | null;
   notes: string;
   created_at: string;
   updated_at: string;
@@ -1003,6 +1004,7 @@ export interface Shipment {
   username: string;
   invoice_number: string;
   payment_method: string;
+  payment_provider: string | null;
   total_amount: number;
   total_quantity: number;
   total_picked: number;

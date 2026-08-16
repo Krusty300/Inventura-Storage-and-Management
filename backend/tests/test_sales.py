@@ -29,6 +29,50 @@ def test_create_sale_decrements_stock_and_logs_movement(auth_headers):
     assert any(m["movement_type"] == "out" and m["quantity_change"] == -3 for m in movements)
 
 
+def test_sale_mobile_money_with_provider(auth_headers):
+    prod = _make_product(auth_headers)
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["payment_method"] == "mobile_money"
+    assert data["payment_provider"] == "m-pesa"
+
+
+def test_sale_mobile_money_requires_provider(auth_headers):
+    prod = _make_product(auth_headers)
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "payment_provider is required" in resp.json()["detail"]
+
+
+def test_sale_mobile_money_rejects_unknown_provider(auth_headers):
+    prod = _make_product(auth_headers)
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "bitcoin",
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "payment_provider must be one of" in resp.json()["detail"]
+
+
+def test_sale_rejects_unknown_payment_method(auth_headers):
+    prod = _make_product(auth_headers)
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "bitcoin",
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "payment_method must be one of" in resp.json()["detail"]
+
+
 def test_sale_with_discount_reduces_tax_and_total(auth_headers):
     from app.models import Settings
 

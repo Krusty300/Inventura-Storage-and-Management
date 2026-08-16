@@ -186,6 +186,23 @@ describe("SaleForm", () => {
     })));
   });
 
+  it("submits a mobile money provider with the sale", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
+    postMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
+    expect(screen.getByRole("combobox", { name: "Mobile money provider" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Mobile money provider" }), { target: { value: "t-kash" } });
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
+      payment_method: "mobile_money",
+      payment_provider: "t-kash",
+      items: [{ product_id: 7, quantity: 1, unit_price: 10, location_id: null }],
+    })));
+  });
+
   it("blocks submission when cash received is less than the total", async () => {
     const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
     mockCatalog([widget]);

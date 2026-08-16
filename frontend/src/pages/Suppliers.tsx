@@ -3,6 +3,8 @@ import { Pencil, Trash2, Eye, RefreshCw } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Supplier } from "../types";
+import { useDateFormat } from "../hooks/useDateFormat";
+import { parseLocalDate } from "../utils/date";
 import SupplierForm from "../components/SupplierForm";
 import SupplierDetail from "../components/SupplierDetail";
 import SupplierImportModal from "../components/SupplierImportModal";
@@ -22,6 +24,7 @@ import { formatCurrency } from "../utils/currency";
 import { usePageSize } from "../hooks/usePageSize";
 
 export default function Suppliers() {
+  const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
@@ -70,6 +73,14 @@ export default function Suppliers() {
 
   const suppliers = data?.items || [];
   const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(suppliers);
+
+  const recencyClass = (date: string | null) => {
+    if (!date) return "text-muted";
+    const days = Math.floor((Date.now() - parseLocalDate(date).getTime()) / 86400000);
+    if (days <= 30) return "text-emerald-600 dark:text-emerald-400";
+    if (days <= 90) return "text-muted";
+    return "text-amber-600 dark:text-amber-400";
+  };
 
   const bulkFields: BulkFieldConfig[] = [
     { name: "contact_person", label: "Contact Person", type: "text" },
@@ -151,12 +162,13 @@ export default function Suppliers() {
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Products</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Orders</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Total Spent</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Last Order</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                <Skeleton rows={5} cols={9} />
+                <Skeleton rows={5} cols={10} />
               ) : suppliers.length === 0 ? (
                 <EmptyState title="No suppliers" message="Add your first supplier to start managing purchases." actionLabel="Add Supplier" onAction={() => { setEditing(null); setShowForm(true); }} />
               ) : suppliers.map((s) => (
@@ -169,11 +181,18 @@ export default function Suppliers() {
                     {!s.is_active && <span className="badge badge-warning ml-2">Inactive</span>}
                   </td>
                   <td className="px-4 py-3 text-muted">{s.contact_person}</td>
-                  <td className="px-4 py-3 text-muted">{s.email}</td>
-                  <td className="px-4 py-3 text-muted">{s.phone}</td>
+                  <td className="px-4 py-3">
+                    {s.email ? <a href={`mailto:${s.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{s.email}</a> : <span className="text-muted">—</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {s.phone ? <a href={`tel:${s.phone}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{s.phone}</a> : <span className="text-muted">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-muted">{s.product_count ?? 0}</td>
-                  <td className="px-4 py-3 text-muted">{s.total_orders ?? 0}</td>
+                  <td className={`px-4 py-3 ${(s.total_orders ?? 0) === 0 ? "text-amber-600 dark:text-amber-400" : "text-muted"}`}>{s.total_orders ?? 0}</td>
                   <td className="px-4 py-3 text-muted">{formatCurrency(s.total_spent ?? 0)}</td>
+                  <td className={`px-4 py-3 ${recencyClass(s.last_order_at ?? null)}`}>
+                    {s.last_order_at ? formatDate(s.last_order_at) : "Never"}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${s.name}`}><Eye size={16} /></button>

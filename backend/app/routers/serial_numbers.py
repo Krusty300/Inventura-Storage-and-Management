@@ -3,7 +3,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
-from app.constants import MAX_PAGE_SIZE
+from app.constants import MAX_PAGE_SIZE_LOOKUP
 from app.database import get_db
 from app.models.serial_number import SerialNumber
 from app.models.stock_movement import StockMovement
@@ -47,19 +47,31 @@ def _latest_references(db: Session, serial_ids: list[int]) -> dict[int, str]:
 @router.get("")
 def list_serial_numbers(
     product_id: int | None = None,
+    lot_id: int | None = None,
     status: str | None = None,
     location_id: int | None = None,
     no_location: bool = Query(False),
     search: str = Query(""),
+    sort: str = Query("created_at"),
+    order: str = Query("desc"),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
+    SORTABLE = {"serial_number", "status", "lot_id", "created_at", "sold_at", "product_id"}
+    if sort not in SORTABLE:
+        raise HTTPException(status_code=400, detail=f"sort must be one of {sorted(SORTABLE)}")
+    if order not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail="order must be 'asc' or 'desc'")
+    col = getattr(SerialNumber, sort)
+    sort_col = col.asc() if order == "asc" else col.desc()
     q = db.query(SerialNumber).options(
         joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.location),
     )
     if product_id:
         q = q.filter(SerialNumber.product_id == product_id)
+    if lot_id:
+        q = q.filter(SerialNumber.lot_id == lot_id)
     if status:
         q = q.filter(SerialNumber.status == status)
     if location_id:
@@ -70,7 +82,7 @@ def list_serial_numbers(
         like = f"%{search}%"
         q = q.filter(SerialNumber.serial_number.ilike(like))
     total = q.count()
-    items = q.order_by(SerialNumber.created_at.desc()).offset(skip).limit(limit).all()
+    items = q.order_by(sort_col).offset(skip).limit(limit).all()
     refs = _latest_references(db, [s.id for s in items])
     for s in items:
         s.reference = refs.get(s.id, "")
@@ -81,17 +93,29 @@ def list_serial_numbers(
 @router.get("/export")
 def export_serial_numbers(
     product_id: int | None = None,
+    lot_id: int | None = None,
     status: str | None = None,
     location_id: int | None = None,
     no_location: bool = Query(False),
     search: str = Query(""),
+    sort: str = Query("created_at"),
+    order: str = Query("desc"),
     db: Session = Depends(get_db),
 ):
+    SORTABLE = {"serial_number", "status", "lot_id", "created_at", "sold_at", "product_id"}
+    if sort not in SORTABLE:
+        raise HTTPException(status_code=400, detail=f"sort must be one of {sorted(SORTABLE)}")
+    if order not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail="order must be 'asc' or 'desc'")
+    col = getattr(SerialNumber, sort)
+    sort_col = col.asc() if order == "asc" else col.desc()
     q = db.query(SerialNumber).options(
         joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.location),
     )
     if product_id:
         q = q.filter(SerialNumber.product_id == product_id)
+    if lot_id:
+        q = q.filter(SerialNumber.lot_id == lot_id)
     if status:
         q = q.filter(SerialNumber.status == status)
     if location_id:
@@ -101,7 +125,7 @@ def export_serial_numbers(
     if search:
         like = f"%{search}%"
         q = q.filter(SerialNumber.serial_number.ilike(like))
-    serials = q.order_by(SerialNumber.created_at.desc()).all()
+    serials = q.order_by(sort_col).all()
     return csv_response(
         "serial_numbers_report",
         ["Serial #", "Product", "SKU", "Status", "Location", "Lot", "Created"],

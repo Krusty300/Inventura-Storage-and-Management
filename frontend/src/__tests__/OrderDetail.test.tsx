@@ -34,9 +34,13 @@ describe("OrderDetail receive", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    getMock.mockImplementation((url: string) => {
+    getMock.mockImplementation((url: string, config?: any) => {
       if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
       if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 5, path: "Main Warehouse" }] } });
+      if (url === "/lpns") {
+        const items = config?.params?.location_id ? [] : [{ id: 7, lpn_number: "LPN-1001" }];
+        return Promise.resolve({ data: { items } });
+      }
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
   });
@@ -108,6 +112,123 @@ describe("OrderDetail receive", () => {
     fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
     await vi.waitFor(() => {
       expect(putMock).toHaveBeenCalledWith("/orders/1", { status: "received", receive_locations: { 10: 5 } });
+    });
+    expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it("sends lot number and expiry date when receiving", async () => {
+    putMock.mockResolvedValue({ data: { status: "received" } });
+    const onUpdated = vi.fn();
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    fireEvent.change(screen.getByLabelText("Lot number for Widget"), { target: { value: "LOT-9001" } });
+    fireEvent.change(screen.getByLabelText("Expiry date for Widget"), { target: { value: "2027-06-30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/orders/1", {
+        status: "received",
+        lot_numbers: { 10: "LOT-9001" },
+        expiry_dates: { 10: "2027-06-30" },
+      });
+    });
+    expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it("sends the lpn id when receiving into an existing LPN", async () => {
+    putMock.mockResolvedValue({ data: { status: "received" } });
+    const onUpdated = vi.fn();
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    const queryClient = makeQueryClient();
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />, { queryClient });
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    await vi.waitFor(() => expect(queryClient.getQueryState(["lpns", "order-picker"])?.status).toBe("success"));
+    fireEvent.change(screen.getByLabelText("LPN for Widget"), { target: { value: "LPN-1001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/orders/1", { status: "received", lpn_ids: { 10: 7 } });
+    });
+    expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it("does not submit when the LPN is unknown", async () => {
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    fireEvent.change(screen.getByLabelText("LPN for Widget"), { target: { value: "LPN-NOPE" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => expect(putMock).not.toHaveBeenCalled());
+  });
+
+  it("auto-fills the single LPN available at the chosen receive location", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 5, path: "Main Warehouse" }] } });
+      if (url === "/lpns") {
+        return Promise.resolve({ data: { items: [{ id: 7, lpn_number: "LPN-1001", content_count: 0, total_quantity: 0 }] } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    putMock.mockResolvedValue({ data: { status: "received" } });
+    const onUpdated = vi.fn();
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    const queryClient = makeQueryClient();
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />, { queryClient });
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    await vi.waitFor(() => expect(queryClient.getQueryState(["locations", "order-picker"])?.status).toBe("success"));
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Main Warehouse" } });
+    await vi.waitFor(() => expect(queryClient.getQueryState(["lpns", "by-location", 5])?.status).toBe("success"));
+    expect((screen.getByLabelText("LPN for Widget") as HTMLInputElement).value).toBe("LPN-1001");
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/orders/1", {
+        status: "received",
+        receive_locations: { 10: 5 },
+        lpn_ids: { 10: 7 },
+      });
+    });
+    expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it("resolves an LPN that is only in the location-scoped list, not the truncated global list", async () => {
+    getMock.mockImplementation((url: string, config?: any) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 5, path: "Main Warehouse" }] } });
+      if (url === "/lpns") {
+        const items = config?.params?.location_id
+          ? [{ id: 9, lpn_number: "PAL-1001", content_count: 0, total_quantity: 0 }]
+          : [{ id: 7, lpn_number: "LPN-1001" }];
+        return Promise.resolve({ data: { items } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    putMock.mockResolvedValue({ data: { status: "received" } });
+    const onUpdated = vi.fn();
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    const queryClient = makeQueryClient();
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />, { queryClient });
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    await vi.waitFor(() => expect(queryClient.getQueryState(["locations", "order-picker"])?.status).toBe("success"));
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Main Warehouse" } });
+    await vi.waitFor(() => expect(queryClient.getQueryState(["lpns", "by-location", 5])?.status).toBe("success"));
+    fireEvent.change(screen.getByLabelText("LPN for Widget"), { target: { value: "PAL-1001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/orders/1", {
+        status: "received",
+        receive_locations: { 10: 5 },
+        lpn_ids: { 10: 9 },
+      });
     });
     expect(onUpdated).toHaveBeenCalled();
   });

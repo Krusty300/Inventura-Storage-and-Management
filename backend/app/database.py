@@ -118,6 +118,8 @@ def run_migrations():
             conn.execute(text("ALTER TABLE shipment_items ADD COLUMN location_id INTEGER"))
         if sales_cols is not None and "discount_amount" not in sales_cols:
             conn.execute(text("ALTER TABLE sales ADD COLUMN discount_amount NUMERIC(10, 2) DEFAULT 0"))
+        if sales_cols is not None and "payment_provider" not in sales_cols:
+            conn.execute(text("ALTER TABLE sales ADD COLUMN payment_provider VARCHAR(20)"))
         if "document_sequences" not in table_names:
             conn.execute(text(
                 "CREATE TABLE document_sequences "

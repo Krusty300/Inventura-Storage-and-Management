@@ -17,6 +17,7 @@ import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
 import { useExportCsv } from "../hooks/useExportCsv";
 import { formatCurrency } from "../utils/currency";
+import { paymentLabel } from "../utils/payments";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 
@@ -139,7 +140,7 @@ export default function Sales() {
                 <td className="px-4 py-3">
                   <span className={`badge ${s.status === "completed" ? "badge-success" : "badge-danger"}`}>{s.status}</span>
                 </td>
-                <td className="px-4 py-3 text-muted capitalize">{s.payment_method}</td>
+                <td className="px-4 py-3 text-muted">{paymentLabel(s.payment_method, s.payment_provider)}</td>
                 <td className="px-4 py-3 text-muted">{(s.locations ?? []).join(", ") || "—"}</td>
                 <td className="px-4 py-3">{formatCurrency(s.total_amount, currencySymbol)}</td>
                 <td className="px-4 py-3">

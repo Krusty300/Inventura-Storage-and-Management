@@ -148,6 +148,8 @@ describe("LPNs Page", () => {
       if (url === "/lpns/1") return Promise.resolve({ data: mockLPN({ contents: [] }) });
       if (url === "/products") return Promise.resolve({ data: { items: [{ id: 1, sku: "W", name: "Widget", display_name: "Widget", is_active: true, is_serialized: false, is_variant: false, parent_id: null, location_id: 2 }] } });
       if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 2, name: "Aisle A", path: "Aisle A", is_active: true }] } });
+      if (url === "/locations/2/products")
+        return Promise.resolve({ data: { items: [{ product_id: 1, name: "Widget", sku: "W", is_serialized: false, quantity: 5, serial_count: 0 }] } });
       if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: [{ location_id: 2, path: "Aisle A", is_active: true, quantity: 5, lots: [] }] } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
@@ -185,6 +187,8 @@ describe("LPNs Page", () => {
         return Promise.resolve({ data: { items: [{ id: 1, sku: "SG", name: "Serial Gadget", display_name: "Serial Gadget", is_active: true, is_serialized: true, is_variant: false, parent_id: null, location_id: 2 }] } });
       if (url === "/locations")
         return Promise.resolve({ data: { items: [{ id: 2, name: "Quarantine Area", path: "Quarantine Area", parent_id: null, location_type: "quarantine", is_active: true }] } });
+      if (url === "/locations/2/products")
+        return Promise.resolve({ data: { items: [{ product_id: 1, name: "Serial Gadget", sku: "SG", is_serialized: true, quantity: 0, serial_count: 2 }] } });
       if (url === "/serial-numbers") {
         const status = config?.params?.status;
         if (status === "in_stock") return Promise.resolve({ data: { items: [] } });
