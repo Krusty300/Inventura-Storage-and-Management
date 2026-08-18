@@ -34,6 +34,18 @@ def notify_admins(db: Session, title: str, message: str = "", type: str = "info"
     return created
 
 
+def notify_note_assigned(db: Session, note, assigner_name: str) -> None:
+    if note.assigned_to_id is None:
+        return
+    create_notification(
+        db, note.assigned_to_id,
+        f"Note assigned to you",
+        f'"{note.title}" was assigned by {assigner_name}.',
+        type="info", link="/notes",
+    )
+    db.commit()
+
+
 def notify_low_stock(db: Session, product: Product) -> list[Notification]:
     s = _get_settings(db)
     if not s.low_stock_alerts:

@@ -21,14 +21,6 @@ import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 
 import { usePageSize } from "../hooks/usePageSize";
 
-const STATUS_FILTERS = [
-  { value: "", label: "All" },
-  { value: "in_stock", label: "In Stock" },
-  { value: "sold", label: "Sold" },
-  { value: "quarantined", label: "Quarantined" },
-  { value: "expired", label: "Expired" },
-] as const;
-
 export default function Lots() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
@@ -112,17 +104,13 @@ export default function Lots() {
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by lot number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search lots" />
         </div>
-        <div role="group" aria-label="Filter by status" className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => { setStatus(f.value); setPage(1); }}
-              className={`px-3 py-1 rounded-md text-sm transition-colors ${status === f.value ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <select className="select" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+          <option value="">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="expired">Expired</option>
+          <option value="quarantined">Quarantined</option>
+          <option value="depleted">Depleted</option>
+        </select>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -147,7 +135,7 @@ export default function Lots() {
             ) : lots.length === 0 ? (
               <EmptyState title="No lots yet" message="Lots are created automatically when you record a receipt or finish a work order with a lot number." />
             ) : lots.map((l) => (
-              <tr key={l.id} className="hover:bg-app">
+              <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!e.target.closest("button")) setViewing(l); }}>
                 <td className="px-4 py-3 font-medium">{l.lot_number}</td>
                 <td className="px-4 py-3 text-muted">{l.product_name}</td>
                 <td className="px-4 py-3 text-muted">{l.supplier_name || "—"}</td>

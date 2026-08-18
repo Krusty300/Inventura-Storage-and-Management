@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Package, MapPin, ClipboardList, PackageOpen, ShieldCheck, ShieldX } from "lucide-react";
 import api from "../api/client";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import type { Location, PaginatedResponse } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { statusBadge } from "../utils/statusBadges";
@@ -170,7 +170,7 @@ export default function LocationDetail({ location, onClose }: Props) {
   const logs = activity?.items || [];
 
   return (
-    <Modal open onClose={onClose} title={location.path} wide>
+    <SlideOver open onClose={onClose} title={location.path} wide ariaLabel={location.path}>
       <div className="space-y-4 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -448,7 +448,7 @@ export default function LocationDetail({ location, onClose }: Props) {
           </>
         )}
       </div>
-    </Modal>
+    </SlideOver>
   );
 }
 

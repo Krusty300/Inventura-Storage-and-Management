@@ -91,7 +91,7 @@ def test_sales_summary_with_refund(auth_headers):
     data = client.get("/api/reports/sales-summary", headers=auth_headers).json()
     assert data["total_sales"] == 1
     assert data["total_revenue"] == 100.0
-    assert data["by_payment_method"] == [{"method": "card", "count": 1}]
+    assert data["by_payment_method"] == [{"method": "card", "count": 1, "total": 100.0}]
     client.put(f"/api/sales/{sale['id']}/refund", headers=auth_headers)
     data = client.get("/api/reports/sales-summary", headers=auth_headers).json()
     assert data["total_sales"] == 0
@@ -106,6 +106,40 @@ def test_sales_summary_top_products_respects_date_range(auth_headers):
     assert all(t["name"] != "TP Top Item" for t in future["top_products"])
     past = client.get("/api/reports/sales-summary", params={"start_date": "2020-01-01"}, headers=auth_headers).json()
     assert any(t["name"] == "TP Top Item" for t in past["top_products"])
+
+
+def test_payment_reconciliation(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "RECON-001", "name": "Recon Item", "unit_price": 50.0, "quantity": 20}, headers=auth_headers).json()
+    mm = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 50.0}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+    }, headers=auth_headers).json()
+    client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 50.0}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+    }, headers=auth_headers)
+    client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 50.0}],
+        "payment_method": "cash",
+    }, headers=auth_headers)
+    # pending refund on a mobile money sale
+    client.put(f"/api/sales/{mm['id']}/refund", headers=auth_headers)
+
+    data = client.get("/api/reports/payment-reconciliation", headers=auth_headers).json()
+    assert data["gross_total"] == 200.0
+    assert data["refunded_total"] == 100.0
+    assert data["net_total"] == 100.0
+    assert data["pending_refunds"] == 1
+    rows = {f"{r['method']}|{r['provider'] or ''}": r for r in data["rows"]}
+    mm_row = rows["mobile_money|m-pesa"]
+    assert mm_row["gross_total"] == 150.0
+    assert mm_row["refunded_total"] == 100.0
+    assert mm_row["net_total"] == 50.0
+    assert mm_row["count"] == 2
+    assert mm_row["pending_refunds"] == 1
+    assert rows["cash|"]["gross_total"] == 50.0
 
 
 def test_stock_movement_trends(auth_headers):

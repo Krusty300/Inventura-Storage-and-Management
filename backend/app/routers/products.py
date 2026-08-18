@@ -47,6 +47,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 router = APIRouter(prefix="/api/products", tags=["products"], dependencies=[Depends(require_permission("products.view"))])
 
+PRODUCT_SORT_COLUMNS = {"name", "sku", "unit_price", "cost_price", "quantity", "reorder_level", "created_at", "updated_at", "category_name", "supplier_name"}
+
 
 def _effective_location(product: Product) -> str:
     """Return the location path derived from actual stock lines, falling back to the stored default."""
@@ -127,7 +129,10 @@ def list_products(
     include_variants: bool = False,
     db: Session = Depends(get_db),
 ):
-    inventory.expire_overdue_lots(db)
+    if sort_by not in PRODUCT_SORT_COLUMNS:
+        raise HTTPException(status_code=400, detail=f"sort_by must be one of {sorted(PRODUCT_SORT_COLUMNS)}")
+    if sort_dir not in ("asc", "desc"):
+        raise HTTPException(status_code=400, detail="sort_dir must be 'asc' or 'desc'")
     options = [joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.default_location), joinedload(Product.stock_lines).joinedload(StockLine.location)]
     if include_variants:
         options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location))

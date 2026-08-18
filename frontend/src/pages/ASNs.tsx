@@ -7,6 +7,7 @@ import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { ASN, LPN, PaginatedResponse, Product } from "../types";
 import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import LocationPicker from "../components/LocationPicker";
 import StockLocationHints from "../components/StockLocationHints";
 import Pagination from "../components/Pagination";
@@ -51,6 +52,7 @@ function supplierSelectableItems(items: Product[], supplierId: string): Product[
 export default function ASNs() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+  const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
@@ -62,10 +64,11 @@ export default function ASNs() {
   const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["asns", debouncedSearch, page, pageSize],
+    queryKey: ["asns", debouncedSearch, status, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (status) params.status = status;
       const { data } = await api.get("/asns", { params });
       return data as PaginatedResponse<ASN>;
     },
@@ -113,6 +116,12 @@ export default function ASNs() {
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by ASN number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search ASNs" />
         </div>
+        <select className="select" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="in_transit">In Transit</option>
+          <option value="received">Received</option>
+        </select>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -134,7 +143,7 @@ export default function ASNs() {
             ) : asns.length === 0 ? (
               <EmptyState title="No ASNs yet" message="Create an advance shipping notice for incoming supplier shipments." actionLabel="New ASN" onAction={() => setShowForm(true)} />
             ) : asns.map((a) => (
-              <tr key={a.id} className="hover:bg-app">
+              <tr key={a.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(a)}>
                 <td className="px-4 py-3 font-medium">{a.asn_number}</td>
                 <td className="px-4 py-3 text-muted">{a.supplier_name || "—"}</td>
                 <td className="px-4 py-3">{arrivalBadge(a.expected_arrival)}</td>
@@ -144,10 +153,10 @@ export default function ASNs() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => printPdf(a)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${a.asn_number}`}><Printer size={16} /></button>
-                    <button onClick={() => setViewing(a)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${a.asn_number}`}><Eye size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); printPdf(a); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${a.asn_number}`}><Printer size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setViewing(a); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${a.asn_number}`}><Eye size={16} /></button>
                     {a.status === "pending" && can("asns.receive") && (
-                      <button onClick={() => setReceiving(a)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 font-medium">Receive</button>
+                      <button onClick={(e) => { e.stopPropagation(); setReceiving(a); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 font-medium">Receive</button>
                     )}
                   </div>
                 </td>
@@ -404,7 +413,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
 function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
   const formatDate = useDateFormat();
   return (
-    <Modal open onClose={onClose} title={`ASN ${asn.asn_number}`} wide>
+    <SlideOver open onClose={onClose} title={`ASN ${asn.asn_number}`} wide ariaLabel={`ASN ${asn.asn_number} details`}>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
@@ -449,7 +458,7 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }
 

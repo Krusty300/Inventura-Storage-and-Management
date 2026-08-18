@@ -98,6 +98,10 @@ ALL_PERMISSIONS = frozenset({
     "shipments.ship",
     "shipments.cancel",
     "shipments.delete",
+    "notes.view",
+    "notes.create",
+    "notes.update",
+    "notes.delete",
 })
 
 WORKER_PERMISSIONS = frozenset({
@@ -140,6 +144,9 @@ WORKER_PERMISSIONS = frozenset({
     "shipments.create",
     "shipments.pick",
     "shipments.ship",
+    "notes.view",
+    "notes.create",
+    "notes.update",
 })
 
 ROLE_PERMISSIONS = {

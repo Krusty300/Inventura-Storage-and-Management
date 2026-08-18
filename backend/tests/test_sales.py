@@ -35,11 +35,43 @@ def test_sale_mobile_money_with_provider(auth_headers):
         "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
         "payment_method": "mobile_money",
         "payment_provider": "m-pesa",
+        "payment_provider_amount": 20.00,
+        "currency": "KES",
     }, headers=auth_headers)
     assert resp.status_code == 201
     data = resp.json()
     assert data["payment_method"] == "mobile_money"
     assert data["payment_provider"] == "m-pesa"
+    assert data["payment_status"] == "pending"
+    assert data["status"] == "pending"
+
+
+def test_sale_stores_payment_reference_and_phone(auth_headers):
+    prod = _make_product(auth_headers, sku="SALE-PAYREF")
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_reference": "TXM-REF-123",
+        "payment_phone": "0722 100 100",
+        "payment_provider_amount": 20.00,
+        "currency": "KES",
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["payment_reference"] == "TXM-REF-123"
+    assert data["payment_phone"] == "0722 100 100"
+
+
+def test_sale_non_mobile_money_rejects_provider(auth_headers):
+    prod = _make_product(auth_headers, sku="SALE-PROV-CARD")
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "card",
+        "payment_provider": "m-pesa",
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "payment_provider is only allowed" in resp.json()["detail"]
 
 
 def test_sale_mobile_money_requires_provider(auth_headers):
@@ -270,6 +302,52 @@ def test_refund_restores_stock(auth_headers):
     assert any(m["movement_type"] == "return" and m["quantity_change"] == 4 for m in movements)
 
 
+def test_refund_records_method_and_provider(auth_headers):
+    prod = _make_product(auth_headers, quantity=10)
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_provider_amount": 20.00,
+        "currency": "KES",
+    }, headers=auth_headers).json()
+    # mock-confirm the STK payment so the sale transitions to completed
+    client.put(f"/api/sales/{sale['id']}/checkout-id?checkout_request_id=ws_CO_TEST123", headers=auth_headers)
+    client.post("/api/daraja/mock-confirm?checkout_request_id=ws_CO_TEST123", headers=auth_headers)
+    resp = client.put(f"/api/sales/{sale['id']}/refund", json={"refund_method": "cash"}, headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "refunded"
+    assert data["refund_status"] == "completed"
+    assert data["refund_method"] == "cash"
+    assert data["refunded_at"] is not None
+
+
+def test_refund_pending_then_complete(auth_headers):
+    prod = _make_product(auth_headers, quantity=10)
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_provider_amount": 20.00,
+        "currency": "KES",
+    }, headers=auth_headers).json()
+    # mock-confirm the STK payment so the sale transitions to completed
+    client.put(f"/api/sales/{sale['id']}/checkout-id?checkout_request_id=ws_CO_TEST456", headers=auth_headers)
+    client.post("/api/daraja/mock-confirm?checkout_request_id=ws_CO_TEST456", headers=auth_headers)
+    resp = client.put(f"/api/sales/{sale['id']}/refund", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["refund_status"] == "pending"
+    assert resp.json()["refund_provider"] == "m-pesa"
+
+    completed = client.put(f"/api/sales/{sale['id']}/refund/complete", headers=auth_headers)
+    assert completed.status_code == 200
+    assert completed.json()["refund_status"] == "completed"
+
+    # completing twice is rejected
+    assert client.put(f"/api/sales/{sale['id']}/refund/complete", headers=auth_headers).status_code == 400
+
+
 def test_refund_restores_stock_to_original_location(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1,
         "sku": "REFUND-LOC", "name": "Refund Loc Item", "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
@@ -407,6 +485,25 @@ def test_sale_search_and_stats(auth_headers):
     stats = client.get("/api/sales/stats", headers=auth_headers).json()
     assert stats["total_sales"] >= 1
     assert stats["total_revenue"] >= 40.0
+
+
+def test_sale_list_filters_by_payment_method(auth_headers):
+    prod = _make_product(auth_headers, quantity=10)
+    client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "cash",
+    }, headers=auth_headers)
+    client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_provider_amount": 20.00,
+        "currency": "KES",
+    }, headers=auth_headers)
+    cash = client.get("/api/sales", params={"payment_method": "cash"}, headers=auth_headers).json()
+    assert cash["items"] and all(i["payment_method"] == "cash" for i in cash["items"])
+    mm = client.get("/api/sales", params={"payment_method": "mobile_money"}, headers=auth_headers).json()
+    assert mm["items"] and all(i["payment_method"] == "mobile_money" for i in mm["items"])
 
 
 def test_sale_pdf_generated(auth_headers):
@@ -752,3 +849,143 @@ def test_shipment_invoice_lists_source_location(auth_headers):
     listing = client.get("/api/sales", headers=auth_headers).json()
     by_invoice = {s["invoice_number"]: s["locations"] for s in listing["items"]}
     assert by_invoice[sale["invoice_number"]] == [path]
+
+
+def test_sale_stores_currency_and_provider_amount(auth_headers):
+    prod = _make_product(auth_headers, sku="SALE-CUR")
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_phone": "254712345678",
+        "currency": "KES",
+        "currency_symbol": "KSh",
+        "payment_provider_amount": 2500.0,
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["currency"] == "KES"
+    assert data["currency_symbol"] == "KSh"
+    assert data["payment_provider_amount"] == 2500.0
+    assert data["payment_status"] == "pending"
+    assert data["status"] == "pending"
+
+
+def test_sale_cash_method_ignores_provider_amount(auth_headers):
+    prod = _make_product(auth_headers, sku="SALE-CASH-IGN")
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "cash",
+        "currency": "USD",
+        "currency_symbol": "$",
+        "payment_provider_amount": 100.0,
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["currency"] == "USD"
+    assert data["currency_symbol"] == "$"
+    assert data["payment_provider_amount"] is None
+
+
+def test_sale_checkout_id_update(auth_headers):
+    prod = _make_product(auth_headers, sku="SALE-CHK")
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_provider_amount": 20.00,
+        "currency": "KES",
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/sales/{sale['id']}/checkout-id?checkout_request_id=ws_CO_TEST123", headers=auth_headers)
+    assert resp.status_code == 200
+    detail = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
+    assert detail.get("payment_checkout_request_id") == "ws_CO_TEST123"
+
+
+def test_daraja_status_endpoint(auth_headers):
+    resp = client.get("/api/daraja/status", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "mock" in data
+    assert "environment" in data
+
+
+def test_daraja_stk_push_mock_mode(auth_headers):
+    resp = client.post("/api/daraja/stk-push", json={
+        "phone": "254712345678",
+        "amount": 100,
+        "reference": "INV-MOCK",
+        "description": "Test payment",
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["checkout_request_id"].startswith("ws_CO_")
+
+
+def test_daraja_b2c_refund_mock_mode(auth_headers):
+    resp = client.post("/api/daraja/b2c-refund", json={
+        "phone": "254712345678",
+        "amount": 50,
+        "reference": "REF-MOCK",
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["conversation_id"] != ""
+
+
+def test_mobile_money_pending_to_completed_via_mock_confirm(auth_headers):
+    prod = _make_product(auth_headers, sku="MOCK-CONF")
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_provider_amount": 20.00,
+        "currency": "KES",
+    }, headers=auth_headers).json()
+    assert sale["status"] == "pending"
+    assert sale["payment_status"] == "pending"
+    client.put(f"/api/sales/{sale['id']}/checkout-id?checkout_request_id=ws_CO_CONFIRM_TEST", headers=auth_headers)
+    resp = client.post("/api/daraja/mock-confirm?checkout_request_id=ws_CO_CONFIRM_TEST", headers=auth_headers)
+    assert resp.status_code == 200
+    detail = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
+    assert detail["status"] == "completed"
+    assert detail["payment_status"] == "completed"
+
+
+def test_cash_sale_remains_completed(auth_headers):
+    prod = _make_product(auth_headers, sku="CASH-COMP")
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert data["payment_status"] is None
+
+
+def test_b2c_refund_stores_conversation_id_on_sale(auth_headers):
+    prod = _make_product(auth_headers, sku="B2C-STORE", quantity=10)
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_provider_amount": 20.00,
+        "currency": "KES",
+    }, headers=auth_headers).json()
+    client.put(f"/api/sales/{sale['id']}/checkout-id?checkout_request_id=ws_CO_B2C", headers=auth_headers)
+    client.post("/api/daraja/mock-confirm?checkout_request_id=ws_CO_B2C", headers=auth_headers)
+    resp = client.post("/api/daraja/b2c-refund", json={
+        "phone": "254712345678",
+        "amount": 20,
+        "sale_id": sale["id"],
+        "reference": sale["invoice_number"],
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert data["conversation_id"] != ""
+    detail = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
+    assert detail["refund_checkout_request_id"] == data["conversation_id"]
+    assert detail["refund_status"] == "pending"

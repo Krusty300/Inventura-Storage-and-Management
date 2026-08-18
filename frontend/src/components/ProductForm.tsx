@@ -5,7 +5,7 @@ import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Category, Location, Product, Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
 import { useSettings } from "../hooks/useSettings";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import LocationPicker from "./LocationPicker";
 import { hasVariants } from "../utils/variants";
 import { errorMessage } from "../utils/errors";
@@ -176,7 +176,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   };
 
   return (
-    <Modal open onClose={onClose} title={product ? "Edit Product" : parent ? `Add Variant: ${parent.name}` : "Add Product"} wide>
+    <SlideOver open onClose={onClose} title={product ? "Edit Product" : parent ? `Add Variant: ${parent.name}` : "Add Product"} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {field("SKU *", "sku", "text", true)}
@@ -318,6 +318,6 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
           </button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }

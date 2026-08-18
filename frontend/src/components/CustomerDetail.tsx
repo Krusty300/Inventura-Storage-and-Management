@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import api from "../api/client";
 import type { Customer, CustomerStats, FrequentProduct, PaginatedResponse, Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
@@ -39,7 +39,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
   const frequentProducts = frequent || [];
 
   return (
-    <Modal open onClose={onClose} title={customer.name} wide>
+    <SlideOver open onClose={onClose} title={customer.name} wide ariaLabel={customer.name}>
       <div className="space-y-5 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -165,6 +165,6 @@ export default function CustomerDetail({ customer, onClose }: Props) {
           )}
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

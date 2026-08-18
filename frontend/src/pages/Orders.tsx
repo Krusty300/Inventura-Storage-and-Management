@@ -12,6 +12,7 @@ import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityB
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import SlideOver from "../components/SlideOver";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
@@ -155,7 +156,7 @@ export default function Orders() {
             ) : orders.length === 0 ? (
               <EmptyState title="No orders" message="Create a purchase order to start tracking deliveries." actionLabel="New Order" onAction={() => setShowForm(true)} />
             ) : orders.map((o) => (
-              <tr key={o.id} className="hover:bg-app">
+              <tr key={o.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!e.target.closest("button")) setViewing(o); }}>
                 <td className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(o.id)} onChange={() => toggleSelect(o.id)} aria-label={`Select order ${o.order_number}`} />
                 </td>

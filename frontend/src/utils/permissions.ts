@@ -91,6 +91,10 @@ export const ALL_PERMISSIONS = [
   "shipments.ship",
   "shipments.cancel",
   "shipments.delete",
+  "notes.view",
+  "notes.create",
+  "notes.update",
+  "notes.delete",
   "profile.view",
 ];
 
@@ -134,6 +138,9 @@ const WORKER_PERMISSIONS = [
   "shipments.create",
   "shipments.pick",
   "shipments.ship",
+  "notes.view",
+  "notes.create",
+  "notes.update",
   "profile.view",
 ];
 

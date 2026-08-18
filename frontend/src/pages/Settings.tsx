@@ -3,6 +3,7 @@ import { Save, KeyRound, Bell, Hash, Workflow, DollarSign, Monitor } from "lucid
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { CURRENCIES, symbolFor } from "../utils/currencies";
 
 type Tab = "store" | "notifications" | "documents" | "workflow" | "financial" | "display" | "password";
 
@@ -47,7 +48,8 @@ export default function Settings() {
       if (cancelled) return;
       setForm({
         store_name: data.store_name, address: data.address, phone: data.phone, email: data.email,
-        currency_symbol: data.currency_symbol, tax_rate: String(data.tax_rate),
+        currency_symbol: data.currency_symbol, currency_code: data.currency_code || "USD",
+        tax_rate: String(data.tax_rate),
         default_reorder_level: String(data.default_reorder_level),
         expiry_warning_days: String(data.expiry_warning_days),
         low_stock_alerts: data.low_stock_alerts, expiry_alerts: data.expiry_alerts,
@@ -73,6 +75,7 @@ export default function Settings() {
     try {
       await api.put("/settings", {
         ...form,
+        currency_code: form.currency_code || "USD",
         tax_rate: parseFloat(form.tax_rate) || 0,
         default_reorder_level: parseInt(form.default_reorder_level) || 10,
         expiry_warning_days: parseInt(form.expiry_warning_days) || 30,
@@ -126,7 +129,16 @@ export default function Settings() {
           <fieldset disabled={readOnly} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Field label="Store Name" value={form.store_name} onChange={(v) => set("store_name", v)} />
-              <Field label="Currency Symbol" value={form.currency_symbol} onChange={(v) => set("currency_symbol", v)} />
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Currency</label>
+                <select className="select" value={form.currency_code} onChange={(e) => {
+                  const code = e.target.value;
+                  set("currency_code", code);
+                  set("currency_symbol", symbolFor(code));
+                }}>
+                  {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.symbol} — {c.name} ({c.code})</option>)}
+                </select>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Address</label>

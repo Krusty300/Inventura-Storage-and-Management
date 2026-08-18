@@ -84,7 +84,7 @@ export default function QualityChecks() {
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by QC number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search quality checks" />
         </div>
-        <select className="select w-auto" value={result} onChange={(e) => { setResult(e.target.value); setPage(1); }} aria-label="Filter by result">
+        <select className="select w-44" value={result} onChange={(e) => { setResult(e.target.value); setPage(1); }} aria-label="Filter by result">
           <option value="">All results</option>
           <option value="pending">Pending</option>
           <option value="pass">Pass</option>

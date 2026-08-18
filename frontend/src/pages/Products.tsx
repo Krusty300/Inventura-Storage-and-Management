@@ -339,7 +339,7 @@ export default function Products() {
                 const isLowStock = sellable <= p.reorder_level && !isGroup;
                 const isCollapsed = isGroup && collapsed.has(p.id);
                 return (
-                  <tr key={`${r.kind}-${p.id}`} className={r.kind === "variant" ? "bg-app/60 hover:bg-subtle" : "hover:bg-app"}>
+                  <tr key={`${r.kind}-${p.id}`} className={`${r.kind === "variant" ? "bg-app/60 hover:bg-subtle" : "hover:bg-app"} cursor-pointer`} onClick={(e) => { if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement || e.target.closest("button") || e.target.closest("input")) return; setViewing(p); }}>
                     <td className="px-4 py-3">
                       <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} aria-label={`Select ${p.display_name}`} />
                     </td>

@@ -1,5 +1,5 @@
 import type { Receipt } from "../types";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
@@ -14,7 +14,7 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   return (
-    <Modal open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} wide>
+    <SlideOver open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} wide ariaLabel={`Receipt ${receipt.receipt_number}`}>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
@@ -63,6 +63,6 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

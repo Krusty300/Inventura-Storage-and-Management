@@ -24,6 +24,7 @@ const entityQueryMap: Record<string, string[]> = {
   user: ["users"],
   activity_log: ["activity-logs"],
   notification: ["notifications"],
+  note: ["notes"],
   lot: ["lots", "lot-genealogy", "exceptions"],
   location: ["locations"],
   quality_check: ["quality-checks", "exceptions"],
@@ -47,8 +48,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     let closed = false;
 
     function connect() {
+      const token = localStorage.getItem("token");
+      if (!token) return;
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      const url = `${protocol}//${location.host}/ws`;
+      const url = `${protocol}//${location.host}/ws?token=${encodeURIComponent(token)}`;
       const ws = new WebSocket(url);
       wsRef.current = ws;
 

@@ -1,9 +1,10 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.constants import CURRENCIES
 from app.database import get_db
 from app.models.settings import Settings
 from app.services.auth import require_permission
@@ -17,6 +18,7 @@ class SettingsUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     currency_symbol: Optional[str] = None
+    currency_code: Optional[str] = None
     tax_rate: Optional[float] = None
     default_reorder_level: Optional[int] = None
     expiry_warning_days: Optional[int] = None
@@ -37,7 +39,7 @@ class SettingsUpdate(BaseModel):
 
 
 SETTING_FIELDS = [
-    "id", "store_name", "address", "phone", "email", "currency_symbol",
+    "id", "store_name", "address", "phone", "email", "currency_symbol", "currency_code",
     "tax_rate", "default_reorder_level",
     "expiry_warning_days", "low_stock_alerts", "expiry_alerts",
     "shipment_prefix", "work_order_prefix", "sale_prefix", "invoice_prefix", "po_prefix",
@@ -69,6 +71,8 @@ def get_settings(db: Session = Depends(get_db)):
 @router.put("")
 def update_settings(data: SettingsUpdate, db: Session = Depends(get_db), user=Depends(require_permission("settings.update"))):
     s = get_or_create_settings(db)
+    if data.currency_code is not None and data.currency_code not in CURRENCIES:
+        raise HTTPException(status_code=400, detail=f"currency_code must be one of {', '.join(CURRENCIES)}")
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(s, k, v)
     db.commit()

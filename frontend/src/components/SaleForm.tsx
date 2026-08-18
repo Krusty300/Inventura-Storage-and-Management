@@ -154,6 +154,9 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [customerId, setCustomerId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentProvider, setPaymentProvider] = useState(MOBILE_MONEY_PROVIDERS[0].value);
+  const [paymentPhone, setPaymentPhone] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentProviderAmount, setPaymentProviderAmount] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<LineItem[]>([]);
   const [stockShort, setStockShort] = useState<Set<number>>(new Set());
@@ -277,6 +280,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const tax = settings ? taxable * settings.tax_rate / 100 : 0;
   const total = taxable + tax;
   const currency = settings?.currency_symbol || "$";
+  const currencyCode = settings?.currency_code || "USD";
 
   const cashReceived = parseFloat(amountReceived) || 0;
   const change = cashReceived - total;
@@ -322,6 +326,11 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         customer_id: customerId ? parseInt(customerId) : null,
         payment_method: paymentMethod,
         payment_provider: paymentMethod === "mobile_money" ? paymentProvider : null,
+        payment_reference: paymentReference.trim() || null,
+        payment_phone: paymentPhone.trim() || null,
+        payment_provider_amount: paymentMethod === "mobile_money" && paymentProviderAmount ? parseFloat(paymentProviderAmount) : null,
+        currency: currencyCode,
+        currency_symbol: currency,
         discount_amount: discountAmount,
         notes,
         items: items.map((i) => ({
@@ -478,11 +487,27 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 </div>
               </div>
               {paymentMethod === "mobile_money" && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1.5">Mobile Money Provider</label>
+                    <select className="select text-sm" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} aria-label="Mobile money provider">
+                      {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1.5">Payer Phone</label>
+                    <input className="input text-sm" placeholder="e.g. 07XX XXX XXX" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} aria-label="Payer phone" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1.5">Provider Amount ({currency})</label>
+                    <input className="input text-sm" type="number" min="0" step="0.01" placeholder={total.toFixed(2)} value={paymentProviderAmount} onChange={(e) => setPaymentProviderAmount(e.target.value)} aria-label="Provider amount" />
+                  </div>
+                </>
+              )}
+              {paymentMethod !== "cash" && (
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1.5">Mobile Money Provider</label>
-                  <select className="select text-sm" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} aria-label="Mobile money provider">
-                    {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                  </select>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Payment Reference</label>
+                  <input className="input text-sm" placeholder={paymentMethod === "mobile_money" ? "Provider confirmation code" : "Reference (optional)"} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} aria-label="Payment reference" />
                 </div>
               )}
               <textarea className="input text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} aria-label="Sale notes" />

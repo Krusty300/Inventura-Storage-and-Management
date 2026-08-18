@@ -12,6 +12,7 @@ import {
   ReceiptText,
   ClipboardList,
   ShieldCheck,
+  StickyNote,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend } from "recharts";
 import api from "../api/client";
@@ -59,6 +60,7 @@ export default function Dashboard() {
   const [profit, setProfit] = useState<ProfitAnalysis | null>(null);
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
   const [costReport, setCostReport] = useState<ManufacturingCostReport | null>(null);
+  const [overdueNotesCount, setOverdueNotesCount] = useState(0);
   const [trendDays, setTrendDays] = useState(30);
   const [topProductsDays, setTopProductsDays] = useState(30);
   const [riskLeadTime, setRiskLeadTime] = useState(7);
@@ -113,6 +115,8 @@ export default function Dashboard() {
     setOrderSummary(ordData);
     setProfit(profData);
     setCostReport(costData);
+    const overdueData = await get<number>("/notes/overdue-count");
+    setOverdueNotesCount(overdueData ?? 0);
     setRefreshing(false);
   }, [get, addToast]);
 
@@ -242,6 +246,7 @@ export default function Dashboard() {
       value: formatCurrency(salesStats?.total_revenue || 0, currencySymbol, 0),
       link: "/sales",
     },
+    { label: "Overdue Notes", value: overdueNotesCount, link: "/notes", highlight: overdueNotesCount > 0 },
   ];
 
   const manufacturingCards = [
@@ -365,10 +370,10 @@ export default function Dashboard() {
               <div
                 key={card.label}
                 onClick={() => card.link && navigate(card.link)}
-                className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""} ${(card as any).highlight ? "border-l-4 border-l-red-500" : ""}`}
               >
                 <p className="text-sm text-muted">{card.label}</p>
-                <p className="text-2xl font-bold mt-1">{card.value}</p>
+                <p className={`text-2xl font-bold mt-1 ${(card as any).highlight ? "text-red-600 dark:text-red-400" : ""}`}>{card.value}</p>
               </div>
             ))}
           </div>

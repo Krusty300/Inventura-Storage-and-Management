@@ -123,7 +123,7 @@ export default function StockMovements() {
             ) : movements.length === 0 ? (
               <EmptyState title="No movements recorded" message="Record a stock movement to start tracking inventory changes." actionLabel="Record Movement" onAction={() => setShowForm(true)} />
             ) : movements.map((m) => (
-              <tr key={m.id} className="hover:bg-app">
+              <tr key={m.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!e.target.closest("button")) setViewing(m); }}>
                 <td className="px-4 py-3 text-muted">
                   {formatDate(m.created_at)}
                 </td>

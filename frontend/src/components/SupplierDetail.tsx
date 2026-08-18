@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import api from "../api/client";
 import type { Order, PaginatedResponse, Product, Supplier, SupplierStats } from "../types";
 import { formatCurrency } from "../utils/currency";
@@ -45,7 +45,7 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
   }
 
   return (
-    <Modal open onClose={onClose} title={supplier.name} wide>
+    <SlideOver open onClose={onClose} title={supplier.name} wide ariaLabel={supplier.name}>
       <div className="space-y-5 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -179,6 +179,6 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
           )}
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

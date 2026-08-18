@@ -21,7 +21,7 @@ function mockCatalog(products: ReturnType<typeof makeProduct>[], qcs: any[] = []
   getMock.mockImplementation((url: string) => {
     if (url === "/customers") return Promise.resolve({ data: { items: [] } });
     if (url === "/products") return Promise.resolve({ data: { items: products } });
-    if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+    if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD", tax_rate: 10 } });
     if (url === "/quality-checks") return Promise.resolve({ data: { items: qcs, total: qcs.length, page: 1, pages: 1 } });
     if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations, unallocated: 0 } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
@@ -55,7 +55,7 @@ describe("SaleForm", () => {
     getMock.mockImplementation((url: string) => {
       if (url === "/customers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Corp", phone: "", email: "", address: "", customer_type: "wholesale", notes: "", is_active: true, created_at: "", updated_at: "" }] } });
       if (url === "/products") return Promise.resolve({ data: { items: [] } });
-      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", tax_rate: 10 } });
+    if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD", tax_rate: 10 } });
       if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
@@ -200,6 +200,26 @@ describe("SaleForm", () => {
       payment_method: "mobile_money",
       payment_provider: "t-kash",
       items: [{ product_id: 7, quantity: 1, unit_price: 10, location_id: null }],
+    })));
+  });
+
+  it("submits payer phone and payment reference for mobile money", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
+    postMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Mobile money provider" }), { target: { value: "m-pesa" } });
+    expect(screen.getByLabelText("Payer phone")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Payer phone"), { target: { value: "0722 100 100" } });
+    fireEvent.change(screen.getByLabelText("Payment reference"), { target: { value: "TX-REF-9" } });
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
+      payment_method: "mobile_money",
+      payment_provider: "m-pesa",
+      payment_phone: "0722 100 100",
+      payment_reference: "TX-REF-9",
     })));
   });
 

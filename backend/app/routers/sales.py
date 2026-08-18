@@ -1,11 +1,12 @@
 from math import ceil
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.constants import MAX_PAGE_SIZE
+from app.constants import MAX_PAGE_SIZE, currency_symbol as symbol_for
 from app.database import get_db
 from app.models.customer import Customer
 from app.models.location import Location
@@ -16,11 +17,11 @@ from app.models.quality_check import QualityCheck
 from app.models.shipment import Shipment
 from app.models.serial_number import SerialNumber
 from app.models.stock_movement import StockMovement
-from app.schemas.sale import SaleBulkEdit, SaleCreate, SaleOut
+from app.schemas.sale import RefundRequest, SaleBulkEdit, SaleCreate, SaleOut
 from app.services import inventory
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import notify_admins, notify_low_stock
-from app.services.payment_methods import validate_payment
+from app.services.payment_methods import resolve_payment_details, validate_payment
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
     BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
@@ -38,6 +39,13 @@ def generate_invoice_number(db: Session) -> str:
 def get_tax_rate(db: Session) -> float:
     s = db.query(Settings).first()
     return float(s.tax_rate) if s else 0.0
+
+
+def get_currency_defaults(db: Session) -> tuple[str, str]:
+    s = db.query(Settings).first()
+    if s and s.currency_code:
+        return s.currency_code, s.currency_symbol or symbol_for(s.currency_code)
+    return "USD", "$"
 
 
 def load_sale(db: Session, sale_id: int) -> Sale:
@@ -156,6 +164,7 @@ def _apply_sale_locations_batch(db: Session, outs: list[SaleOut]) -> list[SaleOu
 def list_sales(
     search: str = Query(""),
     customer_id: int | None = None,
+    payment_method: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -167,6 +176,8 @@ def list_sales(
         q = q.filter(Sale.invoice_number.ilike(f"%{search}%"))
     if customer_id:
         q = q.filter(Sale.customer_id == customer_id)
+    if payment_method:
+        q = q.filter(Sale.payment_method == payment_method)
     total = q.count()
     items = q.order_by(Sale.created_at.desc()).offset(skip).limit(limit).all()
     outs = _apply_sale_locations_batch(db, [SaleOut.model_validate(s) for s in items])
@@ -223,7 +234,7 @@ def get_sale(sale_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=SaleOut, status_code=201)
-def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(require_permission("sales.create"))):
     if not data.items:
         raise HTTPException(status_code=400, detail="Sale must contain at least one item")
     if data.customer_id is not None:
@@ -237,7 +248,16 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
         raise HTTPException(status_code=400, detail="Discount cannot exceed the sale subtotal")
 
     try:
-        payment_provider = validate_payment(data.payment_method, data.payment_provider)
+        default_currency, default_symbol = get_currency_defaults(db)
+        payment = resolve_payment_details(
+            data.payment_method,
+            data.payment_provider,
+            data.payment_provider_amount,
+            data.currency,
+            data.currency_symbol,
+            default_currency=default_currency,
+            default_symbol=default_symbol,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -282,6 +302,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
     tax_rate = get_tax_rate(db)
     tax_amount = taxable * tax_rate / 100
 
+    is_mobile = data.payment_method == "mobile_money"
     sale = Sale(
         invoice_number=generate_invoice_number(db),
         customer_id=data.customer_id,
@@ -290,8 +311,15 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
         discount_amount=discount_amount,
         tax_amount=tax_amount,
         total_amount=taxable + tax_amount,
+        status="pending" if is_mobile else "completed",
         payment_method=data.payment_method,
-        payment_provider=payment_provider,
+        payment_provider=payment["provider"],
+        payment_reference=(data.payment_reference or "").strip() or None,
+        payment_phone=(data.payment_phone or "").strip() or None,
+        payment_provider_amount=payment["payment_provider_amount"],
+        currency=payment["currency"],
+        currency_symbol=payment["currency_symbol"],
+        payment_status="pending" if is_mobile else None,
         notes=data.notes,
     )
     db.add(sale)
@@ -336,12 +364,21 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(ge
 
 
 @router.put("/{sale_id}/refund", response_model=SaleOut)
-def refund_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(require_permission("sales.refund"))):
+def refund_sale(sale_id: int, data: RefundRequest | None = None, db: Session = Depends(get_db), user=Depends(require_permission("sales.refund"))):
     sale = load_sale(db, sale_id)
     if sale.status == "refunded":
         raise HTTPException(status_code=400, detail="Sale is already refunded")
     if sale.status != "completed":
         raise HTTPException(status_code=400, detail="Only completed sales can be refunded")
+
+    refund_method = (data.refund_method or sale.payment_method).strip() if data else (sale.payment_method or "cash").strip()
+    refund_provider = data.refund_provider if data else None
+    if refund_provider is None and refund_method == "mobile_money":
+        refund_provider = sale.payment_provider
+    try:
+        validate_payment(refund_method, refund_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     shipment = db.query(Shipment).filter(Shipment.sale_id == sale.id).first()
     for item in sale.items:
@@ -415,6 +452,10 @@ def refund_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
             )
 
     sale.status = "refunded"
+    sale.refund_status = "completed" if refund_method == "cash" else "pending"
+    sale.refunded_at = datetime.now(timezone.utc)
+    sale.refund_method = refund_method
+    sale.refund_provider = refund_provider
     db.commit()
     db.refresh(sale)
     log_activity(db, user.id, user.username, "update", "sale", sale.id,
@@ -428,13 +469,38 @@ def refund_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
     return _apply_sale_locations(db, SaleOut.model_validate(sale))
 
 
+@router.put("/{sale_id}/checkout-id")
+def update_checkout_id(sale_id: int, checkout_request_id: str = "", db: Session = Depends(get_db), user=Depends(require_permission("sales.create"))):
+    sale = load_sale(db, sale_id)
+    sale.payment_checkout_request_id = checkout_request_id or None
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/{sale_id}/refund/complete", response_model=SaleOut)
+def complete_sale_refund(sale_id: int, db: Session = Depends(get_db), user=Depends(require_permission("sales.refund"))):
+    sale = load_sale(db, sale_id)
+    if sale.status != "refunded":
+        raise HTTPException(status_code=400, detail="Only refunded sales can be marked complete")
+    if sale.refund_status == "completed":
+        raise HTTPException(status_code=400, detail="Refund is already completed")
+    sale.refund_status = "completed"
+    db.commit()
+    db.refresh(sale)
+    log_activity(db, user.id, user.username, "update", "sale", sale.id,
+                 f"Marked refund for '{sale.invoice_number}' complete ({sale.refund_method} / {sale.refund_provider or 'n/a'})")
+    db.commit()
+    broadcast_change("sale", "updated")
+    return _apply_sale_locations(db, SaleOut.model_validate(sale))
+
+
 @router.get("/{sale_id}/pdf")
 def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
     sale = load_sale(db, sale_id)
     s = db.query(Settings).first()
 
     store_name = (s.store_name if s else None) or "My Store"
-    currency = (s.currency_symbol if s else "$") or "$"
+    currency = sale.currency_symbol or (s.currency_symbol if s else "$") or "$"
     store_lines = [store_name] + [ln for ln in (
         (s.address if s else None),
         (s.phone if s else None),
@@ -445,6 +511,8 @@ def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
     payment = sale.payment_method
     if sale.payment_method == "mobile_money" and sale.payment_provider:
         payment = f"mobile_money ({sale.payment_provider})"
+    if sale.payment_reference:
+        payment = f"{payment} \u00b7 Ref: {sale.payment_reference}"
     meta = [
         ("Invoice #:", sale.invoice_number),
         ("Date:", sale.created_at.strftime("%b %d, %Y")),
@@ -456,6 +524,8 @@ def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
     bill_lines = [sale.customer_name]
     if sale.customer and sale.customer.phone:
         bill_lines.append(f"Phone: {sale.customer.phone}")
+    if sale.payment_phone:
+        bill_lines.append(f"Pay Phone: {sale.payment_phone}")
     info_y = draw_info_block(c, MARGIN, body_y, "Bill To", bill_lines)
 
     headers = ["Item", "Price", "Qty", "Amount"]

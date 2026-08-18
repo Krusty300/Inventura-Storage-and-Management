@@ -8,6 +8,7 @@ import ReceiptForm from "../components/ReceiptForm";
 import ReceiptDetail from "../components/ReceiptDetail";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
+import SlideOver from "../components/SlideOver";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
@@ -110,7 +111,7 @@ export default function Receipts() {
             ) : receipts.length === 0 ? (
               <EmptyState title="No receipts yet" message="Record receiving to bring stock into inventory." actionLabel="Record Receipt" onAction={() => setShowForm(true)} />
             ) : receipts.map((r) => (
-              <tr key={r.id} className="hover:bg-app">
+              <tr key={r.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if ((e.target as HTMLElement).closest("button, input, select, a")) return; setViewing(r); }}>
                 <td className="px-4 py-3 font-medium">{r.receipt_number}</td>
                 <td className="px-4 py-3 text-muted">{r.supplier_name || "—"}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(r.created_at)}</td>

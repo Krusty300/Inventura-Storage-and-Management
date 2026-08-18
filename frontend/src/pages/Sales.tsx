@@ -12,12 +12,14 @@ import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityB
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import SlideOver from "../components/SlideOver";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
 import { useExportCsv } from "../hooks/useExportCsv";
 import { formatCurrency } from "../utils/currency";
-import { paymentLabel } from "../utils/payments";
+import { PAYMENT_METHODS, paymentLabel, providerLabel } from "../utils/payments";
+import { statusBadge } from "../utils/statusBadges";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 
@@ -27,6 +29,7 @@ export default function Sales() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
+  const [paymentFilter, setPaymentFilter] = useState("");
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [viewing, setViewing] = useState<Sale | null>(null);
@@ -41,10 +44,11 @@ export default function Sales() {
   const { exportCsv } = useExportCsv();
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["sales", debouncedSearch, page, pageSize],
+    queryKey: ["sales", debouncedSearch, paymentFilter, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (paymentFilter) params.payment_method = paymentFilter;
       const { data } = await api.get("/sales", { params });
       return data as PaginatedResponse<Sale>;
     },
@@ -94,6 +98,15 @@ export default function Sales() {
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by invoice number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search sales" />
         </div>
+        <select
+          className="select w-48"
+          value={paymentFilter}
+          onChange={(e) => { setPaymentFilter(e.target.value); setPage(1); }}
+          aria-label="Filter by payment method"
+        >
+          <option value="">All payment methods</option>
+          {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
       </div>
 
       <BulkActionBar count={selectedIds.size} canEdit={can("sales.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
@@ -129,7 +142,7 @@ export default function Sales() {
             ) : sales.length === 0 ? (
               <EmptyState title="No sales yet" message="Record your first sale to start tracking revenue." actionLabel="New Sale" onAction={() => setShowForm(true)} />
             ) : sales.map((s) => (
-              <tr key={s.id} className="hover:bg-app">
+              <tr key={s.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(s); }}>
                 <td className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(s.id)} onChange={() => toggleSelect(s.id)} aria-label={`Select invoice ${s.invoice_number}`} />
                 </td>
@@ -138,11 +151,11 @@ export default function Sales() {
                 <td className="px-4 py-3 text-muted">{s.username || "—"}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                 <td className="px-4 py-3">
-                  <span className={`badge ${s.status === "completed" ? "badge-success" : "badge-danger"}`}>{s.status}</span>
+                  <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span>
                 </td>
-                <td className="px-4 py-3 text-muted">{paymentLabel(s.payment_method, s.payment_provider)}</td>
+                <td className="px-4 py-3 text-muted">{s.payment_method === "mobile_money" ? providerLabel(s.payment_provider) || paymentLabel(s.payment_method) : paymentLabel(s.payment_method)}</td>
                 <td className="px-4 py-3 text-muted">{(s.locations ?? []).join(", ") || "—"}</td>
-                <td className="px-4 py-3">{formatCurrency(s.total_amount, currencySymbol)}</td>
+                <td className="px-4 py-3">{formatCurrency(s.total_amount, s.currency_symbol || currencySymbol)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View invoice ${s.invoice_number}`}>

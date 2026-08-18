@@ -11,7 +11,7 @@ import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
 import LocationPicker from "./LocationPicker";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import StockLocationHints from "./StockLocationHints";
 
 interface Props {
@@ -282,7 +282,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const confirmLabel = `Are you sure you want to cancel ${order.order_number}?`;
 
   return (
-    <Modal open onClose={onClose} title={order.order_number}>
+    <SlideOver open onClose={onClose} title={order.order_number} wide ariaLabel={`Order ${order.order_number}`}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
@@ -390,6 +390,6 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
           </div>
         )}
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

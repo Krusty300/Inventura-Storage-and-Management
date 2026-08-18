@@ -1,5 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import { PackagePlus, PackageOpen, MapPin, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -187,17 +187,17 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
   });
 
   return (
-    <Modal
+    <SlideOver
       open
       onClose={onClose}
       wide
+      ariaLabel={product.display_name}
       title={
         <span className="inline-flex flex-wrap items-center gap-2">
           {product.display_name}
           {statusBadges}
         </span>
       }
-      ariaLabel={product.display_name}
     >
       <div className="space-y-4">
         {product.image_url && (
@@ -533,7 +533,7 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
         onConfirm={() => { toggleStatus.mutate(); setConfirmStatus(false); }}
         onCancel={() => setConfirmStatus(false)}
       />
-    </Modal>
+    </SlideOver>
   );
 }
 

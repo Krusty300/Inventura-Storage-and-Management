@@ -10,6 +10,10 @@ import RequirePermission from "./components/RequirePermission";
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
 
+function PageBoundary({ children }: { children: ReactNode }) {
+  return <ErrorBoundary>{children}</ErrorBoundary>;
+}
+
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -37,23 +41,30 @@ const QualityChecks = lazy(() => import("./pages/QualityChecks"));
 const Planning = lazy(() => import("./pages/Planning"));
 const Forecasting = lazy(() => import("./pages/Forecasting"));
 const Shipments = lazy(() => import("./pages/Shipments"));
+const Notes = lazy(() => import("./pages/Notes"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
 
 const queryClient = new QueryClient();
 
+const spinner = (
+  <div className="flex items-center justify-center h-screen">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-300" />
+  </div>
+);
+
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-300" /></div>;
+  if (loading) return spinner;
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 function AppRoutes() {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-300" /></div>;
+  if (loading) return spinner;
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-300" /></div>}>
+    <Suspense fallback={spinner}>
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
@@ -64,33 +75,34 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={<RequirePermission perm="dashboard.view"><Dashboard /></RequirePermission>} />
-          <Route path="/products" element={<RequirePermission perm="products.view"><Products /></RequirePermission>} />
-          <Route path="/categories" element={<RequirePermission perm="categories.view"><Categories /></RequirePermission>} />
-          <Route path="/customers" element={<RequirePermission perm="customers.view"><Customers /></RequirePermission>} />
-          <Route path="/suppliers" element={<RequirePermission perm="suppliers.view"><Suppliers /></RequirePermission>} />
-          <Route path="/stock-movements" element={<RequirePermission perm="stock.view"><StockMovements /></RequirePermission>} />
-          <Route path="/locations" element={<RequirePermission perm="locations.view"><Locations /></RequirePermission>} />
-          <Route path="/receiving" element={<RequirePermission perm="receipts.view"><Receipts /></RequirePermission>} />
-          <Route path="/asns" element={<RequirePermission perm="asns.view"><ASNs /></RequirePermission>} />
-          <Route path="/lpns" element={<RequirePermission perm="lpns.view"><LPNs /></RequirePermission>} />
-          <Route path="/lots" element={<RequirePermission perm="lots.view"><Lots /></RequirePermission>} />
-          <Route path="/serial-numbers" element={<RequirePermission perm="serial_numbers.view"><SerialNumbers /></RequirePermission>} />
-          <Route path="/cycle-counts" element={<RequirePermission perm="cycle_counts.view"><CycleCounts /></RequirePermission>} />
-          <Route path="/boms" element={<RequirePermission perm="bom.view"><Boms /></RequirePermission>} />
-          <Route path="/work-orders" element={<RequirePermission perm="work_orders.view"><WorkOrders /></RequirePermission>} />
-          <Route path="/planning" element={<RequirePermission perm="planning.view"><Planning /></RequirePermission>} />
-          <Route path="/forecasting" element={<RequirePermission perm="forecasting.view"><Forecasting /></RequirePermission>} />
-          <Route path="/shipments" element={<RequirePermission perm="shipments.view"><Shipments /></RequirePermission>} />
-          <Route path="/quality-checks" element={<RequirePermission perm="quality_checks.view"><QualityChecks /></RequirePermission>} />
-          <Route path="/exceptions" element={<RequirePermission perm="reports.view"><Exceptions /></RequirePermission>} />
-          <Route path="/orders" element={<RequirePermission perm="orders.view"><Orders /></RequirePermission>} />
-          <Route path="/sales" element={<RequirePermission perm="sales.view"><Sales /></RequirePermission>} />
-          <Route path="/users" element={<RequirePermission perm="users.view"><Users /></RequirePermission>} />
-          <Route path="/reports" element={<RequirePermission perm="reports.view"><Reports /></RequirePermission>} />
-          <Route path="/activity-log" element={<RequirePermission perm="activity.view"><ActivityLog /></RequirePermission>} />
-          <Route path="/settings" element={<RequirePermission perm="settings.view"><Settings /></RequirePermission>} />
-          <Route path="/profile" element={<RequirePermission perm="profile.view"><Profile /></RequirePermission>} />
+          <Route path="/" element={<PageBoundary><RequirePermission perm="dashboard.view"><Dashboard /></RequirePermission></PageBoundary>} />
+          <Route path="/products" element={<PageBoundary><RequirePermission perm="products.view"><Products /></RequirePermission></PageBoundary>} />
+          <Route path="/categories" element={<PageBoundary><RequirePermission perm="categories.view"><Categories /></RequirePermission></PageBoundary>} />
+          <Route path="/customers" element={<PageBoundary><RequirePermission perm="customers.view"><Customers /></RequirePermission></PageBoundary>} />
+          <Route path="/suppliers" element={<PageBoundary><RequirePermission perm="suppliers.view"><Suppliers /></RequirePermission></PageBoundary>} />
+          <Route path="/stock-movements" element={<PageBoundary><RequirePermission perm="stock.view"><StockMovements /></RequirePermission></PageBoundary>} />
+          <Route path="/locations" element={<PageBoundary><RequirePermission perm="locations.view"><Locations /></RequirePermission></PageBoundary>} />
+          <Route path="/receiving" element={<PageBoundary><RequirePermission perm="receipts.view"><Receipts /></RequirePermission></PageBoundary>} />
+          <Route path="/asns" element={<PageBoundary><RequirePermission perm="asns.view"><ASNs /></RequirePermission></PageBoundary>} />
+          <Route path="/lpns" element={<PageBoundary><RequirePermission perm="lpns.view"><LPNs /></RequirePermission></PageBoundary>} />
+          <Route path="/lots" element={<PageBoundary><RequirePermission perm="lots.view"><Lots /></RequirePermission></PageBoundary>} />
+          <Route path="/serial-numbers" element={<PageBoundary><RequirePermission perm="serial_numbers.view"><SerialNumbers /></RequirePermission></PageBoundary>} />
+          <Route path="/cycle-counts" element={<PageBoundary><RequirePermission perm="cycle_counts.view"><CycleCounts /></RequirePermission></PageBoundary>} />
+          <Route path="/boms" element={<PageBoundary><RequirePermission perm="bom.view"><Boms /></RequirePermission></PageBoundary>} />
+          <Route path="/work-orders" element={<PageBoundary><RequirePermission perm="work_orders.view"><WorkOrders /></RequirePermission></PageBoundary>} />
+          <Route path="/planning" element={<PageBoundary><RequirePermission perm="planning.view"><Planning /></RequirePermission></PageBoundary>} />
+          <Route path="/forecasting" element={<PageBoundary><RequirePermission perm="forecasting.view"><Forecasting /></RequirePermission></PageBoundary>} />
+          <Route path="/shipments" element={<PageBoundary><RequirePermission perm="shipments.view"><Shipments /></RequirePermission></PageBoundary>} />
+          <Route path="/notes" element={<PageBoundary><RequirePermission perm="notes.view"><Notes /></RequirePermission></PageBoundary>} />
+          <Route path="/quality-checks" element={<PageBoundary><RequirePermission perm="quality_checks.view"><QualityChecks /></RequirePermission></PageBoundary>} />
+          <Route path="/exceptions" element={<PageBoundary><RequirePermission perm="reports.view"><Exceptions /></RequirePermission></PageBoundary>} />
+          <Route path="/orders" element={<PageBoundary><RequirePermission perm="orders.view"><Orders /></RequirePermission></PageBoundary>} />
+          <Route path="/sales" element={<PageBoundary><RequirePermission perm="sales.view"><Sales /></RequirePermission></PageBoundary>} />
+          <Route path="/users" element={<PageBoundary><RequirePermission perm="users.view"><Users /></RequirePermission></PageBoundary>} />
+          <Route path="/reports" element={<PageBoundary><RequirePermission perm="reports.view"><Reports /></RequirePermission></PageBoundary>} />
+          <Route path="/activity-log" element={<PageBoundary><RequirePermission perm="activity.view"><ActivityLog /></RequirePermission></PageBoundary>} />
+          <Route path="/settings" element={<PageBoundary><RequirePermission perm="settings.view"><Settings /></RequirePermission></PageBoundary>} />
+          <Route path="/profile" element={<PageBoundary><RequirePermission perm="profile.view"><Profile /></RequirePermission></PageBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

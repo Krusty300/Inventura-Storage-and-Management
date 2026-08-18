@@ -1,10 +1,11 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
+import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { BOM, PaginatedResponse, ProductCost } from "../types";
 import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -23,6 +24,7 @@ import { usePageSize } from "../hooks/usePageSize";
 export default function Boms() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+  const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
@@ -37,10 +39,11 @@ export default function Boms() {
   const currencySymbol = settings?.currency_symbol || "$";
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["boms", debouncedSearch, page, pageSize],
+    queryKey: ["boms", debouncedSearch, includeInactive, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (!includeInactive) params.is_active = "true";
       const { data } = await api.get("/boms", { params });
       return data as PaginatedResponse<BOM>;
     },
@@ -75,8 +78,18 @@ export default function Boms() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
           <input className="input pl-10" placeholder="Search by BOM name, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search BOMs" />
         </div>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input
+            type="checkbox"
+            className="accent-indigo-600"
+            checked={includeInactive}
+            onChange={(e) => { setIncludeInactive(e.target.checked); setPage(1); }}
+          />
+          Show inactive
+        </label>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -101,7 +114,7 @@ export default function Boms() {
             ) : boms.length === 0 ? (
               <EmptyState title="No BOMs yet" message="Create a bill of materials to define how a product is manufactured." actionLabel="New BOM" onAction={() => { setEditing(null); setShowForm(true); }} />
             ) : boms.map((b) => (
-              <tr key={b.id} className="hover:bg-app">
+              <tr key={b.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(b)}>
                 <td className="px-4 py-3 font-medium">{b.name || b.product_name}</td>
                 <td className="px-4 py-3 text-muted">{b.product_name}</td>
                 <td className="px-4 py-3">{b.item_count} {b.item_count === 1 ? "component" : "components"}</td>
@@ -110,12 +123,12 @@ export default function Boms() {
                 <td className="px-4 py-3 text-muted">{formatDate(b.updated_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(b)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${b.name}`}><Eye size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setViewing(b); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${b.name}`}><Eye size={16} /></button>
                     {can("bom.update") && (
-                      <button onClick={() => { setEditing(b); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${b.name}`}><Pencil size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setEditing(b); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${b.name}`}><Pencil size={16} /></button>
                     )}
                     {can("bom.delete") && (
-                      <button onClick={() => setDeleting(b)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${b.name}`}><Trash2 size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setDeleting(b); }} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${b.name}`}><Trash2 size={16} /></button>
                     )}
                   </div>
                 </td>
@@ -282,7 +295,7 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
   const rolledUp = cost?.unit_cost;
   const componentCost = (productId: number) => cost?.items.find((c) => c.product_id === productId)?.component_unit_cost;
   return (
-    <Modal open onClose={onClose} title={bom.name || bom.product_name} wide>
+    <SlideOver open onClose={onClose} title={bom.name || bom.product_name} wide ariaLabel="BOM detail">
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
@@ -335,6 +348,6 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

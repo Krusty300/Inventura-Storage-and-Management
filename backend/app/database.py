@@ -120,6 +120,23 @@ def run_migrations():
             conn.execute(text("ALTER TABLE sales ADD COLUMN discount_amount NUMERIC(10, 2) DEFAULT 0"))
         if sales_cols is not None and "payment_provider" not in sales_cols:
             conn.execute(text("ALTER TABLE sales ADD COLUMN payment_provider VARCHAR(20)"))
+        if sales_cols is not None:
+            for col, ddl in (
+                ("payment_reference", "VARCHAR(100)"),
+                ("payment_phone", "VARCHAR(30)"),
+                ("payment_provider_amount", "NUMERIC(10, 2)"),
+                ("currency", "VARCHAR(10)"),
+                ("currency_symbol", "VARCHAR(10)"),
+                ("payment_status", "VARCHAR(20)"),
+                ("payment_checkout_request_id", "VARCHAR(64)"),
+                ("refund_status", "VARCHAR(20)"),
+                ("refunded_at", "DATETIME"),
+                ("refund_method", "VARCHAR(20)"),
+                ("refund_provider", "VARCHAR(20)"),
+                ("refund_checkout_request_id", "VARCHAR(64)"),
+            ):
+                if col not in sales_cols:
+                    conn.execute(text(f"ALTER TABLE sales ADD COLUMN {col} {ddl}"))
         if "document_sequences" not in table_names:
             conn.execute(text(
                 "CREATE TABLE document_sequences "
@@ -168,6 +185,7 @@ def run_migrations():
 
         if settings_cols is not None:
             for col, ddl in (
+                ("currency_code", "VARCHAR(10) DEFAULT 'USD'"),
                 ("expiry_warning_days", "INTEGER DEFAULT 30"),
                 ("low_stock_alerts", "BOOLEAN DEFAULT 1"),
                 ("expiry_alerts", "BOOLEAN DEFAULT 1"),
@@ -203,6 +221,75 @@ def run_migrations():
             index_statements.append("CREATE INDEX IF NOT EXISTS ix_activity_logs_entity_id ON activity_logs(entity_id)")
         for stmt in index_statements:
             conn.execute(text(stmt))
+
+        if "notes" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE notes ("
+                "id INTEGER PRIMARY KEY, "
+                "title VARCHAR(200) NOT NULL, "
+                "body TEXT DEFAULT '', "
+                "category VARCHAR(20) DEFAULT 'note', "
+                "priority VARCHAR(10) DEFAULT 'normal', "
+                "is_pinned BOOLEAN DEFAULT 0, "
+                "is_completed BOOLEAN DEFAULT 0, "
+                "due_date DATETIME, "
+                "recurrence VARCHAR(10) DEFAULT 'none', "
+                "recurrence_end DATETIME, "
+                "sort_order INTEGER DEFAULT 0, "
+                "user_id INTEGER NOT NULL REFERENCES users(id), "
+                "assigned_to_id INTEGER REFERENCES users(id), "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            conn.execute(text("CREATE INDEX ix_notes_user_id ON notes(user_id)"))
+            conn.execute(text("CREATE INDEX ix_notes_category ON notes(category)"))
+            conn.execute(text("CREATE INDEX ix_notes_due_date ON notes(due_date)"))
+        if "note_tags" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE note_tags ("
+                "id INTEGER PRIMARY KEY, "
+                "name VARCHAR(50) UNIQUE NOT NULL, "
+                "color VARCHAR(7) DEFAULT '#6366f1', "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+        if "note_tag_links" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE note_tag_links ("
+                "note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE, "
+                "tag_id INTEGER NOT NULL REFERENCES note_tags(id) ON DELETE CASCADE, "
+                "PRIMARY KEY (note_id, tag_id))"
+            ))
+        if "note_links" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE note_links ("
+                "id INTEGER PRIMARY KEY, "
+                "note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE, "
+                "entity_type VARCHAR(50) NOT NULL, "
+                "entity_id INTEGER NOT NULL, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            conn.execute(text("CREATE INDEX ix_note_links_note_id ON note_links(note_id)"))
+
+        # Migrate notes table: add image_url column if missing
+        if "notes" in table_names:
+            notes_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(notes)"))}
+            if "image_url" not in notes_cols:
+                conn.execute(text("ALTER TABLE notes ADD COLUMN image_url VARCHAR(500) DEFAULT ''"))
+            if "is_archived" not in notes_cols:
+                conn.execute(text("ALTER TABLE notes ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
+
+        if "note_templates" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE note_templates ("
+                "id INTEGER PRIMARY KEY, "
+                "name VARCHAR(100) NOT NULL, "
+                "category VARCHAR(20) DEFAULT 'note', "
+                "priority VARCHAR(10) DEFAULT 'normal', "
+                "body TEXT DEFAULT '', "
+                "recurrence VARCHAR(10) DEFAULT 'none', "
+                "user_id INTEGER NOT NULL REFERENCES users(id), "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
 
 
 def get_db():

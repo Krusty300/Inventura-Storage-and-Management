@@ -16,6 +16,7 @@ class Settings(Base):
     phone: Mapped[str] = mapped_column(String(30), default="")
     email: Mapped[str] = mapped_column(String(120), default="")
     currency_symbol: Mapped[str] = mapped_column(String(10), default="$")
+    currency_code: Mapped[str] = mapped_column(String(10), default="USD")
     tax_rate: Mapped[float] = mapped_column(Float, default=0.0)
     default_reorder_level: Mapped[int] = mapped_column(default=10)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())

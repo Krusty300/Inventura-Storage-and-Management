@@ -279,9 +279,21 @@ def sales_summary(start_date: str | None = None, end_date: str | None = None, db
         Sale.id.in_(in_range), Sale.status == "refunded"
     ).scalar() or 0
     by_payment = (
-        db.query(Sale.payment_method, func.count(Sale.id))
+        db.query(Sale.payment_method, func.count(Sale.id), func.coalesce(func.sum(Sale.total_amount), 0))
         .filter(Sale.id.in_(in_range), Sale.status == "completed")
         .group_by(Sale.payment_method)
+        .order_by(func.count(Sale.id).desc())
+        .all()
+    )
+    by_provider = (
+        db.query(Sale.payment_provider, func.count(Sale.id), func.coalesce(func.sum(Sale.total_amount), 0))
+        .filter(
+            Sale.id.in_(in_range),
+            Sale.status == "completed",
+            Sale.payment_method == "mobile_money",
+            Sale.payment_provider.isnot(None),
+        )
+        .group_by(Sale.payment_provider)
         .order_by(func.count(Sale.id).desc())
         .all()
     )
@@ -309,8 +321,68 @@ def sales_summary(start_date: str | None = None, end_date: str | None = None, db
         "total_refunds": int(total_refunds),
         "total_revenue": round(float(total_revenue), 2),
         "total_tax": round(float(total_tax), 2),
-        "by_payment_method": [{"method": k or "unknown", "count": int(v)} for k, v in by_payment],
+        "by_payment_method": [
+            {"method": k or "unknown", "count": int(c), "total": round(float(t), 2)}
+            for k, c, t in by_payment
+        ],
+        "by_payment_provider": [
+            {"provider": k, "count": int(c), "total": round(float(t), 2)}
+            for k, c, t in by_provider
+        ],
         "top_products": [{"name": r[0], "quantity_sold": int(r[1] or 0), "revenue": float(r[2] or 0)} for r in item_rows],
+    }
+
+
+@router.get("/payment-reconciliation")
+def payment_reconciliation(start_date: str | None = None, end_date: str | None = None, db: Session = Depends(get_db)):
+    """Per payment method/provider: gross paid vs refunded totals, with the
+    number of refunds still awaiting completion (reversal)."""
+    start, end = parse_range(start_date, end_date)
+    id_q = select(Sale.id)
+    if start:
+        id_q = id_q.where(Sale.created_at >= start)
+    if end:
+        id_q = id_q.where(Sale.created_at <= end)
+    in_range = id_q.scalar_subquery()
+
+    rows = (
+        db.query(
+            Sale.payment_method,
+            Sale.payment_provider,
+            func.count(Sale.id),
+            func.coalesce(func.sum(Sale.total_amount), 0),
+            func.count(Sale.id).filter(Sale.status == "refunded"),
+            func.coalesce(func.sum(Sale.total_amount).filter(Sale.status == "refunded"), 0),
+            func.count(Sale.id).filter(Sale.status == "refunded", Sale.refund_status == "pending"),
+            func.count(Sale.id).filter(Sale.status == "refunded", Sale.refund_status == "completed"),
+        )
+        .filter(Sale.id.in_(in_range))
+        .group_by(Sale.payment_method, Sale.payment_provider)
+        .order_by(Sale.payment_method, Sale.payment_provider)
+        .all()
+    )
+    detail = [
+        {
+            "method": r[0] or "unknown",
+            "provider": r[1],
+            "count": int(r[2] or 0),
+            "gross_total": round(float(r[3] or 0), 2),
+            "refunded_count": int(r[4] or 0),
+            "refunded_total": round(float(r[5] or 0), 2),
+            "pending_refunds": int(r[6] or 0),
+            "completed_refunds": int(r[7] or 0),
+            "net_total": round(float((r[3] or 0) - (r[5] or 0)), 2),
+        }
+        for r in rows
+    ]
+    gross = sum(d["gross_total"] for d in detail)
+    refunded = sum(d["refunded_total"] for d in detail)
+    return {
+        "rows": detail,
+        "gross_total": round(gross, 2),
+        "refunded_total": round(refunded, 2),
+        "net_total": round(gross - refunded, 2),
+        "pending_refunds": sum(d["pending_refunds"] for d in detail),
     }
 
 

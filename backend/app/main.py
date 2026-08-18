@@ -1,13 +1,18 @@
+from dotenv import load_dotenv
+from pathlib import Path
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 import asyncio
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from jose import JWTError, jwt
 
+from app.config import settings as app_settings
 from app.database import Base, SessionLocal, backfill_stock_lines, engine, run_migrations
-from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, dashboard, forecasting, labels, locations, lots, lpns, notifications, orders, planning, products, quality_checks, receipts, reports, sales, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
+from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, daraja, dashboard, forecasting, labels, locations, lots, lpns, notes, notifications, orders, planning, products, quality_checks, receipts, reports, sales, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
 from app.services.inventory import expire_overdue_lots
 from app.ws_manager import manager
 
@@ -66,7 +71,9 @@ app.include_router(planning.router)
 app.include_router(forecasting.router)
 app.include_router(costing.router)
 app.include_router(shipments.router)
+app.include_router(daraja.router)
 app.include_router(search.router)
+app.include_router(notes.router)
 
 uploads_dir = Path(__file__).resolve().parent / "uploads"
 uploads_dir.mkdir(exist_ok=True)
@@ -74,7 +81,19 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
+async def websocket_endpoint(ws: WebSocket, token: str = Query("")):
+    if not token:
+        await ws.close(code=4001, reason="Authentication required")
+        return
+    try:
+        payload = jwt.decode(token, app_settings.secret_key, algorithms=[app_settings.algorithm])
+        user_id = payload.get("sub")
+        if user_id is None:
+            await ws.close(code=4001, reason="Invalid token")
+            return
+    except (JWTError, ValueError, TypeError):
+        await ws.close(code=4001, reason="Invalid token")
+        return
     await manager.connect(ws)
     try:
         while True:

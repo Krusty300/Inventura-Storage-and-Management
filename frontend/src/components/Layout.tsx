@@ -34,6 +34,7 @@ import {
   CircleUser,
   PanelLeftClose,
   PanelLeftOpen,
+  StickyNote,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemeMode } from "../context/ThemeContext";
@@ -85,6 +86,7 @@ const navItems = [
   { to: "/users", icon: UsersIcon, label: "Users", perm: "users.view" },
   { to: "/reports", icon: BarChart3, label: "Reports", perm: "reports.view" },
   { to: "/activity-log", icon: History, label: "Activity", perm: "activity.view" },
+  { to: "/notes", icon: StickyNote, label: "Notes", perm: "notes.view" },
   { to: "/settings", icon: SettingsIcon, label: "Settings", perm: "settings.view" },
   { to: "/profile", icon: CircleUser, label: "Profile", perm: "profile.view" },
 ];

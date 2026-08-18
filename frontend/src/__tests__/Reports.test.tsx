@@ -19,7 +19,8 @@ function mockReports() {
     if (url === "/reports/category-breakdown") return Promise.resolve({ data: [{ id: 1, name: "Beverages", product_count: 3, total_stock: 10, total_cost_value: 50, total_retail_value: 80 }] });
     if (url === "/reports/profit-analysis") return Promise.resolve({ data: { total_cost_value: 0, total_potential_revenue: 0, total_potential_profit: 0, products: [] } });
     if (url === "/reports/order-summary") return Promise.resolve({ data: { total_orders: 0, pending: 0, completed: 0, total_order_value: 0, by_status: [], top_suppliers: [] } });
-    if (url === "/reports/sales-summary") return Promise.resolve({ data: { total_sales: 0, total_revenue: 0, total_tax: 0, total_refunds: 0, by_payment_method: [], top_products: [] } });
+    if (url === "/reports/sales-summary") return Promise.resolve({ data: { total_sales: 0, total_revenue: 0, total_tax: 0, total_refunds: 0, by_payment_method: [], by_payment_provider: [], top_products: [] } });
+    if (url === "/reports/payment-reconciliation") return Promise.resolve({ data: { rows: [], gross_total: 0, refunded_total: 0, net_total: 0, pending_refunds: 0 } });
     if (url === "/reports/top-customers") return Promise.resolve({ data: { items: [{ customer_id: 1, name: "Alice", phone: "555-0001", email: "alice@example.com", total_sales: 4, total_spent: 400, last_purchase_at: "2026-07-01T00:00:00" }], total: 1, days: null } });
     if (url === "/reports/top-suppliers") return Promise.resolve({ data: { items: [{ supplier_id: 1, name: "Acme Supplies", contact_person: "Jane", email: "jane@acme.com", total_orders: 3, total_spent: 300, last_order_at: "2026-07-01T00:00:00" }], total: 1, days: null } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
@@ -76,5 +77,29 @@ describe("Reports Page", () => {
     expect(screen.getByText("Jane")).toBeInTheDocument();
     expect(screen.getAllByText("$300.00").length).toBeGreaterThan(0);
     expect(screen.getByRole("combobox", { name: "Period" })).toBeInTheDocument();
+  });
+
+  it("renders the sales tab with payment method totals and reconciliation", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/reports/inventory-valuation") return Promise.resolve({ data: { total_inventory_value: 0, total_retail_value: 0, potential_profit: 0, by_category: [], by_supplier: [] } });
+      if (url === "/reports/stock-movement-trends") return Promise.resolve({ data: { labels: [], total_in: 0, total_out: 0, net_movement: 0 } });
+      if (url === "/reports/category-breakdown") return Promise.resolve({ data: [] });
+      if (url === "/reports/profit-analysis") return Promise.resolve({ data: { total_cost_value: 0, total_potential_revenue: 0, total_potential_profit: 0, products: [] } });
+      if (url === "/reports/order-summary") return Promise.resolve({ data: { total_orders: 0, pending: 0, completed: 0, total_order_value: 0, by_status: [], top_suppliers: [] } });
+      if (url === "/reports/sales-summary") return Promise.resolve({ data: { total_sales: 2, total_revenue: 200, total_tax: 0, total_refunds: 1, by_payment_method: [{ method: "mobile_money", count: 2, total: 200 }], by_payment_provider: [{ provider: "m-pesa", count: 2, total: 200 }], top_products: [] } });
+      if (url === "/reports/payment-reconciliation") return Promise.resolve({ data: { rows: [{ method: "mobile_money", provider: "m-pesa", count: 2, gross_total: 200, refunded_total: 100, net_total: 100, pending_refunds: 1, completed_refunds: 0, refunded_count: 1 }], gross_total: 200, refunded_total: 100, net_total: 100, pending_refunds: 1 } });
+      if (url === "/reports/top-customers") return Promise.resolve({ data: { items: [], total: 0, days: null } });
+      if (url === "/reports/top-suppliers") return Promise.resolve({ data: { items: [], total: 0, days: null } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Reports />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sales" }));
+    expect((await screen.findAllByText("Mobile Money")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/M-Pesa/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Payment Reconciliation")).toBeInTheDocument();
+    expect(screen.getAllByText("$200.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$100.00").length).toBeGreaterThan(0);
+    expect(screen.getByText("Pending refunds")).toBeInTheDocument();
   });
 });

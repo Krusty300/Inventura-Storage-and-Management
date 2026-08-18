@@ -75,3 +75,19 @@ def test_worker_can_get_settings(auth_headers):
     resp = client.get("/api/settings", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert "currency_symbol" in resp.json()
+
+
+def test_settings_currency_code_defaults_to_usd(auth_headers):
+    resp = client.get("/api/settings", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json().get("currency_code", "USD") == "USD"
+
+
+def test_update_settings_currency_code(auth_headers):
+    resp = client.put("/api/settings", json={"currency_code": "KES", "currency_symbol": "KSh"}, headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["currency_code"] == "KES"
+    assert data["currency_symbol"] == "KSh"
+    get = client.get("/api/settings", headers=auth_headers).json()
+    assert get["currency_code"] == "KES"

@@ -84,7 +84,7 @@ export default function ActivityLog() {
           <option value="">All Entities</option>
           {Object.entries(entityLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <select className="select w-40" value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }} aria-label="Filter by action">
+        <select className="select w-44" value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }} aria-label="Filter by action">
           <option value="">All Actions</option>
           <option value="create">Create</option>
           <option value="update">Update</option>

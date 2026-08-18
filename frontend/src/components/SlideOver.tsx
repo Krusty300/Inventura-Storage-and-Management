@@ -7,24 +7,19 @@ interface Props {
   title: ReactNode;
   children: ReactNode;
   wide?: boolean;
-  xwide?: boolean;
   ariaLabel?: string;
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
 
-export default function Modal({ open, onClose, title, children, wide, xwide, ariaLabel }: Props) {
-  const overlayRef = useRef<HTMLDivElement>(null);
+export default function SlideOver({ open, onClose, title, children, wide, ariaLabel }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (open) {
       previousFocusRef.current = document.activeElement as HTMLElement;
-      // Focus the panel after paint so the first focusable element receives focus
-      requestAnimationFrame(() => {
-        panelRef.current?.focus();
-      });
+      requestAnimationFrame(() => { panelRef.current?.focus(); });
     } else if (previousFocusRef.current) {
       previousFocusRef.current.focus();
       previousFocusRef.current = null;
@@ -33,28 +28,16 @@ export default function Modal({ open, onClose, title, children, wide, xwide, ari
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
+      if (e.key === "Escape") { onClose(); return; }
       if (e.key !== "Tab" || !panelRef.current) return;
-
       const focusable = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
       if (focusable.length === 0) return;
-
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-
       if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        }
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
       } else {
-        if (document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
       }
     },
     [onClose],
@@ -63,34 +46,26 @@ export default function Modal({ open, onClose, title, children, wide, xwide, ari
   useEffect(() => {
     if (!open) return;
     document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
+    return () => { document.body.style.overflow = ""; };
   }, [open]);
 
   if (!open) return null;
 
-  const label = ariaLabel ?? (typeof title === "string" ? title : "Dialog");
+  const label = ariaLabel || (typeof title === "string" ? title : "Panel");
 
   return (
-    <div
-      ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      role="dialog"
-      aria-modal="true"
-      aria-label={label}
-      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
-    >
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={label}>
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`bg-surface rounded-xl shadow-xl w-full max-h-[90vh] overflow-auto m-4 outline-none ${xwide ? "max-w-3xl" : wide ? "max-w-2xl" : "max-w-lg"}`}
+        className={`relative h-full bg-surface shadow-2xl overflow-auto outline-none animate-slide-in ${wide ? "w-full max-w-2xl" : "w-full max-w-xl"}`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        <div className="flex items-center justify-between p-6 border-b">
+        <div className="sticky top-0 z-10 flex items-center justify-between p-6 border-b bg-surface">
           <h2 className="text-lg font-bold">{title}</h2>
-          <button onClick={onClose} className="text-faint hover:text-muted" aria-label="Close dialog">
+          <button onClick={onClose} className="text-faint hover:text-muted" aria-label="Close panel">
             <X size={20} />
           </button>
         </div>

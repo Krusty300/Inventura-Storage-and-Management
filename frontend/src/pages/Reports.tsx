@@ -10,7 +10,7 @@ import api from "../api/client";
 import type {
   InventoryValuation, StockMovementTrends, CategoryBreakdownItem,
   ProfitAnalysis, OrderSummary, SalesSummary, InventoryAging, StockoutRisk,
-  TopCustomersReport, TopSuppliersReport, ManufacturingCostReport,
+  TopCustomersReport, TopSuppliersReport, ManufacturingCostReport, PaymentReconciliation,
 } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { paymentLabel } from "../utils/payments";
@@ -99,6 +99,12 @@ export default function Reports() {
   const { data: salesSummary, isLoading: salesLoading, isError: salesError } = useQuery<SalesSummary>({
     queryKey: ["reports", "sales", startDate, endDate],
     queryFn: async () => (await api.get("/reports/sales-summary", { params: rangeParams() })).data,
+    enabled: !dateInvalid,
+  });
+
+  const { data: reconciliation } = useQuery<PaymentReconciliation>({
+    queryKey: ["reports", "payment-reconciliation", startDate, endDate],
+    queryFn: async () => (await api.get("/reports/payment-reconciliation", { params: rangeParams() })).data,
     enabled: !dateInvalid,
   });
 
@@ -212,7 +218,7 @@ export default function Reports() {
         ? <OrdersTab data={orderSummary} symbol={currencySymbol} />
         : <TabState isLoading={orderSummaryLoading} isError={orderSummaryError} />)}
       {activeTab === "sales" && (salesSummary
-        ? <SalesTab data={salesSummary} symbol={currencySymbol} />
+        ? <SalesTab data={salesSummary} symbol={currencySymbol} reconciliation={reconciliation} />
         : <TabState isLoading={salesLoading} isError={salesError} />)}
       {activeTab === "aging" && (aging
         ? <AgingTab data={aging} />
@@ -622,13 +628,15 @@ function ProfitTab({ data, symbol }: { data: ProfitAnalysis; symbol: string }) {
   );
 }
 
-function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
+function SalesTab({ data, symbol, reconciliation }: { data: SalesSummary; symbol: string; reconciliation?: PaymentReconciliation }) {
   const cards = [
     { label: "Completed Sales", value: data.total_sales.toString(), },
     { label: "Total Revenue", value: formatCurrency(data.total_revenue, symbol, 2), },
     { label: "Tax Collected", value: formatCurrency(data.total_tax, symbol, 2),  },
     { label: "Refunds", value: data.total_refunds.toString(), },
   ];
+
+  const providers = data.by_payment_provider || [];
 
   return (
     <div className="space-y-6">
@@ -650,7 +658,7 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
           {data.by_payment_method.length === 0 ? (
             <p className="text-muted text-sm">No sales in period</p>
           ) : (
-            <ResponsiveContainer width="100%" height={280}>
+            <ResponsiveContainer width="100%" height={240}>
               <PieChart>
                 <Pie data={data.by_payment_method.map((x) => ({ ...x, label: paymentLabel(x.method) }))} dataKey="count" nameKey="label" cx="50%" cy="50%" outerRadius={90} label={({ name, value }: any) => `${name}: ${value}`}>
                   {data.by_payment_method.map((_, i) => (
@@ -661,6 +669,26 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
               </PieChart>
             </ResponsiveContainer>
           )}
+          <div className="overflow-x-auto mt-3">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-app text-left">
+                  <th scope="col" className="px-4 py-2 font-medium text-muted">Method</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Count</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.by_payment_method.map((m) => (
+                  <tr key={m.method}>
+                    <td className="px-4 py-2">{paymentLabel(m.method)}</td>
+                    <td className="px-4 py-2 text-right">{m.count}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(m.total, symbol)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
         <div className="card overflow-hidden p-0">
           <h3 className="text-lg font-semibold px-4 pt-4 pb-2">Top Selling Products</h3>
@@ -688,6 +716,76 @@ function SalesTab({ data, symbol }: { data: SalesSummary; symbol: string }) {
           </div>
         </div>
       </div>
+
+      {providers.length > 0 && (
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-4">Mobile Money by Provider</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-app text-left">
+                  <th scope="col" className="px-4 py-2 font-medium text-muted">Provider</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Count</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {providers.map((p) => (
+                  <tr key={p.provider}>
+                    <td className="px-4 py-2">{paymentLabel("mobile_money", p.provider)}</td>
+                    <td className="px-4 py-2 text-right">{p.count}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(p.total, symbol)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {reconciliation && (
+        <div className="card overflow-hidden p-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 pb-2">
+            <h3 className="text-lg font-semibold">Payment Reconciliation</h3>
+            <div className="flex gap-4 text-sm text-muted">
+              <span>Gross <span className="font-medium text-ink">{formatCurrency(reconciliation.gross_total, symbol)}</span></span>
+              <span>Refunded <span className="font-medium text-ink">{formatCurrency(reconciliation.refunded_total, symbol)}</span></span>
+              <span>Net <span className="font-medium text-ink">{formatCurrency(reconciliation.net_total, symbol)}</span></span>
+              <span>Pending refunds <span className="font-medium text-ink">{reconciliation.pending_refunds}</span></span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-app text-left">
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Method</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Provider</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Count</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Total</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Refunded</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Pending</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Net</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {reconciliation.rows.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">No payments in period</td></tr>
+                ) : reconciliation.rows.map((r) => (
+                  <tr key={`${r.method}-${r.provider || ""}`} className="hover:bg-app">
+                    <td className="px-4 py-3">{paymentLabel(r.method)}</td>
+                    <td className="px-4 py-3 text-muted">{r.provider ? paymentLabel("mobile_money", r.provider) : "—"}</td>
+                    <td className="px-4 py-3 text-right">{r.count}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(r.gross_total, symbol)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(r.refunded_total, symbol)}</td>
+                    <td className="px-4 py-3 text-right">{r.pending_refunds}</td>
+                    <td className="px-4 py-3 text-right font-medium">{formatCurrency(r.net_total, symbol)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

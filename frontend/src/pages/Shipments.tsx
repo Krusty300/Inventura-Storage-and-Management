@@ -1,12 +1,13 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, Pencil, Trash2, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
-import type { Customer, PaginatedResponse, SerialNumber, Shipment, ShipmentItem, ShipmentStats } from "../types";
+import type { Customer, PaginatedResponse, Sale, SerialNumber, Shipment, ShipmentItem, ShipmentStats } from "../types";
 import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -99,7 +100,7 @@ export default function Shipments() {
         <div className="relative flex-1 max-w-md">
           <input className="input pl-10" placeholder="Search by shipment number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search shipments" />
         </div>
-        <select className="select w-auto" aria-label="Filter by status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
+        <select className="select w-44" aria-label="Filter by status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
           <option value="">All statuses</option>
           <option value="draft">Draft</option>
           <option value="picking">Picking</option>
@@ -136,40 +137,32 @@ export default function Shipments() {
                   <th scope="col" className="px-4 py-3 font-medium text-muted">Items</th>
                   <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
                   <th scope="col" className="px-4 py-3 font-medium text-muted">Invoice</th>
-                  <th scope="col" className="px-4 py-3 font-medium text-muted">Carrier / Tracking</th>
                   <th scope="col" className="px-4 py-3 font-medium text-muted">Created</th>
                   <th className="px-4 py-3 font-medium text-muted" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {shipments.map((s) => (
-                  <tr key={s.id} className="hover:bg-app">
+                  <tr key={s.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(s)}>
                     <td className="px-4 py-3 font-medium">{s.shipment_number}</td>
                     <td className="px-4 py-3 text-muted">{s.customer_name || "—"}</td>
                     <td className="px-4 py-3"><span className={`badge ${statusBadge(s.status)}`}>{s.status.replace("_", " ")}</span></td>
                     <td className="px-4 py-3">{s.items.length}</td>
                     <td className="px-4 py-3">{s.total_quantity}</td>
                     <td className="px-4 py-3 text-muted">{s.invoice_number || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {s.carrier && <span className="badge badge-info">{s.carrier}</span>}
-                        {s.tracking_number && <span className="badge bg-subtle text-ink border border-border font-mono">{s.tracking_number}</span>}
-                        {!s.carrier && !s.tracking_number && <span className="text-muted">—</span>}
-                      </div>
-                    </td>
                     <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
-                        <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`View ${s.shipment_number}`}>
+                        <button onClick={(e) => { e.stopPropagation(); setViewing(s); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`View ${s.shipment_number}`}>
                           <Eye size={16} />
                         </button>
                         {s.status !== "shipped" && can("shipments.update") && (
-                          <button onClick={() => setEditing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`Edit ${s.shipment_number}`} aria-label={`Edit ${s.shipment_number}`}>
+                          <button onClick={(e) => { e.stopPropagation(); setEditing(s); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`Edit ${s.shipment_number}`} aria-label={`Edit ${s.shipment_number}`}>
                             <Pencil size={16} />
                           </button>
                         )}
                         {(s.status === "draft" || s.status === "cancelled") && can("shipments.delete") && (
-                          <button onClick={() => setDeleting(s)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${s.shipment_number}`}>
+                          <button onClick={(e) => { e.stopPropagation(); setDeleting(s); }} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${s.shipment_number}`}>
                             <Trash2 size={16} />
                           </button>
                         )}
@@ -383,15 +376,31 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   const formatDate = useDateFormat();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const currencyCode = settings?.currency_code || "USD";
   const [carrier, setCarrier] = useState(shipment.carrier);
   const [tracking, setTracking] = useState(shipment.tracking_number);
   const [paymentMethod, setPaymentMethod] = useState(shipment.payment_method || "cash");
   const [paymentProvider, setPaymentProvider] = useState(shipment.payment_provider || MOBILE_MONEY_PROVIDERS[0].value);
+  const [paymentPhone, setPaymentPhone] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentProviderAmount, setPaymentProviderAmount] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [pickingSerials, setPickingSerials] = useState(false);
+  const prefillDone = useRef(false);
   const { addToast } = useToast();
   const { can } = useAuth();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (prefillDone.current || !shipment.customer_id || shipment.status !== "shipped") return;
+    prefillDone.current = true;
+    api.get("/sales", { params: { customer_id: shipment.customer_id, limit: 10 } })
+      .then(({ data }) => {
+        const last = (data.items || []).find((s: Sale) => s.payment_method === "mobile_money" && s.payment_provider);
+        if (last?.payment_provider) setPaymentProvider(last.payment_provider);
+      })
+      .catch(() => {});
+  }, [shipment.customer_id, shipment.status]);
 
   const { data: liveShipment } = useQuery({
     queryKey: ["shipment", shipment.id],
@@ -454,6 +463,11 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
         params: {
           payment_method: paymentMethod,
           payment_provider: paymentMethod === "mobile_money" ? paymentProvider : null,
+          payment_reference: paymentReference.trim() || null,
+          payment_phone: paymentPhone.trim() || null,
+          payment_provider_amount: paymentMethod === "mobile_money" && paymentProviderAmount ? paymentProviderAmount : null,
+          currency: currencyCode,
+          currency_symbol: currencySymbol,
         },
       });
       addToast(`Invoice ${data.invoice_number} created`, "success");
@@ -465,7 +479,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   };
 
   return (
-    <Modal open onClose={onClose} title={current.shipment_number} wide>
+    <SlideOver open onClose={onClose} title={current.shipment_number} wide ariaLabel="Shipment details">
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div><p className="text-muted">Status</p><p className="font-medium"><span className={`badge ${statusBadge(current.status)}`}>{current.status.replace("_", " ")}</span></p></div>
@@ -558,7 +572,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
           </div>
         )}
         {canCreateSale && (
-          <div className="flex items-center gap-3 justify-end">
+          <div className="flex items-end gap-3 justify-end flex-wrap">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Payment Method</label>
               <select className="select" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} aria-label="Payment method">
@@ -571,6 +585,24 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
                 <select className="select" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} aria-label="Mobile money provider">
                   {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
+              </div>
+            )}
+            {paymentMethod === "mobile_money" && (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Payer Phone</label>
+                <input className="input" placeholder="e.g. 07XX XXX XXX" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} aria-label="Payer phone" />
+              </div>
+            )}
+            {paymentMethod === "mobile_money" && (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Provider Amount ({currencySymbol})</label>
+                <input className="input" type="number" min="0" step="0.01" placeholder={current.total_amount?.toFixed(2) || ""} value={paymentProviderAmount} onChange={(e) => setPaymentProviderAmount(e.target.value)} aria-label="Provider amount" />
+              </div>
+            )}
+            {paymentMethod !== "cash" && (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Payment Reference</label>
+                <input className="input" placeholder={paymentMethod === "mobile_money" ? "Provider confirmation code" : "Reference (optional)"} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} aria-label="Payment reference" />
               </div>
             )}
             <button onClick={createSale} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
@@ -597,7 +629,7 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
           onPicked={() => { setPickingSerials(false); refresh(); }}
         />
       )}
-    </Modal>
+    </SlideOver>
   );
 }
 

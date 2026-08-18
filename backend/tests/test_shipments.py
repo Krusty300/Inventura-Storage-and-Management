@@ -539,6 +539,31 @@ def test_shipment_create_sale_mobile_money(auth_headers):
     assert shipment["payment_provider"] == "t-kash"
 
 
+def test_shipment_create_sale_payment_reference_and_phone(auth_headers):
+    p = _make_product(auth_headers, "SHP-MM-REF")
+    loc = _make_location(auth_headers, "SHP-MM-REF-LOC")
+    assert _receive(auth_headers, p["id"], 4, loc["id"]).status_code == 201
+    sid = _create_shipment(auth_headers, [(p["id"], 2)]).json()["id"]
+    client.post(f"/api/shipments/{sid}/pick", headers=auth_headers)
+    client.post(f"/api/shipments/{sid}/pack", headers=auth_headers)
+    client.post(f"/api/shipments/{sid}/ship", headers=auth_headers)
+
+    resp = client.post(
+        f"/api/shipments/{sid}/create-sale",
+        params={
+            "payment_method": "mobile_money",
+            "payment_provider": "t-kash",
+            "payment_reference": "SHPMNT-REF-1",
+            "payment_phone": "0711 000 000",
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    sale = resp.json()
+    assert sale["payment_reference"] == "SHPMNT-REF-1"
+    assert sale["payment_phone"] == "0711 000 000"
+
+
 def test_shipment_create_sale_mobile_money_requires_provider(auth_headers):
     p = _make_product(auth_headers, "SHP-MM-REQ")
     loc = _make_location(auth_headers, "SHP-MM-REQ-LOC")

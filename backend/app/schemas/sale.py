@@ -16,8 +16,18 @@ class SaleCreate(BaseModel):
     items: list[SaleItemCreate]
     payment_method: str = "cash"
     payment_provider: Optional[str] = None
+    payment_reference: Optional[str] = None
+    payment_phone: Optional[str] = None
+    payment_provider_amount: Optional[float] = Field(default=None, ge=0)
+    currency: Optional[str] = None
+    currency_symbol: Optional[str] = None
     discount_amount: float = Field(default=0.0, ge=0)
     notes: str = ""
+
+
+class RefundRequest(BaseModel):
+    refund_method: Optional[str] = None
+    refund_provider: Optional[str] = None
 
 
 class SaleBulkEdit(BaseModel):
@@ -51,6 +61,18 @@ class SaleOut(BaseModel):
     status: str
     payment_method: str
     payment_provider: Optional[str] = None
+    payment_reference: Optional[str] = None
+    payment_phone: Optional[str] = None
+    payment_provider_amount: Optional[float] = None
+    currency: Optional[str] = None
+    currency_symbol: Optional[str] = None
+    payment_status: Optional[str] = None
+    payment_checkout_request_id: Optional[str] = None
+    refund_status: Optional[str] = None
+    refunded_at: Optional[datetime] = None
+    refund_method: Optional[str] = None
+    refund_provider: Optional[str] = None
+    refund_checkout_request_id: Optional[str] = None
     notes: str
     created_at: datetime
     updated_at: datetime

@@ -1,4 +1,5 @@
 from app.models.asn import ASN, ASNItem
+from app.models.note import Note, NoteLink, NoteTag, NoteTagLink
 from app.models.bom import BOM, BOMItem
 from app.models.category import Category
 from app.models.customer import Customer
@@ -27,6 +28,10 @@ from app.models.work_order import WorkOrder, WorkOrderItem
 __all__ = [
     "ASN",
     "ASNItem",
+    "Note",
+    "NoteLink",
+    "NoteTag",
+    "NoteTagLink",
     "BOM",
     "BOMItem",
     "Category",

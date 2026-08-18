@@ -397,6 +397,7 @@ export interface Settings {
   phone: string;
   email: string;
   currency_symbol: string;
+  currency_code: string;
   tax_rate: number;
   default_reorder_level: number;
   expiry_warning_days: number;
@@ -451,6 +452,18 @@ export interface Sale {
   status: string;
   payment_method: string;
   payment_provider: string | null;
+  payment_reference: string | null;
+  payment_phone: string | null;
+  payment_provider_amount: number | null;
+  currency: string | null;
+  currency_symbol: string | null;
+  payment_status: string | null;
+  payment_checkout_request_id: string | null;
+  refund_status: string | null;
+  refunded_at: string | null;
+  refund_method: string | null;
+  refund_provider: string | null;
+  refund_checkout_request_id: string | null;
   notes: string;
   created_at: string;
   updated_at: string;
@@ -487,8 +500,29 @@ export interface SalesSummary {
   total_refunds: number;
   total_revenue: number;
   total_tax: number;
-  by_payment_method: { method: string; count: number }[];
+  by_payment_method: { method: string; count: number; total: number }[];
+  by_payment_provider?: { provider: string; count: number; total: number }[];
   top_products: { name: string; quantity_sold: number; revenue: number }[];
+}
+
+export interface PaymentReconciliationRow {
+  method: string;
+  provider: string | null;
+  count: number;
+  gross_total: number;
+  refunded_count: number;
+  refunded_total: number;
+  pending_refunds: number;
+  completed_refunds: number;
+  net_total: number;
+}
+
+export interface PaymentReconciliation {
+  rows: PaymentReconciliationRow[];
+  gross_total: number;
+  refunded_total: number;
+  net_total: number;
+  pending_refunds: number;
 }
 
 export interface Location {
@@ -883,6 +917,53 @@ export interface LotGenealogy {
   parents: LotGenealogyEntry[];
   children: LotGenealogyEntry[];
   affected: LotGenealogyEntry[];
+}
+
+export interface NoteTag {
+  id: number;
+  name: string;
+  color: string;
+}
+
+export interface NoteLink {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+}
+
+export interface Note {
+  id: number;
+  title: string;
+  body: string;
+  category: string;
+  priority: string;
+  is_pinned: boolean;
+  is_completed: boolean;
+  is_archived: boolean;
+  due_date: string | null;
+  recurrence: string;
+  recurrence_end: string | null;
+  sort_order: number;
+  image_url: string;
+  user_id: number;
+  assigned_to_id: number | null;
+  created_at: string;
+  updated_at: string;
+  username: string;
+  assigned_to_name: string | null;
+  tags: NoteTag[];
+  links: NoteLink[];
+}
+
+export interface NoteTemplate {
+  id: number;
+  name: string;
+  category: string;
+  priority: string;
+  body: string;
+  recurrence: string;
+  user_id: number;
+  created_at: string;
 }
 
 export interface MRPItem {

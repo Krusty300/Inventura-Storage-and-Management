@@ -111,12 +111,12 @@ export default function LPNs() {
             ) : lpns.length === 0 ? (
               <EmptyState title="No LPNs yet" message="Create LPNs to track pallets and totes through the warehouse." actionLabel="Create LPN" onAction={() => setShowForm(true)} />
             ) : lpns.map((l) => (
-              <tr key={l.id} className="hover:bg-app">
+              <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!e.target.closest("button")) setViewing(l); }}>
                 <td className="px-4 py-3 font-medium">{l.lpn_number}</td>
                 <td className="px-4 py-3 text-muted capitalize">{l.lpn_type}</td>
                 <td className="px-4 py-3 text-muted">{l.location_name || "—"}</td>
                 <td className="px-4 py-3"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
-                <td className="px-4 py-3">{l.content_count === 0 ? <span className="badge badge-neutral">Empty</span> : l.content_count}</td>
+                <td className="px-4 py-3">{l.content_count ?? 0}</td>
                 <td className="px-4 py-3">{l.total_quantity}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">

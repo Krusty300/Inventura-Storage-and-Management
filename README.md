@@ -410,6 +410,17 @@ The rest of the schema is managed by `Base.metadata.create_all()`.
 - Notification bell in the header with unread count.
 - Permission-gated viewing.
 
+### Notes
+
+- Create, edit, complete, pin, archive/unarchive notes with categories (note, reminder, todo) and priorities.
+- **Archived Notes tab:** dedicated filter tab to view and manage archived notes separately from active/completed notes.
+- **Bulk archive/unarchive:** select multiple notes via checkboxes and archive or unarchive them in bulk.
+- **Templates:** save any note as a reusable template; select a template when creating a new note to pre-fill fields; manage (rename, use, delete) templates from the template manager.
+- **Tags:** create, assign, and filter by colored tags.
+- **Multiple views:** list, card, and kanban board (drag-and-drop between categories).
+- **Detail SlideOver:** click any note row to open a side panel with full details, assignment, linked entities, and quick actions.
+- Markdown body, image attachments, due dates, recurrence, and user assignment.
+
 ### Activity log
 
 - Every create / update / delete is logged with user, entity, action, and detail.
@@ -498,6 +509,7 @@ All endpoints are under `/api/`. 30 routers in `backend/app/routers/`:
 | `activity-log`   | `/api/activity-log`| Audit trail with entity/action filters                |
 | `settings`       | `/api/settings`    | Global store config                                   |
 | `labels`         | `/api/labels`      | Barcode and location label generation                 |
+| `notes`          | `/api/notes`       | Notes CRUD, archive, bulk-archive, templates, tags, assign |
 
 ### WebSocket
 
@@ -542,8 +554,15 @@ order, sale) to all connected clients.
 | Profile          | `/profile`           | Current user's profile and preferences       |
 
 41 shared components in `frontend/src/components/` including forms, detail views,
-modals, pagination, barcode scanner, location picker, CSV import, skeleton, and
+SlideOver panels, modals, pagination, barcode scanner, location picker, CSV import, skeleton, and
 error boundary.
+
+### UX patterns
+
+- **SlideOver detail panels:** all entity detail views (Products, Notes, Receipts, ASNs, Orders, BOMs, Work Orders, Customers, Cycle Counts, Shipments, Sales, Categories, Suppliers, Locations) open in a slide-in side panel rather than a centered modal, giving context while browsing the list.
+- **Clickable rows:** every list view supports clicking a row to open its detail panel — no need to find a small Eye icon.
+- **Consistent search & filters:** every list page provides a search input; status/category filters are available on pages where the backend supports them (ASNs, Lots, Work Orders, Quality Checks, Cycle Counts, Sales payment method, etc.).
+- **Pagination:** all list views are paginated with configurable page size.
 
 ---
 

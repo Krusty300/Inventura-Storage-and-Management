@@ -7,6 +7,7 @@ import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { CycleCount, Location, PaginatedResponse } from "../types";
 import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -94,7 +95,7 @@ export default function CycleCounts() {
             ) : counts.length === 0 ? (
               <EmptyState title="No cycle counts yet" message="Create a cycle count to verify on-hand stock against the system." actionLabel="New Count" onAction={() => setShowForm(true)} />
             ) : counts.map((c) => (
-              <tr key={c.id} className="hover:bg-app">
+              <tr key={c.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(c); }}>
                 <td className="px-4 py-3 font-medium">{c.cc_number}</td>
                 <td className="px-4 py-3 text-muted">{c.location_name || "All"}</td>
                 <td className="px-4 py-3"><span className={`badge ${statusBadge(c.status)}`}>{c.status.replace("_", " ")}</span></td>
@@ -293,7 +294,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () => void }) {
   const formatDate = useDateFormat();
   return (
-    <Modal open onClose={onClose} title={`Cycle Count ${count.cc_number}`} wide>
+    <SlideOver open onClose={onClose} title={`Cycle Count ${count.cc_number}`} wide ariaLabel="Cycle count detail">
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
@@ -343,7 +344,7 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }
 

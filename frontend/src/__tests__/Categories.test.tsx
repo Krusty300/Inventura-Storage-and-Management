@@ -72,7 +72,7 @@ describe("Categories Page", () => {
 
     fireEvent.click(screen.getByLabelText("View product Widget"));
     expect(await screen.findByRole("dialog", { name: "Widget" })).toBeInTheDocument();
-    fireEvent.click(screen.getAllByLabelText("Close dialog").pop()!);
+    fireEvent.click(screen.getAllByLabelText("Close panel").pop()!);
 
     fireEvent.click(screen.getByLabelText("View supplier Acme Supplies"));
     expect(await screen.findByRole("dialog", { name: "Acme Supplies" })).toBeInTheDocument();

@@ -1,12 +1,13 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useState } from "react";
-import { CheckCircle, Eye, Pencil, Play, Plus, Printer, Rocket, XCircle } from "lucide-react";
+import { CheckCircle, Eye, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { BOM, Location, PaginatedResponse, WorkOrder, WorkOrderCost, WorkOrderGenealogy } from "../types";
 import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -25,6 +26,7 @@ export default function WorkOrders() {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
+  const [statusFilter, setStatusFilter] = useState("");
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [editing, setEditing] = useState<WorkOrder | null>(null);
   const [viewing, setViewing] = useState<WorkOrder | null>(null);
@@ -35,10 +37,11 @@ export default function WorkOrders() {
   const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["work-orders", debouncedSearch, page, pageSize],
+    queryKey: ["work-orders", debouncedSearch, statusFilter, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (statusFilter) params.status = statusFilter;
       const { data } = await api.get("/work-orders", { params });
       return data as PaginatedResponse<WorkOrder>;
     },
@@ -88,8 +91,17 @@ export default function WorkOrders() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
           <input className="input pl-10" placeholder="Search by work order number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search work orders" />
         </div>
+        <select className="select" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option value="planned">Planned</option>
+          <option value="released">Released</option>
+          <option value="in_progress">In Progress</option>
+          <option value="completed">Completed</option>
+          <option value="on_hold">On Hold</option>
+        </select>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -115,7 +127,7 @@ export default function WorkOrders() {
             ) : wos.length === 0 ? (
               <EmptyState title="No work orders yet" message="Plan a work order to build a product from a BOM or component list." actionLabel="New Work Order" onAction={() => { setEditing(null); setShowForm(true); }} />
             ) : wos.map((w) => (
-              <tr key={w.id} className="hover:bg-app">
+              <tr key={w.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(w)}>
                 <td className="px-4 py-3 font-medium">{w.wo_number}</td>
                 <td className="px-4 py-3 text-muted">{w.product_name}</td>
                 <td className="px-4 py-3">{w.quantity}</td>
@@ -132,25 +144,25 @@ export default function WorkOrders() {
                 <td className="px-4 py-3 text-muted">{formatDate(w.created_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
-                    <button onClick={() => printPdf(w)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${w.wo_number}`}><Printer size={16} /></button>
-                    <button onClick={() => setViewing(w)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${w.wo_number}`}><Eye size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); printPdf(w); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${w.wo_number}`}><Printer size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setViewing(w); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${w.wo_number}`}><Eye size={16} /></button>
                     {w.status === "planned" && can("work_orders.update") && (
                       <>
-                        <button onClick={() => { setEditing(w); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${w.wo_number}`}><Pencil size={16} /></button>
-                        <button onClick={() => run(() => api.post(`/work-orders/${w.id}/cancel`), `${w.wo_number} cancelled`)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${w.wo_number}`}><XCircle size={16} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); setEditing(w); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${w.wo_number}`}><Pencil size={16} /></button>
+                        <button onClick={(e) => { e.stopPropagation(); run(() => api.post(`/work-orders/${w.id}/cancel`), `${w.wo_number} cancelled`); }} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${w.wo_number}`}><XCircle size={16} /></button>
                       </>
                     )}
                     {(w.status === "released" || w.status === "in_progress") && can("work_orders.update") && (
-                      <button onClick={() => run(() => api.post(`/work-orders/${w.id}/cancel`), `${w.wo_number} cancelled`)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${w.wo_number}`}><XCircle size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); run(() => api.post(`/work-orders/${w.id}/cancel`), `${w.wo_number} cancelled`); }} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${w.wo_number}`}><XCircle size={16} /></button>
                     )}
                     {w.status === "planned" && can("work_orders.release") && (
-                      <button onClick={() => run(() => api.post(`/work-orders/${w.id}/release`), `${w.wo_number} released`)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Release ${w.wo_number}`}><Rocket size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); run(() => api.post(`/work-orders/${w.id}/release`), `${w.wo_number} released`); }} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Release ${w.wo_number}`}><Rocket size={16} /></button>
                     )}
                     {w.status === "released" && can("work_orders.release") && (
-                      <button onClick={() => run(() => api.post(`/work-orders/${w.id}/start`), `${w.wo_number} started`)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Start ${w.wo_number}`}><Play size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); run(() => api.post(`/work-orders/${w.id}/start`), `${w.wo_number} started`); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Start ${w.wo_number}`}><Play size={16} /></button>
                     )}
                     {(w.status === "released" || w.status === "in_progress") && can("work_orders.complete") && (
-                      <button onClick={() => setCompleting(w)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Complete ${w.wo_number}`}><CheckCircle size={16} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); setCompleting(w); }} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Complete ${w.wo_number}`}><CheckCircle size={16} /></button>
                     )}
                   </div>
                 </td>
@@ -368,7 +380,7 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
     },
   });
   return (
-    <Modal open onClose={onClose} title={wo.wo_number} wide>
+    <SlideOver open onClose={onClose} title={wo.wo_number} wide ariaLabel={`Work order ${wo.wo_number} details`}>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
@@ -430,7 +442,7 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }
 

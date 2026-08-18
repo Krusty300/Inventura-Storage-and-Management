@@ -20,14 +20,13 @@ from app.models.lot import Lot
 from app.schemas.dashboard import DashboardStats
 from app.services.auth import get_current_user, require_permission
 from app.services import inventory
-from app.services.inventory import TRANSFER_OUT, SERIAL_STATUS_QUARANTINED, expire_overdue_lots, sellable_qty_subquery
+from app.services.inventory import TRANSFER_OUT, SERIAL_STATUS_QUARANTINED, sellable_qty_subquery
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(require_permission("dashboard.view"))])
 
 
 @router.get("/stats", response_model=DashboardStats)
 def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    expire_overdue_lots(db)
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     sellable = sellable_qty_subquery()
 
