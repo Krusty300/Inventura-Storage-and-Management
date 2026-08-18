@@ -19,7 +19,7 @@ from app.models.serial_number import SerialNumber
 from app.models.stock_movement import StockMovement
 from app.schemas.sale import RefundRequest, SaleBulkEdit, SaleCreate, SaleOut
 from app.services import inventory
-from app.services.auth import get_current_user, require_permission
+from app.services.auth import require_permission
 from app.services.notify import notify_admins, notify_low_stock
 from app.services.payment_methods import resolve_payment_details, validate_payment
 from app.services.sequences import next_document_number

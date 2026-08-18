@@ -142,7 +142,7 @@ export default function Notes() {
   const unpinnedNotes = notes.filter((n) => !n.is_pinned && !n.is_completed);
   const completedNotes = notes.filter((n) => n.is_completed);
 
-  const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(notes);
+  const { selectedIds, toggleSelect, clearSelection } = useBulkSelection(notes);
 
   const createMutation = useMutation({
     mutationFn: (payload: NoteForm) => {
@@ -198,10 +198,7 @@ export default function Notes() {
     onError: (err) => addToast(errorMessage(err, "Failed to assign note"), "error"),
   });
 
-  const sortMutation = useMutation({
-    mutationFn: ({ noteId, sortOrder }: { noteId: number; sortOrder: number }) => api.patch(`/notes/${noteId}/sort-order`, { sort_order: sortOrder }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
-  });
+
 
   const createTagMutation = useMutation({
     mutationFn: () => api.post("/notes/tags", { name: newTagName, color: newTagColor }),

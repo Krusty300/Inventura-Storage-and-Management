@@ -12,7 +12,6 @@ import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityB
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
-import SlideOver from "../components/SlideOver";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";

@@ -22,7 +22,6 @@ import { formatCurrency } from "../utils/currency";
 import { parseLocalDate } from "../utils/date";
 
 import { usePageSize } from "../hooks/usePageSize";
-import SlideOver from "../components/SlideOver";
 
 export default function Customers() {
   const formatDate = useDateFormat();

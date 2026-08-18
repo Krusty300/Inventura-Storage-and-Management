@@ -8,7 +8,6 @@ import ReceiptForm from "../components/ReceiptForm";
 import ReceiptDetail from "../components/ReceiptDetail";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
-import SlideOver from "../components/SlideOver";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";

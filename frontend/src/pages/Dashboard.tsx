@@ -12,7 +12,6 @@ import {
   ReceiptText,
   ClipboardList,
   ShieldCheck,
-  StickyNote,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend } from "recharts";
 import api from "../api/client";

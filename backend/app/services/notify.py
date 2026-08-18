@@ -39,7 +39,7 @@ def notify_note_assigned(db: Session, note, assigner_name: str) -> None:
         return
     create_notification(
         db, note.assigned_to_id,
-        f"Note assigned to you",
+        "Note assigned to you",
         f'"{note.title}" was assigned by {assigner_name}.',
         type="info", link="/notes",
     )

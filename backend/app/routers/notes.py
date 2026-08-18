@@ -17,7 +17,6 @@ from app.schemas.note import (
     NoteAssign,
     NoteCreate,
     NoteLinkCreate,
-    NoteOut,
     NoteTagCreate,
     NoteTagOut,
     NoteTemplateCreate,
