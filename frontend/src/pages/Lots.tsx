@@ -135,7 +135,7 @@ export default function Lots() {
             ) : lots.length === 0 ? (
               <EmptyState title="No lots yet" message="Lots are created automatically when you record a receipt or finish a work order with a lot number." />
             ) : lots.map((l) => (
-              <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!e.target.closest("button")) setViewing(l); }}>
+              <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(l); }}>
                 <td className="px-4 py-3 font-medium">{l.lot_number}</td>
                 <td className="px-4 py-3 text-muted">{l.product_name}</td>
                 <td className="px-4 py-3 text-muted">{l.supplier_name || "—"}</td>

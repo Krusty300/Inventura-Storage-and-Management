@@ -44,10 +44,8 @@ def resolve_payment_details(
     provider = validate_payment(payment_method, payment_provider)
     method = (payment_method or "cash").strip()
     if method == "mobile_money":
-        if payment_provider_amount is None or float(payment_provider_amount) <= 0:
-            raise ValueError("payment_provider_amount is required when payment_method is 'mobile_money'")
-        if not (currency or "").strip():
-            raise ValueError("currency is required when payment_method is 'mobile_money'")
+        if payment_provider_amount is not None and float(payment_provider_amount) <= 0:
+            raise ValueError("payment_provider_amount must be positive when provided")
     code = (currency or "").strip() or default_currency
     if code not in CURRENCIES:
         raise ValueError(f"currency must be one of {', '.join(CURRENCIES)}")

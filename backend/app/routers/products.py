@@ -133,6 +133,7 @@ def list_products(
         raise HTTPException(status_code=400, detail=f"sort_by must be one of {sorted(PRODUCT_SORT_COLUMNS)}")
     if sort_dir not in ("asc", "desc"):
         raise HTTPException(status_code=400, detail="sort_dir must be 'asc' or 'desc'")
+    inventory.expire_overdue_lots(db)
     options = [joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.default_location), joinedload(Product.stock_lines).joinedload(StockLine.location)]
     if include_variants:
         options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location))

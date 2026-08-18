@@ -196,7 +196,7 @@ export default function Customers() {
               ) : customers.length === 0 ? (
                 <EmptyState title="No customers found" message="Add your first customer to get started." actionLabel="Add Customer" onAction={() => { setEditing(null); setShowForm(true); }} />
               ) : customers.map((c) => (
-                <tr key={c.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (e.target.closest("button") || e.target.closest("input")) return; setViewing(c); }}>
+                <tr key={c.id} className="hover:bg-app cursor-pointer" onClick={(e) => { const t = e.target as HTMLElement; if (t.closest("button") || t.closest("input")) return; setViewing(c); }}>
                   <td className="px-4 py-3">
                     <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} />
                   </td>

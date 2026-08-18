@@ -27,6 +27,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[De
 
 @router.get("/stats", response_model=DashboardStats)
 def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+    inventory.expire_overdue_lots(db)
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     sellable = sellable_qty_subquery()
 

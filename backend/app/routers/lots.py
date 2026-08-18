@@ -50,6 +50,7 @@ def list_lots(
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
+    inventory.expire_overdue_lots(db)
     q = db.query(Lot).options(
         joinedload(Lot.product), joinedload(Lot.supplier),
         joinedload(Lot.stock_lines).joinedload(StockLine.location),
