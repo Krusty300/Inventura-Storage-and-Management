@@ -63,6 +63,28 @@ def test_get_product_by_barcode_excludes_inactive(auth_headers):
     assert resp.status_code == 404
 
 
+def test_get_product_by_barcode_fallback_to_sku(auth_headers):
+    p = _make_product(auth_headers, "SKU-FALLBACK-01")
+    resp = client.get("/api/products/barcode/SKU-FALLBACK-01", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["id"] == p["id"]
+
+
+def test_get_product_by_barcode_fallback_sku_case_insensitive(auth_headers):
+    p = _make_product(auth_headers, "Sku-Case-01")
+    resp = client.get("/api/products/barcode/sku-case-01", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["id"] == p["id"]
+
+
+def test_get_product_by_barcode_prefers_barcode_over_sku(auth_headers):
+    p_barcode = _make_product(auth_headers, "PREF-001", barcode="DUAL-001")
+    p_sku = _make_product(auth_headers, "DUAL-001")
+    resp = client.get("/api/products/barcode/DUAL-001", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["id"] == p_barcode["id"]
+
+
 def test_product_movements_endpoint(auth_headers):
     p = _make_product(auth_headers, "MOV-EXT", quantity=50)
     client.post("/api/stock-movements", json={

@@ -1,5 +1,6 @@
 from datetime import date
 from math import ceil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -21,8 +22,8 @@ from app.services.auth import require_permission
 from app.services.notify import notify_admins
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
-    draw_notes, draw_signoff, draw_totals, new_canvas, render_pdf,
+    BODY_RIGHT, MARGIN, draw_banner_header, draw_info_block, draw_item_table,
+    draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
@@ -227,6 +228,7 @@ def order_pdf(order_id: int, db: Session = Depends(get_db)):
         joinedload(Order.supplier), joinedload(Order.user),
     ])
     s = db.query(Settings).first()
+    base_dir = Path(__file__).resolve().parent.parent
 
     store_name = (s.store_name if s else None) or "My Store"
     currency = (s.currency_symbol if s else "$") or "$"
@@ -243,7 +245,7 @@ def order_pdf(order_id: int, db: Session = Depends(get_db)):
         ("Status:", o.status),
         ("Created by:", o.username or "\u2014"),
     ]
-    body_y = draw_header(c, "PURCHASE ORDER", meta, store_lines)
+    body_y = draw_banner_header(c, "PURCHASE ORDER", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir)
 
     supplier_lines = [o.supplier_name or "\u2014"]
     if o.supplier:
@@ -255,14 +257,16 @@ def order_pdf(order_id: int, db: Session = Depends(get_db)):
             supplier_lines.append(f"Address: {o.supplier.address}")
     info_y = draw_info_block(c, MARGIN, body_y, "Supplier", supplier_lines)
 
-    headers = ["Item", "Price", "Qty", "Amount"]
-    aligns = ["l", "r", "r", "r"]
-    col_widths = [292.0, 84.0, 44.0, 84.0]
+    headers = ["Item", "SKU", "Price", "Qty", "Amount"]
+    aligns = ["l", "l", "r", "r", "r"]
+    col_widths = [210.0, 82.0, 70.0, 44.0, 90.0]
     rows = []
     for item in o.items:
         name = item.product_name or f"Product #{item.product_id}"
+        sku = item.product.sku if item.product else ""
         rows.append([
-            (name[:60] + "\u2026") if len(name) > 60 else name,
+            (name[:42] + "\u2026") if len(name) > 42 else name,
+            sku,
             f"{currency}{float(item.unit_price):.2f}",
             str(item.quantity),
             f"{currency}{float(item.unit_price) * item.quantity:.2f}",
@@ -270,7 +274,7 @@ def order_pdf(order_id: int, db: Session = Depends(get_db)):
 
     y = draw_item_table(
         c, MARGIN, info_y, headers, aligns, col_widths, rows,
-        on_page_break=lambda c: draw_header(c, "PURCHASE ORDER", meta, store_lines),
+        on_page_break=lambda c: draw_banner_header(c, "PURCHASE ORDER", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir),
     )
 
     y = draw_totals(c, BODY_RIGHT, y, [], "Total", f"{currency}{float(o.total_amount):.2f}")
@@ -280,6 +284,7 @@ def order_pdf(order_id: int, db: Session = Depends(get_db)):
         y -= 18
 
     draw_signoff(c, y, "Thank you for your order!")
+    draw_page_footer(c, 1, tax_id=(s.tax_id if s else ""))
     return Response(render_pdf(c, buf), media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename={o.order_number}.pdf"
     })

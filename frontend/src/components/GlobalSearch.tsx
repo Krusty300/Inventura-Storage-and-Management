@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { CornerDownLeft } from "lucide-react";
+import { CornerDownLeft, Search } from "lucide-react";
 import api from "../api/client";
 import type { GlobalSearchResponse, GlobalSearchResult } from "../types";
 import { useDebounce } from "../hooks/useDebounce";
@@ -104,6 +104,7 @@ export default function GlobalSearch() {
       {showPanel && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
 
       <div className="relative flex-1 max-w-2xl z-50">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
         <input
           className="input pl-10 pr-10"
           placeholder="Search everything: products, lots, serials, documents, people..."

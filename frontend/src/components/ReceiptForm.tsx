@@ -84,10 +84,14 @@ function ReceiptItemRow({ row, idx, productList, rowProducts, locations, onChang
 
   const handleProductChange = (id: string) => {
     onChange(idx, "product_id", id);
-    onChange(idx, "location", "");
     onChange(idx, "lpn_number", "");
     const p = productList.find((x) => x.id.toString() === id);
     onChange(idx, "unit_cost", p ? String(p.cost_price ?? 0) : "0");
+    if (p?.location) {
+      onChange(idx, "location", p.location);
+    } else {
+      onChange(idx, "location", "");
+    }
   };
 
   const handleLocationChange = (v: string) => {

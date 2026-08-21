@@ -1,4 +1,4 @@
-from tests.conftest import client
+from tests.conftest import client, create_test_user
 
 
 def _register(auth_headers, username, email, password="testpass123", role="worker"):
@@ -28,7 +28,7 @@ def test_login_locks_out_after_five_failures():
 def test_successful_login_resets_failure_counter():
     for _ in range(4):
         assert client.post("/api/auth/login", json={"username": "resetuser", "password": "wrongpass"}).status_code == 401
-    client.post("/api/auth/register", json={"username": "resetuser", "email": "reset@example.com", "password": "resetpass1"})
+    create_test_user("resetuser", "reset@example.com", "resetpass1")
     assert client.post("/api/auth/login", json={"username": "resetuser", "password": "resetpass1"}).status_code == 200
     for _ in range(5):
         assert client.post("/api/auth/login", json={"username": "resetuser", "password": "wrongpass"}).status_code == 401

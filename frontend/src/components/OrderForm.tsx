@@ -222,7 +222,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
           <div className="space-y-2">
             {items.map((item, idx) => (
               <div key={idx} className="flex gap-2 items-end">
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <select
                     className="select text-sm"
                     value={item.product_id}

@@ -1,7 +1,7 @@
-from tests.conftest import client
+from tests.conftest import client, create_test_user
 
 
-def test_register():
+def test_register_first_user_auto_approved():
     resp = client.post("/api/auth/register", json={
         "username": "newuser",
         "email": "new@example.com",
@@ -12,9 +12,10 @@ def test_register():
     assert "access_token" in data
     assert data["user"]["username"] == "newuser"
     assert data["user"]["role"] == "admin"
+    assert data["user"]["is_approved"] is True
 
 
-def test_register_disabled_after_first_user():
+def test_register_second_user_pending():
     client.post("/api/auth/register", json={
         "username": "firstuser",
         "email": "first@example.com",
@@ -24,17 +25,35 @@ def test_register_disabled_after_first_user():
         "username": "seconduser",
         "email": "second@example.com",
         "password": "password123",
+        "role": "worker",
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["message"] == "Registration successful. Your account is pending admin approval."
+    assert data["user"]["is_approved"] is False
+
+
+def test_pending_user_cannot_login():
+    client.post("/api/auth/register", json={
+        "username": "firstuser2",
+        "email": "first2@example.com",
+        "password": "password123",
+    })
+    client.post("/api/auth/register", json={
+        "username": "pendinguser",
+        "email": "pending@example.com",
+        "password": "password123",
+    })
+    resp = client.post("/api/auth/login", json={
+        "username": "pendinguser",
+        "password": "password123",
     })
     assert resp.status_code == 403
-    assert "disabled" in resp.json()["detail"].lower()
+    assert "pending" in resp.json()["detail"].lower()
 
 
 def test_login_records_last_login_at():
-    client.post("/api/auth/register", json={
-        "username": "lluser",
-        "email": "ll@example.com",
-        "password": "password123",
-    })
+    create_test_user("lluser", "ll@example.com", "password123")
     resp = client.post("/api/auth/login", json={
         "username": "lluser",
         "password": "password123",
@@ -44,11 +63,7 @@ def test_login_records_last_login_at():
 
 
 def test_register_duplicate_username():
-    client.post("/api/auth/register", json={
-        "username": "dupuser",
-        "email": "dup1@example.com",
-        "password": "password123",
-    })
+    create_test_user("dupuser", "dup1@example.com", "password123")
     resp = client.post("/api/auth/register", json={
         "username": "dupuser",
         "email": "dup2@example.com",
@@ -58,11 +73,7 @@ def test_register_duplicate_username():
 
 
 def test_login():
-    client.post("/api/auth/register", json={
-        "username": "loginuser",
-        "email": "login@example.com",
-        "password": "password123",
-    })
+    create_test_user("loginuser", "login@example.com", "password123")
     resp = client.post("/api/auth/login", json={
         "username": "loginuser",
         "password": "password123",
@@ -84,11 +95,7 @@ def test_login_invalid():
 def test_login_remember_token_lasts_longer():
     from jose import jwt
     from app.config import settings
-    client.post("/api/auth/register", json={
-        "username": "remuser",
-        "email": "rem@example.com",
-        "password": "password123",
-    })
+    create_test_user("remuser", "rem@example.com", "password123")
     normal = client.post("/api/auth/login", json={"username": "remuser", "password": "password123"}).json()
     remembered = client.post("/api/auth/login", json={"username": "remuser", "password": "password123", "remember": True}).json()
     exp_normal = jwt.decode(normal["access_token"], settings.secret_key, algorithms=[settings.algorithm])["exp"]
@@ -106,3 +113,44 @@ def test_me(auth_headers):
 def test_me_unauthorized():
     resp = client.get("/api/auth/me")
     assert resp.status_code in (401, 403)
+
+
+def test_approve_user():
+    from tests.conftest import create_test_user
+    user = create_test_user("approvee", "approve@example.com", "pass123", "worker", approved=False)
+    admin_user = create_test_user("admin_approve", "admin_a@example.com", "adminpass", "admin")
+    resp = client.post("/api/auth/login", json={"username": "admin_approve", "password": "adminpass"})
+    admin_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    resp = client.post(f"/api/users/{user.id}/approve", json={"role": "admin"}, headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_approved"] is True
+    assert resp.json()["role"] == "admin"
+
+    resp = client.post("/api/auth/login", json={"username": "approvee", "password": "pass123"})
+    assert resp.status_code == 200
+
+
+def test_reject_user():
+    from tests.conftest import create_test_user
+    user = create_test_user("rejectee", "reject@example.com", "pass123", "worker", approved=False)
+    admin_user = create_test_user("admin_reject", "admin_r@example.com", "adminpass", "admin")
+    resp = client.post("/api/auth/login", json={"username": "admin_reject", "password": "adminpass"})
+    admin_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    resp = client.post(f"/api/users/{user.id}/reject", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is False
+
+
+def test_pending_list():
+    from tests.conftest import create_test_user
+    create_test_user("pending1", "p1@example.com", "pass123", "worker", approved=False)
+    create_test_user("pending2", "p2@example.com", "pass123", "worker", approved=False)
+    admin_user = create_test_user("admin_list", "admin_l@example.com", "adminpass", "admin")
+    resp = client.post("/api/auth/login", json={"username": "admin_list", "password": "adminpass"})
+    admin_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    resp = client.get("/api/users/pending", headers=admin_headers)
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2

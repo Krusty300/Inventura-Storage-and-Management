@@ -8,11 +8,12 @@ interface Props {
   children: ReactNode;
   wide?: boolean;
   ariaLabel?: string;
+  actions?: ReactNode;
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
 
-export default function SlideOver({ open, onClose, title, children, wide, ariaLabel }: Props) {
+export default function SlideOver({ open, onClose, title, children, wide, ariaLabel, actions }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -65,9 +66,12 @@ export default function SlideOver({ open, onClose, title, children, wide, ariaLa
       >
         <div className="sticky top-0 z-10 flex items-center justify-between p-6 border-b bg-surface">
           <h2 className="text-lg font-bold">{title}</h2>
-          <button onClick={onClose} className="text-faint hover:text-muted" aria-label="Close panel">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {actions}
+            <button onClick={onClose} className="text-faint hover:text-muted" aria-label="Close panel">
+              <X size={20} />
+            </button>
+          </div>
         </div>
         <div className="p-6">{children}</div>
       </div>

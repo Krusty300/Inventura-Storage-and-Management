@@ -75,3 +75,7 @@ class WorkOrderItem(Base):
     @property
     def product_name(self) -> str:
         return self.product.display_name if self.product else ""
+
+    @property
+    def unit_cost(self) -> float:
+        return float(self.product.cost_price or 0) if self.product else 0.0

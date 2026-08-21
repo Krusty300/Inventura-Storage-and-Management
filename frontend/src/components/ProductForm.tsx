@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { Plus, Trash2, Upload, X } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
-import type { Category, Location, Product, Supplier } from "../types";
+import type { Category, Location, Product, ProductImage, Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
 import { useSettings } from "../hooks/useSettings";
 import SlideOver from "./SlideOver";
@@ -32,8 +32,12 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
     is_serialized: false,
   });
   const [attributes, setAttributes] = useState<AttrRow[]>([]);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState("");
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
+  const [removedImageIds, setRemovedImageIds] = useState<number[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -68,7 +72,13 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         is_serialized: product.is_serialized,
       });
       setAttributes(product.attributes ? Object.entries(product.attributes).map(([key, value]) => ({ key, value })) : []);
-      if (product.image_url) setImagePreview(product.image_url);
+      if (product.images?.length) {
+        setExistingImages(product.images);
+        setImagePreviews(product.images.map((img) => img.url));
+      } else if (product.image_url) {
+        setExistingImages([{ id: 0, url: product.image_url, sort_order: 0 }]);
+        setImagePreviews([product.image_url]);
+      }
     } else if (parent) {
       setForm((f) => ({ ...f, sku: "", name: parent.name, category_id: parent.category_id?.toString() || "", supplier_id: parent.supplier_id?.toString() || "", location: parent.location || "" }));
     }
@@ -124,6 +134,11 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
     }
     try {
       let productId = product?.id;
+      const allImagesRemoved = product && existingImages.length === 0 && imageFiles.length === 0 && (product.image_url || product.images?.length);
+      const replacedLegacy = product && existingImages.length === 0 && imageFiles.length > 0 && product.image_url && !product.images?.length;
+      if (allImagesRemoved || replacedLegacy) {
+        payload.image_url = "";
+      }
       if (product) {
         await api.put(`/products/${product.id}`, payload);
         addToast("Product updated", "success");
@@ -132,11 +147,16 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         productId = data.id;
         addToast("Product created", "success");
       }
-      if (imageFile && productId) {
-        const fd = new FormData();
-        fd.append("file", imageFile);
-        await api.post(`/products/${productId}/upload-image`, fd);
-        addToast("Image uploaded", "success");
+      if (productId) {
+        for (const id of removedImageIds) {
+          await api.delete(`/products/${productId}/images/${id}`).catch(() => {});
+        }
+        if (imageFiles.length > 0) {
+          const fd = new FormData();
+          imageFiles.forEach((f) => fd.append("files", f));
+          await api.post(`/products/${productId}/images`, fd);
+          addToast(imageFiles.length > 1 ? "Images uploaded" : "Image uploaded", "success");
+        }
       }
       onSaved();
     } catch (err: any) {
@@ -174,6 +194,35 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const setAttr = (idx: number, fieldKey: "key" | "value", value: string) => {
     setAttributes(attributes.map((a, i) => (i === idx ? { ...a, [fieldKey]: value } : a)));
   };
+
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (arr.length === 0) return;
+    setImageFiles((prev) => [...prev, ...arr]);
+    const newPreviews = arr.map((f) => URL.createObjectURL(f));
+    setImagePreviews((prev) => [...prev, ...newPreviews]);
+  }, []);
+
+  const removeImage = useCallback((idx: number) => {
+    if (idx < existingImages.length) {
+      const img = existingImages[idx];
+      if (img.id > 0) {
+        setRemovedImageIds((prev) => [...prev, img.id]);
+      }
+      setExistingImages((prev) => prev.filter((_, i) => i !== idx));
+      setImagePreviews((prev) => prev.filter((_, i) => i !== idx));
+    } else {
+      const newIdx = idx - existingImages.length;
+      setImageFiles((prev) => prev.filter((_, i) => i !== newIdx));
+      setImagePreviews((prev) => prev.filter((_, i) => i !== idx));
+    }
+  }, [existingImages]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  }, [addFiles]);
 
   return (
     <SlideOver open onClose={onClose} title={product ? "Edit Product" : parent ? `Add Variant: ${parent.name}` : "Add Product"} wide>
@@ -305,11 +354,31 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-ink mb-1">Image</label>
-          <div className="flex items-center gap-4">
-            {imagePreview && <img src={imagePreview} alt="" className="w-16 h-16 rounded object-cover border" />}
-            <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="text-sm" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setImageFile(f); setImagePreview(URL.createObjectURL(f)); } }} />
+          <label className="block text-sm font-medium text-ink mb-1">Images</label>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${dragOver ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10" : "border-border hover:border-indigo-400"}`}
+          >
+            <Upload size={20} className="mx-auto text-muted mb-1" />
+            <p className="text-sm text-muted">Drag & drop images here or <span className="text-indigo-600 dark:text-indigo-400 font-medium">browse</span></p>
+            <p className="text-xs text-faint mt-0.5">JPEG, PNG, GIF, WebP — max 10 MB each</p>
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
           </div>
+          {imagePreviews.length > 0 && (
+            <div className="flex gap-2 mt-3 flex-wrap">
+              {imagePreviews.map((src, i) => (
+                <div key={i} className="relative group">
+                  <img src={src} alt="" className="w-16 h-16 rounded object-cover border border-border" />
+                  <button type="button" onClick={() => removeImage(i)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove image">
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
-import { Save, KeyRound, Bell, Hash, Workflow, DollarSign, Monitor } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Save, KeyRound, Bell, Hash, Workflow, DollarSign, Monitor, FileText, Upload, X, Image as ImageIcon } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { CURRENCIES, symbolFor } from "../utils/currencies";
 
-type Tab = "store" | "notifications" | "documents" | "workflow" | "financial" | "display" | "password";
+type Tab = "store" | "notifications" | "documents" | "workflow" | "financial" | "display" | "invoice" | "password";
 
 const TABS: { key: Tab; label: string; icon: typeof Save }[] = [
   { key: "store", label: "Store", icon: Save },
@@ -14,6 +14,7 @@ const TABS: { key: Tab; label: string; icon: typeof Save }[] = [
   { key: "workflow", label: "Workflow", icon: Workflow },
   { key: "financial", label: "Financial", icon: DollarSign },
   { key: "display", label: "Display", icon: Monitor },
+  { key: "invoice", label: "Invoice", icon: FileText },
   { key: "password", label: "Password", icon: KeyRound },
 ];
 
@@ -31,14 +32,16 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 }
 
 export default function Settings() {
-  const { can, logout } = useAuth();
+  const { can, logout, completeLogout } = useAuth();
   const { addToast } = useToast();
   const [tab, setTab] = useState<Tab>("store");
   const [form, setForm] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
   const [pw, setPw] = useState({ current_password: "", new_password: "" });
   const [pwSaving, setPwSaving] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const canUpdateSettings = can("settings.update");
   const readOnly = !canUpdateSettings;
 
@@ -61,6 +64,11 @@ export default function Settings() {
         fiscal_year_start_month: String(data.fiscal_year_start_month),
         default_items_per_page: String(data.default_items_per_page),
         date_format: data.date_format,
+        logo_url: data.logo_url || "",
+        tax_id: data.tax_id || "",
+        payment_terms: data.payment_terms || "",
+        bank_details: data.bank_details || "",
+        footer_note: data.footer_note || "",
       });
       setLoading(false);
     }).catch(() => { if (!cancelled) setLoading(false); });
@@ -97,10 +105,38 @@ export default function Settings() {
       addToast("Password changed. You have been signed out of all devices. Please log in with your new password.", "success");
       setPw({ current_password: "", new_password: "" });
       logout();
+      setTimeout(() => completeLogout(), 600);
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Failed to change password", "error");
     }
     setPwSaving(false);
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/settings/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      set("logo_url", data.logo_url);
+      addToast("Logo uploaded", "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to upload logo", "error");
+    }
+    setLogoUploading(false);
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
+
+  const handleLogoRemove = async () => {
+    try {
+      await api.delete("/settings/logo");
+      set("logo_url", "");
+      addToast("Logo removed", "success");
+    } catch (err: any) {
+      addToast(err.response?.data?.detail || "Failed to remove logo", "error");
+    }
   };
 
   if (loading) return <div className="text-muted py-8">Loading settings...</div>;
@@ -250,6 +286,64 @@ export default function Settings() {
         </form>
       )}
 
+      {tab === "invoice" && (
+        <form onSubmit={handleSave} className="card space-y-4">
+          <h2 className="text-lg font-semibold">Invoice Settings</h2>
+          <p className="text-sm text-muted">Configure how your invoices look when printed or exported as PDF.</p>
+          <fieldset disabled={readOnly} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Company Logo</label>
+              <p className="text-xs text-faint mb-2">Displayed on all invoices and PDFs. Recommended size: 300×80px, max 5 MB.</p>
+              {form.logo_url ? (
+                <div className="flex items-center gap-4">
+                  <div className="w-40 h-20 rounded-lg border border-border bg-white flex items-center justify-center overflow-hidden">
+                    <img src={form.logo_url} alt="Company logo" className="max-w-full max-h-full object-contain" />
+                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => logoInputRef.current?.click()} className="btn-secondary text-sm flex items-center gap-1.5">
+                        <Upload size={14} />Replace
+                      </button>
+                      <button type="button" onClick={handleLogoRemove} className="btn-secondary text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400">
+                        <X size={14} />Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  onClick={() => !readOnly && logoInputRef.current?.click()}
+                  className={`w-40 h-20 rounded-lg border-2 border-dashed border-border bg-app flex flex-col items-center justify-center gap-1 text-faint ${readOnly ? "" : "hover:border-indigo-400 hover:text-indigo-500 cursor-pointer transition-colors"}`}
+                >
+                  {logoUploading ? (
+                    <span className="text-xs">Uploading...</span>
+                  ) : (
+                    <>
+                      <ImageIcon size={20} />
+                      <span className="text-xs">Upload logo</span>
+                    </>
+                  )}
+                </div>
+              )}
+              <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={handleLogoUpload} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Tax ID / VAT Number" value={form.tax_id} onChange={(v) => set("tax_id", v)} placeholder="e.g. GB123456789" />
+              <Field label="Payment Terms" value={form.payment_terms} onChange={(v) => set("payment_terms", v)} placeholder="e.g. Net 30, Due on Receipt" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Bank Details</label>
+              <textarea className="input" rows={3} value={form.bank_details || ""} onChange={(e) => set("bank_details", e.target.value)} placeholder="Bank name, Account number, Sort code / IBAN&#10;Displayed on invoices for wire transfer payments" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Invoice Footer Note</label>
+              <textarea className="input" rows={2} value={form.footer_note || ""} onChange={(e) => set("footer_note", e.target.value)} placeholder="e.g. Thank you for your business! Terms and conditions apply." />
+            </div>
+          </fieldset>
+          {!readOnly && <SaveButton loading={saving} />}
+        </form>
+      )}
+
       {tab === "password" && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -277,13 +371,13 @@ export default function Settings() {
   );
 }
 
-function Field({ label, value, onChange, type = "text", description }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; description?: string;
+function Field({ label, value, onChange, type = "text", description, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; description?: string; placeholder?: string;
 }) {
   return (
     <div>
       <label className="block text-sm font-medium text-ink mb-1">{label}</label>
-      <input type={type} className="input" value={value || ""} onChange={(e) => onChange(e.target.value)} />
+      <input type={type} className="input" value={value || ""} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
       {description && <p className="text-xs text-faint mt-1">{description}</p>}
     </div>
   );

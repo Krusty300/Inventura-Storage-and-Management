@@ -398,6 +398,13 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
         joinedload(Product.stock_lines).joinedload(StockLine.location),
     ).filter(func.lower(Product.barcode) == barcode.lower(), Product.is_active == True).first()
     if not p:
+        p = db.query(Product).options(
+            joinedload(Product.category), joinedload(Product.supplier),
+            joinedload(Product.default_location),
+            joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
+            joinedload(Product.stock_lines).joinedload(StockLine.location),
+        ).filter(func.lower(Product.sku) == barcode.lower(), Product.is_active == True).first()
+    if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     out = ProductOut.model_validate(p)
     out.location = _effective_location(p)
@@ -962,6 +969,83 @@ def upload_product_image(product_id: int, file: UploadFile = File(...), db: Sess
     with open(filepath, "wb") as f:
         f.write(content)
     p.image_url = f"/uploads/{filename}"
+    from app.models.product_image import ProductImage
+    max_sort = db.query(func.coalesce(func.max(ProductImage.sort_order), 0)).filter(ProductImage.product_id == product_id).scalar()
+    img = ProductImage(product_id=product_id, url=f"/uploads/{filename}", sort_order=max_sort + 1)
+    db.add(img)
     db.commit()
     broadcast_change("product", "updated")
     return {"image_url": p.image_url}
+
+
+@router.post("/{product_id}/images")
+def upload_product_images(product_id: int, files: list[UploadFile] = File(...), db: Session = Depends(get_db), user=Depends(require_permission("products.upload"))):
+    from app.models.product_image import ProductImage
+    p = get_or_404(Product, product_id, db)
+    max_sort = db.query(func.coalesce(func.max(ProductImage.sort_order), 0)).filter(ProductImage.product_id == product_id).scalar()
+    uploaded = []
+    for file in files:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            continue
+        content = file.file.read()
+        if not content or len(content) > MAX_UPLOAD_SIZE:
+            continue
+        detected = detect_image_ext(content)
+        if detected is None:
+            continue
+        if ext in JPEG_EXTENSIONS:
+            matches = detected in JPEG_EXTENSIONS
+        else:
+            matches = detected == ext
+        if not matches:
+            continue
+        filename = f"{uuid.uuid4().hex}{detected}"
+        filepath = UPLOAD_DIR / filename
+        with open(filepath, "wb") as f:
+            f.write(content)
+        max_sort += 1
+        img = ProductImage(product_id=product_id, url=f"/uploads/{filename}", sort_order=max_sort)
+        db.add(img)
+        uploaded.append(img)
+    if uploaded and not p.image_url:
+        p.image_url = uploaded[0].url
+    db.commit()
+    for img in uploaded:
+        db.refresh(img)
+    return [{"id": img.id, "url": img.url, "sort_order": img.sort_order} for img in uploaded]
+
+
+@router.delete("/{product_id}/images/{image_id}")
+def delete_product_image(product_id: int, image_id: int, db: Session = Depends(get_db), user=Depends(require_permission("products.upload"))):
+    from app.models.product_image import ProductImage
+    p = get_or_404(Product, product_id, db)
+    img = db.query(ProductImage).filter(ProductImage.id == image_id, ProductImage.product_id == product_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        file_path = UPLOAD_DIR / Path(img.url).name
+        if file_path.exists():
+            file_path.unlink()
+    except Exception:
+        pass
+    url = img.url
+    db.delete(img)
+    if p.image_url == url:
+        remaining = db.query(ProductImage).filter(ProductImage.product_id == product_id).order_by(ProductImage.sort_order).first()
+        p.image_url = remaining.url if remaining else ""
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/{product_id}/images/reorder")
+def reorder_product_images(product_id: int, body: dict, db: Session = Depends(get_db), user=Depends(require_permission("products.upload"))):
+    from app.models.product_image import ProductImage
+    p = get_or_404(Product, product_id, db)
+    image_ids = body.get("image_ids", [])
+    for idx, img_id in enumerate(image_ids):
+        img = db.query(ProductImage).filter(ProductImage.id == img_id, ProductImage.product_id == product_id).first()
+        if img:
+            img.sort_order = idx
+    db.commit()
+    return {"ok": True}

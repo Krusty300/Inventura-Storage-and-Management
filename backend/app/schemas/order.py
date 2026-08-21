@@ -45,6 +45,7 @@ class OrderItemOut(BaseModel):
     unit_price: float
     product_name: str = ""
     is_serialized: bool = False
+    sku: str = ""
 
     class Config:
         from_attributes = True

@@ -23,6 +23,7 @@ class UserOut(BaseModel):
     role: str
     permissions: list[str] | None = None
     is_active: bool = True
+    is_approved: bool = False
     avatar_url: str = ""
     last_login_at: datetime | None = None
     created_at: datetime

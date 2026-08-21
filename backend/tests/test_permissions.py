@@ -1,4 +1,4 @@
-from tests.conftest import client
+from tests.conftest import client, create_test_user
 
 
 def _register(auth_headers, username, email, password="testpass123"):
@@ -183,13 +183,7 @@ def test_admin_can_manage_products_and_settings(auth_headers):
 # --- Unknown roles are denied --------------------------------------------
 
 def test_unknown_role_has_no_permissions():
-    client.post("/api/auth/register", json={"username": "ghost", "email": "ghost@example.com", "password": "testpass123"})
-    from tests.conftest import TestingSessionLocal
-    from app.models.user import User
-    db = TestingSessionLocal()
-    db.query(User).filter(User.username == "ghost").update({"role": "superuser"})
-    db.commit()
-    db.close()
+    create_test_user("ghost", "ghost@example.com", "testpass123", "superuser")
     token = client.post("/api/auth/login", json={"username": "ghost", "password": "testpass123"}).json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     assert client.get("/api/products", headers=headers).status_code == 403
@@ -242,3 +236,115 @@ def test_admin_cannot_set_unknown_permission(auth_headers):
     uid = created.json()["id"]
     resp = client.put(f"/api/users/{uid}", json={"permissions": ["nonsense.none"]}, headers=auth_headers)
     assert resp.status_code == 400
+
+
+# --- Manager role ----------------------------------------------------------
+
+def _register_manager(auth_headers, username, email, password="testpass123"):
+    client.post("/api/users", json={
+        "username": username, "email": email, "password": password, "role": "manager",
+    }, headers=auth_headers)
+    token = client.post("/api/auth/login", json={"username": username, "password": password}).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_manager_can_view_products_and_reports(auth_headers):
+    mgr = _register_manager(auth_headers, "mgr_view", "mgr_view@example.com")
+    assert client.get("/api/products", headers=mgr).status_code == 200
+    assert client.get("/api/reports/inventory-valuation", headers=mgr).status_code == 200
+    assert client.get("/api/dashboard/stats", headers=mgr).status_code == 200
+
+
+def test_manager_can_update_settings(auth_headers):
+    mgr = _register_manager(auth_headers, "mgr_settings", "mgr_settings@example.com")
+    assert client.put("/api/settings", json={"store_name": "Mgr Updated"}, headers=mgr).status_code == 200
+
+
+def test_manager_can_create_sale(auth_headers):
+    prod = _make_product(auth_headers, sku="MGR-SALE")
+    mgr = _register_manager(auth_headers, "mgr_sale", "mgr_sale@example.com")
+    resp = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}],
+    }, headers=mgr)
+    assert resp.status_code == 201
+
+
+def test_manager_can_refund_sale(auth_headers):
+    prod = _make_product(auth_headers, sku="MGR-REFUND")
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}],
+    }, headers=auth_headers).json()
+    mgr = _register_manager(auth_headers, "mgr_refund", "mgr_refund@example.com")
+    assert client.put(f"/api/sales/{sale['id']}/refund", headers=mgr).status_code == 200
+
+
+def test_manager_can_manage_users(auth_headers):
+    mgr = _register_manager(auth_headers, "mgr_users", "mgr_users@example.com")
+    assert client.get("/api/users", headers=mgr).status_code == 200
+    created = client.post("/api/users", json={
+        "username": "mgr_created", "email": "mgr_created@example.com", "password": "testpass123", "role": "worker",
+    }, headers=mgr)
+    assert created.status_code == 201
+
+
+def test_manager_can_approve_and_reject_users(auth_headers):
+    user = create_test_user("mgr_approvee", "mgr_ap@example.com", "pass123", "worker", approved=False)
+    mgr = _register_manager(auth_headers, "mgr_approve", "mgr_approve@example.com")
+    resp = client.post(f"/api/users/{user.id}/approve", json={"role": "worker"}, headers=mgr)
+    assert resp.status_code == 200
+    assert resp.json()["is_approved"] is True
+
+    user2 = create_test_user("mgr_rejectee", "mgr_rj@example.com", "pass123", "worker", approved=False)
+    resp = client.post(f"/api/users/{user2.id}/reject", headers=mgr)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is False
+
+
+def test_manager_cannot_delete_users(auth_headers):
+    resp = client.post("/api/users", json={
+        "username": "mgr_deltarget", "email": "mgr_del@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers)
+    worker_id = resp.json()["id"]
+    mgr = _register_manager(auth_headers, "mgr_del", "mgr_del2@example.com")
+    assert client.delete(f"/api/users/{worker_id}", headers=mgr).status_code == 403
+
+
+def test_manager_cannot_assign_admin_role_on_create(auth_headers):
+    mgr = _register_manager(auth_headers, "mgr_nocreateadmin", "mgr_nocreateadmin@example.com")
+    resp = client.post("/api/users", json={
+        "username": "forced_admin", "email": "forced_admin@example.com", "password": "testpass123", "role": "admin",
+    }, headers=mgr)
+    assert resp.status_code == 403
+
+
+def test_manager_cannot_assign_admin_role_on_update(auth_headers):
+    worker = client.post("/api/users", json={
+        "username": "mgr_updtarget", "email": "mgr_upd@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers).json()
+    mgr = _register_manager(auth_headers, "mgr_upd", "mgr_upd2@example.com")
+    resp = client.put(f"/api/users/{worker['id']}", json={"role": "admin"}, headers=mgr)
+    assert resp.status_code == 403
+
+
+def test_manager_cannot_assign_admin_role_on_approve(auth_headers):
+    user = create_test_user("mgr_apadmin", "mgr_apadm@example.com", "pass123", "worker", approved=False)
+    mgr = _register_manager(auth_headers, "mgr_apadm", "mgr_apadm2@example.com")
+    resp = client.post(f"/api/users/{user.id}/approve", json={"role": "admin"}, headers=mgr)
+    assert resp.status_code == 403
+
+
+def test_manager_can_create_manager_user(auth_headers):
+    mgr = _register_manager(auth_headers, "mgr_createmgr", "mgr_createmgr@example.com")
+    resp = client.post("/api/users", json={
+        "username": "mgr_created_mgr", "email": "mgr_created_mgr@example.com", "password": "testpass123", "role": "manager",
+    }, headers=mgr)
+    assert resp.status_code == 201
+
+
+def test_manager_can_update_user_to_manager_role(auth_headers):
+    worker = client.post("/api/users", json={
+        "username": "mgr_promote", "email": "mgr_promote@example.com", "password": "testpass123", "role": "worker",
+    }, headers=auth_headers).json()
+    mgr = _register_manager(auth_headers, "mgr_promoter", "mgr_promoter@example.com")
+    resp = client.put(f"/api/users/{worker['id']}", json={"role": "manager"}, headers=mgr)
+    assert resp.status_code == 200

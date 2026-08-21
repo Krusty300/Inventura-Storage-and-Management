@@ -1,5 +1,5 @@
 import type { Receipt } from "../types";
-import SlideOver from "./SlideOver";
+import Modal from "./Modal";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
@@ -14,7 +14,7 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   return (
-    <SlideOver open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} wide ariaLabel={`Receipt ${receipt.receipt_number}`}>
+    <Modal open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} wide>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
@@ -38,6 +38,7 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
                 <th className="px-4 py-2 font-medium text-muted">Product</th>
                 <th className="px-4 py-2 font-medium text-muted">Qty</th>
                 <th className="px-4 py-2 font-medium text-muted">Unit Cost</th>
+                <th className="px-4 py-2 font-medium text-muted text-right">Amount</th>
                 <th className="px-4 py-2 font-medium text-muted">Lot</th>
                 <th className="px-4 py-2 font-medium text-muted">Location</th>
               </tr>
@@ -48,8 +49,9 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
                   <td className="px-4 py-2 font-medium">{item.product_name}</td>
                   <td className="px-4 py-2">{item.quantity}</td>
                   <td className="px-4 py-2">{formatCurrency(item.unit_cost, currencySymbol)}</td>
-                  <td className="px-4 py-2 text-muted">{item.lot_number || "—"}</td>
-                  <td className="px-4 py-2 text-muted">{item.location_name || "—"}</td>
+                  <td className="px-4 py-2 text-right">{formatCurrency(item.unit_cost * item.quantity, currencySymbol)}</td>
+                  <td className="px-4 py-2 text-muted">{item.lot_number || "\u2014"}</td>
+                  <td className="px-4 py-2 text-muted">{item.location_name || "\u2014"}</td>
                 </tr>
               ))}
             </tbody>
@@ -63,6 +65,6 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </SlideOver>
+    </Modal>
   );
 }

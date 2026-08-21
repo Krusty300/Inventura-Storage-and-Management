@@ -12,12 +12,12 @@ from app.models.user import User
 from app.schemas.user import UserOut
 from app.services.auth import get_current_user, require_permission, hash_password, verify_password
 from app.services.password_policy import validate_password
-from app.services.permissions import ALL_PERMISSIONS
+from app.services.permissions import ALL_PERMISSIONS, has_permission
 from app.utils import log_activity
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-VALID_ROLES = {"admin", "worker"}
+VALID_ROLES = {"admin", "manager", "worker"}
 
 
 class UserUpdateAdmin(BaseModel):
@@ -57,6 +57,77 @@ def _get_user_or_404(db: Session, user_id: int, include_inactive: bool = False) 
 
 def _admin_count(db: Session) -> int:
     return db.query(User).filter(User.is_active == True, User.role == "admin").count()
+
+
+class UserApproval(BaseModel):
+    role: Optional[str] = None
+
+
+@router.get("/pending", response_model=list[UserOut])
+def list_pending_users(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("users.view")),
+):
+    users = db.query(User).filter(User.is_approved == False, User.is_active == True).order_by(User.created_at.asc()).all()
+    return [UserOut.model_validate(u) for u in users]
+
+
+@router.post("/{user_id}/approve", response_model=UserOut)
+def approve_user(
+    user_id: int,
+    data: UserApproval = UserApproval(),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users.update")),
+):
+    u = _get_user_or_404(db, user_id, include_inactive=True)
+    if u.is_approved:
+        raise HTTPException(status_code=400, detail="User is already approved")
+    if not u.is_active:
+        raise HTTPException(status_code=400, detail="Cannot approve a deactivated user")
+    u.is_approved = True
+    if data.role and data.role in VALID_ROLES:
+        if data.role == "admin" and not has_permission(current_user.role, "users.assign_admin_role"):
+            raise HTTPException(status_code=403, detail="Only admins can assign the admin role")
+        u.role = data.role
+    db.commit()
+    db.refresh(u)
+    from app.services.notify import create_notification
+    create_notification(
+        db, u.id,
+        "Account approved",
+        f"Your account has been approved by {current_user.username}. You can now sign in.",
+        type="success",
+        link="/login",
+    )
+    log_activity(db, current_user.id, current_user.username, "approve", "user", u.id,
+                 f"Approved user '{u.username}' (role={u.role})")
+    db.commit()
+    return u
+
+
+@router.post("/{user_id}/reject", response_model=UserOut)
+def reject_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("users.update")),
+):
+    u = _get_user_or_404(db, user_id, include_inactive=True)
+    if u.is_approved:
+        raise HTTPException(status_code=400, detail="Cannot reject an already approved user")
+    u.is_active = False
+    db.commit()
+    db.refresh(u)
+    from app.services.notify import create_notification
+    create_notification(
+        db, u.id,
+        "Account rejected",
+        f"Your account registration was rejected by {current_user.username}.",
+        type="warning",
+    )
+    log_activity(db, current_user.id, current_user.username, "reject", "user", u.id,
+                 f"Rejected user '{u.username}'")
+    db.commit()
+    return u
 
 
 @router.get("")
@@ -116,6 +187,8 @@ def create_user(
 ):
     if data.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(VALID_ROLES))}")
+    if data.role == "admin" and not has_permission(current_user.role, "users.assign_admin_role"):
+        raise HTTPException(status_code=403, detail="Only admins can assign the admin role")
     _validate_permissions(data.permissions)
     password_error = validate_password(data.password)
     if password_error:
@@ -128,6 +201,7 @@ def create_user(
         password_hash=hash_password(data.password),
         role=data.role,
         permissions=data.permissions,
+        is_approved=True,
     )
     db.add(user)
     db.commit()
@@ -153,6 +227,8 @@ def update_user(
     if "role" in updates:
         if updates["role"] not in VALID_ROLES:
             raise HTTPException(status_code=400, detail=f"Role must be one of: {', '.join(sorted(VALID_ROLES))}")
+        if updates["role"] == "admin" and not has_permission(current_user.role, "users.assign_admin_role"):
+            raise HTTPException(status_code=403, detail="Only admins can assign the admin role")
         if u.id == current_user.id and updates["role"] != u.role:
             raise HTTPException(status_code=400, detail="You cannot change your own role")
         if u.role == "admin" and updates["role"] != "admin" and _admin_count(db) <= 1:

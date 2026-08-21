@@ -126,13 +126,24 @@ async def stk_callback(request: Request, db=Depends(get_db)):
     if parsed["checkout_request_id"]:
         sale = db.query(Sale).filter(Sale.payment_checkout_request_id == parsed["checkout_request_id"]).first()
         if sale:
-            sale.payment_status = "completed" if parsed["result_code"] == "0" else "failed"
             if parsed["result_code"] == "0":
+                sale.payment_status = "completed"
                 sale.status = "completed"
+                receipt = parsed.get("mpesa_receipt_number", "")
+                if receipt:
+                    sale.payment_reference = receipt
+            else:
+                sale.payment_status = "failed"
+                if sale.status == "pending":
+                    from app.routers.sales import _restore_stock_for_sale
+                    _restore_stock_for_sale(db, sale, reason="STK failure")
+                    sale.status = "cancelled"
+                    sale.payment_status = "cancelled"
             from app.utils import log_activity, broadcast_change
             db.commit()
             log_activity(db, 0, "system", "update", "sale", sale.id, f"STK callback: {parsed['result_desc']}")
             broadcast_change("sale", "updated")
+            broadcast_change("stock_movement", "created")
     return {"ResultCode": 0, "ResultDesc": "OK"}
 
 
@@ -146,9 +157,11 @@ async def b2c_callback(request: Request, db=Depends(get_db)):
     if parsed["conversation_id"]:
         sale = db.query(Sale).filter(Sale.refund_checkout_request_id == parsed["conversation_id"]).first()
         if sale:
-            sale.refund_status = "completed" if parsed["result_code"] == "0" else "failed"
             if parsed["result_code"] == "0":
+                sale.refund_status = "completed"
                 sale.refunded_at = datetime.now(timezone.utc)
+            elif sale.refund_status != "completed":
+                sale.refund_status = "failed"
             db.commit()
             log_activity(db, 0, "system", "update", "sale", sale.id, f"B2C callback: {parsed['result_desc']}")
             broadcast_change("sale", "updated")

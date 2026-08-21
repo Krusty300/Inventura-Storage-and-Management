@@ -104,6 +104,8 @@ def run_migrations():
             conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500) DEFAULT ''"))
         if users_cols is not None and "permissions" not in users_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN permissions TEXT"))
+        if users_cols is not None and "is_approved" not in users_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN DEFAULT 0"))
         if serial_cols is not None and "lpn_id" not in serial_cols:
             conn.execute(text("ALTER TABLE serial_numbers ADD COLUMN lpn_id INTEGER"))
         if qc_cols is not None and "location_id" not in qc_cols:
@@ -201,6 +203,11 @@ def run_migrations():
                 ("fiscal_year_start_month", "INTEGER DEFAULT 1"),
                 ("default_items_per_page", "INTEGER DEFAULT 50"),
                 ("date_format", "VARCHAR(20) DEFAULT 'YYYY-MM-DD'"),
+                ("logo_url", "VARCHAR(500) DEFAULT ''"),
+                ("tax_id", "VARCHAR(100) DEFAULT ''"),
+                ("payment_terms", "VARCHAR(100) DEFAULT ''"),
+                ("bank_details", "TEXT DEFAULT ''"),
+                ("footer_note", "TEXT DEFAULT ''"),
             ):
                 if col not in settings_cols:
                     conn.execute(text(f"ALTER TABLE settings ADD COLUMN {col} {ddl}"))
@@ -290,6 +297,17 @@ def run_migrations():
                 "user_id INTEGER NOT NULL REFERENCES users(id), "
                 "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
             ))
+
+        if "product_images" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE product_images ("
+                "id INTEGER PRIMARY KEY, "
+                "product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE, "
+                "url VARCHAR(500) NOT NULL, "
+                "sort_order INTEGER DEFAULT 0, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            conn.execute(text("CREATE INDEX ix_product_images_product_id ON product_images(product_id)"))
 
 
 def get_db():

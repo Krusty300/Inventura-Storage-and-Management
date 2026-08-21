@@ -20,7 +20,7 @@ export default function AuthLayout({ title, subtitle, children, footer }: Props)
         <div className="absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-black/20 blur-3xl" />
         <div className="absolute top-1/2 left-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#863bff]/30 blur-3xl" />
         <div className="relative flex items-center gap-3">
-          <img src="/favicon.svg" alt={`${storeName} logo`} className="h-10 w-10" />
+          <img src="/favicon.svg" alt={`${storeName} logo`} className="h-10 w-10" loading="eager" />
           <span className="text-xl font-bold">{storeName}</span>
         </div>
         <div className="relative space-y-8">
@@ -50,7 +50,7 @@ export default function AuthLayout({ title, subtitle, children, footer }: Props)
         <div className="w-full max-w-md mx-auto">
           <div className="lg:hidden flex justify-center mb-8">
             <div className="flex items-center gap-3">
-              <img src="/favicon.svg" alt={`${storeName} logo`} className="h-8 w-8" />
+              <img src="/favicon.svg" alt={`${storeName} logo`} className="h-8 w-8" loading="eager" />
               <span className="text-2xl font-bold text-ink">{storeName}</span>
             </div>
           </div>

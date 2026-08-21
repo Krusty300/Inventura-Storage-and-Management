@@ -1,13 +1,12 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useState } from "react";
-import { Eye, ClipboardCheck, Plus, Printer, Trash2 } from "lucide-react";
+import { Eye, ClipboardCheck, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { CycleCount, Location, PaginatedResponse } from "../types";
 import Modal from "../components/Modal";
-import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -17,6 +16,8 @@ import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { formatCurrency } from "../utils/currency";
+import { useSettings } from "../hooks/useSettings";
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -69,6 +70,7 @@ export default function CycleCounts() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by count number, location, or notes..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search cycle counts" />
         </div>
       </div>
@@ -293,8 +295,10 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 
 function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () => void }) {
   const formatDate = useDateFormat();
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
   return (
-    <SlideOver open onClose={onClose} title={`Cycle Count ${count.cc_number}`} wide ariaLabel="Cycle count detail">
+    <Modal open onClose={onClose} title={`Cycle Count ${count.cc_number}`} xwide>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
@@ -310,29 +314,37 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
             <p className="font-medium">{count.completed_at ? formatDate(count.completed_at) : "—"}</p>
           </div>
         </div>
-        <div className="border border-border rounded-lg overflow-hidden">
+        <div className="border border-border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-2 font-medium text-muted">Product</th>
-                <th className="px-4 py-2 font-medium text-muted">Expected</th>
-                <th className="px-4 py-2 font-medium text-muted">Counted</th>
-                <th className="px-4 py-2 font-medium text-muted">Variance</th>
-                <th className="px-4 py-2 font-medium text-muted">Status</th>
+                <th className="px-3 py-2 font-medium text-muted">Product</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Expected</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Counted</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Variance</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Unit Cost</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Variance $</th>
+                <th className="px-3 py-2 font-medium text-muted">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {count.items.map((item) => (
                 <tr key={item.id}>
-                  <td className="px-4 py-2 font-medium">{item.product_name}</td>
-                  <td className="px-4 py-2">{item.expected_qty}</td>
-                  <td className="px-4 py-2">{item.counted_qty ?? "—"}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2 font-medium">{item.product_name}</td>
+                  <td className="px-3 py-2 text-right">{item.expected_qty}</td>
+                  <td className="px-3 py-2 text-right">{item.counted_qty ?? "—"}</td>
+                  <td className="px-3 py-2 text-right">
                     <span className={item.variance !== 0 ? `${item.variance > 0 ? "text-orange-600 dark:text-orange-400" : "text-red-600 dark:text-red-400"} font-medium` : "text-muted"}>
                       {item.variance !== 0 && item.variance > 0 ? "+" : ""}{item.variance}
                     </span>
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2 text-right">{formatCurrency(item.unit_cost, currencySymbol)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <span className={item.variance !== 0 ? `${item.variance > 0 ? "text-orange-600 dark:text-orange-400" : "text-red-600 dark:text-red-400"} font-medium` : "text-muted"}>
+                      {formatCurrency(item.unit_cost * item.variance, currencySymbol)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
                     <span className={`badge ${statusBadge(item.status)}`}>{item.status.replace("_", " ")}</span>
                   </td>
                 </tr>
@@ -344,7 +356,7 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </SlideOver>
+    </Modal>
   );
 }
 

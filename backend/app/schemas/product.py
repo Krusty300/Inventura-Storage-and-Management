@@ -54,6 +54,15 @@ class ProductUpdate(BaseModel):
     is_serialized: Optional[bool] = None
 
 
+class ImageOut(BaseModel):
+    id: int
+    url: str
+    sort_order: int
+
+    class Config:
+        from_attributes = True
+
+
 class ProductOut(BaseModel):
     id: int
     sku: str
@@ -88,6 +97,7 @@ class ProductOut(BaseModel):
     expired_lot_qty: int = 0
     sellable_qty: int = 0
     reserved_qty: int = 0
+    images: list[ImageOut] = []
     variants: list["ProductOut"] = []
 
     class Config:

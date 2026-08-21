@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useRef, useState } from "react";
-import { Eye, Pencil, Trash2, XCircle } from "lucide-react";
+import { Eye, Pencil, Trash2, XCircle, Search } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
@@ -98,6 +98,7 @@ export default function Shipments() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by shipment number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search shipments" />
         </div>
         <select className="select w-44" aria-label="Filter by status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>

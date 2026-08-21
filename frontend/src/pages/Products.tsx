@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, PackagePlus } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, PackagePlus, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Category, PaginatedResponse, Product, StockMovement } from "../types";
@@ -250,6 +250,7 @@ export default function Products() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input
             className="input pl-10"
             placeholder="Search by Product Name and SKU ..."
@@ -344,8 +345,8 @@ export default function Products() {
                       <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} aria-label={`Select ${p.display_name}`} />
                     </td>
                     <td className="px-4 py-3">
-                      {p.image_url ? (
-                        <img src={p.image_url} alt="" className="w-10 h-10 rounded object-cover" />
+                      {(p.images?.length > 0 ? p.images[0].url : p.image_url) ? (
+                        <img src={p.images?.length > 0 ? p.images[0].url : p.image_url} alt="" className="w-10 h-10 rounded object-cover" loading="lazy" />
                       ) : (
                         <div className="w-10 h-10 rounded bg-subtle flex items-center justify-center text-xs text-faint">N/A</div>
                       )}
@@ -473,7 +474,7 @@ export default function Products() {
         />
       )}
 
-      {viewing && <ProductDetail product={viewing} onClose={() => setViewing(null)} onAddVariant={(p) => { setViewing(null); setVariantParent(p); setEditing(null); setShowForm(true); }} />}
+      {viewing && <ProductDetail product={viewing} onClose={() => setViewing(null)} onAddVariant={(p) => { setViewing(null); setVariantParent(p); setEditing(null); setShowForm(true); }} onEdit={() => { setEditing(viewing); setViewing(null); setShowForm(true); }} />}
 
       {adjusting && (
         <AdjustStockModal

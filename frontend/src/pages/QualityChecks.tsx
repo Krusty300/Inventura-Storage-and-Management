@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useEffect, useState } from "react";
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2, Search } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE } from "../utils/constants";
@@ -82,6 +82,7 @@ export default function QualityChecks() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by QC number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search quality checks" />
         </div>
         <select className="select w-44" value={result} onChange={(e) => { setResult(e.target.value); setPage(1); }} aria-label="Filter by result">

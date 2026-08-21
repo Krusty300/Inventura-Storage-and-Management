@@ -46,6 +46,7 @@ class CycleCountItemOut(BaseModel):
     status: str = "pending"
     product_name: str = ""
     current_on_hand: Optional[int] = None
+    unit_cost: float = 0.0
 
     class Config:
         from_attributes = True

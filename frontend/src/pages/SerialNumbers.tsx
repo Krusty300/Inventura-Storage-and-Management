@@ -2,7 +2,7 @@ import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Fingerprint, Search, ShieldCheck, ShieldX } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, SerialNumber, StockMovement } from "../types";
@@ -129,6 +129,7 @@ export default function SerialNumbers() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by serial number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search serial numbers" />
         </div>
         <div role="group" aria-label="Filter by status" className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">

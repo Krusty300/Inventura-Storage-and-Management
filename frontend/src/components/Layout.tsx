@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Package,
@@ -102,8 +102,7 @@ export default function Layout() {
   );
   const sidebarWidthRef = useRef(sidebarWidth);
   const location = useLocation();
-  const navigate = useNavigate();
-  const { logout, user, can } = useAuth();
+  const { logout, completeLogout, loggingOut, user, can } = useAuth();
   const { theme, setTheme } = useTheme();
   const isDesktop = useIsDesktop();
   const visibleNavItems = navItems.filter((item) => can(item.perm));
@@ -126,7 +125,7 @@ export default function Layout() {
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    setTimeout(() => completeLogout(), 600);
   };
 
   const startResize = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -181,7 +180,7 @@ export default function Layout() {
             <Link to="/profile" className="flex items-center gap-2 min-w-0">
               {user?.avatar_url ? (
                 <img src={user.avatar_url} alt={user.username}
-                  className="h-7 w-7 rounded-full object-cover border border-border shrink-0" />
+                  className="h-7 w-7 rounded-full object-cover border border-border shrink-0" loading="lazy" />
               ) : (
                 <span
                   className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400
@@ -257,7 +256,7 @@ export default function Layout() {
             <Link to="/profile" className="hidden sm:flex items-center gap-2 text-sm text-muted hover:text-ink">
               {user?.avatar_url ? (
                 <img src={user.avatar_url} alt={user.username}
-                  className="h-7 w-7 rounded-full object-cover border border-border" />
+                  className="h-7 w-7 rounded-full object-cover border border-border" loading="lazy" />
               ) : (
                 <span
                   className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400
@@ -276,6 +275,15 @@ export default function Layout() {
           </div>
         </main>
       </div>
+
+      {loggingOut && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-app/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-3 px-6 py-3 rounded-xl bg-surface border border-border shadow-lg">
+            <div className="h-4 w-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            <span className="text-sm font-medium text-ink">Signing out</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

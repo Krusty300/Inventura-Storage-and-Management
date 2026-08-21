@@ -4,13 +4,14 @@ import {
   Search, Pin, PinOff, CheckCircle2, Circle, Trash2, Edit3, Clock,
   AlertTriangle, Tag as TagIcon, Link as LinkIcon, StickyNote, ListTodo, Bell,
   LayoutGrid, List, Columns3, X as XIcon, User as UserIcon, Image as ImageIcon,
-  Copy, Archive, ArchiveRestore, BookTemplate,
+  Copy, Archive, ArchiveRestore, BookTemplate, ChevronUp, ChevronDown,
 } from "lucide-react";
 import Markdown from "react-markdown";
 import api from "../api/client";
 import type { Note, NoteTag, NoteTemplate, User, PaginatedResponse } from "../types";
 import Modal from "../components/Modal";
 import SlideOver from "../components/SlideOver";
+import NoteTemplateForm from "../components/NoteTemplateForm";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import ErrorState from "../components/ErrorState";
@@ -42,7 +43,7 @@ type ViewMode = "list" | "card" | "kanban";
 const EMPTY_FORM: NoteForm = { title: "", body: "", category: "note", priority: "normal", is_pinned: false, due_date: "", recurrence: "none", assigned_to_id: null, tag_ids: [] };
 
 const CATEGORY_ICONS: Record<string, typeof StickyNote> = { note: StickyNote, reminder: Bell, todo: ListTodo };
-const PRIORITY_COLORS: Record<string, string> = { low: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400", normal: "bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400", high: "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400", urgent: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400" };
+const PRIORITY_COLORS: Record<string, string> = { low: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400", normal: "bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400", high: "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400", urgent: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 ring-1 ring-red-300 dark:ring-red-500/40" };
 const CATEGORY_COLORS: Record<string, string> = { note: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400", reminder: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400", todo: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" };
 const KANBAN_COLUMNS: { key: string; label: string; icon: typeof StickyNote }[] = [
   { key: "note", label: "Notes", icon: StickyNote },
@@ -78,6 +79,12 @@ export default function Notes() {
   const [category, setCategory] = useState("");
   const [priority, setPriority] = useState("");
   const [completedFilter, setCompletedFilter] = useState<"all" | "active" | "completed" | "archived">("all");
+  const [sortField, setSortField] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [tagFilter, setTagFilter] = useState("");
+  const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [dueDateFrom, setDueDateFrom] = useState("");
+  const [dueDateTo, setDueDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [showForm, setShowForm] = useState(false);
@@ -92,8 +99,8 @@ export default function Notes() {
   const [editImageFile, setEditImageFile] = useState<File | null>(null);
   const [confirmTagDelete, setConfirmTagDelete] = useState<NoteTag | null>(null);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
-  const [templateName, setTemplateName] = useState("");
-  const [editingTemplate, setEditingTemplate] = useState<NoteTemplate | null>(null);
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [templateEditTarget, setTemplateEditTarget] = useState<NoteTemplate | null>(null);
   const imagePreviewUrl = useMemo(() => editImageFile ? URL.createObjectURL(editImageFile) : null, [editImageFile]);
   useEffect(() => { return () => { if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl); }; }, [imagePreviewUrl]);
 
@@ -104,15 +111,19 @@ export default function Notes() {
   const { pageSize, setPageSize } = usePageSize();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const hasFilters = !!debouncedSearch || !!category || !!priority || completedFilter !== "all";
+  const hasFilters = !!debouncedSearch || !!category || !!priority || completedFilter !== "all" || !!tagFilter || !!assigneeFilter || !!dueDateFrom || !!dueDateTo;
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["notes", debouncedSearch, category, priority, completedFilter, page, pageSize],
+    queryKey: ["notes", debouncedSearch, category, priority, completedFilter, sortField, sortOrder, tagFilter, assigneeFilter, dueDateFrom, dueDateTo, page, pageSize],
     queryFn: async () => {
-      const params: Record<string, string | number | boolean> = { skip: (page - 1) * pageSize, limit: pageSize };
+      const params: Record<string, string | number | boolean> = { skip: (page - 1) * pageSize, limit: pageSize, sort: sortField, order: sortOrder };
       if (debouncedSearch) params.search = debouncedSearch;
       if (category) params.category = category;
       if (priority) params.priority = priority;
+      if (tagFilter) params.tag_id = tagFilter;
+      if (assigneeFilter) params.assigned_to = assigneeFilter;
+      if (dueDateFrom) params.due_after = dueDateFrom;
+      if (dueDateTo) params.due_before = dueDateTo;
       if (completedFilter === "archived") params.is_archived = true;
       else if (completedFilter === "active") { params.is_completed = false; params.is_archived = false; }
       else if (completedFilter === "completed") { params.is_completed = true; params.is_archived = false; }
@@ -142,6 +153,16 @@ export default function Notes() {
   const unpinnedNotes = notes.filter((n) => !n.is_pinned && !n.is_completed);
   const completedNotes = notes.filter((n) => n.is_completed);
 
+  const { data: kanbanData } = useQuery({
+    queryKey: ["notes-kanban"],
+    queryFn: async () => {
+      const { data } = await api.get("/notes", { params: { skip: 0, limit: 500, is_completed: false, is_archived: false } });
+      return (data.items || []) as Note[];
+    },
+    enabled: viewMode === "kanban",
+  });
+  const kanbanNotes = kanbanData ?? (viewMode === "kanban" ? [] : notes);
+
   const { selectedIds, toggleSelect, clearSelection } = useBulkSelection(notes);
 
   const createMutation = useMutation({
@@ -151,7 +172,7 @@ export default function Notes() {
       if (payload.assigned_to_id) body.assigned_to_id = payload.assigned_to_id;
       return api.post("/notes", body);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setShowForm(false); setForm(EMPTY_FORM); addToast("Note created", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); setShowForm(false); setForm(EMPTY_FORM); addToast("Note created", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to create note"), "error"),
   });
 
@@ -170,31 +191,31 @@ export default function Notes() {
       if ("image_url" in payload) body.image_url = payload.image_url;
       return api.put(`/notes/${id}`, body);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); addToast("Note updated", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); addToast("Note updated", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to update note"), "error"),
   });
 
   const completeMutation = useMutation({
     mutationFn: (id: number) => api.patch(`/notes/${id}/complete`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); },
     onError: (err) => addToast(errorMessage(err, "Failed to update note"), "error"),
   });
 
   const pinMutation = useMutation({
     mutationFn: (id: number) => api.patch(`/notes/${id}/pin`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); },
     onError: (err) => addToast(errorMessage(err, "Failed to update note"), "error"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/notes/${id}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setConfirmDelete(null); setViewingNote(null); addToast("Note deleted", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); setConfirmDelete(null); setViewingNote(null); addToast("Note deleted", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to delete note"), "error"),
   });
 
   const assignMutation = useMutation({
     mutationFn: ({ noteId, userId }: { noteId: number; userId: number | null }) => api.post(`/notes/${noteId}/assign`, { assigned_to_id: userId }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); addToast("Note reassigned", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); addToast("Note reassigned", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to assign note"), "error"),
   });
 
@@ -218,25 +239,43 @@ export default function Notes() {
       fd.append("file", file);
       return api.post(`/notes/${noteId}/upload-image`, fd);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); setEditImageFile(null); addToast("Image uploaded", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); setEditImageFile(null); addToast("Image uploaded", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to upload image"), "error"),
   });
 
   const archiveMutation = useMutation({
     mutationFn: (id: number) => api.patch(`/notes/${id}/archive`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); addToast("Note archived", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); addToast("Note archived", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to archive note"), "error"),
   });
 
   const bulkArchiveMutation = useMutation({
     mutationFn: ({ ids, archive }: { ids: number[]; archive: boolean }) => api.post("/notes/bulk-archive", { ids, archive }),
-    onSuccess: (_, vars) => { queryClient.invalidateQueries({ queryKey: ["notes"] }); clearSelection(); addToast(`${vars.ids.length} note${vars.ids.length === 1 ? "" : "s"} ${vars.archive ? "archived" : "unarchived"}`, "success"); },
+    onSuccess: (_, vars) => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); clearSelection(); addToast(`${vars.ids.length} note${vars.ids.length === 1 ? "" : "s"} ${vars.archive ? "archived" : "unarchived"}`, "success"); },
+    onError: (err) => addToast(errorMessage(err, "Failed to update notes"), "error"),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => api.post("/notes/bulk-delete", { ids, archive: false }),
+    onSuccess: (_, ids) => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); clearSelection(); addToast(`${ids.length} note${ids.length === 1 ? "" : "s"} deleted`, "success"); },
+    onError: (err) => addToast(errorMessage(err, "Failed to delete notes"), "error"),
+  });
+
+  const bulkCompleteMutation = useMutation({
+    mutationFn: ({ ids, is_completed }: { ids: number[]; is_completed: boolean }) => api.post("/notes/bulk-update", { ids, is_completed }),
+    onSuccess: (_, vars) => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); clearSelection(); addToast(`${vars.ids.length} note${vars.ids.length === 1 ? "" : "s"} ${vars.is_completed ? "completed" : "uncompleted"}`, "success"); },
+    onError: (err) => addToast(errorMessage(err, "Failed to update notes"), "error"),
+  });
+
+  const bulkPriorityMutation = useMutation({
+    mutationFn: ({ ids, priority }: { ids: number[]; priority: string }) => api.post("/notes/bulk-update", { ids, priority }),
+    onSuccess: (_, vars) => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); clearSelection(); addToast(`${vars.ids.length} note${vars.ids.length === 1 ? "" : "s"} priority updated`, "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to update notes"), "error"),
   });
 
   const duplicateMutation = useMutation({
     mutationFn: (id: number) => api.post(`/notes/${id}/duplicate`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); addToast("Note duplicated", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); addToast("Note duplicated", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to duplicate note"), "error"),
   });
 
@@ -250,12 +289,6 @@ export default function Notes() {
     mutationFn: (id: number) => api.delete(`/notes/templates/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["note-templates"] }),
     onError: (err) => addToast(errorMessage(err, "Failed to delete template"), "error"),
-  });
-
-  const updateTemplateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name: string; category: string; priority: string; body: string; recurrence: string } }) => api.put(`/notes/templates/${id}`, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["note-templates"] }); setEditingTemplate(null); setTemplateName(""); addToast("Template updated", "success"); },
-    onError: (err) => addToast(errorMessage(err, "Failed to update template"), "error"),
   });
 
   const openEdit = useCallback((note: Note) => {
@@ -342,13 +375,16 @@ export default function Notes() {
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
-      <div key={note.id} className={`flex items-start gap-3 p-4 border-b border-border hover:bg-subtle/50 transition-colors ${note.is_completed ? "opacity-60" : ""}`}>
+      <div key={note.id} className={`flex items-start gap-3 p-4 border-b border-border hover:bg-subtle/60 hover:border-indigo-100 dark:hover:border-indigo-500/20 transition-all ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${note.is_pinned && !note.is_completed ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500" : ""}`}>
         <div className="flex items-center gap-2 mt-0.5">
           <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(note.id)} onChange={() => toggleSelect(note.id)} aria-label={`Select note: ${note.title}`} />
           <button onClick={() => completeMutation.mutate(note.id)} className="shrink-0 text-muted hover:text-emerald-500 transition-colors" aria-label={note.is_completed ? "Mark incomplete" : "Mark complete"}>
             {note.is_completed ? <CheckCircle2 size={20} className="text-emerald-500" /> : <Circle size={20} />}
           </button>
         </div>
+        {note.image_url && (
+          <img src={note.image_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" />
+        )}
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openDetail(note)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(note); } }} aria-label={`View note: ${note.title}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <CatIcon size={14} className="text-muted shrink-0" />
@@ -378,10 +414,10 @@ export default function Notes() {
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
-      <div key={note.id} className={`card p-4 cursor-pointer hover:shadow-md transition-all ${note.is_completed ? "opacity-60" : ""} ${draggedNote?.id === note.id ? "opacity-50" : ""}`} draggable={viewMode === "kanban"} onDragStart={(e) => handleDragStart(e, note)} onClick={() => openDetail(note)}>
+      <div key={note.id} className={`card p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/30 transition-all ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${note.is_pinned && !note.is_completed ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500" : ""} ${draggedNote?.id === note.id ? "opacity-50 scale-[0.98]" : ""}`} draggable={viewMode === "kanban"} onDragStart={(e) => handleDragStart(e, note)} onClick={() => openDetail(note)}>
         {note.image_url && (
           <div className="mb-3 -mx-4 -mt-4 overflow-hidden rounded-t-lg">
-            <img src={note.image_url} alt={note.title} className="w-full h-32 object-cover" />
+            <img src={note.image_url} alt={note.title} className="w-full h-32 object-cover" loading="lazy" />
           </div>
         )}
         <div className="flex items-start justify-between gap-2 mb-2">
@@ -419,21 +455,21 @@ export default function Notes() {
   };
 
   const renderKanbanBoard = () => {
-    const allActive = [...pinnedNotes, ...unpinnedNotes];
+    const allActive = kanbanNotes;
     return (
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
         {KANBAN_COLUMNS.map((col) => {
           const colNotes = allActive.filter((n) => n.category === col.key);
           const ColIcon = col.icon;
           return (
             <div key={col.key} className="flex-1 min-w-[280px]" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, col.key)}>
-              <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-lg bg-subtle">
+              <div className="flex items-center gap-2 px-3 py-2.5 mb-3 rounded-lg bg-subtle border border-border">
                 <ColIcon size={14} className="text-muted" />
                 <span className="text-sm font-semibold text-ink">{col.label}</span>
-                <span className="text-xs text-muted ml-auto">{colNotes.length}</span>
+                <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-border text-xs font-medium text-muted">{colNotes.length}</span>
               </div>
-              <div className="space-y-3 min-h-[100px]">
-                {colNotes.length === 0 && <div className="border-2 border-dashed border-border rounded-lg p-4 text-center text-xs text-faint">Drop notes here</div>}
+              <div className="space-y-3 min-h-[120px] p-2 rounded-lg border-2 border-dashed border-transparent hover:border-border transition-colors">
+                {colNotes.length === 0 && <div className="border-2 border-dashed border-border rounded-lg p-6 text-center text-xs text-faint bg-subtle/30">Drop notes here</div>}
                 {colNotes.map((note) => renderNoteCard(note))}
               </div>
             </div>
@@ -451,7 +487,7 @@ export default function Notes() {
           message="Try adjusting your search or filters to find what you're looking for."
           icon={<Search size={48} />}
           actionLabel="Clear filters"
-          onAction={() => { setSearch(""); setCategory(""); setPriority(""); setCompletedFilter("all"); setPage(1); clearSelection(); }}
+          onAction={() => { setSearch(""); setCategory(""); setPriority(""); setCompletedFilter("all"); setTagFilter(""); setAssigneeFilter(""); setDueDateFrom(""); setDueDateTo(""); setPage(1); clearSelection(); }}
         />
       );
     }
@@ -476,11 +512,17 @@ export default function Notes() {
     if (isError) {
       return <ErrorState title="Failed to load notes" message="Something went wrong while fetching notes." variant="block" onRetry={() => queryClient.invalidateQueries({ queryKey: ["notes"] })} />;
     }
+    if (viewMode === "kanban") {
+      if (!kanbanData) {
+        return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-lg" />)}</div>;
+      }
+      if (kanbanNotes.length === 0) {
+        return renderEmptyState();
+      }
+      return renderKanbanBoard();
+    }
     if (notes.length === 0) {
       return renderEmptyState();
-    }
-    if (viewMode === "kanban") {
-      return renderKanbanBoard();
     }
     if (viewMode === "card") {
       return (
@@ -538,7 +580,7 @@ export default function Notes() {
         <div className="space-y-6">
           {viewingNote.image_url && (
             <div className="-mx-6 -mt-6 overflow-hidden">
-              <img src={viewingNote.image_url} alt={viewingNote.title} className="w-full h-48 object-cover" />
+              <img src={viewingNote.image_url} alt={viewingNote.title} className="w-full h-48 object-cover" loading="lazy" />
             </div>
           )}
 
@@ -564,7 +606,7 @@ export default function Notes() {
               <div className="text-xs font-medium text-muted uppercase tracking-wider">Assignment</div>
               <div>
                 <label className="text-xs text-muted block mb-1">Assigned to</label>
-                <select className="input w-full text-sm" value={viewingNote.assigned_to_id ?? ""} onChange={(e) => assignMutation.mutate({ noteId: viewingNote.id, userId: e.target.value ? Number(e.target.value) : null })} aria-label="Assign note to user">
+                <select className="select w-full text-sm" value={viewingNote.assigned_to_id ?? ""} onChange={(e) => assignMutation.mutate({ noteId: viewingNote.id, userId: e.target.value ? Number(e.target.value) : null })} aria-label="Assign note to user">
                   <option value="">Unassigned</option>
                   {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
                 </select>
@@ -656,15 +698,62 @@ export default function Notes() {
           <option value="high">High</option>
           <option value="urgent">Urgent</option>
         </select>
+        <select className="select w-40" value={tagFilter} onChange={(e) => { setTagFilter(e.target.value); setPage(1); }} aria-label="Filter by tag">
+          <option value="">All tags</option>
+          {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <select className="select w-40" value={assigneeFilter} onChange={(e) => { setAssigneeFilter(e.target.value); setPage(1); }} aria-label="Filter by assignee">
+          <option value="">All assignees</option>
+          {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
+        </select>
+        <input type="date" className="input w-40" value={dueDateFrom} onChange={(e) => { setDueDateFrom(e.target.value); setPage(1); }} aria-label="Due after" title="Due after" />
+        <input type="date" className="input w-40" value={dueDateTo} onChange={(e) => { setDueDateTo(e.target.value); setPage(1); }} aria-label="Due before" title="Due before" />
       </div>
 
+      {viewMode === "list" && (
+        <div className="flex gap-2 items-center text-sm">
+          <span className="text-muted">Sort by:</span>
+          {[
+            { key: "created_at", label: "Created" },
+            { key: "updated_at", label: "Updated" },
+            { key: "due_date", label: "Due date" },
+            { key: "title", label: "Title" },
+            { key: "priority", label: "Priority" },
+          ].map((s) => (
+            <button
+              key={s.key}
+              onClick={() => { if (sortField === s.key) setSortOrder(sortOrder === "asc" ? "desc" : "asc"); else { setSortField(s.key); setSortOrder(s.key === "due_date" ? "asc" : "desc"); } }}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${sortField === s.key ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400" : "text-muted hover:text-ink hover:bg-subtle"}`}
+            >
+              {s.label}
+              {sortField === s.key && (sortOrder === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+            </button>
+          ))}
+        </div>
+      )}
+
       {selectedIds.size > 0 && can("notes.update") && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-200 dark:border-indigo-500/30">
+        <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-200 dark:border-indigo-500/30 flex-wrap">
           <span className="text-sm font-medium text-indigo-700 dark:text-indigo-400">{selectedIds.size} selected</span>
           <button onClick={() => bulkArchiveMutation.mutate({ ids: Array.from(selectedIds), archive: completedFilter !== "archived" })} className="btn-primary text-sm px-3 py-1.5" disabled={bulkArchiveMutation.isPending}>
-            {completedFilter === "archived" ? "Unarchive Selected" : "Archive Selected"}
+            {completedFilter === "archived" ? "Unarchive" : "Archive"}
           </button>
-          <button onClick={clearSelection} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 underline">
+          <button onClick={() => bulkCompleteMutation.mutate({ ids: Array.from(selectedIds), is_completed: true })} className="btn-secondary text-sm px-3 py-1.5" disabled={bulkCompleteMutation.isPending}>
+            Complete
+          </button>
+          <select className="select !py-1.5 text-xs w-32" value="" onChange={(e) => { if (e.target.value) { bulkPriorityMutation.mutate({ ids: Array.from(selectedIds), priority: e.target.value }); e.target.value = ""; } }} aria-label="Set priority">
+            <option value="">Set priority...</option>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+          {can("notes.delete") && (
+            <button onClick={() => { if (confirm(`Delete ${selectedIds.size} note(s)?`)) bulkDeleteMutation.mutate(Array.from(selectedIds)); }} className="text-sm px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-800 font-medium" disabled={bulkDeleteMutation.isPending}>
+              Delete
+            </button>
+          )}
+          <button onClick={clearSelection} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 underline ml-auto">
             Clear
           </button>
         </div>
@@ -681,7 +770,7 @@ export default function Notes() {
             {!editingNote && templates.length > 0 && (
               <div>
                 <label className="block text-sm font-medium text-muted mb-1">Start from template</label>
-                <select className="input w-full" value="" onChange={(e) => {
+                <select className="select w-full" value="" onChange={(e) => {
                   const t = templates.find((tpl) => tpl.id === Number(e.target.value));
                   if (t) setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [] });
                 }}>
@@ -720,7 +809,7 @@ export default function Notes() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-muted mb-1">Category</label>
-                <select className="input w-full" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                <select className="select w-full" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                   <option value="note">Note</option>
                   <option value="reminder">Reminder</option>
                   <option value="todo">Todo</option>
@@ -728,7 +817,7 @@ export default function Notes() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted mb-1">Priority</label>
-                <select className="input w-full" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                <select className="select w-full" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
                   <option value="low">Low</option>
                   <option value="normal">Normal</option>
                   <option value="high">High</option>
@@ -743,7 +832,7 @@ export default function Notes() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted mb-1">Recurrence</label>
-                <select className="input w-full" value={form.recurrence} onChange={(e) => setForm({ ...form, recurrence: e.target.value })}>
+                <select className="select w-full" value={form.recurrence} onChange={(e) => setForm({ ...form, recurrence: e.target.value })}>
                   <option value="none">None</option>
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
@@ -753,7 +842,7 @@ export default function Notes() {
             </div>
             <div>
               <label className="block text-sm font-medium text-muted mb-1">Assign to</label>
-              <select className="input w-full" value={form.assigned_to_id ?? ""} onChange={(e) => setForm({ ...form, assigned_to_id: e.target.value ? Number(e.target.value) : null })}>
+              <select className="select w-full" value={form.assigned_to_id ?? ""} onChange={(e) => setForm({ ...form, assigned_to_id: e.target.value ? Number(e.target.value) : null })}>
                 <option value="">Unassigned</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
               </select>
@@ -799,26 +888,14 @@ export default function Notes() {
           </div>
         </Modal>
 
-      <Modal open={!!showTemplateManager} title="Note Templates" onClose={() => { setShowTemplateManager(false); setEditingTemplate(null); setTemplateName(""); }}>
+      <Modal open={!!showTemplateManager} title="Note Templates" onClose={() => setShowTemplateManager(false)}>
           <div className="space-y-5">
-            <div className="flex gap-3 items-center">
-              <input className="input flex-1" placeholder={editingTemplate ? "Template name" : "New template name..."} value={editingTemplate ? templateName : ""} onChange={(e) => setTemplateName(e.target.value)} onKeyDown={(e) => {
-                if (e.key === "Enter" && templateName.trim()) {
-                  if (editingTemplate) {
-                    updateTemplateMutation.mutate({ id: editingTemplate.id, data: { name: templateName, category: editingTemplate.category, priority: editingTemplate.priority, body: editingTemplate.body, recurrence: editingTemplate.recurrence } });
-                  }
-                }
-              }} />
-              {editingTemplate && (
-                <button onClick={() => { updateTemplateMutation.mutate({ id: editingTemplate.id, data: { name: templateName, category: editingTemplate.category, priority: editingTemplate.priority, body: editingTemplate.body, recurrence: editingTemplate.recurrence } }); }} className="btn-primary text-sm px-4 py-2" disabled={!templateName.trim() || updateTemplateMutation.isPending}>Save</button>
-              )}
-              {editingTemplate && (
-                <button onClick={() => { setEditingTemplate(null); setTemplateName(""); }} className="btn-secondary text-sm px-4 py-2">Cancel</button>
-              )}
-            </div>
+            {can("notes.create") && (
+              <button onClick={() => { setShowTemplateManager(false); setTemplateEditTarget(null); setShowTemplateForm(true); }} className="btn-primary text-sm w-full">New Template</button>
+            )}
             <div className="space-y-1.5">
               {templates.map((t) => (
-                <div key={t.id} className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${editingTemplate?.id === t.id ? "bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30" : "hover:bg-subtle"}`}>
+                <div key={t.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-subtle transition-colors">
                   <div className="flex items-center gap-2.5 text-sm min-w-0">
                     <StickyNote size={14} className="text-muted shrink-0" />
                     <div className="min-w-0">
@@ -827,7 +904,7 @@ export default function Notes() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => { setEditingTemplate(t); setTemplateName(t.name); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1" aria-label={`Rename template ${t.name}`}>Rename</button>
+                    <button onClick={() => { setTemplateEditTarget(t); setShowTemplateManager(false); setShowTemplateForm(true); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1">Edit</button>
                     <button onClick={() => {
                       setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [] });
                       setEditingNote(null);
@@ -838,7 +915,7 @@ export default function Notes() {
                   </div>
                 </div>
               ))}
-              {templates.length === 0 && <p className="text-sm text-muted text-center py-6">No templates yet. Open a note and save it as a template.</p>}
+              {templates.length === 0 && <p className="text-sm text-muted text-center py-6">No templates yet. Create one with the button above.</p>}
             </div>
           </div>
         </Modal>
@@ -862,6 +939,14 @@ export default function Notes() {
         onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
         onCancel={() => setConfirmDelete(null)}
       />
+
+      {showTemplateForm && (
+        <NoteTemplateForm
+          template={templateEditTarget}
+          onClose={() => { setShowTemplateForm(false); setTemplateEditTarget(null); }}
+          onSaved={() => { setShowTemplateForm(false); setTemplateEditTarget(null); }}
+        />
+      )}
     </div>
   );
 }

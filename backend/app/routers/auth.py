@@ -80,6 +80,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     if not user or not verify_password(req.password, user.password_hash):
         ratelimit.record_failure(req.username, ip)
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_approved:
+        raise HTTPException(status_code=403, detail="Your account is pending admin approval. You will be notified once approved.")
     ratelimit.clear_failures(req.username, ip)
     user.last_login_at = datetime.now(timezone.utc)
     jti = _create_session(db, user, request)
@@ -93,6 +95,20 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))
 
 
+@router.post("/verify")
+def verify_credentials(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    ip = _client_ip(request)
+    message = ratelimit.lockout_message(req.username, ip)
+    if message:
+        raise HTTPException(status_code=429, detail=message)
+    user = db.query(User).filter(User.username == req.username, User.is_active == True).first()
+    if not user or not verify_password(req.password, user.password_hash):
+        ratelimit.record_failure(req.username, ip)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    ratelimit.clear_failures(req.username, ip)
+    return {"ok": True, "user_id": user.id, "username": user.username}
+
+
 @router.post("/register", response_model=Token)
 def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
     password_error = validate_password(req.password)
@@ -100,22 +116,41 @@ def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=password_error)
     if db.query(User).filter((User.username == req.username) | (User.email == req.email)).first():
         raise HTTPException(status_code=400, detail="Username or email already exists")
-    if db.query(User).count() > 0:
-        raise HTTPException(status_code=403, detail="Registration is disabled. Contact an administrator.")
+    is_first_user = db.query(User).count() == 0
     user = User(
         username=req.username,
         email=req.email,
         password_hash=hash_password(req.password),
-        role="admin",
-        last_login_at=datetime.now(timezone.utc),
+        role="admin" if is_first_user else (req.role or "worker"),
+        is_approved=is_first_user,
+        last_login_at=datetime.now(timezone.utc) if is_first_user else None,
     )
     db.add(user)
     db.flush()
-    jti = _create_session(db, user, request)
+    if is_first_user:
+        jti = _create_session(db, user, request)
+        db.commit()
+        db.refresh(user)
+        token = create_access_token({"sub": str(user.id)}, jti=jti)
+        return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))
+    from app.services.notify import notify_admins
+    notify_admins(
+        db,
+        "New user registration",
+        f"{user.username} ({user.email}) registered as {user.role}.",
+        type="info",
+        link="/users",
+    )
     db.commit()
     db.refresh(user)
-    token = create_access_token({"sub": str(user.id)}, jti=jti)
-    return Token(access_token=token, token_type="bearer", user=UserOut.model_validate(user))
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=201,
+        content={
+            "message": "Registration successful. Your account is pending admin approval.",
+            "user": UserOut.model_validate(user).model_dump(mode="json"),
+        },
+    )
 
 
 @router.get("/me", response_model=UserOut)

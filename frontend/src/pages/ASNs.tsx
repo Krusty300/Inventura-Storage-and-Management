@@ -1,13 +1,12 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useMemo, useState } from "react";
-import { Eye, PackagePlus, Plus, Printer, Trash2 } from "lucide-react";
+import { Eye, PackagePlus, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
-import type { ASN, LPN, PaginatedResponse, Product } from "../types";
+import type { ASN, LPN, PaginatedResponse, Product, Supplier } from "../types";
 import Modal from "../components/Modal";
-import SlideOver from "../components/SlideOver";
 import LocationPicker from "../components/LocationPicker";
 import StockLocationHints from "../components/StockLocationHints";
 import Pagination from "../components/Pagination";
@@ -53,6 +52,7 @@ export default function ASNs() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [status, setStatus] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
@@ -63,12 +63,18 @@ export default function ASNs() {
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
 
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers-lookup"],
+    queryFn: async () => { const { data } = await api.get("/suppliers", { params: { limit: 500 } }); return (data.items || data) as Supplier[]; },
+  });
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["asns", debouncedSearch, status, page, pageSize],
+    queryKey: ["asns", debouncedSearch, status, supplierFilter, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
       if (status) params.status = status;
+      if (supplierFilter) params.supplier_id = supplierFilter;
       const { data } = await api.get("/asns", { params });
       return data as PaginatedResponse<ASN>;
     },
@@ -114,13 +120,18 @@ export default function ASNs() {
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">
-          <input className="input pl-10" placeholder="Search by ASN number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search ASNs" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
+          <input className="input pl-10" placeholder="Search by ASN number, supplier..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search ASNs" />
         </div>
-        <select className="select" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+        <select className="select w-40" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
           <option value="">All Statuses</option>
           <option value="pending">Pending</option>
           <option value="in_transit">In Transit</option>
           <option value="received">Received</option>
+        </select>
+        <select className="select w-48" aria-label="Filter by supplier" value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }}>
+          <option value="">All Suppliers</option>
+          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
 
@@ -413,7 +424,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
 function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
   const formatDate = useDateFormat();
   return (
-    <SlideOver open onClose={onClose} title={`ASN ${asn.asn_number}`} wide ariaLabel={`ASN ${asn.asn_number} details`}>
+    <Modal open onClose={onClose} title={`ASN ${asn.asn_number}`} xwide>
       <div className="space-y-4">
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
@@ -434,21 +445,25 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
-                <th className="px-4 py-2 font-medium text-muted">Product</th>
-                <th className="px-4 py-2 font-medium text-muted">Expected</th>
-                <th className="px-4 py-2 font-medium text-muted">Received</th>
-                <th className="px-4 py-2 font-medium text-muted">Unit Cost</th>
-                <th className="px-4 py-2 font-medium text-muted">Status</th>
+                <th className="px-3 py-2 font-medium text-muted">Product</th>
+                <th className="px-3 py-2 font-medium text-muted">Location</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Expected</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Received</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Unit Cost</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Amount</th>
+                <th className="px-3 py-2 font-medium text-muted">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {asn.items.map((item) => (
                 <tr key={item.id}>
-                  <td className="px-4 py-2 font-medium">{item.product_name}</td>
-                  <td className="px-4 py-2">{item.expected_qty}</td>
-                  <td className="px-4 py-2">{item.received_qty}</td>
-                  <td className="px-4 py-2">{item.unit_cost.toFixed(2)}</td>
-                  <td className="px-4 py-2"><span className={`badge ${statusBadge(item.status)}`}>{item.status.replace("_", " ")}</span></td>
+                  <td className="px-3 py-2 font-medium">{item.product_name}</td>
+                  <td className="px-3 py-2 text-muted">{item.location_name || "—"}</td>
+                  <td className="px-3 py-2 text-right">{item.expected_qty}</td>
+                  <td className="px-3 py-2 text-right">{item.received_qty}</td>
+                  <td className="px-3 py-2 text-right">{item.unit_cost.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">{(item.unit_cost * item.expected_qty).toFixed(2)}</td>
+                  <td className="px-3 py-2"><span className={`badge ${statusBadge(item.status)}`}>{item.status.replace("_", " ")}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -458,7 +473,7 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </SlideOver>
+    </Modal>
   );
 }
 

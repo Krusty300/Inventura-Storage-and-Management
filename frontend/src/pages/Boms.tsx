@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { BOM, PaginatedResponse, ProductCost } from "../types";
 import Modal from "../components/Modal";
-import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -78,7 +77,7 @@ export default function Boms() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by BOM name, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search BOMs" />
         </div>
         <label className="flex items-center gap-2 text-sm text-muted">
@@ -295,7 +294,7 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
   const rolledUp = cost?.unit_cost;
   const componentCost = (productId: number) => cost?.items.find((c) => c.product_id === productId)?.component_unit_cost;
   return (
-    <SlideOver open onClose={onClose} title={bom.name || bom.product_name} wide ariaLabel="BOM detail">
+    <Modal open onClose={onClose} title={bom.name || bom.product_name} wide>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
@@ -348,6 +347,6 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </SlideOver>
+    </Modal>
   );
 }

@@ -309,6 +309,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
             <thead>
               <tr className="bg-app">
                 <th className="px-3 py-2 text-left text-muted">Product</th>
+                <th className="px-3 py-2 text-left text-muted">SKU</th>
                 <th className="px-3 py-2 text-right text-muted">Qty</th>
                 <th className="px-3 py-2 text-right text-muted">Price</th>
                 <th className="px-3 py-2 text-right text-muted">Total</th>
@@ -321,6 +322,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
                     {item.product_name}
                     {item.is_serialized && <span className="ml-2 badge-info">serialized</span>}
                   </td>
+                  <td className="px-3 py-2 text-muted">{item.sku || "\u2014"}</td>
                   <td className="px-3 py-2 text-right">{item.quantity}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(item.unit_price, currencySymbol)}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(item.quantity * item.unit_price, currencySymbol)}</td>
@@ -329,7 +331,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
             </tbody>
             <tfoot>
               <tr className="font-medium">
-                <td colSpan={3} className="px-3 py-2 text-right">Total:</td>
+                <td colSpan={4} className="px-3 py-2 text-right">Total:</td>
                 <td className="px-3 py-2 text-right">{formatCurrency(order.total_amount, currencySymbol)}</td>
               </tr>
             </tfoot>

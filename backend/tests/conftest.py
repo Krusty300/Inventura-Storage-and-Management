@@ -9,10 +9,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
 from app.database import Base, get_db
 from app.main import app
 from app.models.user import User
+from app.services.auth import hash_password
+
 
 # One in-memory SQLite shared by every session in this process (StaticPool keeps
 # a single connection alive so the database survives between requests). Each
@@ -63,6 +64,24 @@ app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
 
 
+def create_test_user(username: str, email: str, password: str, role: str = "worker", approved: bool = True) -> User:
+    """Create a user directly in the DB for testing, bypassing registration."""
+    db = TestingSessionLocal()
+    user = User(
+        username=username,
+        email=email,
+        password_hash=hash_password(password),
+        role=role,
+        is_approved=approved,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    db.close()
+    return user
+
+
 @pytest.fixture
 def test_client():
     return client
@@ -70,15 +89,7 @@ def test_client():
 
 @pytest.fixture
 def auth_headers(test_client):
-    test_client.post("/api/auth/register", json={
-        "username": "testuser",
-        "email": "test@example.com",
-        "password": "testpass123",
-    })
-    db = TestingSessionLocal()
-    db.query(User).filter(User.username == "testuser").update({"role": "admin"})
-    db.commit()
-    db.close()
+    create_test_user("testuser", "test@example.com", "testpass123", "admin")
     resp = test_client.post("/api/auth/login", json={
         "username": "testuser",
         "password": "testpass123",

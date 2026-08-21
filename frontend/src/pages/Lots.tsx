@@ -2,7 +2,7 @@ import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
-import { Eye, FlaskConical, ShieldCheck, ShieldX, CalendarX, FileText } from "lucide-react";
+import { Eye, FlaskConical, ShieldCheck, ShieldX, CalendarX, FileText, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Lot, PaginatedResponse, SerialNumber, StockMovement } from "../types";
@@ -102,6 +102,7 @@ export default function Lots() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by lot number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search lots" />
         </div>
         <select className="select" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
@@ -125,13 +126,14 @@ export default function Lots() {
               <th scope="col" className="px-4 py-3 font-medium text-muted">On Hand</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Expiry</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Received</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Serials</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
-              <Skeleton rows={5} cols={9} />
+              <Skeleton rows={5} cols={10} />
             ) : lots.length === 0 ? (
               <EmptyState title="No lots yet" message="Lots are created automatically when you record a receipt or finish a work order with a lot number." />
             ) : lots.map((l) => (
@@ -142,19 +144,10 @@ export default function Lots() {
                 <td className="px-4 py-3 text-muted">{l.locations?.length ? l.locations.join(", ") : "—"}</td>
                 <td className="px-4 py-3">
                   <span className="font-medium">{l.on_hand}</span>
-                  {l.serial_count > 0 && (
-                    <span className="badge badge-success ml-1" title={`${l.serial_count} of ${l.on_hand} unit(s) on hand are serialized`}>
-                      S{l.serial_count}
-                    </span>
-                  )}
-                  {l.reserved_count > 0 && (
-                    <span className="badge badge-info ml-1" title={`${l.reserved_count} serial(s) reserved for work orders`}>
-                      R{l.reserved_count}
-                    </span>
-                  )}
                 </td>
                 <td className="px-4 py-3">{expiryBadge(l.expiry_date)}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(l.received_date)}</td>
+                <td className="px-4 py-3 text-muted">{l.serial_count}</td>
                 <td className="px-4 py-3 whitespace-nowrap"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">

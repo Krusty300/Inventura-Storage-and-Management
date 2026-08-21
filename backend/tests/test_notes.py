@@ -317,17 +317,8 @@ class TestFiltering:
 
 class TestPermissions:
     def test_worker_can_view_notes(self, test_client):
-        test_client.post("/api/auth/register", json={
-            "username": "worker_view",
-            "email": "wv@b.com",
-            "password": "workerpass1",
-        })
-        from tests.conftest import TestingSessionLocal
-        from app.models.user import User
-        db = TestingSessionLocal()
-        db.query(User).filter(User.username == "worker_view").update({"role": "worker"})
-        db.commit()
-        db.close()
+        from tests.conftest import create_test_user
+        create_test_user("worker_view", "wv@b.com", "workerpass1", "worker")
         resp = test_client.post("/api/auth/login", json={"username": "worker_view", "password": "workerpass1"})
         worker_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
@@ -335,17 +326,8 @@ class TestPermissions:
         assert resp.status_code == 200
 
     def test_worker_can_create_notes(self, test_client):
-        test_client.post("/api/auth/register", json={
-            "username": "worker_create",
-            "email": "wc@b.com",
-            "password": "workerpass2",
-        })
-        from tests.conftest import TestingSessionLocal
-        from app.models.user import User
-        db = TestingSessionLocal()
-        db.query(User).filter(User.username == "worker_create").update({"role": "worker"})
-        db.commit()
-        db.close()
+        from tests.conftest import create_test_user
+        create_test_user("worker_create", "wc@b.com", "workerpass2", "worker")
         resp = test_client.post("/api/auth/login", json={"username": "worker_create", "password": "workerpass2"})
         worker_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
 

@@ -54,9 +54,9 @@ const spinner = (
 );
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, loggingOut } = useAuth();
   if (loading) return spinner;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user && !loggingOut) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 

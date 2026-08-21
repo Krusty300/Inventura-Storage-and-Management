@@ -60,3 +60,7 @@ class ReceiptItem(Base):
     @property
     def location_name(self) -> str:
         return self.location.path if self.location else ""
+
+    @property
+    def location_code(self) -> str:
+        return self.location.code or self.location.name if self.location else ""

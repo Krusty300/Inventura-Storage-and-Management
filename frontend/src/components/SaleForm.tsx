@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, GripVertical, Loader2, Minus, Package, Plus, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, GripVertical, KeyRound, Loader2, Lock, Minus, Package, Plus, Search, Send, Trash2, Unlock, X } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Customer, Product, QualityCheck, Settings } from "../types";
@@ -8,8 +8,18 @@ import BarcodeScanner from "./BarcodeScanner";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { formatCurrency } from "../utils/currency";
 import { errorMessage } from "../utils/errors";
+import type { Sale } from "../types";
 import { isSelectable, selectableProducts } from "../utils/variants";
-import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS } from "../utils/payments";
+import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS, paymentLabel } from "../utils/payments";
+import {
+  clearSaleDraft,
+  hasSaleDraft,
+  loadCartWidth,
+  loadSaleDraft,
+  saveCartWidth,
+  useSaleDraftAutoSave,
+  type SaleDraftData,
+} from "../hooks/useSaleDraft";
 
 interface Props {
   onClose: () => void;
@@ -30,6 +40,7 @@ function CartLine({
   product,
   currency,
   blocked,
+  disabled,
   onShortChange,
   onChange,
   onRemove,
@@ -38,6 +49,7 @@ function CartLine({
   product: Product | undefined;
   currency: string;
   blocked: boolean;
+  disabled: boolean;
   onShortChange: (short: boolean) => void;
   onChange: (field: LineField, value: string) => void;
   onRemove: () => void;
@@ -71,7 +83,7 @@ function CartLine({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0">
           {product?.image_url ? (
-            <img src={product.image_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
+            <img src={product.image_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" />
           ) : (
             <div className="w-10 h-10 rounded bg-subtle flex items-center justify-center shrink-0">
               <Package size={16} className="text-faint" />
@@ -84,14 +96,14 @@ function CartLine({
             <p className="text-xs text-faint">{product?.sku}</p>
           </div>
         </div>
-        <button type="button" onClick={onRemove} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
+        <button type="button" onClick={onRemove} disabled={disabled} className="p-1 text-faint hover:text-red-600 dark:text-red-400 disabled:opacity-40" aria-label="Remove item">
           <Trash2 size={15} />
         </button>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center rounded-lg border border-border overflow-hidden shrink-0">
-          <button type="button" onClick={() => onChange("quantity", String(Math.max(1, (parseInt(item.quantity) || 1) - 1)))} className="p-1.5 text-muted hover:bg-app" aria-label="Decrease quantity">
+          <button type="button" onClick={() => onChange("quantity", String(Math.max(1, (parseInt(item.quantity) || 1) - 1)))} disabled={disabled} className="p-1.5 text-muted hover:bg-app disabled:opacity-40" aria-label="Decrease quantity">
             <Minus size={14} />
           </button>
           <input
@@ -100,15 +112,16 @@ function CartLine({
             value={item.quantity}
             onChange={(e) => onChange("quantity", e.target.value)}
             min="1"
+            disabled={disabled}
             aria-label={`Quantity for ${product?.display_name || item.product_id}`}
           />
-          <button type="button" onClick={() => onChange("quantity", String((parseInt(item.quantity) || 0) + 1))} className="p-1.5 text-muted hover:bg-app" aria-label="Increase quantity">
+          <button type="button" onClick={() => onChange("quantity", String((parseInt(item.quantity) || 0) + 1))} disabled={disabled} className="p-1.5 text-muted hover:bg-app disabled:opacity-40" aria-label="Increase quantity">
             <Plus size={14} />
           </button>
         </div>
         <label className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-muted">
           <span className="shrink-0">Price</span>
-          <input type="number" className="input !py-1.5 text-sm w-full min-w-0" value={item.unit_price} onChange={(e) => onChange("unit_price", e.target.value)} step="0.01" min="0" aria-label={`Unit price for ${product?.display_name || item.product_id}`} />
+          <input type="number" className="input !py-1.5 text-sm w-full min-w-0" value={item.unit_price} onChange={(e) => onChange("unit_price", e.target.value)} step="0.01" min="0" disabled={disabled} aria-label={`Unit price for ${product?.display_name || item.product_id}`} />
         </label>
         <span className="font-semibold text-sm whitespace-nowrap shrink-0">{formatCurrency(lineTotal, currency)}</span>
       </div>
@@ -117,7 +130,7 @@ function CartLine({
         <label className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-muted">
           <span className="shrink-0">Fulfill from</span>
           {stockLoading && <Loader2 size={10} className="animate-spin shrink-0" />}
-          <select className="select !py-1 text-xs min-w-0 flex-1" value={item.location_id} onChange={(e) => onChange("location_id", e.target.value)} disabled={!product} aria-label="Fulfill from location">
+          <select className="select !py-1 text-xs min-w-0 flex-1" value={item.location_id} onChange={(e) => onChange("location_id", e.target.value)} disabled={!product || disabled} aria-label="Fulfill from location">
             <option value="">Auto (any location)</option>
             {stockLocations.map((l) => (
               <option key={l.location_id} value={l.location_id.toString()}>{l.path} ({l.count})</option>
@@ -166,9 +179,45 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [category, setCategory] = useState("All");
   const [saving, setSaving] = useState(false);
   const [isWide, setIsWide] = useState(false);
-  const [cartWidth, setCartWidth] = useState(400);
+  const [completedSale, setCompletedSale] = useState<Sale | null>(null);
+  const [stkPending, setStkBilling] = useState(false);
+  const [stkSent, setStkSent] = useState(false);
+  const [stkError, setStkError] = useState("");
+  const [cartWidth, setCartWidth] = useState(() => loadCartWidth() ?? 400);
   const containerRef = useRef<HTMLDivElement>(null);
   const { addToast } = useToast();
+
+  const [isLocked, setIsLocked] = useState(() => hasSaleDraft());
+  const [isDraftRestored, setIsDraftRestored] = useState(() => hasSaleDraft());
+  const [lockUsername, setLockUsername] = useState("");
+  const [lockPassword, setLockPassword] = useState("");
+  const [lockLoading, setLockLoading] = useState(false);
+  const [lockError, setLockError] = useState("");
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const lockInputRef = useRef<HTMLInputElement>(null);
+
+  const getStateForDraft = useCallback((): Omit<SaleDraftData, "savedAt"> | null => {
+    if (isLocked || isDraftRestored) return null;
+    if (items.length === 0) return null;
+    return {
+      customerId,
+      paymentMethod,
+      paymentProvider,
+      paymentPhone,
+      paymentReference,
+      paymentProviderAmount,
+      notes,
+      discount,
+      amountReceived,
+      items,
+    };
+  }, [customerId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, isLocked, isDraftRestored]);
+
+  const scheduleSave = useSaleDraftAutoSave(getStateForDraft, !isLocked && !isDraftRestored);
+
+  useEffect(() => {
+    scheduleSave();
+  }, [customerId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, scheduleSave]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -197,11 +246,27 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   };
 
   useEffect(() => {
+    if (cartWidth !== 400) saveCartWidth(cartWidth);
+  }, [cartWidth]);
+
+  useEffect(() => {
     api.get("/customers", { params: { limit: PAGE_SIZE_PRODUCTS } }).then(({ data }) => setCustomers(data.items));
     api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
     api.get("/settings").then(({ data }) => setSettings(data));
     api.get("/quality-checks", { params: { result: "pending", limit: PAGE_SIZE } }).then(({ data }) => setPendingQcs(data.items));
   }, []);
+
+  useEffect(() => {
+    if (isLocked) {
+      lockInputRef.current?.focus();
+    }
+  }, [isLocked]);
+
+  useEffect(() => {
+    if (isDraftRestored && !isLocked) {
+      setIsDraftRestored(false);
+    }
+  }, [isDraftRestored, isLocked]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -256,7 +321,84 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     });
   }, []);
 
+  const applyDraft = useCallback((draft: SaleDraftData) => {
+    setCustomerId(draft.customerId);
+    setPaymentMethod(draft.paymentMethod);
+    setPaymentProvider(draft.paymentProvider);
+    setPaymentPhone(draft.paymentPhone);
+    setPaymentReference(draft.paymentReference);
+    setPaymentProviderAmount(draft.paymentProviderAmount);
+    setNotes(draft.notes);
+    setDiscount(draft.discount);
+    setAmountReceived(draft.amountReceived);
+    setItems(draft.items);
+    setDraftSavedAt(draft.savedAt);
+  }, []);
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lockUsername.trim() || !lockPassword) return;
+    setLockLoading(true);
+    setLockError("");
+    try {
+      await api.post("/auth/verify", { username: lockUsername.trim(), password: lockPassword });
+      const draft = loadSaleDraft();
+      if (draft) applyDraft(draft);
+      setIsLocked(false);
+      setIsDraftRestored(false);
+      setLockUsername("");
+      setLockPassword("");
+      addToast("Draft restored", "success");
+    } catch (err: any) {
+      setLockError(err.response?.data?.detail || "Invalid credentials");
+    }
+    setLockLoading(false);
+  };
+
+  const handleLock = () => {
+    setIsLocked(true);
+    setIsDraftRestored(false);
+    setLockError("");
+  };
+
+  const handleUnlockFromHeader = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lockUsername.trim() || !lockPassword) return;
+    setLockLoading(true);
+    setLockError("");
+    try {
+      await api.post("/auth/verify", { username: lockUsername.trim(), password: lockPassword });
+      setIsLocked(false);
+      setLockUsername("");
+      setLockPassword("");
+      addToast("Form unlocked", "success");
+    } catch (err: any) {
+      setLockError(err.response?.data?.detail || "Invalid credentials");
+    }
+    setLockLoading(false);
+  };
+
+  const handleDiscardDraft = () => {
+    clearSaleDraft();
+    setCustomerId("");
+    setPaymentMethod("cash");
+    setPaymentProvider(MOBILE_MONEY_PROVIDERS[0].value);
+    setPaymentPhone("");
+    setPaymentReference("");
+    setPaymentProviderAmount("");
+    setNotes("");
+    setItems([]);
+    setDiscount("");
+    setAmountReceived("");
+    setStockShort(new Set());
+    setIsLocked(false);
+    setIsDraftRestored(false);
+    setDraftSavedAt(null);
+    addToast("Draft discarded", "success");
+  };
+
   const addProduct = (p: Product) => {
+    if (isLocked) return;
     setItems((prev) => {
       const idx = prev.findIndex((i) => parseInt(i.product_id) === p.id);
       if (idx >= 0) {
@@ -280,6 +422,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const tax = settings ? taxable * settings.tax_rate / 100 : 0;
   const total = taxable + tax;
   const currency = settings?.currency_symbol || "$";
+  const saleSymbol = currency;
   const currencyCode = settings?.currency_code || "USD";
 
   const cashReceived = parseFloat(amountReceived) || 0;
@@ -288,6 +431,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
     if (items.length === 0) {
       addToast("Add at least one item to the sale", "error");
       return;
@@ -322,7 +466,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     }
     setSaving(true);
     try {
-      await api.post("/sales", {
+      const { data: sale } = await api.post("/sales", {
         customer_id: customerId ? parseInt(customerId) : null,
         payment_method: paymentMethod,
         payment_provider: paymentMethod === "mobile_money" ? paymentProvider : null,
@@ -339,33 +483,259 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           unit_price: parseFloat(i.unit_price) || 0,
           location_id: i.location_id ? parseInt(i.location_id) : null,
         })),
-      });
-      addToast(paymentMethod === "cash" && cashReceived >= total
-        ? `Sale completed — change due ${formatCurrency(Math.max(change, 0), currency)}`
-        : "Sale completed", "success");
-      onSaved();
+      }) as { data: Sale };
+      clearSaleDraft();
+      if (paymentMethod === "mobile_money") {
+        setCompletedSale(sale);
+        addToast("Sale created — collect payment via STK Push", "success");
+      } else {
+        addToast(paymentMethod === "cash" && cashReceived >= total
+          ? `Sale completed — change due ${formatCurrency(Math.max(change, 0), currency)}`
+          : "Sale completed", "success");
+        onSaved();
+      }
     } catch (err: any) {
       addToast(errorMessage(err, "Error processing sale"), "error");
     }
     setSaving(false);
   };
 
+  const handleStkPush = async () => {
+    if (!completedSale || !paymentPhone.trim()) return;
+    setStkBilling(true);
+    setStkError("");
+    try {
+      const { data } = await api.post("/daraja/stk-push", {
+        phone: paymentPhone.trim(),
+        amount: completedSale.total_amount,
+        reference: completedSale.invoice_number,
+        description: `Payment for ${completedSale.invoice_number}`,
+        account_ref: completedSale.invoice_number,
+      });
+      if (data.success) {
+        api.put(`/sales/${completedSale.id}/checkout-id`, { checkout_request_id: data.checkout_request_id }).catch(() => {});
+        setStkSent(true);
+        addToast("STK Push sent — awaiting customer confirmation", "success");
+      } else {
+        setStkError(data.message || "STK Push failed");
+      }
+    } catch (err: any) {
+      setStkError(err.response?.data?.detail || err.message || "STK Push failed");
+    }
+    setStkBilling(false);
+  };
+
+  const formDisabled = isLocked;
+
+  if (completedSale) {
+    return (
+      <div className="fixed inset-0 z-50 bg-app flex flex-col items-center justify-center p-6" role="dialog" aria-modal="true" aria-label="Payment collection">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-2">
+              <Send size={28} />
+            </div>
+            <h2 className="text-xl font-bold text-ink">Payment Required</h2>
+            <p className="text-sm text-muted">
+              Invoice <span className="font-medium text-ink">{completedSale.invoice_number}</span> created
+            </p>
+          </div>
+
+          <div className="card space-y-4 p-6">
+            <div className="text-center">
+              <p className="text-sm text-muted">Total amount</p>
+              <p className="text-3xl font-bold text-ink">{formatCurrency(completedSale.total_amount, saleSymbol)}</p>
+            </div>
+
+            {!stkSent ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">Phone number ({paymentLabel("mobile_money", paymentProvider)})</label>
+                  <input
+                    className="input text-sm"
+                    placeholder="e.g. 07XX XXX XXX"
+                    value={paymentPhone}
+                    onChange={(e) => setPaymentPhone(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                {stkError && (
+                  <div className="text-sm text-red-600 dark:text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{stkError}</div>
+                )}
+                <button
+                  onClick={handleStkPush}
+                  disabled={stkPending || !paymentPhone.trim()}
+                  className="btn-primary w-full py-3 text-base font-semibold flex items-center justify-center gap-2"
+                >
+                  {stkPending ? <><Loader2 size={18} className="animate-spin" />Sending STK Push...</> : <><Send size={18} />Send STK Push</>}
+                </button>
+              </div>
+            ) : (
+              <div className="text-center space-y-3">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm font-medium">
+                  <Loader2 size={14} className="animate-spin" />Awaiting customer confirmation...
+                </div>
+                <p className="text-xs text-muted">The customer will receive an M-Pesa prompt on their phone ({paymentPhone}).</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={() => { setCompletedSale(null); setStkSent(false); setStkError(""); }} className="btn-secondary flex-1">
+              {stkSent ? "Done" : "Skip for now"}
+            </button>
+            {stkSent && (
+              <button onClick={() => { setCompletedSale(null); setStkSent(false); setStkError(""); onSaved(); }} className="btn-primary flex-1">
+                New Sale
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-app flex flex-col" role="dialog" aria-modal="true" aria-label="Point of sale register">
+
+      {isLocked && isDraftRestored && (
+        <div className="absolute inset-0 z-[60] bg-app/80 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="card p-8 max-w-sm w-full space-y-6 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-500/10 mx-auto">
+              <Lock size={28} className="text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-bold text-ink">Draft Locked</h3>
+              <p className="text-sm text-muted">
+                Your previous draft was restored.
+                {draftSavedAt && (
+                  <span className="block mt-1 text-xs text-faint">
+                    Saved {new Date(draftSavedAt).toLocaleString()}
+                  </span>
+                )}
+              </p>
+            </div>
+            <form onSubmit={handleUnlock} className="space-y-3 text-left">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">Username</label>
+                <input
+                  ref={lockInputRef}
+                  className="input text-sm"
+                  placeholder="Enter your username"
+                  value={lockUsername}
+                  onChange={(e) => setLockUsername(e.target.value)}
+                  autoComplete="username"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">Password</label>
+                <input
+                  className="input text-sm"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={lockPassword}
+                  onChange={(e) => setLockPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+              </div>
+              {lockError && (
+                <p className="text-xs text-red-600 dark:text-red-400">{lockError}</p>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={handleDiscardDraft} className="btn-secondary flex-1 text-sm">
+                  Discard Draft
+                </button>
+                <button type="submit" disabled={lockLoading || !lockUsername.trim() || !lockPassword} className="btn-primary flex-1 text-sm flex items-center justify-center gap-1.5">
+                  {lockLoading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                  {lockLoading ? "Verifying..." : "Unlock"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isLocked && !isDraftRestored && (
+        <div className="absolute inset-0 z-[60] flex">
+          <div className="w-full h-full flex flex-col items-center justify-center p-6">
+            <div className="card p-8 max-w-sm w-full space-y-6 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-500/10 mx-auto">
+                <Lock size={28} className="text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold text-ink">Form Locked</h3>
+                <p className="text-sm text-muted">Enter your credentials to unlock.</p>
+              </div>
+              <form onSubmit={handleUnlockFromHeader} className="space-y-3 text-left">
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Username</label>
+                  <input
+                    ref={lockInputRef}
+                    className="input text-sm"
+                    placeholder="Enter your username"
+                    value={lockUsername}
+                    onChange={(e) => setLockUsername(e.target.value)}
+                    autoComplete="username"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Password</label>
+                  <input
+                    className="input text-sm"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={lockPassword}
+                    onChange={(e) => setLockPassword(e.target.value)}
+                    autoComplete="current-password"
+                  />
+                </div>
+                {lockError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{lockError}</p>
+                )}
+                <div className="flex gap-2 pt-1">
+                  <button type="button" onClick={handleDiscardDraft} className="btn-secondary flex-1 text-sm">
+                    Discard Draft
+                  </button>
+                  <button type="submit" disabled={lockLoading || !lockUsername.trim() || !lockPassword} className="btn-primary flex-1 text-sm flex items-center justify-center gap-1.5">
+                    {lockLoading ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                    {lockLoading ? "Verifying..." : "Unlock"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-4 px-6 py-3 border-b border-border bg-surface">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-bold text-ink">Register</h2>
           <span className="text-xs text-muted hidden sm:inline">Tap a product to add it to the sale</span>
+          {isDraftRestored && !isLocked && draftSavedAt && (
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 hidden sm:inline">
+              Draft restored from {new Date(draftSavedAt).toLocaleTimeString()}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <BarcodeScanner
             onProductFound={(p) => {
+              if (isLocked) return;
               if (p.is_serialized) { addToast("Serialized products can't be sold at checkout - create a shipment instead", "error"); return; }
               if (isSelectable(p)) addProduct(p); else addToast("Product has variants - scan a specific variant", "error");
             }}
             placeholder="Scan to add item..."
             autoFocus
           />
+          <button
+            type="button"
+            onClick={isLocked ? () => { setLockUsername(""); setLockPassword(""); setLockError(""); } : handleLock}
+            className={`p-2 rounded-lg border transition-colors ${isLocked ? "border-amber-300 dark:border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10" : "border-border text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300"}`}
+            aria-label={isLocked ? "Unlock form" : "Lock form"}
+            title={isLocked ? "Form is locked" : "Lock form"}
+          >
+            {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
+          </button>
           <button type="button" onClick={onClose} className="btn-secondary flex items-center gap-1.5" aria-label="Close register">
             <X size={16} />
             <span className="hidden sm:inline">Close</span>
@@ -377,12 +747,13 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         <section className="min-w-0 flex-1 flex flex-col overflow-hidden" aria-label="Product catalog">
           <div className="px-6 py-3 border-b border-border bg-surface space-y-3">
             <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
               <input
                 className="input pl-9"
                 placeholder="Search products by name, SKU or barcode..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                disabled={formDisabled}
                 aria-label="Search products"
               />
             </div>
@@ -392,6 +763,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   key={c}
                   type="button"
                   onClick={() => setCategory(c)}
+                  disabled={formDisabled}
                   className={`px-3 py-1.5 text-xs font-medium rounded-full border whitespace-nowrap transition-colors ${
                     category === c ? "bg-indigo-600 text-white border-indigo-600" : "bg-surface border-border text-muted hover:border-indigo-300"
                   }`}
@@ -415,6 +787,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     <button
                       key={p.id}
                       type="button"
+                      disabled={formDisabled}
                       onClick={() => {
                         if (blocked) {
                           addToast(`'${p.display_name}' has a pending quality check and can't be sold yet`, "error");
@@ -426,7 +799,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                         blocked
                           ? "border-amber-300 dark:border-amber-500/40 hover:border-amber-400"
                           : "border-border hover:border-indigo-400 hover:shadow-sm"
-                      }`}
+                      } ${formDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {blocked && (
                         <span className="absolute top-2 right-2" title="Pending quality check">
@@ -435,7 +808,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                       )}
                       <div className="h-28 mb-2 rounded-lg overflow-hidden bg-subtle flex items-center justify-center">
                         {p.image_url ? (
-                          <img src={p.image_url} alt={p.display_name} className="w-full h-full object-cover" />
+                           <img src={p.image_url} alt={p.display_name} className="w-full h-full object-cover" loading="lazy" />
                         ) : (
                           <Package size={28} className="text-faint" />
                         )}
@@ -474,14 +847,14 @@ export default function SaleForm({ onClose, onSaved }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Customer</label>
-                  <select className="select text-sm" value={customerId} onChange={(e) => setCustomerId(e.target.value)} aria-label="Customer">
+                  <select className="select text-sm" value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={formDisabled} aria-label="Customer">
                     <option value="">Walk-in</option>
                     {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Payment</label>
-                  <select className="select text-sm" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} aria-label="Payment method">
+                  <select className="select text-sm" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={formDisabled} aria-label="Payment method">
                     {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </div>
@@ -490,27 +863,27 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 <>
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1.5">Mobile Money Provider</label>
-                    <select className="select text-sm" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} aria-label="Mobile money provider">
+                    <select className="select text-sm" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} disabled={formDisabled} aria-label="Mobile money provider">
                       {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1.5">Payer Phone</label>
-                    <input className="input text-sm" placeholder="e.g. 07XX XXX XXX" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} aria-label="Payer phone" />
+                    <input className="input text-sm" placeholder="e.g. 07XX XXX XXX" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} disabled={formDisabled} aria-label="Payer phone" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1.5">Provider Amount ({currency})</label>
-                    <input className="input text-sm" type="number" min="0" step="0.01" placeholder={total.toFixed(2)} value={paymentProviderAmount} onChange={(e) => setPaymentProviderAmount(e.target.value)} aria-label="Provider amount" />
+                    <input className="input text-sm" type="number" min="0" step="0.01" placeholder={total.toFixed(2)} value={paymentProviderAmount} onChange={(e) => setPaymentProviderAmount(e.target.value)} disabled={formDisabled} aria-label="Provider amount" />
                   </div>
                 </>
               )}
               {paymentMethod !== "cash" && (
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Payment Reference</label>
-                  <input className="input text-sm" placeholder={paymentMethod === "mobile_money" ? "Provider confirmation code" : "Reference (optional)"} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} aria-label="Payment reference" />
+                  <input className="input text-sm" placeholder={paymentMethod === "mobile_money" ? "Provider confirmation code" : "Reference (optional)"} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} disabled={formDisabled} aria-label="Payment reference" />
                 </div>
               )}
-              <textarea className="input text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} aria-label="Sale notes" />
+              <textarea className="input text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={formDisabled} aria-label="Sale notes" />
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
@@ -524,6 +897,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     product={sellable.find((p) => p.id === parseInt(item.product_id))}
                     currency={currency}
                     blocked={isBlocked(item)}
+                    disabled={formDisabled}
                     onShortChange={(short) => handleStockShort(item.product_id, short)}
                     onChange={(field, value) => updateItem(idx, field, value)}
                     onRemove={() => removeItem(idx)}
@@ -549,6 +923,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     onChange={(e) => setDiscount(e.target.value)}
                     min="0"
                     step="0.01"
+                    disabled={formDisabled}
                     aria-label="Discount amount"
                   />
                 </div>
@@ -580,9 +955,10 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     onChange={(e) => setAmountReceived(e.target.value)}
                     min="0"
                     step="0.01"
+                    disabled={formDisabled}
                     aria-label="Cash received"
                   />
-                  <button type="button" onClick={() => setAmountReceived(total.toFixed(2))} className="btn-secondary text-xs px-2 py-1.5">Exact</button>
+                  <button type="button" onClick={() => setAmountReceived(total.toFixed(2))} disabled={formDisabled} className="btn-secondary text-xs px-2 py-1.5 disabled:opacity-40">Exact</button>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   {[5, 10, 20, 50].map((n) => (
@@ -590,7 +966,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                       key={n}
                       type="button"
                       onClick={() => setAmountReceived((cashReceived + n).toFixed(2))}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-muted hover:bg-app"
+                      disabled={formDisabled}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-muted hover:bg-app disabled:opacity-40"
                     >
                       +{n}
                     </button>
@@ -600,7 +977,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
             )}
 
             <div className="px-5 py-4 border-t border-border">
-              <button type="submit" disabled={saving} className="btn-primary w-full py-3 text-base font-semibold">
+              <button type="submit" disabled={saving || formDisabled} className="btn-primary w-full py-3 text-base font-semibold disabled:opacity-40">
                 {saving ? "Processing..." : `Complete Sale · ${formatCurrency(total, currency)}`}
               </button>
             </div>

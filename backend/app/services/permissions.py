@@ -74,6 +74,7 @@ ALL_PERMISSIONS = frozenset({
     "users.create",
     "users.update",
     "users.delete",
+    "users.assign_admin_role",
     "activity.view",
     "notifications.view",
     "bom.view",
@@ -103,6 +104,12 @@ ALL_PERMISSIONS = frozenset({
     "notes.update",
     "notes.delete",
 })
+
+MANAGER_PERMISSIONS = ALL_PERMISSIONS - frozenset({
+    "users.delete",
+    "users.assign_admin_role",
+})
+
 
 WORKER_PERMISSIONS = frozenset({
     "dashboard.view",
@@ -151,6 +158,7 @@ WORKER_PERMISSIONS = frozenset({
 
 ROLE_PERMISSIONS = {
     "admin": ALL_PERMISSIONS,
+    "manager": MANAGER_PERMISSIONS,
     "worker": WORKER_PERMISSIONS,
 }
 
@@ -162,12 +170,15 @@ def permissions_for_role(role: str) -> frozenset:
 def permissions_for_user(user) -> frozenset:
     """Effective permission set for a user.
 
-    Admins always hold every permission. Workers fall back to the role
-    defaults unless the account has a custom ``permissions`` allowlist, in
+    Admins always hold every permission. Managers hold all permissions except
+    ``users.delete`` and ``users.assign_admin_role``.  Workers fall back to the
+    role defaults unless the account has a custom ``permissions`` allowlist, in
     which case that list (validated against known permissions) is used.
     """
     if getattr(user, "role", None) == "admin":
         return ALL_PERMISSIONS
+    if getattr(user, "role", None) == "manager":
+        return MANAGER_PERMISSIONS
     custom = getattr(user, "permissions", None)
     if custom:
         return frozenset(p for p in custom if p in ALL_PERMISSIONS)

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pencil, Trash2, Eye, ChevronDown, ChevronRight, FolderOpen, Folder } from "lucide-react";
+import { Pencil, Trash2, Eye, ChevronDown, ChevronRight, FolderOpen, Folder, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_PRODUCTS } from "../utils/constants";
@@ -176,6 +176,7 @@ export default function Categories() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search categories" />
         </div>
         <div role="group" aria-label="View mode" className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">

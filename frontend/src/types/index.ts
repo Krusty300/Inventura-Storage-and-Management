@@ -1,3 +1,9 @@
+export interface ProductImage {
+  id: number;
+  url: string;
+  sort_order: number;
+}
+
 export interface Product {
   id: number;
   sku: string;
@@ -32,6 +38,7 @@ export interface Product {
   expired_lot_qty: number;
   sellable_qty: number;
   reserved_qty: number;
+  images: ProductImage[];
   variants: Product[];
 }
 
@@ -134,6 +141,7 @@ export interface OrderItem {
   unit_price: number;
   product_name: string;
   is_serialized: boolean;
+  sku: string;
 }
 
 export interface DashboardShipmentRow {
@@ -435,6 +443,7 @@ export interface User {
   role: string;
   permissions?: string[] | null;
   is_active?: boolean;
+  is_approved?: boolean;
   avatar_url?: string;
   last_login_at?: string | null;
   created_at?: string;
@@ -648,6 +657,7 @@ export interface CycleCountItem {
   status: string;
   product_name: string;
   current_on_hand?: number | null;
+  unit_cost: number;
 }
 
 export interface CycleCount {
@@ -816,6 +826,7 @@ export interface WorkOrderItem {
   quantity_required: number;
   quantity_issued: number;
   product_name: string;
+  unit_cost: number;
 }
 
 export interface WorkOrder {

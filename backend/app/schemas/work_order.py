@@ -53,6 +53,7 @@ class WorkOrderItemOut(BaseModel):
     quantity_required: int
     quantity_issued: int
     product_name: str = ""
+    unit_cost: float = 0.0
 
     class Config:
         from_attributes = True

@@ -74,7 +74,7 @@ export default function CsvImportModal({ onClose, onImported }: Props) {
           <>
             <div className="flex gap-4">
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400"><CheckCircle size={20} /><span className="font-medium">{result.created} created</span></div>
-              {result.skipped > 0 && <div className="flex items-center gap-2 text-yellow-600"><AlertTriangle size={20} /><span className="font-medium">{result.skipped} skipped (duplicate SKUs)</span></div>}
+              {result.skipped > 0 && <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400"><AlertTriangle size={20} /><span className="font-medium">{result.skipped} skipped (duplicate SKUs)</span></div>}
             </div>
             {result.errors.length > 0 && (
               <div>

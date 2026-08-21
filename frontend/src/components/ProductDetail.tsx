@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import SlideOver from "./SlideOver";
-import { PackagePlus, PackageOpen, MapPin, ShieldAlert } from "lucide-react";
+import { PackagePlus, PackageOpen, MapPin, ShieldAlert, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,11 +15,13 @@ import { useToast } from "../context/ToastContext";
 import ConfirmDialog from "./ConfirmDialog";
 import MoveUnallocatedModal from "./MoveUnallocatedModal";
 import MoveQuarantinedModal from "./MoveQuarantinedModal";
+import ImageCarousel from "./ImageCarousel";
 
 interface Props {
   product: Product;
   onClose: () => void;
   onAddVariant?: (product: Product) => void;
+  onEdit?: () => void;
 }
 
 const MOVEMENT_LABELS: Record<string, string> = {
@@ -41,7 +43,7 @@ const MOVEMENT_LABELS: Record<string, string> = {
   scrap: "Scrapped",
 };
 
-export default function ProductDetail({ product, onClose, onAddVariant }: Props) {
+export default function ProductDetail({ product, onClose, onAddVariant, onEdit }: Props) {
   const formatDate = useDateFormat();
   const { data: settings } = useSettings();
   const navigate = useNavigate();
@@ -198,12 +200,13 @@ export default function ProductDetail({ product, onClose, onAddVariant }: Props)
           {statusBadges}
         </span>
       }
+      actions={onEdit && can("product.update") ? (
+        <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label="Edit product"><Pencil size={14} />Edit</button>
+      ) : undefined}
     >
       <div className="space-y-4">
-        {product.image_url && (
-          <div className="flex justify-center">
-            <img src={product.image_url} alt={product.display_name} className="w-48 h-48 rounded-lg object-cover border" />
-          </div>
+        {(product.images?.length > 0 || product.image_url) && (
+          <ImageCarousel images={product.images || []} imageUrl={product.image_url} alt={product.display_name} />
         )}
 
         <div className="grid grid-cols-2 gap-4 text-sm">

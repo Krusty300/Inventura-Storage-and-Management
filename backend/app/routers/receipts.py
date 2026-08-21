@@ -1,4 +1,5 @@
 from math import ceil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -21,8 +22,8 @@ from app.services.auth import require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
-    draw_notes, draw_signoff, draw_totals, new_canvas, render_pdf,
+    BODY_RIGHT, MARGIN, FONT, MUTED, draw_banner_header, draw_info_block, draw_item_table,
+    draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
@@ -32,6 +33,8 @@ router = APIRouter(prefix="/api/receipts", tags=["receipts"], dependencies=[Depe
 def _load_receipt(db: Session, receipt_id: int) -> Receipt:
     return get_or_404(Receipt, receipt_id, db, options=[
         joinedload(Receipt.items).joinedload(ReceiptItem.product),
+        joinedload(Receipt.items).joinedload(ReceiptItem.location),
+        joinedload(Receipt.items).joinedload(ReceiptItem.lot),
         joinedload(Receipt.supplier), joinedload(Receipt.user),
     ])
 
@@ -77,12 +80,13 @@ def receipt_pdf(receipt_id: int, db: Session = Depends(get_db)):
     ) if ln]
 
     c, buf = new_canvas(f"Goods Receipt {r.receipt_number}")
+    base_dir = Path(__file__).resolve().parent.parent
     meta = [
         ("Receipt #:", r.receipt_number),
         ("Date:", r.created_at.strftime("%b %d, %Y")),
         ("Received by:", r.username or "\u2014"),
     ]
-    body_y = draw_header(c, "GOODS RECEIPT", meta, store_lines)
+    body_y = draw_banner_header(c, "GOODS RECEIPT", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir)
 
     supplier_lines = [r.supplier_name or "\u2014"]
     if r.supplier:
@@ -105,7 +109,7 @@ def receipt_pdf(receipt_id: int, db: Session = Depends(get_db)):
         rows.append([
             (name[:34] + "\u2026") if len(name) > 34 else name,
             item.lot_number or "\u2014",
-            item.location_name or "\u2014",
+            item.location_code or item.location_name or "\u2014",
             str(item.quantity),
             f"{currency}{float(item.unit_cost):.2f}",
             f"{currency}{float(item.unit_cost) * item.quantity:.2f}",
@@ -113,7 +117,7 @@ def receipt_pdf(receipt_id: int, db: Session = Depends(get_db)):
 
     y = draw_item_table(
         c, MARGIN, info_y, headers, aligns, col_widths, rows,
-        on_page_break=lambda c: draw_header(c, "GOODS RECEIPT", meta, store_lines),
+        on_page_break=lambda c: draw_banner_header(c, "GOODS RECEIPT", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir),
     )
 
     y = draw_totals(c, BODY_RIGHT, y, [], "Total Cost", f"{currency}{float(r.total_cost):.2f}")
@@ -123,6 +127,7 @@ def receipt_pdf(receipt_id: int, db: Session = Depends(get_db)):
         y -= 18
 
     draw_signoff(c, y, "Received into stock")
+    draw_page_footer(c, 1, tax_id=(s.tax_id if s else ""))
     return Response(render_pdf(c, buf), media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename={r.receipt_number}.pdf"
     })

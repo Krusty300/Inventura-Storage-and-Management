@@ -168,6 +168,8 @@ export default function LocationDetail({ location, onClose }: Props) {
   const scrappedSerials = detail?.scrapped_serials || [];
   const movements = detail?.movements || [];
   const logs = activity?.items || [];
+  const totalStockQty = stockLines.reduce((sum, sl) => sum + sl.quantity, 0) + serials.length;
+  const totalStockValue = stockLines.reduce((sum, sl) => sum + sl.value, 0) + serials.reduce((sum, s) => sum + s.value, 0);
 
   return (
     <SlideOver open onClose={onClose} title={location.path} wide ariaLabel={location.path}>
@@ -205,6 +207,21 @@ export default function LocationDetail({ location, onClose }: Props) {
           </div>
         </div>
 
+        <div className="flex items-center gap-4 px-4 py-2.5 bg-subtle rounded-lg border border-border">
+          <div className="flex items-center gap-1.5 text-xs text-muted">
+            <Package size={14} /> <span className="font-medium text-ink">{totalStockQty}</span> units
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted">
+            <span className="font-medium text-ink">{lpns.length}</span> LPNs
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted">
+            <span className="font-medium text-ink">{serials.length}</span> serials
+          </div>
+          <div className="ml-auto text-xs text-muted">
+            Value: <span className="font-medium text-ink">{formatCurrency(totalStockValue, currencySymbol)}</span>
+          </div>
+        </div>
+
         <div className="flex gap-2 border-b border-border pb-3">
           <TabButton active={tab === "stock"} onClick={() => setTab("stock")}>
             <Package size={14} /> Stock ({stockLines.length + serials.length})
@@ -221,58 +238,61 @@ export default function LocationDetail({ location, onClose }: Props) {
           <p className="text-muted py-4">Loading...</p>
         ) : tab === "stock" ? (
           <>
-            {stockLines.length === 0 && serials.length === 0 ? (
+            {stockLines.length === 0 && serials.length === 0 && scrappedSerials.length === 0 ? (
               <p className="text-muted py-4">No stock at this location.</p>
             ) : (
               <>
             {stockLines.length > 0 && (
-              <div className="overflow-x-auto max-h-72 overflow-y-auto">
-                <table className="w-full text-sm" role="grid" aria-label="Stock at location">
-                  <thead>
-                    <tr className="bg-app text-left text-muted">
-                      <th className="px-3 py-2 font-medium">Product</th>
-                      <th className="px-3 py-2 font-medium">SKU</th>
-                      <th className="px-3 py-2 font-medium">Lot</th>
-                      <th className="px-3 py-2 font-medium">LPN</th>
-                      <th className="px-3 py-2 font-medium text-right">Qty</th>
-                      <th className="px-3 py-2 font-medium text-right">Value</th>
-                      <th className="px-3 py-2 font-medium" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {stockLines.map((sl) => (
-                      <tr key={sl.id}>
-                        <td className="px-3 py-2 font-medium">{sl.product_name}</td>
-                        <td className="px-3 py-2 text-muted">{sl.sku}</td>
-                        <td className="px-3 py-2 text-muted">{sl.lot_number || "—"}{sl.lot_status && sl.lot_status !== "in_stock" ? <LotStatusBadge status={sl.lot_status} /> : null}</td>
-                        <td className="px-3 py-2 text-muted">{sl.lpn_number || "—"}</td>
-                        <td className="px-3 py-2 text-right">{sl.quantity}</td>
-                        <td className="px-3 py-2 text-right">{formatCurrency(sl.value, currencySymbol)}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex justify-end gap-1">
-                            {can("lots.update") && sl.lot_id != null && sl.lot_status === "in_stock" && (
-                              <button onClick={() => { if (sl.lot_id != null) updateLotMutation.mutate({ id: sl.lot_id, status: "quarantined" }); }} className="p-1 text-faint hover:text-amber-600 dark:text-amber-400" title="Quarantine" aria-label={`Quarantine ${sl.lot_number}`}><ShieldX size={16} /></button>
-                            )}
-                            {can("lots.update") && sl.lot_id != null && sl.lot_status === "quarantined" && (
-                              <button onClick={() => { if (sl.lot_id != null) updateLotMutation.mutate({ id: sl.lot_id, status: "in_stock" }); }} className="p-1 text-faint hover:text-green-600 dark:text-green-400" title="Release" aria-label={`Release ${sl.lot_number}`}><ShieldCheck size={16} /></button>
-                            )}
-                          </div>
-                        </td>
+              <div>
+                <p className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Bulk stock ({stockLines.length} lines, {totalStockQty} units)</p>
+                <div className="overflow-x-auto max-h-72 overflow-y-auto border border-border rounded-lg">
+                  <table className="w-full text-sm" role="grid" aria-label="Stock at location">
+                    <thead>
+                      <tr className="bg-subtle text-left text-muted">
+                        <th className="px-3 py-2 font-medium">Product</th>
+                        <th className="px-3 py-2 font-medium">SKU</th>
+                        <th className="px-3 py-2 font-medium">Lot</th>
+                        <th className="px-3 py-2 font-medium">LPN</th>
+                        <th className="px-3 py-2 font-medium text-right">Qty</th>
+                        <th className="px-3 py-2 font-medium text-right">Value</th>
+                        <th className="px-3 py-2 font-medium" />
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {stockLines.map((sl) => (
+                        <tr key={sl.id} className="hover:bg-subtle/50 transition-colors">
+                          <td className="px-3 py-2 font-medium">{sl.product_name}</td>
+                          <td className="px-3 py-2 text-muted">{sl.sku}</td>
+                          <td className="px-3 py-2 text-muted">{sl.lot_number || "—"}{sl.lot_status && sl.lot_status !== "in_stock" ? <LotStatusBadge status={sl.lot_status} /> : null}</td>
+                          <td className="px-3 py-2 text-muted">{sl.lpn_number || "—"}</td>
+                          <td className="px-3 py-2 text-right font-medium">{sl.quantity}</td>
+                          <td className="px-3 py-2 text-right">{formatCurrency(sl.value, currencySymbol)}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end gap-1">
+                              {can("lots.update") && sl.lot_id != null && sl.lot_status === "in_stock" && (
+                                <button onClick={() => { if (sl.lot_id != null) updateLotMutation.mutate({ id: sl.lot_id, status: "quarantined" }); }} className="p-1 text-faint hover:text-amber-600 dark:text-amber-400" title="Quarantine" aria-label={`Quarantine ${sl.lot_number}`}><ShieldX size={16} /></button>
+                              )}
+                              {can("lots.update") && sl.lot_id != null && sl.lot_status === "quarantined" && (
+                                <button onClick={() => { if (sl.lot_id != null) updateLotMutation.mutate({ id: sl.lot_id, status: "in_stock" }); }} className="p-1 text-faint hover:text-green-600 dark:text-green-400" title="Release" aria-label={`Release ${sl.lot_number}`}><ShieldCheck size={16} /></button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
               </>
             )}
             {serials.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm font-medium text-ink mb-2">Serialized items ({serials.length})</p>
-                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+              <div className="mt-3">
+                <p className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Serialized items ({serials.length})</p>
+                <div className="overflow-x-auto max-h-72 overflow-y-auto border border-border rounded-lg">
                   <table className="w-full text-sm" role="grid" aria-label="Serialized items at location">
                     <thead>
-                      <tr className="bg-app text-left text-muted">
+                      <tr className="bg-subtle text-left text-muted">
                         <th className="px-3 py-2 font-medium">Serial #</th>
                         <th className="px-3 py-2 font-medium">Product</th>
                         <th className="px-3 py-2 font-medium">SKU</th>
@@ -285,7 +305,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                     </thead>
                     <tbody className="divide-y divide-border">
                       {serials.map((s) => (
-                        <tr key={s.id}>
+                        <tr key={s.id} className="hover:bg-subtle/50 transition-colors">
                           <td className="px-3 py-2 font-medium font-mono">{s.serial_number}</td>
                           <td className="px-3 py-2 text-muted">{s.product_name}</td>
                           <td className="px-3 py-2 text-muted">{s.sku}</td>
@@ -327,12 +347,12 @@ export default function LocationDetail({ location, onClose }: Props) {
               </div>
             )}
             {scrappedSerials.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm font-medium text-ink mb-2">Scrapped serials ({scrappedSerials.length})</p>
-                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+              <div className="mt-3">
+                <p className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Scrapped serials ({scrappedSerials.length})</p>
+                <div className="overflow-x-auto max-h-72 overflow-y-auto border border-border rounded-lg">
                   <table className="w-full text-sm" role="grid" aria-label="Scrapped serials at location">
                     <thead>
-                      <tr className="bg-app text-left text-muted">
+                      <tr className="bg-subtle text-left text-muted">
                         <th className="px-3 py-2 font-medium">Serial #</th>
                         <th className="px-3 py-2 font-medium">Product</th>
                         <th className="px-3 py-2 font-medium">SKU</th>
@@ -364,10 +384,10 @@ export default function LocationDetail({ location, onClose }: Props) {
           lpns.length === 0 ? (
             <p className="text-muted py-4">No LPNs at this location.</p>
           ) : (
-            <div className="overflow-x-auto max-h-72 overflow-y-auto">
+            <div className="overflow-x-auto max-h-72 overflow-y-auto border border-border rounded-lg">
               <table className="w-full text-sm" role="grid" aria-label="LPNs at location">
                 <thead>
-                  <tr className="bg-app text-left text-muted">
+                  <tr className="bg-subtle text-left text-muted">
                     <th className="px-3 py-2 font-medium">LPN</th>
                     <th className="px-3 py-2 font-medium">Type</th>
                     <th className="px-3 py-2 font-medium">Status</th>
@@ -376,7 +396,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {lpns.map((l) => (
-                    <tr key={l.id}>
+                    <tr key={l.id} className="hover:bg-subtle/50 transition-colors">
                       <td className="px-3 py-2 font-medium">{l.lpn_number}</td>
                       <td className="px-3 py-2 text-muted capitalize">{l.lpn_type}</td>
                       <td className="px-3 py-2">
@@ -395,11 +415,11 @@ export default function LocationDetail({ location, onClose }: Props) {
           <>
             {movements.length > 0 && (
               <div>
-                <p className="text-sm font-medium text-ink mb-2">Stock movements ({movements.length})</p>
-                <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                <p className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Stock movements ({movements.length})</p>
+                <div className="overflow-x-auto max-h-60 overflow-y-auto border border-border rounded-lg">
                   <table className="w-full text-sm" role="grid" aria-label="Stock movements at location">
                     <thead>
-                      <tr className="bg-app text-left text-muted">
+                      <tr className="bg-subtle text-left text-muted">
                         <th className="px-3 py-2 font-medium">Date</th>
                         <th className="px-3 py-2 font-medium">Type</th>
                         <th className="px-3 py-2 font-medium">Product</th>
@@ -411,7 +431,7 @@ export default function LocationDetail({ location, onClose }: Props) {
                     </thead>
                     <tbody className="divide-y divide-border">
                       {movements.map((m) => (
-                        <tr key={m.id}>
+                        <tr key={m.id} className="hover:bg-subtle/50 transition-colors">
                           <td className="px-3 py-2 text-muted">{formatDateTime(m.created_at)}</td>
                           <td className="px-3 py-2 capitalize">{m.movement_type}</td>
                           <td className="px-3 py-2 font-medium">{m.product_name}</td>

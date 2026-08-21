@@ -42,6 +42,15 @@ describe("effectivePermissions", () => {
     expect(effectivePermissions(null).size).toBe(0);
     expect(effectivePermissions(undefined).size).toBe(0);
   });
+
+  it("grants managers all permissions except admin-only ones", () => {
+    const perms = effectivePermissions({ role: "manager" });
+    expect(perms.has("users.view")).toBe(true);
+    expect(perms.has("settings.update")).toBe(true);
+    expect(perms.has("sales.refund")).toBe(true);
+    expect(perms.has("users.delete")).toBe(false);
+    expect(perms.has("users.assign_admin_role")).toBe(false);
+  });
 });
 
 describe("canUser", () => {
@@ -63,6 +72,17 @@ describe("can (role-based)", () => {
     expect(can("admin", "users.delete")).toBe(true);
     expect(can("worker", "users.view")).toBe(false);
     expect(can("worker", "orders.create")).toBe(true);
+  });
+
+  it("grants managers most permissions but not admin-only ones", () => {
+    expect(can("manager", "users.view")).toBe(true);
+    expect(can("manager", "users.create")).toBe(true);
+    expect(can("manager", "users.update")).toBe(true);
+    expect(can("manager", "settings.update")).toBe(true);
+    expect(can("manager", "sales.refund")).toBe(true);
+    expect(can("manager", "reports.view")).toBe(true);
+    expect(can("manager", "users.delete")).toBe(false);
+    expect(can("manager", "users.assign_admin_role")).toBe(false);
   });
 });
 

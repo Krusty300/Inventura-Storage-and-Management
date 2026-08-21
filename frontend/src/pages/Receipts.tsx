@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Eye, PackagePlus, Printer } from "lucide-react";
+import { Eye, PackagePlus, Printer, Search } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Receipt } from "../types";
@@ -86,6 +86,7 @@ export default function Receipts() {
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by receipt number or reference..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search receipts" />
         </div>
       </div>

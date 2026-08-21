@@ -37,7 +37,7 @@ function deviceLabel(ua: string): string {
 
 export default function Profile() {
   const formatDateTime = useDateTimeFormat();
-  const { user, updateUser, logout } = useAuth();
+  const { user, updateUser, logout, completeLogout } = useAuth();
   const { addToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ username: "", email: "" });
@@ -87,6 +87,7 @@ export default function Profile() {
       addToast("Password changed. You have been signed out of all devices. Please log in with your new password.", "success");
       setPw({ current_password: "", new_password: "" });
       logout();
+      setTimeout(() => completeLogout(), 600);
     } catch (err: any) {
       addToast(err.response?.data?.detail || "Failed to change password", "error");
     }
@@ -171,7 +172,7 @@ export default function Profile() {
             <div className="flex items-center gap-4 mb-6">
               {user.avatar_url ? (
                 <img src={user.avatar_url} alt={user.username}
-                  className="h-20 w-20 rounded-full object-cover border border-border" />
+                  className="h-20 w-20 rounded-full object-cover border border-border" loading="lazy" />
               ) : (
                 <div
                   className="h-20 w-20 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400

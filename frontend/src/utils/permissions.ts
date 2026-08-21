@@ -45,6 +45,7 @@ export const ALL_PERMISSIONS = [
   "users.create",
   "users.update",
   "users.delete",
+  "users.assign_admin_role",
   "activity.view",
   "notifications.view",
   "receipts.view",
@@ -144,8 +145,13 @@ const WORKER_PERMISSIONS = [
   "profile.view",
 ];
 
+const MANAGER_PERMISSIONS = ALL_PERMISSIONS.filter(
+  (p) => p !== "users.delete" && p !== "users.assign_admin_role"
+);
+
 const ROLE_PERMISSIONS: Record<string, ReadonlySet<string>> = {
   admin: new Set(ALL_PERMISSIONS),
+  manager: new Set(MANAGER_PERMISSIONS),
   worker: new Set(WORKER_PERMISSIONS),
 };
 
@@ -159,6 +165,7 @@ type PermissionUser = { role?: string; permissions?: string[] | null } | null | 
 export function effectivePermissions(user: PermissionUser): Set<string> {
   if (!user) return new Set();
   if (user.role === "admin") return new Set(ALL_PERMISSIONS);
+  if (user.role === "manager") return new Set(MANAGER_PERMISSIONS);
   const custom = user.permissions;
   if (custom && custom.length > 0) {
     return new Set([...custom, "profile.view"]);

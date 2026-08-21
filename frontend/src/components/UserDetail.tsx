@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useQuery } from "@tanstack/react-query";
-import { Shield, ShieldOff } from "lucide-react";
+import { Shield, ShieldOff, ShieldCheck } from "lucide-react";
 import api from "../api/client";
 import Modal from "./Modal";
 import type { PaginatedResponse, User } from "../types";
@@ -54,7 +54,7 @@ export default function UserDetail({ user, onClose }: Props) {
           <div>
             <span className="text-muted">Role:</span>
             <p className="font-medium flex items-center gap-1 mt-1">
-              {user.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : <ShieldOff size={14} className="text-faint" />}
+              {user.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : user.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : <ShieldOff size={14} className="text-faint" />}
               {user.role}
             </p>
           </div>
@@ -68,8 +68,9 @@ export default function UserDetail({ user, onClose }: Props) {
           </div>
           <div>
             <span className="text-muted">Status:</span>
-            <p className="font-medium mt-1">
+            <p className="font-medium mt-1 flex items-center gap-2">
               {user.is_active ? <span className="badge badge-success">Active</span> : <span className="badge badge-danger">Inactive</span>}
+              {user.is_approved === false && <span className="badge badge-warning">Pending Approval</span>}
             </p>
           </div>
         </div>

@@ -18,6 +18,8 @@ import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { formatCurrency } from "../utils/currency";
+import { useSettings } from "../hooks/useSettings";
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -91,7 +93,7 @@ export default function WorkOrders() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by work order number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search work orders" />
         </div>
         <select className="select" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} aria-label="Filter by status">
@@ -372,6 +374,8 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
 
 function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }) {
   const formatDate = useDateFormat();
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
   const { data: genealogy } = useQuery({
     queryKey: ["work-order-genealogy", wo.id],
     queryFn: async () => {
@@ -422,6 +426,8 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
                 <th className="px-4 py-2 font-medium text-muted">Required</th>
                 <th className="px-4 py-2 font-medium text-muted">Issued</th>
                 <th className="px-4 py-2 font-medium text-muted">Remaining</th>
+                <th className="px-4 py-2 font-medium text-muted">Unit Cost</th>
+                <th className="px-4 py-2 font-medium text-muted text-right">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -431,6 +437,8 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
                   <td className="px-4 py-2">{item.quantity_required}</td>
                   <td className="px-4 py-2">{item.quantity_issued}</td>
                   <td className="px-4 py-2">{Math.max(0, item.quantity_required - item.quantity_issued)}</td>
+                  <td className="px-4 py-2">{formatCurrency(item.unit_cost, currencySymbol)}</td>
+                  <td className="px-4 py-2 text-right">{formatCurrency(item.unit_cost * item.quantity_required, currencySymbol)}</td>
                 </tr>
               ))}
             </tbody>

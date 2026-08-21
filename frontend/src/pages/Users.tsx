@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Shield, ShieldOff, ShieldCheck, Eye, KeyRound, Trash2, UserCheck, Download } from "lucide-react";
+import { Shield, ShieldOff, ShieldCheck, Eye, KeyRound, Trash2, UserCheck, Download, Clock, Check, Search, X } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, User } from "../types";
@@ -37,6 +37,10 @@ export default function Users() {
   const [reactivating, setReactivating] = useState<User | null>(null);
   const [editingPermissions, setEditingPermissions] = useState<User | null>(null);
   const [confirming, setConfirming] = useState<{ user: User; role: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
+  const [approving, setApproving] = useState<User | null>(null);
+  const [approveRole, setApproveRole] = useState("worker");
+  const [rejecting, setRejecting] = useState<User | null>(null);
   const queryClient = useQueryClient();
   const { can, user } = useAuth();
   const { addToast } = useToast();
@@ -59,6 +63,37 @@ export default function Users() {
   });
 
   const users = data?.items || [];
+
+  const { data: pendingData, isLoading: pendingLoading } = useQuery({
+    queryKey: ["users", "pending"],
+    queryFn: async () => {
+      const { data } = await api.get("/users/pending");
+      return data as User[];
+    },
+    enabled: activeTab === "pending",
+  });
+
+  const pendingUsers = pendingData || [];
+
+  const approveMutation = useMutation({
+    mutationFn: ({ id, role }: { id: number; role: string }) => api.post(`/users/${id}/approve`, { role }),
+    onSuccess: () => {
+      addToast("User approved", "success");
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setApproving(null);
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Failed to approve user", "error"),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/users/${id}/reject`),
+    onSuccess: () => {
+      addToast("User rejected", "success");
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setRejecting(null);
+    },
+    onError: (err: any) => addToast(err.response?.data?.detail || "Failed to reject user", "error"),
+  });
 
   const handleExport = () => {
     exportCSV(
@@ -149,7 +184,26 @@ export default function Users() {
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by username or email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search users" />
+        </div>
+        <div className="flex gap-1 bg-app-alt rounded-lg p-1">
+          <button
+            onClick={() => setActiveTab("all")}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "all" ? "bg-white dark:bg-gray-700 text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+          >
+            All Users
+          </button>
+          <button
+            onClick={() => setActiveTab("pending")}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-1.5 ${activeTab === "pending" ? "bg-white dark:bg-gray-700 text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+          >
+            <Clock size={14} />
+            Pending
+            {pendingUsers.length > 0 && (
+              <span className="bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">{pendingUsers.length}</span>
+            )}
+          </button>
         </div>
         <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
           <input
@@ -165,6 +219,47 @@ export default function Users() {
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
+        {activeTab === "pending" ? (
+          <table className="w-full text-sm" role="grid" aria-label="Pending users table">
+            <thead>
+              <tr className="bg-app text-left">
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Username</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Email</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Requested Role</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Registered</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {pendingLoading ? (
+                <Skeleton rows={3} cols={5} />
+              ) : pendingUsers.length === 0 ? (
+                <EmptyState title="No pending users" message="All registrations have been reviewed." />
+              ) : pendingUsers.map((u) => (
+                <tr key={u.id} className="hover:bg-app">
+                  <td className="px-4 py-3 font-medium">{u.username}</td>
+                  <td className="px-4 py-3 text-muted">{u.email}</td>
+                  <td className="px-4 py-3">
+                    <span className={`badge ${u.role === "admin" ? "badge-info" : u.role === "manager" ? "badge-success" : "badge-warning"}`}>{u.role}</span>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{formatDate(u.created_at)}</td>
+                  <td className="px-4 py-3">
+                    {can("users.update") && (
+                      <div className="flex gap-2 items-center">
+                        <button onClick={() => { setApproving(u); setApproveRole(u.role); }} className="inline-flex items-center gap-1 btn-primary text-xs py-1 px-2">
+                          <Check size={14} /> Approve
+                        </button>
+                        <button onClick={() => setRejecting(u)} className="inline-flex items-center gap-1 btn-secondary text-xs py-1 px-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">
+                          <X size={14} /> Reject
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
         <table className="w-full text-sm" role="grid" aria-label="Users table">
           <thead>
             <tr className="bg-app text-left">
@@ -193,6 +288,7 @@ export default function Users() {
                 <td className="px-4 py-3 font-medium">
                   <span className="inline-flex items-center gap-2">
                     {u.username}
+                    {u.is_approved === false && <span className="badge badge-warning"><Clock size={10} className="mr-0.5" /> Pending</span>}
                     {!u.is_active && <span className="badge badge-danger">Inactive</span>}
                     {user && u.id === user.id && <span className="badge badge-success">You</span>}
                   </span>
@@ -202,12 +298,13 @@ export default function Users() {
                   {editingId === u.id ? (
                     <select className="select text-sm py-1" value={editRole} onChange={(e) => setEditRole(e.target.value)} aria-label={`Edit role for ${u.username}`}>
                       <option value="worker">worker</option>
-                      <option value="admin">admin</option>
+                      <option value="manager">manager</option>
+                      {can("users.assign_admin_role") && <option value="admin">admin</option>}
                     </select>
                   ) : (
                     <span className="inline-flex items-center gap-1">
-                      {u.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : <ShieldOff size={14} className="text-faint" />}
-                      <span className={`badge ${u.role === "admin" ? "badge-info" : "badge-warning"}`}>{u.role}</span>
+                      {u.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : u.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : <ShieldOff size={14} className="text-faint" />}
+                      <span className={`badge ${u.role === "admin" ? "badge-info" : u.role === "manager" ? "badge-success" : "badge-warning"}`}>{u.role}</span>
                       {u.role !== "admin" && u.permissions && u.permissions.length > 0 && (
                         <span className="badge badge-success" title={`${u.permissions.length} custom permission(s)`}>Custom</span>
                       )}
@@ -247,6 +344,7 @@ export default function Users() {
             ))}
           </tbody>
         </table>
+        )}
         </div>
       </div>
 
@@ -307,6 +405,42 @@ export default function Users() {
         onCancel={() => setConfirming(null)}
       />
 
+      {approving && (
+        <Modal open onClose={() => setApproving(null)} title={`Approve ${approving.username}`}>
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              Approve <strong>{approving.username}</strong> ({approving.email}) and assign a role:
+            </p>
+            <div>
+              <label htmlFor="approve-role" className="block text-sm font-medium text-ink mb-1">Role</label>
+              <select id="approve-role" className="select" value={approveRole} onChange={(e) => setApproveRole(e.target.value)}>
+                <option value="worker">Worker</option>
+                <option value="manager">Manager</option>
+                {can("users.assign_admin_role") && <option value="admin">Admin</option>}
+              </select>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <button onClick={() => setApproving(null)} className="btn-secondary">Cancel</button>
+              <button onClick={() => approveMutation.mutate({ id: approving.id, role: approveRole })} className="btn-primary inline-flex items-center gap-1">
+                <Check size={16} /> Approve
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      <ConfirmDialog
+        open={!!rejecting}
+        title="Reject User"
+        message={`Reject "${rejecting?.username}"'s registration? Their account will be deactivated.`}
+        confirmLabel="Reject"
+        confirmClass="btn-primary"
+        onConfirm={() => {
+          if (rejecting) rejectMutation.mutate(rejecting.id);
+        }}
+        onCancel={() => setRejecting(null)}
+      />
+
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
     </div>
   );
@@ -316,6 +450,7 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const [form, setForm] = useState({ username: "", email: "", password: "", role: "worker" });
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+  const { can } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -351,7 +486,8 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <label htmlFor="create-role" className="block text-sm font-medium text-ink mb-1">Role</label>
           <select id="create-role" className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             <option value="worker">Worker</option>
-            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+            {can("users.assign_admin_role") && <option value="admin">Admin</option>}
           </select>
         </div>
         <div className="flex justify-end gap-3 pt-4">

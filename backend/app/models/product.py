@@ -45,6 +45,7 @@ class Product(Base):
     variant_of = relationship("Product", remote_side=[id], back_populates="variants")
     variants = relationship("Product", back_populates="variant_of", cascade="all", order_by="Product.id")
     boms = relationship("BOM", back_populates="product")
+    images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan", order_by="ProductImage.sort_order")
 
     @property
     def category_name(self) -> str:

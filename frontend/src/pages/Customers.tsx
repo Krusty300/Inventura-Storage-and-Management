@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Pencil, Trash2, Eye, RefreshCw } from "lucide-react";
+import { Pencil, Trash2, Eye, RefreshCw, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, PaginatedResponse } from "../types";
@@ -138,6 +138,7 @@ export default function Customers() {
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input
             className="input pl-10"
             placeholder="Search by name, phone, or email..."

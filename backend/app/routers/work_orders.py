@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from math import ceil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -15,8 +16,8 @@ from app.services import inventory
 from app.services.auth import require_permission
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
-    draw_notes, draw_signoff, draw_totals, new_canvas, render_pdf,
+    BODY_RIGHT, MARGIN, draw_banner_header, draw_info_block, draw_item_table,
+    draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change
 
@@ -284,6 +285,7 @@ def work_order_pdf(wo_id: int, db: Session = Depends(get_db)):
     s = db.query(Settings).first()
 
     store_name = (s.store_name if s else None) or "My Store"
+    currency = (s.currency_symbol if s else "$") or "$"
     store_lines = [store_name] + [ln for ln in (
         (s.address if s else None),
         (s.phone if s else None),
@@ -291,13 +293,14 @@ def work_order_pdf(wo_id: int, db: Session = Depends(get_db)):
     ) if ln]
 
     c, buf = new_canvas(f"Work Order {wo.wo_number}")
+    base_dir = Path(__file__).resolve().parent.parent
     meta = [
         ("WO #:", wo.wo_number),
         ("Date:", wo.created_at.strftime("%b %d, %Y")),
         ("Status:", wo.status),
         ("Priority:", wo.priority),
     ]
-    body_y = draw_header(c, "WORK ORDER", meta, store_lines)
+    body_y = draw_banner_header(c, "WORK ORDER", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir)
 
     product_lines = [wo.product_name or f"Product #{wo.product_id}"]
     product_lines.append(f"Quantity: {wo.quantity}")
@@ -307,34 +310,40 @@ def work_order_pdf(wo_id: int, db: Session = Depends(get_db)):
         product_lines.append(f"BOM: {wo.bom_name}")
     info_y = draw_info_block(c, MARGIN, body_y, "Product", product_lines)
 
-    headers = ["Component", "Required", "Issued", "Remaining"]
-    aligns = ["l", "r", "r", "r"]
-    col_widths = [294.0, 70.0, 70.0, 70.0]
+    headers = ["Component", "Required", "Issued", "Remaining", "Unit Cost", "Amount"]
+    aligns = ["l", "r", "r", "r", "r", "r"]
+    col_widths = [210.0, 58.0, 58.0, 58.0, 70.0, 80.0]
     rows = []
     for item in wo.items:
         name = item.product_name or f"Product #{item.product_id}"
+        cost = float(item.product.cost_price or 0) if item.product else 0.0
+        remaining = max(0, item.quantity_required - item.quantity_issued)
         rows.append([
-            (name[:64] + "\u2026") if len(name) > 64 else name,
+            (name[:42] + "\u2026") if len(name) > 42 else name,
             str(item.quantity_required),
             str(item.quantity_issued),
-            str(item.quantity_required - item.quantity_issued),
+            str(remaining),
+            f"{currency}{cost:.2f}",
+            f"{currency}{cost * item.quantity_required:.2f}",
         ])
 
     y = draw_item_table(
         c, MARGIN, info_y, headers, aligns, col_widths, rows,
-        on_page_break=lambda c: draw_header(c, "WORK ORDER", meta, store_lines),
+        on_page_break=lambda c: draw_banner_header(c, "WORK ORDER", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir),
     )
 
+    total_cost = sum(float(item.product.cost_price or 0) * item.quantity_required for item in wo.items if item.product)
     y = draw_totals(c, BODY_RIGHT, y, [
         ("Total Required", f"{wo.total_required} unit(s)"),
         ("Total Issued", f"{wo.total_issued} unit(s)"),
-    ])
+    ], "Total Cost", f"{currency}{total_cost:.2f}")
 
     if wo.notes:
         draw_notes(c, MARGIN, y, wo.notes)
         y -= 18
 
     draw_signoff(c, y, "Manufacturing order")
+    draw_page_footer(c, 1, tax_id=(s.tax_id if s else ""))
     return Response(render_pdf(c, buf), media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename={wo.wo_number}.pdf"
     })

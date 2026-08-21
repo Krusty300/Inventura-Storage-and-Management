@@ -27,7 +27,8 @@ def create_notification(db: Session, user_id: int, title: str, message: str = ""
 
 
 def notify_admins(db: Session, title: str, message: str = "", type: str = "info", link: str = "") -> list[Notification]:
-    admins = db.query(User).filter(User.role == "admin").all()
+    from app.services.permissions import has_permission
+    admins = db.query(User).filter(User.is_active == True, User.role.in_(["admin", "manager"])).all()
     created = []
     for admin in admins:
         created.append(create_notification(db, admin.id, title, message, type, link))
@@ -57,7 +58,7 @@ def notify_low_stock(db: Session, product: Product) -> list[Notification]:
         return []
     title = f"Low stock: {product.display_name}"
     created = []
-    for admin in db.query(User).filter(User.role == "admin").all():
+    for admin in db.query(User).filter(User.is_active == True, User.role.in_(["admin", "manager"])).all():
         already = db.query(Notification).filter(
             Notification.user_id == admin.id,
             Notification.type == "warning",
@@ -113,7 +114,7 @@ def notify_lot_expired(db: Session, lot) -> list[Notification]:
         f"and was marked expired."
     )
     created = []
-    for admin in db.query(User).filter(User.role == "admin").all():
+    for admin in db.query(User).filter(User.is_active == True, User.role.in_(["admin", "manager"])).all():
         already = db.query(Notification).filter(
             Notification.user_id == admin.id,
             Notification.type == "warning",

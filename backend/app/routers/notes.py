@@ -450,6 +450,12 @@ class BulkArchiveRequest(BaseModel):
     archive: bool
 
 
+class BulkUpdateRequest(BaseModel):
+    ids: list[int]
+    priority: str | None = None
+    is_completed: bool | None = None
+
+
 @router.post("/bulk-archive")
 def bulk_archive(data: BulkArchiveRequest, db: Session = Depends(get_db), user: User = Depends(require_permission("notes.update"))):
     notes = db.query(Note).filter(Note.id.in_(data.ids)).all()
@@ -462,6 +468,41 @@ def bulk_archive(data: BulkArchiveRequest, db: Session = Depends(get_db), user: 
                      f"{'Archived' if data.archive else 'Unarchived'} note '{note.title}'")
     db.commit()
     broadcast_change("note", "updated")
+    return {"ok": True, "count": len(notes)}
+
+
+@router.post("/bulk-update")
+def bulk_update(data: BulkUpdateRequest, db: Session = Depends(get_db), user: User = Depends(require_permission("notes.update"))):
+    notes = db.query(Note).filter(Note.id.in_(data.ids)).all()
+    if not notes:
+        raise HTTPException(status_code=404, detail="No notes found")
+    if data.priority is not None:
+        if data.priority not in VALID_PRIORITIES:
+            raise HTTPException(status_code=400, detail=f"Invalid priority: {data.priority}")
+        for note in notes:
+            note.priority = data.priority
+    if data.is_completed is not None:
+        for note in notes:
+            note.is_completed = data.is_completed
+    db.commit()
+    for note in notes:
+        log_activity(db, user.id, user.username, "update", "note", note.id,
+                     f"Bulk-updated note '{note.title}'")
+    db.commit()
+    broadcast_change("note", "updated")
+    return {"ok": True, "count": len(notes)}
+
+
+@router.post("/bulk-delete")
+def bulk_delete(data: BulkArchiveRequest, db: Session = Depends(get_db), user: User = Depends(require_permission("notes.delete"))):
+    notes = db.query(Note).filter(Note.id.in_(data.ids)).all()
+    if not notes:
+        raise HTTPException(status_code=404, detail="No notes found")
+    for note in notes:
+        log_activity(db, user.id, user.username, "delete", "note", note.id, f"Deleted note '{note.title}'")
+        db.delete(note)
+    db.commit()
+    broadcast_change("note", "deleted")
     return {"ok": True, "count": len(notes)}
 
 

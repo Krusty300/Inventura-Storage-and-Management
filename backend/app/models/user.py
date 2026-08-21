@@ -17,6 +17,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="worker")
     permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
+    is_approved: Mapped[bool] = mapped_column(default=False)
     avatar_url: Mapped[str] = mapped_column(String(500), default="")
     last_login_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())

@@ -40,3 +40,9 @@ class Settings(Base):
 
     default_items_per_page: Mapped[int] = mapped_column(Integer, default=50)
     date_format: Mapped[str] = mapped_column(String(20), default="YYYY-MM-DD")
+
+    logo_url: Mapped[str] = mapped_column(String(500), default="")
+    tax_id: Mapped[str] = mapped_column(String(100), default="")
+    payment_terms: Mapped[str] = mapped_column(String(100), default="")
+    bank_details: Mapped[str] = mapped_column(Text, default="")
+    footer_note: Mapped[str] = mapped_column(Text, default="")

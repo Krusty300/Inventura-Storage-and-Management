@@ -1,8 +1,11 @@
 from datetime import datetime, timezone
 from math import ceil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.constants import MAX_PAGE_SIZE
@@ -15,8 +18,8 @@ from app.services.auth import require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, draw_header, draw_info_block, draw_item_table,
-    draw_notes, draw_signoff, draw_totals, new_canvas, render_pdf,
+    BODY_RIGHT, MARGIN, draw_banner_header, draw_info_block, draw_item_table,
+    draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
@@ -43,7 +46,9 @@ def list_asns(
     q = db.query(ASN).options(joinedload(ASN.items), joinedload(ASN.supplier), joinedload(ASN.user))
     if search:
         like = f"%{search}%"
-        q = q.filter(ASN.asn_number.ilike(like) | ASN.notes.ilike(like))
+        q = q.outerjoin(Supplier, ASN.supplier_id == Supplier.id).filter(
+            or_(ASN.asn_number.ilike(like), ASN.notes.ilike(like), Supplier.name.ilike(like))
+        )
     if status:
         q = q.filter(ASN.status == status)
     if supplier_id:
@@ -63,6 +68,7 @@ def get_asn(asn_id: int, db: Session = Depends(get_db)):
 def asn_pdf(asn_id: int, db: Session = Depends(get_db)):
     a = _load_asn(db, asn_id)
     s = db.query(Settings).first()
+    base_dir = Path(__file__).resolve().parent.parent
 
     store_name = (s.store_name if s else None) or "My Store"
     currency = (s.currency_symbol if s else "$") or "$"
@@ -79,7 +85,7 @@ def asn_pdf(asn_id: int, db: Session = Depends(get_db)):
         ("Status:", a.status),
         ("Expected Arrival:", a.expected_arrival.strftime("%b %d, %Y") if a.expected_arrival else "\u2014"),
     ]
-    body_y = draw_header(c, "ADVANCE SHIPPING NOTICE", meta, store_lines)
+    body_y = draw_banner_header(c, "ADVANCE SHIPPING NOTICE", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir)
 
     supplier_lines = [a.supplier_name or "\u2014"]
     if a.supplier:
@@ -108,7 +114,7 @@ def asn_pdf(asn_id: int, db: Session = Depends(get_db)):
 
     y = draw_item_table(
         c, MARGIN, info_y, headers, aligns, col_widths, rows,
-        on_page_break=lambda c: draw_header(c, "ADVANCE SHIPPING NOTICE", meta, store_lines),
+        on_page_break=lambda c: draw_banner_header(c, "ADVANCE SHIPPING NOTICE", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir),
     )
 
     total_value = sum(i.expected_qty * float(i.unit_cost) for i in a.items)
@@ -122,6 +128,7 @@ def asn_pdf(asn_id: int, db: Session = Depends(get_db)):
         y -= 18
 
     draw_signoff(c, y, "Awaiting receiving")
+    draw_page_footer(c, 1, tax_id=(s.tax_id if s else ""))
     return Response(render_pdf(c, buf), media_type="application/pdf", headers={
         "Content-Disposition": f"inline; filename={a.asn_number}.pdf"
     })
@@ -155,7 +162,11 @@ def create_asn(data: ASNCreate, db: Session = Depends(get_db), user=Depends(requ
             unit_cost=item.unit_cost,
             location_id=item.location_id or product.location_id,
         ))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="ASN number conflict — please try again")
     asn = _load_asn(db, asn.id)
     log_activity(db, user.id, user.username, "create", "asn", asn.id, f"Created ASN '{asn.asn_number}'")
     db.commit()

@@ -28,7 +28,7 @@ export default function Exceptions() {
   const sections: { key: Section; label: string; icon: typeof AlertTriangle; color: string }[] = [
     { key: "low_stock", label: "Low Stock", icon: AlertTriangle, color: "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" },
     { key: "zero_stock", label: "Out of Stock", icon: PackageX, color: "bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400" },
-    { key: "quarantined_lots", label: "Quarantined Lots", icon: ShieldAlert, color: "bg-orange-100 text-orange-700 dark:text-orange-400" },
+    { key: "quarantined_lots", label: "Quarantined Lots", icon: ShieldAlert, color: "bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400" },
     { key: "open_cycle_counts", label: "Open Cycle Counts", icon: ClipboardList, color: "bg-indigo-100 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400" },
     { key: "pending_asns", label: "Pending ASNs", icon: Truck, color: "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400" },
   ];
