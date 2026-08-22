@@ -16,6 +16,7 @@ from app.routers.locations import _with_counts
 from app.models.stock_movement import StockMovement
 from app.models.order import Order
 from app.models.sale import Sale, SaleItem
+from app.models.sales_channel import SalesChannel
 from app.models.lot import Lot
 from app.models.asn import ASN
 from app.models.cycle_count import CycleCount
@@ -298,6 +299,19 @@ def sales_summary(start_date: str | None = None, end_date: str | None = None, db
         .all()
     )
 
+    by_channel = (
+        db.query(
+            func.coalesce(SalesChannel.name, "Counter / Walk-in"),
+            func.count(Sale.id),
+            func.coalesce(func.sum(Sale.total_amount), 0),
+        )
+        .outerjoin(SalesChannel, Sale.channel_id == SalesChannel.id)
+        .filter(Sale.id.in_(in_range), Sale.status == "completed")
+        .group_by(SalesChannel.name)
+        .order_by(func.count(Sale.id).desc())
+        .all()
+    )
+
     item_rows = (
         db.query(
             Product.name,
@@ -328,6 +342,10 @@ def sales_summary(start_date: str | None = None, end_date: str | None = None, db
         "by_payment_provider": [
             {"provider": k, "count": int(c), "total": round(float(t), 2)}
             for k, c, t in by_provider
+        ],
+        "by_channel": [
+            {"channel": k or "Unknown", "count": int(c), "total": round(float(t), 2)}
+            for k, c, t in by_channel
         ],
         "top_products": [{"name": r[0], "quantity_sold": int(r[1] or 0), "revenue": float(r[2] or 0)} for r in item_rows],
     }
@@ -401,7 +419,7 @@ def _csv_response(filename: str, headers: list[str], rows: list[list]) -> Respon
 @router.get("/export/sales")
 def export_sales(search: str = Query(""), start_date: str | None = None, end_date: str | None = None, db: Session = Depends(get_db)):
     start, end = parse_range(start_date, end_date)
-    q = db.query(Sale).options(joinedload(Sale.customer))
+    q = db.query(Sale).options(joinedload(Sale.customer), joinedload(Sale.channel))
     if search:
         q = q.filter(Sale.invoice_number.ilike(f"%{search}%"))
     if start:
@@ -411,8 +429,8 @@ def export_sales(search: str = Query(""), start_date: str | None = None, end_dat
     sales = q.order_by(Sale.created_at.desc()).all()
     return _csv_response(
         "sales_report",
-        ["Invoice", "Date", "Customer", "Subtotal", "Discount", "Tax", "Total", "Payment", "Payment Provider", "Status", "Created By"],
-        [[s.invoice_number, s.created_at.strftime("%Y-%m-%d %H:%M"), s.customer_name or "", s.subtotal, s.discount_amount, s.tax_amount, s.total_amount, s.payment_method or "", s.payment_provider or "", s.status, s.username] for s in sales],
+        ["Invoice", "Date", "Customer", "Channel", "Subtotal", "Discount", "Tax", "Total", "Payment", "Payment Provider", "Status", "Created By"],
+        [[s.invoice_number, s.created_at.strftime("%Y-%m-%d %H:%M"), s.customer_name or "", s.channel_name, s.subtotal, s.discount_amount, s.tax_amount, s.total_amount, s.payment_method or "", s.payment_provider or "", s.status, s.username] for s in sales],
     )
 
 

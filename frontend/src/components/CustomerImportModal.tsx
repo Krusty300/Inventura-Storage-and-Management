@@ -59,8 +59,8 @@ export default function CustomerImportModal({ onClose, onImported }: Props) {
                 <div className="text-muted">
                   <Upload size={32} className="mx-auto mb-2" />
                   <p>Click to select a CSV file</p>
-                  <p className="text-xs mt-1">Headers: name, phone, email, address, customer_type, notes</p>
-                  <p className="text-xs mt-1 text-faint">customer_type is either "frequent" or "walk-in". Rows matching an existing name, phone, or email are skipped.</p>
+                  <p className="text-xs mt-1">Headers: name, phone, email, address, customer_type, group_name, notes</p>
+                  <p className="text-xs mt-1 text-faint">customer_type is either "frequent" or "walk-in". group_name must match an existing customer group. Rows matching an existing name, phone, or email are skipped.</p>
                 </div>
               )}
             </div>

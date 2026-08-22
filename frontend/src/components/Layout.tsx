@@ -35,6 +35,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   StickyNote,
+  BadgePercent,
+  Tag,
+  UsersRound,
+  Store,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemeMode } from "../context/ThemeContext";
@@ -68,6 +72,10 @@ const navItems = [
   { to: "/customers", icon: Contact, label: "Customers", perm: "customers.view" },
   { to: "/orders", icon: ShoppingCart, label: "Orders", perm: "orders.view" },
   { to: "/sales", icon: Receipt, label: "Sales", perm: "sales.view" },
+  { to: "/price-lists", icon: Tag, label: "Price Lists", perm: "price_lists.view" },
+  { to: "/promotions", icon: BadgePercent, label: "Promotions", perm: "promotions.view" },
+  { to: "/customer-groups", icon: UsersRound, label: "Customer Groups", perm: "customer_groups.view" },
+  { to: "/sales-channels", icon: Store, label: "Sales Channels", perm: "sales.view" },
   { to: "/locations", icon: MapPin, label: "Locations", perm: "locations.view" },
   { to: "/receiving", icon: PackageCheck, label: "Receiving", perm: "receipts.view" },
   { to: "/asns", icon: Truck, label: "ASNs", perm: "asns.view" },

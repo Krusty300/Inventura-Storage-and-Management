@@ -70,7 +70,7 @@ export default function Locations() {
     },
   });
 
-  const { data: summary } = useQuery({
+  const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["locations", "summary"],
     queryFn: async () => {
       const { data } = await api.get("/locations/summary");
@@ -241,7 +241,9 @@ export default function Locations() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        {summaryCards.map((card) => (
+        {summaryLoading ? (
+          <Skeleton variant="card" rows={8} />
+        ) : summaryCards.map((card) => (
           <div key={card.label} className="card">
             <p className="text-sm text-muted">{card.label}</p>
             <p className="text-2xl font-bold mt-1">{card.value}</p>

@@ -14,6 +14,7 @@ class Sale(Base):
     invoice_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    channel_id: Mapped[int | None] = mapped_column(ForeignKey("sales_channels.id"), nullable=True, index=True)
     subtotal: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     tax_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
@@ -33,18 +34,25 @@ class Sale(Base):
     refund_method: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     refund_provider: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     refund_checkout_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    promo_code: Mapped[str | None] = mapped_column(String(50), nullable=True, default=None)
+    promo_discount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
     customer = relationship("Customer", back_populates="sales")
     user = relationship("User", back_populates="sales")
+    channel = relationship("SalesChannel")
     shipment = relationship("Shipment", back_populates="sale", uselist=False)
     items = relationship("SaleItem", back_populates="sale", cascade="all, delete-orphan")
 
     @property
     def customer_name(self) -> str:
         return self.customer.name if self.customer else "Walk-in Customer"
+
+    @property
+    def channel_name(self) -> str:
+        return self.channel.name if self.channel else ""
 
     @property
     def username(self) -> str:

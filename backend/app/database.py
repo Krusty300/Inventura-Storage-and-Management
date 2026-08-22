@@ -1,7 +1,12 @@
+from pathlib import Path
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
+
+_db_path = Path(settings.database_url.replace("sqlite:///", ""))
+if settings.database_url.startswith("sqlite") and _db_path.parent:
+    _db_path.parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_engine(
     settings.database_url, connect_args={"check_same_thread": False}
@@ -76,6 +81,11 @@ def run_migrations():
         if "sales" in table_names
         else None
     )
+    cust_cols = (
+        {c["name"] for c in insp.get_columns("customers")}
+        if "customers" in table_names
+        else None
+    )
     with engine.begin() as conn:
         if "parent_id" not in existing:
             conn.execute(text("ALTER TABLE products ADD COLUMN parent_id INTEGER"))
@@ -139,6 +149,18 @@ def run_migrations():
             ):
                 if col not in sales_cols:
                     conn.execute(text(f"ALTER TABLE sales ADD COLUMN {col} {ddl}"))
+        if sales_cols is not None and "channel_id" not in sales_cols:
+            conn.execute(text("ALTER TABLE sales ADD COLUMN channel_id INTEGER REFERENCES sales_channels(id)"))
+        if "sales_channels" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE sales_channels ("
+                "id INTEGER PRIMARY KEY, "
+                "name VARCHAR(100) NOT NULL UNIQUE, "
+                "type VARCHAR(30) NOT NULL DEFAULT 'store', "
+                "is_active BOOLEAN DEFAULT 1, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
         if "document_sequences" not in table_names:
             conn.execute(text(
                 "CREATE TABLE document_sequences "
@@ -308,6 +330,75 @@ def run_migrations():
                 "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
             ))
             conn.execute(text("CREATE INDEX ix_product_images_product_id ON product_images(product_id)"))
+
+        # --- Price Lists ---
+        if "price_lists" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE price_lists ("
+                "id INTEGER PRIMARY KEY, "
+                "name VARCHAR(100) UNIQUE NOT NULL, "
+                "description TEXT DEFAULT '', "
+                "valid_from DATE, "
+                "valid_to DATE, "
+                "is_default BOOLEAN DEFAULT 0, "
+                "is_active BOOLEAN DEFAULT 1, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+        if "price_list_items" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE price_list_items ("
+                "id INTEGER PRIMARY KEY, "
+                "price_list_id INTEGER NOT NULL REFERENCES price_lists(id) ON DELETE CASCADE, "
+                "product_id INTEGER NOT NULL REFERENCES products(id), "
+                "price NUMERIC(12, 2) NOT NULL, "
+                "min_qty INTEGER DEFAULT 1)"
+            ))
+            conn.execute(text("CREATE INDEX ix_price_list_items_price_list_id ON price_list_items(price_list_id)"))
+            conn.execute(text("CREATE INDEX ix_price_list_items_product_id ON price_list_items(product_id)"))
+
+        # --- Customer Groups ---
+        if "customer_groups" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE customer_groups ("
+                "id INTEGER PRIMARY KEY, "
+                "name VARCHAR(100) UNIQUE NOT NULL, "
+                "description TEXT DEFAULT '', "
+                "price_list_id INTEGER REFERENCES price_lists(id), "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+        if "customers" in table_names and cust_cols is not None:
+            if "group_id" not in cust_cols:
+                conn.execute(text("ALTER TABLE customers ADD COLUMN group_id INTEGER REFERENCES customer_groups(id)"))
+
+        # --- Promotions ---
+        if "promotions" not in table_names:
+            conn.execute(text(
+                "CREATE TABLE promotions ("
+                "id INTEGER PRIMARY KEY, "
+                "code VARCHAR(50) UNIQUE NOT NULL, "
+                "description TEXT DEFAULT '', "
+                "discount_type VARCHAR(20) NOT NULL, "
+                "value NUMERIC(10, 2) NOT NULL, "
+                "min_qty INTEGER DEFAULT 0, "
+                "min_amount NUMERIC(10, 2) DEFAULT 0, "
+                "valid_from DATE, "
+                "valid_to DATE, "
+                "max_uses INTEGER DEFAULT 0, "
+                "used_count INTEGER DEFAULT 0, "
+                "is_active BOOLEAN DEFAULT 1, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            conn.execute(text("CREATE INDEX ix_promotions_code ON promotions(code)"))
+
+        # --- Sale promo columns ---
+        if sales_cols is not None:
+            if "promo_code" not in sales_cols:
+                conn.execute(text("ALTER TABLE sales ADD COLUMN promo_code VARCHAR(50)"))
+            if "promo_discount" not in sales_cols:
+                conn.execute(text("ALTER TABLE sales ADD COLUMN promo_discount NUMERIC(10, 2) DEFAULT 0"))
 
 
 def get_db():

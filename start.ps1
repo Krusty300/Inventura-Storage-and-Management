@@ -1,31 +1,48 @@
-Write-Host "Starting Inventory Management System..." -ForegroundColor Green
+<#
+.SYNOPSIS
+    Start the Inventura dev environment (Docker Compose).
+.PARAMETER Build
+    Force rebuild of images.
+.PARAMETER Detach
+    Run in background (default).
+.PARAMETER Logs
+    Follow logs after starting.
+#>
+param(
+    [switch]$Build,
+    [switch]$Detach = $true,
+    [switch]$Logs
+)
 
-$backendDir = Join-Path $PSScriptRoot "backend"
-$frontendDir = Join-Path $PSScriptRoot "frontend"
+$ErrorActionPreference = "Stop"
+$composeFile = Join-Path $PSScriptRoot "docker-compose.yml"
 
-# Kill any leftover processes on our ports
-Get-Process -Name python -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*uvicorn*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*vite*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Write-Host "=== Inventura ===" -ForegroundColor Cyan
 
-Write-Host "Starting Backend (FastAPI + SQLite)..." -ForegroundColor Cyan
-$backend = Start-Process -NoNewWindow -FilePath "python" -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload" -WorkingDirectory $backendDir -PassThru
+if ($Build) {
+    Write-Host "Building images..." -ForegroundColor Yellow
+    docker compose -f $composeFile build
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 
-Start-Sleep -Seconds 2
+$detachFlag = if ($Detach) { "--detach" } else { "" }
 
-Write-Host "Starting Frontend (Vite + React)..." -ForegroundColor Cyan
-$frontend = Start-Process -NoNewWindow -FilePath "$env:COMSPEC" -ArgumentList "/c", "npm run dev" -WorkingDirectory $frontendDir -PassThru
+Write-Host "Starting services..." -ForegroundColor Yellow
+docker compose -f $composeFile up $detachFlag
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""
-Write-Host "============================================" -ForegroundColor Green
-Write-Host "  Backend API:  http://localhost:8000" -ForegroundColor Yellow
-Write-Host "  API Docs:     http://localhost:8000/docs" -ForegroundColor Yellow
-Write-Host "  Frontend:     http://localhost:5173" -ForegroundColor Yellow
-Write-Host "============================================" -ForegroundColor Green
+Write-Host "Services running:" -ForegroundColor Green
+Write-Host "  Frontend:  http://localhost"
+Write-Host "  Backend:   http://localhost:8000"
+Write-Host "  Health:    http://localhost:8000/api/health"
 Write-Host ""
-Write-Host "Press any key to stop both servers." -ForegroundColor Gray
+Write-Host "Commands:" -ForegroundColor DarkGray
+Write-Host "  .\start.ps1 -Build       Rebuild and start"
+Write-Host "  .\start.ps1 -Logs        Follow logs"
+Write-Host "  docker compose down      Stop all"
+Write-Host "  docker compose exec backend python seed.py   Seed data"
 
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-
-Stop-Process -Id $backend.Id -Force -ErrorAction SilentlyContinue
-Stop-Process -Id $frontend.Id -Force -ErrorAction SilentlyContinue
-Write-Host "Servers stopped." -ForegroundColor Yellow
+if ($Logs) {
+    docker compose -f $composeFile logs -f
+}

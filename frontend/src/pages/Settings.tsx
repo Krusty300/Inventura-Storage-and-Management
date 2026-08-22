@@ -3,6 +3,7 @@ import { Save, KeyRound, Bell, Hash, Workflow, DollarSign, Monitor, FileText, Up
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import Skeleton from "../components/Skeleton";
 import { CURRENCIES, symbolFor } from "../utils/currencies";
 
 type Tab = "store" | "notifications" | "documents" | "workflow" | "financial" | "display" | "invoice" | "password";
@@ -139,7 +140,14 @@ export default function Settings() {
     }
   };
 
-  if (loading) return <div className="text-muted py-8">Loading settings...</div>;
+  if (loading) return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-ink">System Settings</h1>
+      <div className="card p-6 space-y-4">
+        <Skeleton variant="rows" rows={6} cols={2} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">

@@ -357,6 +357,9 @@ export interface Customer {
   email: string;
   address: string;
   customer_type: string;
+  group_id: number | null;
+  group_name: string;
+  price_list_id: number | null;
   notes: string;
   is_active: boolean;
   created_at: string;
@@ -454,6 +457,7 @@ export interface Sale {
   invoice_number: string;
   customer_id: number | null;
   user_id: number;
+  channel_id: number | null;
   subtotal: number;
   discount_amount: number;
   tax_amount: number;
@@ -474,9 +478,12 @@ export interface Sale {
   refund_provider: string | null;
   refund_checkout_request_id: string | null;
   notes: string;
+  promo_code: string | null;
+  promo_discount: number;
   created_at: string;
   updated_at: string;
   customer_name: string;
+  channel_name: string;
   username: string;
   items: SaleItem[];
   locations: string[];
@@ -511,6 +518,7 @@ export interface SalesSummary {
   total_tax: number;
   by_payment_method: { method: string; count: number; total: number }[];
   by_payment_provider?: { provider: string; count: number; total: number }[];
+  by_channel?: { channel: string; count: number; total: number }[];
   top_products: { name: string; quantity_sold: number; revenue: number }[];
 }
 
@@ -1114,4 +1122,63 @@ export interface WorkOrderGenealogy {
   component_lots: { lot_id: number; lot_number: string; product_id: number; product_name: string; quantity: number }[];
   fg_lots: { lot_id: number; lot_number: string; product_id: number; product_name: string; quantity: number }[];
   links: { parent_lot_id: number; parent_lot_number: string; child_lot_id: number; child_lot_number: string; quantity: number }[];
+}
+
+export interface PriceListItem {
+  id: number;
+  product_id: number;
+  price: number;
+  min_qty: number;
+  product_name: string;
+  product_sku: string;
+}
+
+export interface PriceList {
+  id: number;
+  name: string;
+  description: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  item_count: number;
+  created_at: string;
+  updated_at: string;
+  items: PriceListItem[];
+}
+
+export interface CustomerGroup {
+  id: number;
+  name: string;
+  description: string;
+  price_list_id: number | null;
+  created_at: string;
+  updated_at: string;
+  customer_count: number;
+}
+
+export interface SalesChannel {
+  id: number;
+  name: string;
+  type: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Promotion {
+  id: number;
+  code: string;
+  description: string;
+  discount_type: string;
+  value: number;
+  min_qty: number;
+  min_amount: number;
+  valid_from: string | null;
+  valid_to: string | null;
+  max_uses: number;
+  used_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }

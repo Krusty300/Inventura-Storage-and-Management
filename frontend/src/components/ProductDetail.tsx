@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import SlideOver from "./SlideOver";
-import { PackagePlus, PackageOpen, MapPin, ShieldAlert, Pencil } from "lucide-react";
+import { PackagePlus, PackageOpen, MapPin, ShieldAlert, Pencil, Fingerprint } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import MoveUnallocatedModal from "./MoveUnallocatedModal";
 import MoveQuarantinedModal from "./MoveQuarantinedModal";
 import ImageCarousel from "./ImageCarousel";
+import Skeleton from "./Skeleton";
 
 interface Props {
   product: Product;
@@ -276,7 +277,7 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
           {product.is_serialized && (
             <div>
               <span className="text-muted">Tracking:</span>
-              <p className="font-medium"><span className="badge bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">Serialized</span></p>
+              <p className="font-medium"><span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30"><Fingerprint size={12} /> serialized</span></p>
             </div>
           )}
         </div>
@@ -568,7 +569,7 @@ function TraceSection({ product }: { product: Product }) {
     <div>
       <span className="text-sm text-muted">Traceability:</span>
       {isLoading ? (
-        <div className="mt-2 text-sm text-faint">Loading trace...</div>
+        <Skeleton variant="rows" rows={3} cols={7} />
       ) : isError ? (
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">Failed to load trace.</p>
       ) : !trace || (trace.incoming.length === 0 && trace.outgoing.length === 0 && trace.work_orders.length === 0) ? (

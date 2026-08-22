@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useRef, useState } from "react";
-import { Eye, Pencil, Trash2, XCircle, Search } from "lucide-react";
+import { Eye, Pencil, Trash2, XCircle, Search, Fingerprint } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
@@ -350,7 +350,7 @@ function ShipmentLineRow({
             <option key={l.location_id} value={String(l.location_id)}>{l.path} ({l.count})</option>
           ))}
         </select>
-        {isLoading && <p className="text-xs text-faint mt-1">Loading locations...</p>}
+        {isLoading && <Skeleton variant="text" className="w-24 h-3 mt-1" />}
         {!isLoading && unallocated > 0 && (
           <p className="text-xs text-faint mt-1">
             Plus {unallocated} unallocated unit{unallocated === 1 ? "" : "s"} - pick with "Any location"
@@ -523,7 +523,10 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
                     {item.product_name}
                     {item.is_serialized && (
                       <>
-                        <span className="ml-2 badge badge-info">serialized</span>
+                        <span className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30">
+                          <Fingerprint size={12} />
+                          serialized
+                        </span>
                         <span className={`ml-1 badge ${serializedLineStatus(item).cls} capitalize`}>{serializedLineStatus(item).label}</span>
                       </>
                     )}

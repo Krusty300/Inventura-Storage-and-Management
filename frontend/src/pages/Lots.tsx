@@ -253,7 +253,7 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
               <span className="text-sm font-medium text-ink">Serials on hand ({lot.serial_count})</span>
             </div>
             {serialsLoading ? (
-              <p className="text-sm text-muted px-4 py-3">Loading serials...</p>
+              <Skeleton variant="rows" rows={3} cols={3} />
             ) : !serials || serials.length === 0 ? (
               <p className="text-sm text-muted px-4 py-3">No in-stock serials for this lot.</p>
             ) : (
@@ -285,7 +285,7 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
             <span className="text-sm font-medium text-ink">Movements</span>
           </div>
           {isLoading ? (
-            <p className="text-sm text-muted px-4 py-3">Loading...</p>
+            <Skeleton variant="rows" rows={3} cols={4} />
           ) : !movements || movements.length === 0 ? (
             <p className="text-sm text-muted px-4 py-3">No movements recorded for this lot.</p>
           ) : (

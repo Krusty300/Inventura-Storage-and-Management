@@ -285,7 +285,7 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
             </div>
           </div>
           {contentsLoading ? (
-            <p className="text-sm text-muted">Loading contents...</p>
+            <Skeleton variant="rows" rows={3} cols={4} />
           ) : !hasContents ? (
             <p className="text-sm text-muted">This LPN has no contents yet. Use "Load Stock" to add stock from a location, or receive into it via a receipt.</p>
           ) : (
@@ -403,7 +403,7 @@ function LpnActivity({ lpnId, onClose }: { lpnId: number; onClose: () => void })
     <div className="space-y-3">
       <p className="text-xs text-muted">All stock movements recorded against this LPN.</p>
       {isLoading ? (
-        <div className="border border-border rounded-lg p-6 text-sm text-muted">Loading activity...</div>
+        <Skeleton variant="rows" rows={3} cols={4} />
       ) : movements.length === 0 ? (
         <p className="text-sm text-muted">No movements recorded for this LPN yet.</p>
       ) : (

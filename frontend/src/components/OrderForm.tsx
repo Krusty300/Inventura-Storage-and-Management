@@ -24,8 +24,6 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [supplierId, setSupplierId] = useState(order?.supplier_id?.toString() || "");
   const [supplierProducts, setSupplierProducts] = useState<Product[]>([]);
-  const [selectedSupplierIds, setSelectedSupplierIds] = useState<Set<number>>(new Set());
-  const [supplierProductsLoading, setSupplierProductsLoading] = useState(false);
   const [notes, setNotes] = useState(order?.notes || "");
   const [items, setItems] = useState(
     order?.items?.map((i) => ({ product_id: i.product_id.toString(), quantity: i.quantity.toString(), unit_price: i.unit_price.toString() })) || [{ product_id: "", quantity: "1", unit_price: "0" }]
@@ -43,18 +41,13 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
   useEffect(() => {
     setSupplierProducts([]);
-    setSelectedSupplierIds(new Set());
     if (!supplierId) return;
     let cancelled = false;
-    setSupplierProductsLoading(true);
     api.get(`/suppliers/${supplierId}/products`, { params: { limit: 100 } })
       .then(({ data }) => {
         if (cancelled) return;
-        const rows = (data?.items || []) as Product[];
-        setSupplierProducts(rows);
-        setSelectedSupplierIds(new Set(orderableSupplierProducts(rows).map((p) => p.id)));
-      })
-      .finally(() => { if (!cancelled) setSupplierProductsLoading(false); });
+        setSupplierProducts((data?.items || []) as Product[]);
+      });
     return () => { cancelled = true; };
   }, [supplierId, locations]);
 
@@ -118,19 +111,6 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
   const dropdownOptions = supplierId ? supplierOrderable : selectable;
 
-  const allSupplierSelected = supplierOrderable.length > 0 && supplierOrderable.every((p) => selectedSupplierIds.has(p.id));
-
-  const addSelectedSupplierItems = () => {
-    const toAdd = supplierOrderable.filter((p) => selectedSupplierIds.has(p.id) && !alreadyAdded(p.id));
-    if (toAdd.length === 0) {
-      addToast(selectedSupplierIds.size > 0 ? "Selected product(s) already in this order" : "No supplier products selected", "error");
-      return;
-    }
-    setItems((prev) => [...prev, ...toAdd.map((p) => ({ product_id: p.id.toString(), quantity: "1", unit_price: p.cost_price.toString() }))]);
-    setSelectedSupplierIds(new Set());
-    addToast(`${toAdd.length} product(s) added from supplier`, "success");
-  };
-
   const addItem = () => setItems([...items, { product_id: "", quantity: "1", unit_price: "0" }]);
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
 
@@ -161,52 +141,8 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
           </select>
         </div>
 
-        {supplierId && (
-          <div className="border border-border rounded-lg p-3 bg-app">
-            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-              <label className="text-sm font-medium text-ink">Supplier Products</label>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="rounded border-border-strong"
-                    checked={allSupplierSelected}
-                    onChange={(e) => setSelectedSupplierIds(e.target.checked ? new Set(supplierOrderable.map((p) => p.id)) : new Set())}
-                    aria-label="Select all supplier products"
-                  />
-                  Select all
-                </label>
-                <button type="button" onClick={addSelectedSupplierItems} className="btn-primary text-xs py-1 px-2">
-                  Add Selected Items
-                </button>
-              </div>
-            </div>
-            {supplierProductsLoading ? (
-              <p className="text-faint text-sm">Loading supplier products...</p>
-            ) : supplierOrderable.length === 0 ? (
-              <p className="text-faint text-sm">No orderable products found for this supplier.</p>
-            ) : (
-              <div className="space-y-1 max-h-48 overflow-auto">
-                {supplierOrderable.map((p) => (
-                  <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="rounded border-border-strong"
-                      checked={selectedSupplierIds.has(p.id)}
-                      onChange={(e) => {
-                        const next = new Set(selectedSupplierIds);
-                        if (e.target.checked) next.add(p.id); else next.delete(p.id);
-                        setSelectedSupplierIds(next);
-                      }}
-                      aria-label={`Add ${p.display_name} to order`}
-                    />
-                    <span className="flex-1">{productLabel(p)}</span>
-                    <span className="text-muted">{formatCurrency(p.cost_price, currencySymbol)}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
+        {supplierId && supplierOrderable.length === 0 && !supplierProducts.length && (
+          <p className="text-faint text-sm">No orderable products found for this supplier.</p>
         )}
 
         <div>

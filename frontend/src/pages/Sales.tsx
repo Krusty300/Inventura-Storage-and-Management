@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Eye, RotateCcw, FileText, XCircle, Trash2, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { PaginatedResponse, Sale } from "../types";
+import type { PaginatedResponse, Sale, SalesChannel } from "../types";
 import SaleForm from "../components/SaleForm";
 import SaleDetail from "../components/SaleDetail";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -30,6 +30,7 @@ export default function Sales() {
   const [page, setPage] = useState(1);
   const [paymentFilter, setPaymentFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [channelFilter, setChannelFilter] = useState("");
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [viewing, setViewing] = useState<Sale | null>(null);
@@ -49,13 +50,22 @@ export default function Sales() {
   const debouncedSearch = useDebounce(search, 300);
   const { exportCsv } = useExportCsv();
 
+  const { data: channels } = useQuery({
+    queryKey: ["sales-channels"],
+    queryFn: async () => {
+      const { data } = await api.get("/sales-channels/all");
+      return data as SalesChannel[];
+    },
+  });
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["sales", debouncedSearch, paymentFilter, statusFilter, page, pageSize],
+    queryKey: ["sales", debouncedSearch, paymentFilter, statusFilter, channelFilter, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
       if (paymentFilter) params.payment_method = paymentFilter;
       if (statusFilter) params.status = statusFilter;
+      if (channelFilter) params.channel_id = channelFilter;
       const { data } = await api.get("/sales", { params });
       return data as PaginatedResponse<Sale>;
     },
@@ -189,6 +199,17 @@ export default function Sales() {
           <option value="refunded">Refunded</option>
           <option value="cancelled">Cancelled</option>
         </select>
+        {channels && channels.length > 0 && (
+          <select
+            className="select w-40"
+            value={channelFilter}
+            onChange={(e) => { setChannelFilter(e.target.value); setPage(1); }}
+            aria-label="Filter by channel"
+          >
+            <option value="">All channels</option>
+            {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+          </select>
+        )}
       </div>
 
       <BulkActionBar count={selectedIds.size} canEdit={can("sales.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} onPrintSelected={bulkPrintPdf} printLoading={printSelectedLoading} />
@@ -209,6 +230,7 @@ export default function Sales() {
               </th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Invoice #</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Customer</th>
+              <th scope="col" className="px-4 py-3 font-medium text-muted">Channel</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Sold By</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
@@ -230,6 +252,7 @@ export default function Sales() {
                 </td>
                 <td className="px-4 py-3 font-medium">{s.invoice_number}</td>
                 <td className="px-4 py-3 text-muted">{s.customer_name}</td>
+                <td className="px-4 py-3 text-muted">{s.channel_name || "—"}</td>
                 <td className="px-4 py-3 text-muted">{s.username || "—"}</td>
                 <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                 <td className="px-4 py-3">

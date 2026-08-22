@@ -124,7 +124,8 @@ def test_payment_reconciliation(auth_headers):
         "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 50.0}],
         "payment_method": "cash",
     }, headers=auth_headers)
-    # pending refund on a mobile money sale
+    # complete the mobile money sale first, then refund it
+    client.patch("/api/sales/bulk-edit", json={"ids": [mm["id"]], "status": "completed", "payment_status": "completed"}, headers=auth_headers)
     client.put(f"/api/sales/{mm['id']}/refund", headers=auth_headers)
 
     data = client.get("/api/reports/payment-reconciliation", headers=auth_headers).json()

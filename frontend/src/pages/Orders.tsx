@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Pencil, Eye, Trash2, Printer, Search } from "lucide-react";
+import { Pencil, Eye, Trash2, Printer, Search, Fingerprint } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Order, PaginatedResponse } from "../types";
@@ -160,7 +160,15 @@ export default function Orders() {
                 <td className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(o.id)} onChange={() => toggleSelect(o.id)} aria-label={`Select order ${o.order_number}`} />
                 </td>
-                <td className="px-4 py-3 font-medium">{o.order_number}</td>
+                <td className="px-4 py-3 font-medium">
+                  {o.order_number}
+                  {o.items?.some((i) => i.is_serialized) && (
+                    <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30">
+                      <Fingerprint size={10} />
+                      S
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-muted">{o.supplier_name || "—"}</td>
                 <td className="px-4 py-3 text-muted">
                   {formatDate(o.created_at)}

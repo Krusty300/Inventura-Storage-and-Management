@@ -103,6 +103,18 @@ ALL_PERMISSIONS = frozenset({
     "notes.create",
     "notes.update",
     "notes.delete",
+    "price_lists.view",
+    "price_lists.create",
+    "price_lists.update",
+    "price_lists.delete",
+    "promotions.view",
+    "promotions.create",
+    "promotions.update",
+    "promotions.delete",
+    "customer_groups.view",
+    "customer_groups.create",
+    "customer_groups.update",
+    "customer_groups.delete",
 })
 
 MANAGER_PERMISSIONS = ALL_PERMISSIONS - frozenset({
@@ -154,6 +166,9 @@ WORKER_PERMISSIONS = frozenset({
     "notes.view",
     "notes.create",
     "notes.update",
+    "price_lists.view",
+    "promotions.view",
+    "customer_groups.view",
 })
 
 ROLE_PERMISSIONS = {

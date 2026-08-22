@@ -3,6 +3,8 @@ from pathlib import Path
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import asyncio
+import os
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
@@ -12,9 +14,16 @@ from jose import JWTError, jwt
 
 from app.config import settings as app_settings
 from app.database import Base, SessionLocal, backfill_stock_lines, engine, run_migrations
-from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, daraja, dashboard, forecasting, labels, locations, lots, lpns, notes, notifications, orders, planning, products, quality_checks, receipts, reports, sales, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
+from app.logging_config import setup_logging
+from app.middleware import RequestIDMiddleware
+from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, customer_groups, daraja, dashboard, forecasting, labels, locations, lots, lpns, notes, notifications, orders, planning, price_lists, products, promotions, quality_checks, receipts, reports, sales, sales_channels, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
 from app.services.inventory import expire_overdue_lots
 from app.ws_manager import manager
+
+setup_logging(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    json_output=os.getenv("LOG_JSON", "false").lower() in ("1", "true", "yes"),
+)
 
 
 @asynccontextmanager
@@ -42,12 +51,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(RequestIDMiddleware)
+
 app.include_router(activity_log.router)
 app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(reports.router)
 app.include_router(categories.router)
 app.include_router(customers.router)
+app.include_router(customer_groups.router)
 app.include_router(suppliers.router)
 app.include_router(stock.router)
 app.include_router(receipts.router)
@@ -63,6 +75,7 @@ app.include_router(dashboard.router)
 app.include_router(users.router)
 app.include_router(settings.router)
 app.include_router(sales.router)
+app.include_router(sales_channels.router)
 app.include_router(notifications.router)
 app.include_router(bom.router)
 app.include_router(work_orders.router)
@@ -74,6 +87,8 @@ app.include_router(shipments.router)
 app.include_router(daraja.router)
 app.include_router(search.router)
 app.include_router(notes.router)
+app.include_router(price_lists.router)
+app.include_router(promotions.router)
 
 uploads_dir = Path(__file__).resolve().parent / "uploads"
 uploads_dir.mkdir(exist_ok=True)

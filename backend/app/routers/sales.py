@@ -14,6 +14,7 @@ from app.models.customer import Customer
 from app.models.location import Location
 from app.models.product import Product
 from app.models.sale import Sale, SaleItem
+from app.models.sales_channel import SalesChannel
 from app.models.settings import Settings
 from app.models.quality_check import QualityCheck
 from app.models.shipment import Shipment
@@ -24,6 +25,7 @@ from app.services import inventory
 from app.services.auth import require_permission
 from app.services.notify import notify_admins, notify_low_stock
 from app.services.payment_methods import resolve_payment_details, validate_payment
+from app.services.pricing import apply_promotion, resolve_price, validate_promotion, PromoError
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
     ACCENT, BODY_CENTER, BODY_RIGHT, FONT, MARGIN, MUTED, PAGE_H,
@@ -247,6 +249,7 @@ def _apply_sale_locations_batch(db: Session, outs: list[SaleOut]) -> list[SaleOu
 def list_sales(
     search: str = Query(""),
     customer_id: int | None = None,
+    channel_id: int | None = None,
     payment_method: str | None = Query(None),
     status: str | None = Query(None),
     skip: int = Query(0, ge=0),
@@ -254,12 +257,14 @@ def list_sales(
     db: Session = Depends(get_db),
 ):
     q = db.query(Sale).options(
-        joinedload(Sale.items), joinedload(Sale.customer), joinedload(Sale.user)
+        joinedload(Sale.items), joinedload(Sale.customer), joinedload(Sale.user), joinedload(Sale.channel)
     )
     if search:
         q = q.filter(Sale.invoice_number.ilike(f"%{search}%"))
     if customer_id:
         q = q.filter(Sale.customer_id == customer_id)
+    if channel_id:
+        q = q.filter(Sale.channel_id == channel_id)
     if payment_method:
         q = q.filter(Sale.payment_method == payment_method)
     if status:
@@ -270,6 +275,11 @@ def list_sales(
     return {"items": outs, "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 
+_VALID_STATUS_TRANSITIONS = {
+    "pending": {"completed", "cancelled"},
+    "completed": {"refunded"},
+}
+
 @router.patch("/bulk-edit")
 def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("sales.bulk"))):
     sales = db.query(Sale).filter(Sale.id.in_(data.ids)).all()
@@ -279,7 +289,12 @@ def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depe
     updates.pop("ids", None)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+    new_status = updates.get("status")
     for s in sales:
+        if new_status and s.status not in _VALID_STATUS_TRANSITIONS:
+            raise HTTPException(status_code=400, detail=f"Cannot change status of sale '{s.invoice_number}' from '{s.status}'")
+        if new_status and new_status not in _VALID_STATUS_TRANSITIONS.get(s.status, set()):
+            raise HTTPException(status_code=400, detail=f"Invalid transition '{s.status}' → '{new_status}' for sale '{s.invoice_number}'")
         for k, v in updates.items():
             setattr(s, k, v)
     db.commit()
@@ -327,11 +342,35 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
         customer = db.get(Customer, data.customer_id)
         if customer is None:
             raise HTTPException(status_code=400, detail=f"Customer {data.customer_id} not found")
+    if data.channel_id is not None:
+        channel = db.get(SalesChannel, data.channel_id)
+        if channel is None:
+            raise HTTPException(status_code=400, detail=f"Sales channel {data.channel_id} not found")
 
-    subtotal = sum(i.quantity * i.unit_price for i in data.items)
+    subtotal = 0
+    total_qty = 0
+    resolved_prices: dict[int, float] = {}
+    for item_data in data.items:
+        if item_data.unit_price and item_data.unit_price > 0:
+            price = item_data.unit_price
+        else:
+            price = resolve_price(db, item_data.product_id, data.customer_id, item_data.quantity)
+        resolved_prices[item_data.product_id] = price
+        subtotal += item_data.quantity * price
+        total_qty += item_data.quantity
     discount_amount = float(data.discount_amount or 0)
+    promo_discount = 0.0
+    promo_code = None
+    if data.promo_code and data.promo_code.strip():
+        try:
+            promo, promo_discount = validate_promotion(db, data.promo_code.strip(), subtotal, total_qty)
+            promo_code = promo.code
+        except PromoError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     if discount_amount > subtotal:
         raise HTTPException(status_code=400, detail="Discount cannot exceed the sale subtotal")
+    if discount_amount + promo_discount > subtotal:
+        raise HTTPException(status_code=400, detail="Total discounts cannot exceed the sale subtotal")
 
     try:
         default_currency, default_symbol = get_currency_defaults(db)
@@ -377,7 +416,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
             )
         products[item_data.product_id] = product
 
-    taxable = subtotal - discount_amount
+    taxable = subtotal - discount_amount - promo_discount
     tax_rate = get_tax_rate(db)
     tax_amount = taxable * tax_rate / 100
 
@@ -386,6 +425,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
         invoice_number=generate_invoice_number(db),
         customer_id=data.customer_id,
         user_id=user.id,
+        channel_id=data.channel_id,
         subtotal=subtotal,
         discount_amount=discount_amount,
         tax_amount=tax_amount,
@@ -399,6 +439,8 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
         currency=payment["currency"],
         currency_symbol=payment["currency_symbol"],
         payment_status="pending" if is_mobile else None,
+        promo_code=promo_code,
+        promo_discount=promo_discount,
         notes=data.notes,
     )
     db.add(sale)
@@ -407,7 +449,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
     try:
         for item_data in data.items:
             product = products[item_data.product_id]
-            db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item_data.quantity, unit_price=item_data.unit_price))
+            db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item_data.quantity, unit_price=resolved_prices[item_data.product_id]))
             allocation = inventory.allocate_lots(
                 db, product_id=product.id, quantity=item_data.quantity,
                 location_id=item_data.location_id,
@@ -427,6 +469,12 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
         raise HTTPException(status_code=400, detail="Insufficient stock - stock levels changed while processing the sale")
 
     db.commit()
+    if promo_code:
+        from app.models.promotion import Promotion as PromoModel
+        promo_obj = db.query(PromoModel).filter(PromoModel.code == promo_code).first()
+        if promo_obj:
+            apply_promotion(db, promo_obj)
+            db.commit()
     sale = load_sale(db, sale.id)
     log_activity(db, user.id, user.username, "create", "sale", sale.id,
                  f"Sale '{sale.invoice_number}' for ${float(sale.total_amount):.2f}")
@@ -669,6 +717,8 @@ def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
     ]
     if sale.discount_amount:
         totals.append(("Discount", f"-{currency}{float(sale.discount_amount):.2f}"))
+    if sale.promo_discount:
+        totals.append((f"Promo ({sale.promo_code})", f"-{currency}{float(sale.promo_discount):.2f}"))
     totals.append((f"Tax ({tax_rate}%)", f"{currency}{float(sale.tax_amount):.2f}"))
     y = draw_totals(c, BODY_RIGHT, y, totals, "Total", f"{currency}{float(sale.total_amount):.2f}")
 
@@ -788,12 +838,21 @@ def bulk_sales_pdf(ids: list[int], db: Session = Depends(get_db)):
                 f"{currency}{float(item.unit_price) * item.quantity:.2f}",
             ])
 
-        y = draw_item_table(c, MARGIN, info_y - 12, headers, rows, col_widths, aligns)
+        y = draw_item_table(c, MARGIN, info_y - 12, headers, aligns, col_widths, rows)
 
         subtotal = float(sale.subtotal)
         tax = float(sale.tax_amount)
         total = float(sale.total_amount)
-        y = draw_totals(c, y, subtotal, tax, total, currency)
+        tax_rate = s.tax_rate if s else 0
+        totals = [
+            ("Subtotal", f"{currency}{subtotal:.2f}"),
+        ]
+        if sale.discount_amount:
+            totals.append(("Discount", f"-{currency}{float(sale.discount_amount):.2f}"))
+        if sale.promo_discount:
+            totals.append((f"Promo ({sale.promo_code})", f"-{currency}{float(sale.promo_discount):.2f}"))
+        totals.append((f"Tax ({tax_rate}%)", f"{currency}{tax:.2f}"))
+        y = draw_totals(c, BODY_RIGHT, y, totals, "Total", f"{currency}{total:.2f}")
 
         if sale.notes:
             draw_notes(c, MARGIN, y, sale.notes)

@@ -326,7 +326,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
             <span className="text-sm font-medium text-ink">Movements</span>
           </div>
           {isLoading ? (
-            <p className="text-sm text-muted px-4 py-3">Loading...</p>
+            <Skeleton variant="rows" rows={3} cols={5} />
           ) : !movements || movements.length === 0 ? (
             <p className="text-sm text-muted px-4 py-3">No movements recorded for this serial number.</p>
           ) : (

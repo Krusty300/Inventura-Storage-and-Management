@@ -4,13 +4,14 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Package, MapPin, ClipboardList, PackageOpen, ShieldCheck, ShieldX } from "lucide-react";
 import api from "../api/client";
-import SlideOver from "./SlideOver";
+import Modal from "./Modal";
 import type { Location, PaginatedResponse } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { statusBadge } from "../utils/statusBadges";
 import { useSettings } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import Skeleton from "./Skeleton";
 
 interface LocationDetailData {
   location: Location;
@@ -172,7 +173,7 @@ export default function LocationDetail({ location, onClose }: Props) {
   const totalStockValue = stockLines.reduce((sum, sl) => sum + sl.value, 0) + serials.reduce((sum, s) => sum + s.value, 0);
 
   return (
-    <SlideOver open onClose={onClose} title={location.path} wide ariaLabel={location.path}>
+    <Modal open onClose={onClose} title={location.path} xwide>
       <div className="space-y-4 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -235,7 +236,7 @@ export default function LocationDetail({ location, onClose }: Props) {
         </div>
 
         {isLoading ? (
-          <p className="text-muted py-4">Loading...</p>
+          <Skeleton variant="rows" rows={5} cols={6} />
         ) : tab === "stock" ? (
           <>
             {stockLines.length === 0 && serials.length === 0 && scrappedSerials.length === 0 ? (
@@ -468,7 +469,7 @@ export default function LocationDetail({ location, onClose }: Props) {
           </>
         )}
       </div>
-    </SlideOver>
+    </Modal>
   );
 }
 

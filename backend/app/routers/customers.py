@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.constants import MAX_PAGE_SIZE_LOOKUP
 from app.database import get_db
 from app.models.customer import Customer
+from app.models.customer_group import CustomerGroup
 from app.models.product import Product
 from app.models.sale import Sale, SaleItem
 from app.schemas.customer import (
@@ -66,6 +67,7 @@ def _serialize_with_stats(c: Customer, total_sales, total_spent, last_purchase_a
 def list_customers(
     search: str = Query(""),
     customer_type: str = Query(""),
+    group_id: int | None = Query(None),
     include_inactive: bool = False,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
@@ -82,6 +84,8 @@ def list_customers(
         q = q.filter(Customer.name.ilike(like) | Customer.phone.ilike(like) | Customer.email.ilike(like) | Customer.address.ilike(like))
     if customer_type:
         q = q.filter(Customer.customer_type == customer_type)
+    if group_id is not None:
+        q = q.filter(Customer.group_id == group_id)
     total = q.count()
     rows = q.order_by(Customer.name).offset(skip).limit(limit).all()
     items = [_serialize_with_stats(c, ts, tp, lp) for c, ts, tp, lp in rows]
@@ -148,12 +152,22 @@ def import_customers_csv(
         if _find_duplicate(db, name, phone, email):
             result.skipped += 1
             continue
+        group_id = None
+        group_name_raw = (row.get("group_name") or "").strip()
+        if group_name_raw:
+            grp = db.query(CustomerGroup).filter(CustomerGroup.name == group_name_raw).first()
+            if grp:
+                group_id = grp.id
+            else:
+                result.errors.append(f"Row {row_idx} ({name}): customer group '{group_name_raw}' not found")
+                continue
         db.add(Customer(
             name=name,
             phone=phone,
             email=email,
             address=(row.get("address") or "").strip(),
             customer_type=ctype,
+            group_id=group_id,
             notes=(row.get("notes") or "").strip(),
         ))
         seen.add(key)

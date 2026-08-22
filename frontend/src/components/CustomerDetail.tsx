@@ -1,6 +1,8 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
+import { Users, Tag } from "lucide-react";
 import SlideOver from "./SlideOver";
+import Skeleton from "./Skeleton";
 import api from "../api/client";
 import type { Customer, CustomerStats, FrequentProduct, PaginatedResponse, Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
@@ -60,6 +62,23 @@ export default function CustomerDetail({ customer, onClose }: Props) {
           </div>
         </div>
 
+        {customer.group_name || customer.price_list_id ? (
+          <div className="flex items-center gap-3">
+            {customer.group_name && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400">
+                <Users size={12} />
+                {customer.group_name}
+              </span>
+            )}
+            {customer.price_list_id && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                <Tag size={12} />
+                Price Tier
+              </span>
+            )}
+          </div>
+        ) : null}
+
         {customer.address && (
           <div>
             <span className="text-muted">Address:</span>
@@ -98,7 +117,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
         <div>
           <h3 className="font-semibold text-ink mb-2">Frequently Purchased</h3>
           {frequentLoading ? (
-            <p className="text-faint">Loading...</p>
+            <Skeleton variant="rows" rows={3} cols={4} />
           ) : frequentProducts.length === 0 ? (
             <p className="text-faint">No purchase history yet.</p>
           ) : (
@@ -130,7 +149,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
         <div>
           <h3 className="font-semibold text-ink mb-2">Purchase History</h3>
           {isLoading ? (
-            <p className="text-faint">Loading...</p>
+            <Skeleton variant="rows" rows={3} cols={5} />
           ) : history.length === 0 ? (
             <p className="text-faint">No purchases recorded yet.</p>
           ) : (

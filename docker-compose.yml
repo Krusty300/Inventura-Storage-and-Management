@@ -1,0 +1,31 @@
+services:
+  backend:
+    build: ./backend
+    container_name: inventura-backend
+    env_file: ./backend/.env
+    environment:
+      - DATABASE_URL=sqlite:///./data/inventory.db
+    volumes:
+      - backend-data:/app/data
+      - uploads-data:/app/app/uploads
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: inventura-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  uploads-data:

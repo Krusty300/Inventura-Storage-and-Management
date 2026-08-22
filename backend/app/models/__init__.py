@@ -3,6 +3,7 @@ from app.models.note import Note, NoteLink, NoteTag, NoteTagLink
 from app.models.bom import BOM, BOMItem
 from app.models.category import Category
 from app.models.customer import Customer
+from app.models.customer_group import CustomerGroup
 from app.models.cycle_count import CycleCount, CycleCountItem
 from app.models.document_sequence import DocumentSequence
 from app.models.location import Location
@@ -11,11 +12,14 @@ from app.models.lot_link import LotLink
 from app.models.lpn import LPN
 from app.models.notification import Notification
 from app.models.order import Order, OrderItem
+from app.models.price_list import PriceList, PriceListItem
 from app.models.product import Product
 from app.models.product_image import ProductImage
+from app.models.promotion import Promotion
 from app.models.quality_check import QualityCheck
 from app.models.receipt import Receipt, ReceiptItem
 from app.models.sale import Sale, SaleItem
+from app.models.sales_channel import SalesChannel
 from app.models.serial_number import SerialNumber
 from app.models.session import UserSession
 from app.models.settings import Settings
@@ -37,6 +41,7 @@ __all__ = [
     "BOMItem",
     "Category",
     "Customer",
+    "CustomerGroup",
     "CycleCount",
     "CycleCountItem",
     "DocumentSequence",
@@ -47,13 +52,17 @@ __all__ = [
     "Notification",
     "Order",
     "OrderItem",
+    "PriceList",
+    "PriceListItem",
     "Product",
     "ProductImage",
+    "Promotion",
     "QualityCheck",
     "Receipt",
     "ReceiptItem",
     "Sale",
     "SaleItem",
+    "SalesChannel",
     "SerialNumber",
     "Settings",
     "Shipment",

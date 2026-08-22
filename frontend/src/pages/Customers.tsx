@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Pencil, Trash2, Eye, RefreshCw, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Customer, PaginatedResponse } from "../types";
+import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
 import CustomerDetail from "../components/CustomerDetail";
 import CustomerForm from "../components/CustomerForm";
 import CustomerImportModal from "../components/CustomerImportModal";
@@ -27,6 +27,7 @@ export default function Customers() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [typeFilter, setTypeFilter] = useState("");
+  const [groupFilter, setGroupFilter] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
@@ -41,12 +42,21 @@ export default function Customers() {
   const { can } = useAuth();
   const debouncedSearch = useDebounce(search, 300);
 
+  const { data: groups } = useQuery({
+    queryKey: ["customer-groups"],
+    queryFn: async () => {
+      const { data } = await api.get("/customer-groups", { params: { limit: 200 } });
+      return (data as PaginatedResponse<CustomerGroup>).items;
+    },
+  });
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["customers", debouncedSearch, typeFilter, includeInactive, page, pageSize],
+    queryKey: ["customers", debouncedSearch, typeFilter, groupFilter, includeInactive, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
       if (typeFilter) params.customer_type = typeFilter;
+      if (groupFilter) params.group_id = groupFilter;
       if (includeInactive) params.include_inactive = "true";
       const { data } = await api.get("/customers", { params });
       return data as PaginatedResponse<Customer>;
@@ -95,6 +105,17 @@ export default function Customers() {
         { value: "walk-in", label: "Walk-in" },
       ],
     },
+    {
+      name: "group_id",
+      label: "Group",
+      type: "select",
+      options: [
+        { value: "0", label: "No Group" },
+        ...(groups || []).map((g) => ({ value: String(g.id), label: g.name })),
+      ],
+      valueType: "number",
+      clearValue: "0",
+    },
     { name: "notes", label: "Notes", type: "text" },
     {
       name: "is_active",
@@ -110,8 +131,8 @@ export default function Customers() {
 
   const handleExport = () => {
     exportCSV(
-      ["Name", "Phone", "Email", "Address", "Type", "Notes", "Total Sales", "Total Spent"],
-      customers.map((c) => [c.name, c.phone, c.email, c.address, c.customer_type, c.notes, c.total_sales ?? 0, c.total_spent ?? 0]),
+      ["Name", "Phone", "Email", "Address", "Type", "Group", "Notes", "Total Sales", "Total Spent"],
+      customers.map((c) => [c.name, c.phone, c.email, c.address, c.customer_type, c.group_name || "", c.notes, c.total_sales ?? 0, c.total_spent ?? 0]),
       "customers"
     );
     addToast("Customers exported to CSV", "success");
@@ -157,6 +178,15 @@ export default function Customers() {
           <option value="frequent">Frequent</option>
           <option value="walk-in">Walk-in</option>
         </select>
+        <select
+          className="select w-44"
+          value={groupFilter}
+          onChange={(e) => { setGroupFilter(e.target.value); setPage(1); }}
+          aria-label="Filter by group"
+        >
+          <option value="">All Groups</option>
+          {(groups || []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
@@ -184,6 +214,7 @@ export default function Customers() {
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Phone</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Email</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Group</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Orders</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Total Spent</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Avg Order</th>
@@ -193,7 +224,7 @@ export default function Customers() {
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                <Skeleton rows={5} cols={10} />
+                <Skeleton rows={5} cols={11} />
               ) : customers.length === 0 ? (
                 <EmptyState title="No customers found" message="Add your first customer to get started." actionLabel="Add Customer" onAction={() => { setEditing(null); setShowForm(true); }} />
               ) : customers.map((c) => (
@@ -216,6 +247,7 @@ export default function Customers() {
                       {c.customer_type}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-muted">{c.group_name || "—"}</td>
                   <td className="px-4 py-3 text-muted">{c.total_sales ?? 0}</td>
                   <td className="px-4 py-3 text-muted">{formatCurrency(c.total_spent ?? 0)}</td>
                   <td className="px-4 py-3 text-muted">

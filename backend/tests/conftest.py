@@ -3,6 +3,8 @@ import os
 # CI has no backend/.env: supply a valid secret before any app module imports
 # Settings (which rejects the placeholder default at construction time).
 os.environ.setdefault("SECRET_KEY", "a" * 64)
+os.environ.setdefault("DARAJA_MOCK", "true")
+os.environ.pop("DARAJA_CALLBACK_SECRET", None)
 
 import pytest
 from fastapi.testclient import TestClient

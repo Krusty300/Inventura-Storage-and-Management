@@ -199,7 +199,7 @@ function RecallModal({ lot, onClose }: { lot: { id: number; lot_number: string; 
           Any finished good made from this lot is listed below.
         </p>
         {isLoading ? (
-          <div className="text-faint">Loading genealogy...</div>
+          <Skeleton variant="rows" rows={2} cols={3} />
         ) : !data || data.affected.length === 0 ? (
           <div className="rounded-lg border border-green-200 dark:border-green-500/30 bg-green-50 dark:bg-green-500/10 p-4 text-green-700 dark:text-green-400">
             No downstream finished goods consumed this lot. Impact is limited to the lot itself.

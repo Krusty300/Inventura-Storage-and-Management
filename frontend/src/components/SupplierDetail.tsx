@@ -1,6 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
 import SlideOver from "./SlideOver";
+import Skeleton from "./Skeleton";
 import api from "../api/client";
 import type { Order, PaginatedResponse, Product, Supplier, SupplierStats } from "../types";
 import { formatCurrency } from "../utils/currency";
@@ -98,7 +99,7 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
         <div>
           <h3 className="font-semibold text-ink mb-2">Purchase Order History</h3>
           {isLoading ? (
-            <p className="text-faint">Loading...</p>
+            <Skeleton variant="rows" rows={3} cols={4} />
           ) : history.length === 0 ? (
             <p className="text-faint">No purchase orders yet.</p>
           ) : (
@@ -134,7 +135,7 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
         <div>
           <h3 className="font-semibold text-ink mb-2">Products by Supplier</h3>
           {productsLoading ? (
-            <p className="text-faint">Loading...</p>
+            <Skeleton variant="rows" rows={3} cols={6} />
           ) : productRows.length === 0 ? (
             <p className="text-faint">No products assigned to this supplier.</p>
           ) : (

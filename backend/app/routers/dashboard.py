@@ -17,6 +17,9 @@ from app.models.quality_check import QualityCheck
 from app.models.serial_number import SerialNumber
 from app.models.stock_line import StockLine
 from app.models.lot import Lot
+from app.models.sale import Sale
+from app.models.sales_channel import SalesChannel
+from app.models.promotion import Promotion
 from app.schemas.dashboard import DashboardStats
 from app.services.auth import get_current_user, require_permission
 from app.services import inventory
@@ -137,6 +140,30 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         .all()
     )
 
+    now = datetime.now(timezone.utc)
+    thirty_days = now + timedelta(days=30)
+    active_promotions_count = db.query(func.count(Promotion.id)).filter(
+        Promotion.is_active == True  # noqa: E712
+    ).scalar() or 0
+    expiring_promotions_count = db.query(func.count(Promotion.id)).filter(
+        Promotion.is_active == True,  # noqa: E712
+        Promotion.valid_to.isnot(None),
+        Promotion.valid_to <= thirty_days.date(),
+        Promotion.valid_to >= date.today(),
+    ).scalar() or 0
+    top_channel_row = (
+        db.query(SalesChannel.name, func.count(Sale.id).label("cnt"))
+        .join(Sale, Sale.channel_id == SalesChannel.id)
+        .filter(Sale.status == "completed")
+        .group_by(SalesChannel.name)
+        .order_by(func.count(Sale.id).desc())
+        .first()
+    )
+    top_channel = top_channel_row[0] if top_channel_row else ""
+    pending_sales_count = db.query(func.count(Sale.id)).filter(
+        Sale.status == "pending"
+    ).scalar() or 0
+
     return DashboardStats(
         total_products=total_products,
         total_categories=total_categories,
@@ -217,4 +244,8 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
             }
             for q in quality_checks_to_process
         ],
+        active_promotions_count=active_promotions_count,
+        expiring_promotions_count=expiring_promotions_count,
+        top_channel=top_channel,
+        pending_sales_count=pending_sales_count,
     )

@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
-import type { Customer } from "../types";
+import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
 import { useToast } from "../context/ToastContext";
 import Modal from "./Modal";
 
@@ -17,15 +18,26 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
   const [email, setEmail] = useState(customer?.email || "");
   const [address, setAddress] = useState(customer?.address || "");
   const [customerType, setCustomerType] = useState(customer?.customer_type || "walk-in");
+  const [groupId, setGroupId] = useState(customer?.group_id != null ? String(customer.group_id) : "");
   const [notes, setNotes] = useState(customer?.notes || "");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+
+  const { data: groups } = useQuery({
+    queryKey: ["customer-groups"],
+    queryFn: async () => {
+      const { data } = await api.get("/customer-groups", { params: { limit: 200 } });
+      return (data as PaginatedResponse<CustomerGroup>).items;
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { name, phone, email, address, customer_type: customerType, notes };
+      const payload: Record<string, unknown> = { name, phone, email, address, customer_type: customerType, notes };
+      if (groupId) payload.group_id = Number(groupId);
+      else payload.group_id = null;
       if (isEdit) {
         await api.put(`/customers/${customer!.id}`, payload);
         addToast("Customer updated", "success");
@@ -66,6 +78,13 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
           <select className="select" value={customerType} onChange={(e) => setCustomerType(e.target.value)}>
             <option value="frequent">Frequent</option>
             <option value="walk-in">Walk-in</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1">Customer Group</label>
+          <select className="select" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+            <option value="">No Group</option>
+            {(groups || []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
         </div>
         <div>

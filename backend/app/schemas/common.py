@@ -1,8 +1,1 @@
-from pydantic import BaseModel
-
-
-class PaginatedResponse(BaseModel):
-    items: list
-    total: int
-    page: int
-    pages: int
+"""Common schema utilities."""

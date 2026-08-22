@@ -50,3 +50,7 @@ class DashboardStats(BaseModel):
     shipments_to_process: list[DashboardShipmentRow] = []
     work_orders_to_process: list[DashboardWorkOrderRow] = []
     quality_checks_to_process: list[DashboardQualityCheckRow] = []
+    active_promotions_count: int = 0
+    expiring_promotions_count: int = 0
+    top_channel: str = ""
+    pending_sales_count: int = 0

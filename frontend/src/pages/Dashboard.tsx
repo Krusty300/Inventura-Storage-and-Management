@@ -40,6 +40,7 @@ import { useAuth } from "../context/AuthContext";
 import GlobalSearch from "../components/GlobalSearch";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ProgressBar from "../components/ProgressBar";
+import Skeleton from "../components/Skeleton";
 
 const TREND_OPTIONS = [7, 30, 90];
 
@@ -194,8 +195,16 @@ export default function Dashboard() {
 
   if (!stats) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
+        {[10, 6, 2, 3].map((count, i) => (
+          <div key={i} className="space-y-3">
+            <div className="h-4 w-20 bg-subtle-strong rounded animate-pulse" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Skeleton variant="card" rows={count} />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }

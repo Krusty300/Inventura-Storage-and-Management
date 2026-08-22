@@ -13,6 +13,7 @@ class SaleItemCreate(BaseModel):
 
 class SaleCreate(BaseModel):
     customer_id: Optional[int] = None
+    channel_id: Optional[int] = None
     items: list[SaleItemCreate]
     payment_method: str = "cash"
     payment_provider: Optional[str] = None
@@ -22,6 +23,7 @@ class SaleCreate(BaseModel):
     currency: Optional[str] = None
     currency_symbol: Optional[str] = None
     discount_amount: float = Field(default=0.0, ge=0)
+    promo_code: Optional[str] = None
     notes: str = ""
 
 
@@ -33,6 +35,8 @@ class RefundRequest(BaseModel):
 class SaleBulkEdit(BaseModel):
     ids: list[int]
     notes: Optional[str] = None
+    status: Optional[str] = None
+    payment_status: Optional[str] = None
 
 
 class SaleItemOut(BaseModel):
@@ -54,6 +58,7 @@ class SaleOut(BaseModel):
     invoice_number: str
     customer_id: Optional[int] = None
     user_id: int
+    channel_id: Optional[int] = None
     subtotal: float
     discount_amount: float
     tax_amount: float
@@ -74,9 +79,12 @@ class SaleOut(BaseModel):
     refund_provider: Optional[str] = None
     refund_checkout_request_id: Optional[str] = None
     notes: str
+    promo_code: Optional[str] = None
+    promo_discount: float = 0.0
     created_at: datetime
     updated_at: datetime
     customer_name: str = ""
+    channel_name: str = ""
     username: str = ""
     items: list[SaleItemOut] = []
     locations: list[str] = []

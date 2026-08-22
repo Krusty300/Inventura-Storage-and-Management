@@ -17,6 +17,7 @@ from app.models import (
     QualityCheck,
     Receipt,
     Sale,
+    SalesChannel,
     SerialNumber,
     Shipment,
     Supplier,
@@ -256,6 +257,14 @@ def _search_boms(db: Session, like: str, limit: int):
     ]
 
 
+def _search_sales_channels(db: Session, like: str, limit: int):
+    rows = db.query(SalesChannel).filter(SalesChannel.name.ilike(like)).order_by(SalesChannel.name).limit(limit).all()
+    return [
+        {"type": "sales_channel", "id": c.id, "label": c.name, "subtitle": c.type, "route": "/sales-channels"}
+        for c in rows
+    ]
+
+
 PROVIDERS = [
     _search_products,
     _search_lots,
@@ -275,6 +284,7 @@ PROVIDERS = [
     _search_cycle_counts,
     _search_quality_checks,
     _search_boms,
+    _search_sales_channels,
 ]
 
 

@@ -195,6 +195,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1">
             <p className="text-muted">Customer: <span className="font-medium text-ink">{sale.customer_name}</span></p>
+            {sale.channel_name && <p className="text-muted">Channel: <span className="font-medium text-ink">{sale.channel_name}</span></p>}
             <p className="text-muted">Date: <span className="font-medium text-ink">{formatDateTime(sale.created_at)}</span></p>
             <p className="text-muted">Cashier: <span className="font-medium text-ink">{sale.username}</span></p>
           </div>
@@ -274,6 +275,8 @@ export default function SaleDetail({ sale, onClose }: Props) {
         <div className="flex justify-end">
           <div className="w-56 space-y-1">
             <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>{formatCurrency(sale.subtotal, saleSymbol)}</span></div>
+            {sale.discount_amount > 0 && <div className="flex justify-between"><span className="text-muted">Discount</span><span className="text-red-600 dark:text-red-400">-{formatCurrency(sale.discount_amount, saleSymbol)}</span></div>}
+            {sale.promo_discount > 0 && <div className="flex justify-between"><span className="text-muted">Promo ({sale.promo_code})</span><span className="text-red-600 dark:text-red-400">-{formatCurrency(sale.promo_discount, saleSymbol)}</span></div>}
             <div className="flex justify-between"><span className="text-muted">Tax</span><span>{formatCurrency(sale.tax_amount, saleSymbol)}</span></div>
             <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(sale.total_amount, saleSymbol)}</span></div>
           </div>

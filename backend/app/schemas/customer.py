@@ -20,6 +20,7 @@ class CustomerCreate(BaseModel):
     email: str = ""
     address: str = ""
     customer_type: str = "walk-in"
+    group_id: Optional[int] = None
     notes: str = ""
 
     @field_validator("email")
@@ -34,6 +35,7 @@ class CustomerUpdate(BaseModel):
     email: Optional[str] = None
     address: Optional[str] = None
     customer_type: Optional[str] = None
+    group_id: Optional[int] = None
     notes: Optional[str] = None
 
     @field_validator("email")
@@ -48,6 +50,7 @@ class CustomerBulkEdit(BaseModel):
     email: Optional[str] = None
     address: Optional[str] = None
     customer_type: Optional[str] = None
+    group_id: Optional[int] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -66,6 +69,9 @@ class CustomerOut(BaseModel):
     email: str
     address: str
     customer_type: str
+    group_id: Optional[int] = None
+    group_name: str = ""
+    price_list_id: Optional[int] = None
     notes: str
     is_active: bool
     created_at: datetime

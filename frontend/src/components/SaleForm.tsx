@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, GripVertical, KeyRound, Loader2, Lock, Minus, Package, Plus, Search, Send, Trash2, Unlock, X } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
-import type { Customer, Product, QualityCheck, Settings } from "../types";
+import type { Customer, Product, QualityCheck, SalesChannel, Settings } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -162,9 +162,11 @@ function CartLine({
 export default function SaleForm({ onClose, onSaved }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [channels, setChannels] = useState<SalesChannel[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [pendingQcs, setPendingQcs] = useState<QualityCheck[]>([]);
   const [customerId, setCustomerId] = useState("");
+  const [channelId, setChannelId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentProvider, setPaymentProvider] = useState(MOBILE_MONEY_PROVIDERS[0].value);
   const [paymentPhone, setPaymentPhone] = useState("");
@@ -174,6 +176,10 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [items, setItems] = useState<LineItem[]>([]);
   const [stockShort, setStockShort] = useState<Set<number>>(new Set());
   const [discount, setDiscount] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoError, setPromoError] = useState("");
+  const [promoValidating, setPromoValidating] = useState(false);
   const [amountReceived, setAmountReceived] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -201,6 +207,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     if (items.length === 0) return null;
     return {
       customerId,
+      channelId,
       paymentMethod,
       paymentProvider,
       paymentPhone,
@@ -211,13 +218,13 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       amountReceived,
       items,
     };
-  }, [customerId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, isLocked, isDraftRestored]);
+  }, [customerId, channelId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, isLocked, isDraftRestored]);
 
   const scheduleSave = useSaleDraftAutoSave(getStateForDraft, !isLocked && !isDraftRestored);
 
   useEffect(() => {
     scheduleSave();
-  }, [customerId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, scheduleSave]);
+  }, [customerId, channelId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, scheduleSave]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -252,6 +259,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   useEffect(() => {
     api.get("/customers", { params: { limit: PAGE_SIZE_PRODUCTS } }).then(({ data }) => setCustomers(data.items));
     api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
+    api.get("/sales-channels/all").then(({ data }) => setChannels(data));
     api.get("/settings").then(({ data }) => setSettings(data));
     api.get("/quality-checks", { params: { result: "pending", limit: PAGE_SIZE } }).then(({ data }) => setPendingQcs(data.items));
   }, []);
@@ -323,6 +331,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
 
   const applyDraft = useCallback((draft: SaleDraftData) => {
     setCustomerId(draft.customerId);
+    setChannelId(draft.channelId || "");
     setPaymentMethod(draft.paymentMethod);
     setPaymentProvider(draft.paymentProvider);
     setPaymentPhone(draft.paymentPhone);
@@ -381,6 +390,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const handleDiscardDraft = () => {
     clearSaleDraft();
     setCustomerId("");
+    setChannelId("");
     setPaymentMethod("cash");
     setPaymentProvider(MOBILE_MONEY_PROVIDERS[0].value);
     setPaymentPhone("");
@@ -418,7 +428,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
 
   const subtotal = items.reduce((sum, i) => sum + (parseInt(i.quantity) || 0) * (parseFloat(i.unit_price) || 0), 0);
   const discountAmount = Math.min(Math.max(parseFloat(discount) || 0, 0), subtotal);
-  const taxable = subtotal - discountAmount;
+  const effectivePromoDiscount = Math.min(promoDiscount, subtotal - discountAmount);
+  const taxable = subtotal - discountAmount - effectivePromoDiscount;
   const tax = settings ? taxable * settings.tax_rate / 100 : 0;
   const total = taxable + tax;
   const currency = settings?.currency_symbol || "$";
@@ -428,6 +439,27 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const cashReceived = parseFloat(amountReceived) || 0;
   const change = cashReceived - total;
   const cashShort = paymentMethod === "cash" && amountReceived.trim() !== "" && cashReceived < total;
+
+  const validatePromo = async () => {
+    const code = promoCode.trim().toUpperCase();
+    if (!code) { setPromoDiscount(0); setPromoError(""); return; }
+    setPromoValidating(true);
+    try {
+      const totalQty = items.reduce((sum, i) => sum + (parseInt(i.quantity) || 0), 0);
+      const { data } = await api.post("/promotions/validate", { code, subtotal, total_qty: totalQty });
+      if (data.valid) {
+        setPromoDiscount(data.discount_amount);
+        setPromoError("");
+      } else {
+        setPromoDiscount(0);
+        setPromoError(data.error || "Invalid promo code");
+      }
+    } catch {
+      setPromoDiscount(0);
+      setPromoError("Failed to validate promo code");
+    }
+    setPromoValidating(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -468,6 +500,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     try {
       const { data: sale } = await api.post("/sales", {
         customer_id: customerId ? parseInt(customerId) : null,
+        channel_id: channelId ? parseInt(channelId) : null,
         payment_method: paymentMethod,
         payment_provider: paymentMethod === "mobile_money" ? paymentProvider : null,
         payment_reference: paymentReference.trim() || null,
@@ -476,6 +509,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         currency: currencyCode,
         currency_symbol: currency,
         discount_amount: discountAmount,
+        promo_code: promoCode.trim().toUpperCase() || null,
         notes,
         items: items.map((i) => ({
           product_id: parseInt(i.product_id),
@@ -844,12 +878,29 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         >
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-5 py-4 border-b border-border space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Customer</label>
                   <select className="select text-sm" value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={formDisabled} aria-label="Customer">
                     <option value="">Walk-in</option>
                     {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  {customerId && (() => {
+                    const c = customers.find((x) => String(x.id) === customerId);
+                    if (!c?.group_name) return null;
+                    return (
+                      <p className="text-xs text-muted mt-1">
+                        Group: <span className="font-medium text-ink">{c.group_name}</span>
+                        {c.price_list_id ? " · Custom pricing active" : ""}
+                      </p>
+                    );
+                  })()}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Channel</label>
+                  <select className="select text-sm" value={channelId} onChange={(e) => setChannelId(e.target.value)} disabled={formDisabled} aria-label="Sales channel">
+                    <option value="">Counter</option>
+                    {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -928,6 +979,31 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   />
                 </div>
               </div>
+              <div className="flex items-center justify-between text-sm gap-3">
+                <span className="text-muted shrink-0">Promo Code</span>
+                <div className="flex gap-2 flex-1 max-w-[240px]">
+                  <input
+                    type="text"
+                    className="input py-1.5 text-sm font-mono flex-1"
+                    placeholder="Code"
+                    value={promoCode}
+                    onChange={(e) => { setPromoCode(e.target.value); if (!e.target.value.trim()) { setPromoDiscount(0); setPromoError(""); } }}
+                    onBlur={validatePromo}
+                    disabled={formDisabled}
+                    aria-label="Promo code"
+                  />
+                  <button type="button" onClick={validatePromo} disabled={formDisabled || promoValidating || !promoCode.trim()} className="btn-secondary text-xs px-2 py-1.5 disabled:opacity-40">
+                    {promoValidating ? "..." : "Apply"}
+                  </button>
+                </div>
+              </div>
+              {promoError && <p className="text-xs text-red-600 dark:text-red-400">{promoError}</p>}
+              {effectivePromoDiscount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted">Promo ({promoCode.trim().toUpperCase()})</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">-{formatCurrency(effectivePromoDiscount, currency)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted">Tax ({settings?.tax_rate ?? 0}%)</span>
                 <span>{formatCurrency(tax, currency)}</span>

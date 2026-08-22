@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Printer } from "lucide-react";
+import { Fingerprint, Printer } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { LPN, Order, OrderItem } from "../types";
@@ -320,7 +320,12 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
                 <tr key={item.id}>
                   <td className="px-3 py-2">
                     {item.product_name}
-                    {item.is_serialized && <span className="ml-2 badge-info">serialized</span>}
+                    {item.is_serialized && (
+                      <span className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30">
+                        <Fingerprint size={12} />
+                        serialized
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-muted">{item.sku || "\u2014"}</td>
                   <td className="px-3 py-2 text-right">{item.quantity}</td>

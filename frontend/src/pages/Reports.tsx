@@ -637,6 +637,7 @@ function SalesTab({ data, symbol, reconciliation }: { data: SalesSummary; symbol
   ];
 
   const providers = data.by_payment_provider || [];
+  const channels = data.by_channel || [];
 
   return (
     <div className="space-y-6">
@@ -716,6 +717,32 @@ function SalesTab({ data, symbol, reconciliation }: { data: SalesSummary; symbol
           </div>
         </div>
       </div>
+
+      {channels.length > 0 && (
+        <div className="card overflow-hidden p-0">
+          <h3 className="text-lg font-semibold px-4 pt-4 pb-2">Sales by Channel</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-app text-left">
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Channel</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted">Count</th>
+                  <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {channels.map((ch) => (
+                  <tr key={ch.channel} className="hover:bg-app">
+                    <td className="px-4 py-3 font-medium">{ch.channel}</td>
+                    <td className="px-4 py-3">{ch.count}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(ch.total, symbol)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {providers.length > 0 && (
         <div className="card">

@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, PackagePlus, Search } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, PackagePlus, Search, Fingerprint } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Category, PaginatedResponse, Product, StockMovement } from "../types";
@@ -372,7 +372,10 @@ export default function Products() {
                           <span className="badge bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">{p.variants.filter((v) => v.is_active).length} variants</span>
                         )}
                         {p.is_serialized && (
-                          <span className="badge bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">Serialized</span>
+                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30">
+                            <Fingerprint size={12} />
+                            serialized
+                          </span>
                         )}
                         {isLowStock && (
                           <AlertTriangle size={14} className="text-red-500" aria-label="Low stock" />
@@ -520,7 +523,7 @@ export default function Products() {
       />
 
       <Modal open={!!movementProduct} onClose={() => setMovementProduct(null)} title={`Movements: ${movementProduct?.display_name || ""}`} wide>
-        {movementsLoading && <p className="text-muted text-sm">Loading movements...</p>}
+        {movementsLoading && <Skeleton variant="rows" rows={3} cols={5} />}
         {movementsError && <p className="text-red-600 dark:text-red-400 text-sm">Failed to load movements.</p>}
         {!movementsLoading && !movementsError && movements && movements.length === 0 && <p className="text-muted text-sm">No movements recorded for this product.</p>}
         {!movementsLoading && !movementsError && movements && movements.length > 0 && (

@@ -399,7 +399,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
           <div className="bg-app px-4 py-2 flex items-center justify-between">
             <span className="text-sm font-medium text-ink">Expected Items</span>
             <div className="flex items-center gap-3">
-              {loadingProducts && <span className="text-xs text-muted">Loading supplier products...</span>}
+              {loadingProducts && <Skeleton variant="text" className="w-28 h-4" />}
               <button type="button" onClick={() => setRows([...rows, { product_id: "", expected_qty: "1", unit_cost: "0", location: "" }])} className="btn-secondary text-xs py-1 px-2">
                 <Plus size={14} className="inline mr-1" />Add Item
               </button>
@@ -577,7 +577,7 @@ function AsnReceiveRow({ row, idx, productList, locations, onChange }: {
               </option>
             ))}
           </datalist>
-          {lpnsLoading && <p className="text-xs text-faint mt-1">Loading LPNs...</p>}
+          {lpnsLoading && <Skeleton variant="text" className="w-20 h-3 mt-1" />}
         </div>
       </div>
       {product?.is_serialized && (

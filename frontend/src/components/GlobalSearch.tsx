@@ -25,6 +25,7 @@ const TYPE_LABELS: Record<string, string> = {
   cycle_count: "Cycle Counts",
   quality_check: "Quality Checks",
   bom: "Bills of Materials",
+  sales_channel: "Sales Channels",
 };
 
 interface Group {

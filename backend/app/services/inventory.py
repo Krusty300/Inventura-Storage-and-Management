@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+import logging
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -6,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.models import Location, Lot, Product, SerialNumber, StockLine, StockMovement
 from app.services.notify import notify_lot_expired
 from app.utils import broadcast_change
+
+log = logging.getLogger("app.inventory")
 
 
 class InventoryError(Exception):
@@ -649,6 +652,12 @@ def post_journal_entry(
     # first or on_hand() would read stale data (autoflush is disabled).
     db.flush()
     product.quantity = on_hand(db, product_id=product_id)
+    log.info(
+        "journal: %s product=%d qty=%+d from=%s to=%s ref=%s:%s",
+        movement_type, product_id, quantity_change,
+        from_location_id or "-", to_location_id or "-",
+        reference_type or "-", reference or "-",
+    )
     return movement
 
 

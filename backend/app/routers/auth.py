@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials
@@ -29,6 +30,7 @@ from app.services import ratelimit
 from app.utils import log_activity
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+log = logging.getLogger("app.auth")
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 ALLOWED_AVATAR_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -79,14 +81,17 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username, User.is_active == True).first()
     if not user or not verify_password(req.password, user.password_hash):
         ratelimit.record_failure(req.username, ip)
+        log.warning("login failed: user=%s ip=%s", req.username, ip)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_approved:
+        log.info("login blocked (pending approval): user=%s ip=%s", req.username, ip)
         raise HTTPException(status_code=403, detail="Your account is pending admin approval. You will be notified once approved.")
     ratelimit.clear_failures(req.username, ip)
     user.last_login_at = datetime.now(timezone.utc)
     jti = _create_session(db, user, request)
     db.commit()
     db.refresh(user)
+    log.info("login ok: user=%s ip=%s", req.username, ip)
     token = create_access_token(
         {"sub": str(user.id)},
         expires_minutes=settings.remember_token_expire_minutes if req.remember else None,

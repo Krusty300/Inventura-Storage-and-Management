@@ -9,9 +9,7 @@ from app.models.sale import Sale
 from app.services.auth import require_permission
 from app.services.daraja import config as daraja_config, stk_push, b2c_payment, parse_stk_callback, parse_b2c_callback
 
-router = APIRouter(prefix="/api/daraja", tags=["daraja"], dependencies=[Depends(require_permission("sales.view"))])
-
-_CALLBACK_SECRET = os.getenv("DARAJA_CALLBACK_SECRET", "").strip()
+router = APIRouter(prefix="/api/daraja", tags=["daraja"])
 
 
 def _verify_callback_secret(request: Request) -> None:
@@ -21,12 +19,13 @@ def _verify_callback_secret(request: Request) -> None:
     the env var is set.  In mock mode without a configured secret the check is
     skipped so local dev remains frictionless.
     """
-    if not _CALLBACK_SECRET:
+    secret = os.getenv("DARAJA_CALLBACK_SECRET", "").strip()
+    if not secret:
         if not daraja_config.mock:
             raise HTTPException(status_code=500, detail="DARAJA_CALLBACK_SECRET is not configured")
         return
     provided = request.query_params.get("secret", "")
-    if not hmac.compare_digest(provided, _CALLBACK_SECRET):
+    if not hmac.compare_digest(provided, secret):
         raise HTTPException(status_code=403, detail="Invalid callback secret")
 
 

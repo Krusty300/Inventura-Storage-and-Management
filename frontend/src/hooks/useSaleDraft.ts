@@ -12,6 +12,7 @@ export interface SaleDraftLineItem {
 
 export interface SaleDraftData {
   customerId: string;
+  channelId: string;
   paymentMethod: string;
   paymentProvider: string;
   paymentPhone: string;

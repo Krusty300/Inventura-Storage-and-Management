@@ -42,6 +42,10 @@ const Planning = lazy(() => import("./pages/Planning"));
 const Forecasting = lazy(() => import("./pages/Forecasting"));
 const Shipments = lazy(() => import("./pages/Shipments"));
 const Notes = lazy(() => import("./pages/Notes"));
+const PriceLists = lazy(() => import("./pages/PriceLists"));
+const Promotions = lazy(() => import("./pages/Promotions"));
+const CustomerGroups = lazy(() => import("./pages/CustomerGroups"));
+const SalesChannels = lazy(() => import("./pages/SalesChannels"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
 
@@ -98,6 +102,10 @@ function AppRoutes() {
           <Route path="/exceptions" element={<PageBoundary><RequirePermission perm="reports.view"><Exceptions /></RequirePermission></PageBoundary>} />
           <Route path="/orders" element={<PageBoundary><RequirePermission perm="orders.view"><Orders /></RequirePermission></PageBoundary>} />
           <Route path="/sales" element={<PageBoundary><RequirePermission perm="sales.view"><Sales /></RequirePermission></PageBoundary>} />
+          <Route path="/price-lists" element={<PageBoundary><RequirePermission perm="price_lists.view"><PriceLists /></RequirePermission></PageBoundary>} />
+          <Route path="/promotions" element={<PageBoundary><RequirePermission perm="promotions.view"><Promotions /></RequirePermission></PageBoundary>} />
+          <Route path="/customer-groups" element={<PageBoundary><RequirePermission perm="customer_groups.view"><CustomerGroups /></RequirePermission></PageBoundary>} />
+          <Route path="/sales-channels" element={<PageBoundary><RequirePermission perm="sales.view"><SalesChannels /></RequirePermission></PageBoundary>} />
           <Route path="/users" element={<PageBoundary><RequirePermission perm="users.view"><Users /></RequirePermission></PageBoundary>} />
           <Route path="/reports" element={<PageBoundary><RequirePermission perm="reports.view"><Reports /></RequirePermission></PageBoundary>} />
           <Route path="/activity-log" element={<PageBoundary><RequirePermission perm="activity.view"><ActivityLog /></RequirePermission></PageBoundary>} />

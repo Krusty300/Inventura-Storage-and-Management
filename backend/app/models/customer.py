@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import String, Text, func
+from sqlalchemy import ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,9 +16,19 @@ class Customer(Base):
     email: Mapped[str] = mapped_column(String(120), default="")
     address: Mapped[str] = mapped_column(Text, default="")
     customer_type: Mapped[str] = mapped_column(String(20), default="walk-in")
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("customer_groups.id"), nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
     sales = relationship("Sale", back_populates="customer")
+    group = relationship("CustomerGroup", back_populates="customers")
+
+    @property
+    def group_name(self) -> str:
+        return self.group.name if self.group else ""
+
+    @property
+    def price_list_id(self) -> int | None:
+        return self.group.price_list_id if self.group else None

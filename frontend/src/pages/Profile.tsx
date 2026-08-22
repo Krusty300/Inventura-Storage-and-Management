@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  User as Clock, Shield, Save, History, Camera, Trash2,
+  Clock, Shield, Save, History, Camera, Trash2,
   Monitor, Download, LogOut,
 } from "lucide-react";
 import api from "../api/client";
@@ -35,16 +35,32 @@ function deviceLabel(ua: string): string {
   return (ua.split(" ")[0] || "Unknown device").slice(0, 24);
 }
 
+const ROLE_BADGE: Record<string, string> = {
+  admin: "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30",
+  manager: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border-amber-200 dark:border-amber-500/30",
+  worker: "bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400 border-gray-200 dark:border-gray-500/30",
+};
+
+function RoleBadge({ role }: { role: string }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${ROLE_BADGE[role] || ROLE_BADGE.worker}`}>
+      {role.charAt(0).toUpperCase() + role.slice(1)}
+    </span>
+  );
+}
+
 export default function Profile() {
   const formatDateTime = useDateTimeFormat();
   const { user, updateUser, logout, completeLogout } = useAuth();
   const { addToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const editFormRef = useRef<HTMLFormElement>(null);
+  const pwFormRef = useRef<HTMLFormElement>(null);
   const [form, setForm] = useState({ username: "", email: "" });
   const [saving, setSaving] = useState(false);
-  const [pw, setPw] = useState({ current_password: "", new_password: "" });
+  const [pw, setPw] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [pwSaving, setPwSaving] = useState(false);
-  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
 
   useEffect(() => {
@@ -81,11 +97,15 @@ export default function Profile() {
 
   const handlePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (pw.new_password !== pw.confirm_password) {
+      addToast("New passwords do not match", "error");
+      return;
+    }
     setPwSaving(true);
     try {
-      await api.put("/users/password/change", pw);
+      await api.put("/users/password/change", { current_password: pw.current_password, new_password: pw.new_password });
       addToast("Password changed. You have been signed out of all devices. Please log in with your new password.", "success");
-      setPw({ current_password: "", new_password: "" });
+      setPw({ current_password: "", new_password: "", confirm_password: "" });
       logout();
       setTimeout(() => completeLogout(), 600);
     } catch (err: any) {
@@ -196,55 +216,75 @@ export default function Profile() {
                   onChange={handleAvatarUpload} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-2 gap-4">
               <InfoItem label="Username" value={user.username} />
               <InfoItem label="Email" value={user.email} />
-              <InfoItem label="Role" value={user.role} />
+              <div>
+                <p className="text-xs text-faint uppercase tracking-wide mb-0.5">Role</p>
+                <RoleBadge role={user.role} />
+              </div>
               <InfoItem label="Last Login" value={formatDateTime(user.last_login_at)} />
               <InfoItem label="Member Since" value={formatDateTime(user.created_at)} />
               <InfoItem label="User ID" value={String(user.id)} />
             </div>
           </div>
 
-          <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Edit Profile</h2>
-            <form onSubmit={handleSave} className="space-y-4 max-w-md">
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">Username</label>
-                <input type="text" className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">Email</label>
-                <input type="email" className="input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-              </div>
-              <div className="flex justify-end">
-                <button type="submit" disabled={saving} className="btn-primary">
-                  <Save size={16} className="inline mr-1" />
-                  {saving ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </form>
+          <div className="card !p-0 overflow-hidden">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold mb-4">Edit Profile</h2>
+              <form ref={editFormRef} onSubmit={handleSave} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1">Username</label>
+                    <input type="text" className="input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1">Email</label>
+                    <input type="email" className="input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                  </div>
+                </div>
+              </form>
+            </div>
+            <div className="flex justify-end px-6 py-3 border-t border-border bg-subtle/50">
+              <button type="button" disabled={saving} className="btn-primary"
+                onClick={() => editFormRef.current?.requestSubmit()}>
+                <Save size={16} className="inline mr-1" />
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
           </div>
 
-          <div className="card">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              Change Password
-            </h2>
-            <form onSubmit={handlePassword} className="space-y-4 max-w-md">
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">Current Password</label>
-                <input type="password" className="input" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">New Password</label>
-                <input type="password" className="input" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={6} />
-              </div>
-              <div className="flex justify-end">
-                <button type="submit" disabled={pwSaving} className="btn-primary">
-                  {pwSaving ? "Updating..." : "Change Password"}
-                </button>
-              </div>
-            </form>
+          <div className="card !p-0 overflow-hidden">
+            <div className="p-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                Change Password
+              </h2>
+              <form ref={pwFormRef} onSubmit={handlePassword} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Current Password</label>
+                  <input type="password" className="input" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1">New Password</label>
+                    <input type="password" className="input" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={6} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-ink mb-1">Confirm New Password</label>
+                    <input type="password" className="input" value={pw.confirm_password} onChange={(e) => setPw({ ...pw, confirm_password: e.target.value })} required minLength={6} />
+                  </div>
+                </div>
+                {pw.new_password && pw.confirm_password && pw.new_password !== pw.confirm_password && (
+                  <p className="text-xs text-red-600 dark:text-red-400">Passwords do not match</p>
+                )}
+              </form>
+            </div>
+            <div className="flex justify-end px-6 py-3 border-t border-border bg-subtle/50">
+              <button type="button" disabled={pwSaving || !pw.current_password || !pw.new_password || pw.new_password !== pw.confirm_password} className="btn-primary"
+                onClick={() => pwFormRef.current?.requestSubmit()}>
+                {pwSaving ? "Updating..." : "Change Password"}
+              </button>
+            </div>
           </div>
 
           <div className="card">
@@ -260,7 +300,19 @@ export default function Profile() {
                 </button>
               )}
             </div>
-            {activeSessions.length === 0 ? (
+            {sessions.length === 0 ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center gap-3 py-3 animate-pulse">
+                    <div className="h-4 w-4 rounded bg-subtle" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3.5 w-24 rounded bg-subtle" />
+                      <div className="h-2.5 w-40 rounded bg-subtle" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : activeSessions.length === 0 ? (
               <p className="text-sm text-muted">No active sessions.</p>
             ) : (
               <ul className="divide-y divide-border">
@@ -298,7 +350,19 @@ export default function Profile() {
               <History size={18} className="text-faint" />
               Recent Activity
             </h2>
-            {activity.length === 0 ? (
+            {activity === null ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="animate-pulse space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-3 w-3 rounded bg-subtle" />
+                      <div className="h-3 w-16 rounded bg-subtle" />
+                    </div>
+                    <div className="h-3.5 w-full rounded bg-subtle" />
+                  </div>
+                ))}
+              </div>
+            ) : activity.length === 0 ? (
               <p className="text-sm text-muted">No recent activity found.</p>
             ) : (
               <ul className="space-y-3">
