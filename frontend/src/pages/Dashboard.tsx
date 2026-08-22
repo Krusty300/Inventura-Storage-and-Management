@@ -233,22 +233,23 @@ export default function Dashboard() {
       label: "Inventory Value",
       value: formatCurrency(stats.total_inventory_value, currencySymbol, 0),
       link: "/reports",
+      minRole: "manager" as const,
     },
-    { label: "Low Stock Items", value: stats.low_stock_count, link: "/products?low_stock=1" },
-    { label: "Expiring Soon", value: stats.expiring_soon_count, link: "/products" },
-    { label: "Quarantined Units", value: stats.quarantined_units ?? 0, link: "/exceptions" },
-    { label: "Serial Numbers in Stock", value: stats.serial_numbers_in_stock ?? 0, link: "/serial-numbers" },
-    { label: "Movements Today", value: stats.total_stock_movements_today, link: "/stock-movements" },
-    { label: "LPNs", value: lpns?.total ?? 0, link: "/lpns" },
-    { label: "Lots", value: stats.total_lots ?? 0, link: "/lots" },
-    { label: "Receipts", value: receipts?.total ?? 0, link: "/receiving" },
+    { label: "Low Stock Items", value: stats.low_stock_count, link: "/products?low_stock=1", minRole: "manager" as const },
+    { label: "Expiring Soon", value: stats.expiring_soon_count, link: "/products", minRole: "manager" as const },
+    { label: "Quarantined Units", value: stats.quarantined_units ?? 0, link: "/exceptions", minRole: "manager" as const },
+    { label: "Serial Numbers in Stock", value: stats.serial_numbers_in_stock ?? 0, link: "/serial-numbers", minRole: "manager" as const },
+    { label: "Movements Today", value: stats.total_stock_movements_today, link: "/stock-movements", minRole: "manager" as const },
+    { label: "LPNs", value: lpns?.total ?? 0, link: "/lpns", minRole: "manager" as const },
+    { label: "Lots", value: stats.total_lots ?? 0, link: "/lots", minRole: "manager" as const },
+    { label: "Receipts", value: receipts?.total ?? 0, link: "/receiving", minRole: "manager" as const },
   ];
 
   const fulfillmentCards = [
     { label: "Open Shipments", value: stats.open_shipments ?? 0, link: "/shipments" },
     { label: "Pending Orders", value: pendingOrders, link: "/orders" },
-    { label: "Pending ASNs", value: exceptions?.summary?.pending_asns ?? 0, link: "/asns" },
-    { label: "Open Cycle Counts", value: exceptions?.summary?.open_cycle_counts ?? 0, link: "/cycle-counts" },
+    { label: "Pending ASNs", value: exceptions?.summary?.pending_asns ?? 0, link: "/asns", minRole: "manager" as const },
+    { label: "Open Cycle Counts", value: exceptions?.summary?.open_cycle_counts ?? 0, link: "/cycle-counts", minRole: "manager" as const },
     {
       label: "Total Revenue",
       value: formatCurrency(salesStats?.total_revenue || 0, currencySymbol, 0),
@@ -258,21 +259,27 @@ export default function Dashboard() {
   ];
 
   const manufacturingCards = [
-    { label: "Open Work Orders", value: stats.open_work_orders ?? 0, link: "/work-orders" },
-    { label: "Pending QC", value: stats.pending_quality_checks ?? 0, link: "/quality-checks" },
+    { label: "Open Work Orders", value: stats.open_work_orders ?? 0, link: "/work-orders", minRole: "manager" as const },
+    { label: "Pending QC", value: stats.pending_quality_checks ?? 0, link: "/quality-checks", minRole: "manager" as const },
   ];
 
   const businessCards = [
-    { label: "Orders", value: stats.total_orders, link: "/orders" },
-    { label: "Categories", value: stats.total_categories },
-    { label: "Suppliers", value: stats.total_suppliers },
+    { label: "Orders", value: stats.total_orders, link: "/orders", minRole: "manager" as const },
+    { label: "Categories", value: stats.total_categories, minRole: "manager" as const },
+    { label: "Suppliers", value: stats.total_suppliers, minRole: "manager" as const },
   ];
 
+  const ROLE_RANK: Record<string, number> = { worker: 0, manager: 1, admin: 2 };
+  const hasMinRole = (minRole?: string) => {
+    if (!minRole || !user?.role) return true;
+    return (ROLE_RANK[user.role] ?? 0) >= (ROLE_RANK[minRole] ?? 0);
+  };
+
   const statSections = [
-    { title: "Inventory", cards: inventoryCards },
+    { title: "Inventory", cards: inventoryCards, minRole: "manager" as const },
     { title: "Fulfillment", cards: fulfillmentCards },
-    { title: "Manufacturing", cards: manufacturingCards },
-    { title: "Business", cards: businessCards },
+    { title: "Manufacturing", cards: manufacturingCards, minRole: "manager" as const },
+    { title: "Business", cards: businessCards, minRole: "manager" as const },
   ];
 
   const trendData = trends?.daily_trends || [];
@@ -331,7 +338,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {riskSummary && (
+      {riskSummary && hasMinRole("manager") && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Stockout Risk</h2>
@@ -370,25 +377,31 @@ export default function Dashboard() {
         </div>
       )}
 
-      {statSections.map((section) => (
-        <div key={section.title} className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">{section.title}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {section.cards.map((card) => (
-              <div
-                key={card.label}
-                onClick={() => card.link && navigate(card.link)}
-                className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""} ${(card as any).highlight ? "border-l-4 border-l-red-500" : ""}`}
-              >
-                <p className="text-sm text-muted">{card.label}</p>
-                <p className={`text-2xl font-bold mt-1 ${(card as any).highlight ? "text-red-600 dark:text-red-400" : ""}`}>{card.value}</p>
-              </div>
-            ))}
+      {statSections.map((section) => {
+        if (!hasMinRole(section.minRole)) return null;
+        const visibleCards = section.cards.filter((c) => hasMinRole((c as any).minRole));
+        if (visibleCards.length === 0) return null;
+        return (
+          <div key={section.title} className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">{section.title}</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {visibleCards.map((card) => (
+                <div
+                  key={card.label}
+                  onClick={() => card.link && navigate(card.link)}
+                  className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""} ${(card as any).highlight ? "border-l-4 border-l-red-500" : ""}`}
+                >
+                  <p className="text-sm text-muted">{card.label}</p>
+                  <p className={`text-2xl font-bold mt-1 ${(card as any).highlight ? "text-red-600 dark:text-red-400" : ""}`}>{card.value}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Stock Movement Trends ({trendDays} days)</h2>
@@ -419,7 +432,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No stock movements in this period</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Inventory Value by Category</h2>
           {valuation?.by_category && valuation.by_category.length > 0 ? (
@@ -436,7 +451,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No category valuation data</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Top Products</h2>
@@ -468,7 +485,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No sales in this period</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Profit Analysis</h2>
           {profit ? (
@@ -503,7 +522,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No profit data</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Pending ASNs</h2>
@@ -530,7 +551,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No pending ASNs</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Open Cycle Counts</h2>
@@ -561,6 +584,7 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No open cycle counts</p>
           )}
         </div>
+        )}
 
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Recent Stock Movements</h2>
@@ -607,6 +631,7 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Low Stock Alerts</h2>
@@ -639,7 +664,9 @@ export default function Dashboard() {
             })}
           </div>
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Expiring Soon</h2>
           <div className="space-y-3">
@@ -659,7 +686,9 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Recent Receipts</h2>
@@ -684,7 +713,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No receipts recorded yet</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Recent LPNs</h2>
@@ -711,6 +742,7 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No LPNs yet</p>
           )}
         </div>
+        )}
 
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Order Status</h2>
@@ -733,6 +765,7 @@ export default function Dashboard() {
           )}
         </div>
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Shipments to Process</h2>
@@ -759,7 +792,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No shipments to process</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Open Work Orders</h2>
@@ -784,7 +819,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No open work orders</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Pending Quality Checks</h2>
@@ -806,7 +843,9 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No pending quality checks</p>
           )}
         </div>
+        )}
 
+        {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Manufacturing Cost</h2>
@@ -847,6 +886,7 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No costing data</p>
           )}
         </div>
+        )}
       </div>
 
       <ConfirmDialog

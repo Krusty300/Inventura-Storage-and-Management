@@ -47,21 +47,21 @@ import NotificationBell from "./NotificationBell";
 const MIN_SIDEBAR_WIDTH = 208;
 const DEFAULT_SIDEBAR_WIDTH = 256;
 const MAX_SIDEBAR_WIDTH = 480;
-const DESKTOP_MQ = "(min-width: 1024px)";
+const TABLET_MQ = "(min-width: 768px)";
 
-function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+function useIsTablet() {
+  const [isTablet, setIsTablet] = useState<boolean>(() =>
     typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia(DESKTOP_MQ).matches
+      ? window.matchMedia(TABLET_MQ).matches
       : false,
   );
   useEffect(() => {
-    const mq = window.matchMedia(DESKTOP_MQ);
-    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    const mq = window.matchMedia(TABLET_MQ);
+    const onChange = (e: MediaQueryListEvent) => setIsTablet(e.matches);
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
-  return isDesktop;
+  return isTablet;
 }
 
 const navItems = [
@@ -112,10 +112,10 @@ export default function Layout() {
   const location = useLocation();
   const { logout, completeLogout, loggingOut, user, can } = useAuth();
   const { theme, setTheme } = useTheme();
-  const isDesktop = useIsDesktop();
+  const isTablet = useIsTablet();
   const visibleNavItems = navItems.filter((item) => can(item.perm));
 
-  const collapsed = isDesktop && sidebarCollapsed;
+  const collapsed = isTablet && sidebarCollapsed;
 
   const toggleSidebarCollapsed = () => {
     setSidebarCollapsed((prev) => {
@@ -163,9 +163,9 @@ export default function Layout() {
       <aside
         style={{ width: collapsed ? 0 : sidebarWidth }}
         aria-hidden={collapsed || undefined}
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-border max-w-[85vw] overflow-hidden transform transition-transform lg:translate-x-0 lg:static lg:inset-auto lg:max-w-none ${
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-border max-w-[85vw] overflow-hidden transform transition-transform md:translate-x-0 md:static md:inset-auto md:max-w-none ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } ${collapsed ? "lg:border-r-0 lg:invisible" : ""}`}
+        } ${collapsed ? "md:border-r-0 md:invisible" : ""}`}
       >
         <nav className="sidebar-scroll flex-1 overflow-y-auto p-4 space-y-1">
           {visibleNavItems.map((item) => {
@@ -210,14 +210,14 @@ export default function Layout() {
           aria-label="Resize sidebar"
           onPointerDown={startResize}
           className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/70 active:bg-indigo-500 ${
-            collapsed ? "hidden" : "hidden lg:block"
+            collapsed ? "hidden" : "hidden md:block"
           }`}
         />
       </aside>
 
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -225,18 +225,18 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="bg-surface border-b border-border px-6 py-3 flex items-center justify-between relative z-20">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="text-muted lg:hidden" aria-label="Open navigation">
+            <button onClick={() => setSidebarOpen(true)} className="text-muted md:hidden" aria-label="Open navigation">
               <Menu size={24} />
             </button>
             <button
               onClick={toggleSidebarCollapsed}
               title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="hidden lg:flex items-center justify-center p-1.5 rounded-md text-muted hover:text-ink hover:bg-subtle transition-colors"
+              className="hidden md:flex items-center justify-center p-1.5 rounded-md text-muted hover:text-ink hover:bg-subtle transition-colors"
             >
               {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
             </button>
-            <div className="hidden lg:block text-lg font-semibold text-ink">Inventura Storage</div>
+            <div className="hidden md:block text-lg font-semibold text-ink">Inventura Storage</div>
           </div>
           <div className="flex items-center gap-3">
             <div

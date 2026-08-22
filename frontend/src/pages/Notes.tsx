@@ -153,7 +153,7 @@ export default function Notes() {
   const unpinnedNotes = notes.filter((n) => !n.is_pinned && !n.is_completed);
   const completedNotes = notes.filter((n) => n.is_completed);
 
-  const { data: kanbanData } = useQuery({
+  const { data: kanbanData, isLoading: kanbanLoading } = useQuery({
     queryKey: ["notes-kanban"],
     queryFn: async () => {
       const { data } = await api.get("/notes", { params: { skip: 0, limit: 500, is_completed: false, is_archived: false } });
@@ -414,7 +414,7 @@ export default function Notes() {
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
-      <div key={note.id} className={`card p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/30 transition-all ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${note.is_pinned && !note.is_completed ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500" : ""} ${draggedNote?.id === note.id ? "opacity-50 scale-[0.98]" : ""}`} draggable={viewMode === "kanban"} onDragStart={(e) => handleDragStart(e, note)} onClick={() => openDetail(note)}>
+      <div key={note.id} className={`card p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/30 transition-all ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${draggedNote?.id === note.id ? "opacity-50 scale-[0.98]" : ""}`} draggable={viewMode === "kanban"} onDragStart={(e) => handleDragStart(e, note)} onClick={() => openDetail(note)}>
         {note.image_url && (
           <div className="mb-3 -mx-4 -mt-4 overflow-hidden rounded-t-lg">
             <img src={note.image_url} alt={note.title} className="w-full h-32 object-cover" loading="lazy" />
@@ -502,9 +502,41 @@ export default function Notes() {
     );
   };
 
+  const renderKanbanSkeleton = () => (
+    <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+      {KANBAN_COLUMNS.map((col) => {
+        const ColIcon = col.icon;
+        return (
+          <div key={col.key} className="flex-1 min-w-[280px]">
+            <div className="flex items-center gap-2 px-3 py-2.5 mb-3 rounded-lg bg-subtle border border-border">
+              <ColIcon size={14} className="text-muted" />
+              <span className="text-sm font-semibold text-ink">{col.label}</span>
+              <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-border text-xs font-medium text-muted animate-pulse">—</span>
+            </div>
+            <div className="space-y-3 p-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="card p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="h-4 w-4 rounded bg-subtle-strong animate-pulse" />
+                    <div className="h-4 bg-subtle-strong rounded animate-pulse flex-1" />
+                  </div>
+                  <div className="h-3 bg-subtle-strong rounded animate-pulse w-3/4 mb-2" />
+                  <div className="flex items-center gap-2 pt-2 border-t border-border">
+                    <div className="h-3 w-16 bg-subtle-strong rounded animate-pulse" />
+                    <div className="h-3 w-20 bg-subtle-strong rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   const renderContent = () => {
     if (isLoading) {
-      if (viewMode === "card" || viewMode === "kanban") {
+      if (viewMode === "card") {
         return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-lg" />)}</div>;
       }
       return <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>;
@@ -513,8 +545,8 @@ export default function Notes() {
       return <ErrorState title="Failed to load notes" message="Something went wrong while fetching notes." variant="block" onRetry={() => queryClient.invalidateQueries({ queryKey: ["notes"] })} />;
     }
     if (viewMode === "kanban") {
-      if (!kanbanData) {
-        return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-lg" />)}</div>;
+      if (kanbanLoading || !kanbanData) {
+        return renderKanbanSkeleton();
       }
       if (kanbanNotes.length === 0) {
         return renderEmptyState();

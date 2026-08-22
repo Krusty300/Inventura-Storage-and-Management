@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, GripVertical, KeyRound, Loader2, Lock, Minus, Package, Plus, Search, Send, Trash2, Unlock, X } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
-import type { Customer, Product, QualityCheck, SalesChannel, Settings } from "../types";
+import type { Customer, Product, Promotion, QualityCheck, SalesChannel, Settings } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -180,6 +180,9 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [promoError, setPromoError] = useState("");
   const [promoValidating, setPromoValidating] = useState(false);
+  const [activePromos, setActivePromos] = useState<Promotion[]>([]);
+  const [suggestedPromo, setSuggestedPromo] = useState<{ promo: Promotion; discount: number } | null>(null);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
   const [amountReceived, setAmountReceived] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -262,6 +265,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     api.get("/sales-channels/all").then(({ data }) => setChannels(data));
     api.get("/settings").then(({ data }) => setSettings(data));
     api.get("/quality-checks", { params: { result: "pending", limit: PAGE_SIZE } }).then(({ data }) => setPendingQcs(data.items));
+    api.get("/promotions", { params: { active_only: true, limit: 50 } }).then(({ data }) => setActivePromos(data.items));
   }, []);
 
   useEffect(() => {
@@ -404,6 +408,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     setIsLocked(false);
     setIsDraftRestored(false);
     setDraftSavedAt(null);
+    setSuggestionDismissed(false);
+    setSuggestedPromo(null);
     addToast("Draft discarded", "success");
   };
 
@@ -435,6 +441,38 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const currency = settings?.currency_symbol || "$";
   const saleSymbol = currency;
   const currencyCode = settings?.currency_code || "USD";
+
+  useEffect(() => {
+    if (promoCode.trim() || suggestionDismissed || items.length === 0) {
+      setSuggestedPromo(null);
+      return;
+    }
+    const totalQty = items.reduce((sum, i) => sum + (parseInt(i.quantity) || 0), 0);
+    const candidates = activePromos.filter((p) => {
+      if (p.min_amount > 0 && subtotal < p.min_amount) return false;
+      if (p.min_qty > 0 && totalQty < p.min_qty) return false;
+      if (p.max_uses > 0 && p.used_count >= p.max_uses) return false;
+      return true;
+    });
+    if (candidates.length === 0) { setSuggestedPromo(null); return; }
+    let cancelled = false;
+    const check = async () => {
+      let best: { promo: Promotion; discount: number } | null = null;
+      for (const p of candidates.slice(0, 5)) {
+        try {
+          const { data } = await api.post("/promotions/validate", { code: p.code, subtotal, total_qty: totalQty });
+          if (data.valid && data.discount_amount > 0) {
+            if (!best || data.discount_amount > best.discount) {
+              best = { promo: p, discount: data.discount_amount };
+            }
+          }
+        } catch { /* skip */ }
+      }
+      if (!cancelled) setSuggestedPromo(best);
+    };
+    const timer = setTimeout(check, 500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [items, subtotal, promoCode, suggestionDismissed, activePromos]);
 
   const cashReceived = parseFloat(amountReceived) || 0;
   const change = cashReceived - total;
@@ -998,6 +1036,38 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 </div>
               </div>
               {promoError && <p className="text-xs text-red-600 dark:text-red-400">{promoError}</p>}
+              {suggestedPromo && !promoCode.trim() && (
+                <div className="flex items-center justify-between rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      Promo available: <span className="font-mono">{suggestedPromo.promo.code}</span>
+                    </p>
+                    <p className="text-xs text-emerald-600/80 dark:text-emerald-400/70 truncate">
+                      {suggestedPromo.promo.description || `Save ${formatCurrency(suggestedPromo.discount, currency)}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSuggestionDismissed(true)}
+                      className="text-xs text-emerald-600/70 dark:text-emerald-400/60 hover:text-emerald-700 px-1.5 py-1"
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPromoCode(suggestedPromo.promo.code);
+                        validatePromo();
+                      }}
+                      disabled={formDisabled}
+                      className="text-xs font-medium bg-emerald-600 text-white px-2.5 py-1 rounded-md hover:bg-emerald-700 disabled:opacity-40"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
               {effectivePromoDiscount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted">Promo ({promoCode.trim().toUpperCase()})</span>
