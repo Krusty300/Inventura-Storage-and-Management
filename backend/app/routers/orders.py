@@ -47,6 +47,8 @@ ORDER_TRANSITIONS = {
     "cancelled": (),
 }
 
+ALLOWED_ORDER_BULK_FIELDS = {"status", "notes"}
+
 
 @router.post("/auto-reorder", response_model=list[OrderOut])
 def auto_reorder(
@@ -205,13 +207,14 @@ def bulk_edit_orders(data: OrderBulkEdit, db: Session = Depends(get_db), user=De
                 raise HTTPException(status_code=400, detail=f"Cannot change order status from '{o.status}' to '{status}'")
     for o in orders:
         for k, v in updates.items():
-            setattr(o, k, v)
+            if k in ALLOWED_ORDER_BULK_FIELDS:
+                setattr(o, k, v)
     db.commit()
     log_activity(db, user.id, user.username, "update", "order", None,
                  f"Bulk-edited {len(orders)} order(s): {', '.join(f'{k}={v}' for k, v in updates.items())}")
     db.commit()
     broadcast_change("order", "updated")
-    return {"updated": len(orders), "fields": list(updates.keys())}
+    return {"updated": len(orders), "fields": [k for k in updates if k in ALLOWED_ORDER_BULK_FIELDS]}
 
 
 @router.get("/{order_id}", response_model=OrderOut)
@@ -463,7 +466,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                             serial_id=serial.id, lot_id=lot_id, lpn_id=lpn_id,
                             to_location_id=loc_id,
                             reference_type="purchase_order",
-                            reference=f"Order {o.order_number}",
+                            reference=o.order_number,
                         )
                         movements_by_location.setdefault(loc_id, []).append(movement)
                 else:
@@ -477,7 +480,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                         lot_id=lot_id, lpn_id=lpn_id,
                         to_location_id=loc_id,
                         reference_type="purchase_order",
-                        reference=f"Order {o.order_number}",
+                        reference=o.order_number,
                     )
                     movements_by_location.setdefault(loc_id, []).append(movement)
         except inventory.InventoryError as exc:
@@ -495,7 +498,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
     if received_now:
         notify_admins(db, f"Order {o.order_number} received",
                       f"{len(o.items)} item(s) added to stock",
-                      type="success", link="/orders")
+                      type="success", link="/orders", exclude_user_id=user.id)
         db.commit()
         db.refresh(o)
 
@@ -513,6 +516,21 @@ def delete_order(order_id: int, db: Session = Depends(get_db), user=Depends(requ
     o = get_or_404(Order, order_id, db)
     if o.status == "received":
         raise HTTPException(status_code=400, detail="Received orders cannot be deleted - stock was already added to inventory")
+    if o.status == "pending":
+        movements = db.query(StockMovement).filter(
+            StockMovement.reference_type == "purchase_order",
+            StockMovement.reference == o.order_number,
+        ).all()
+        for m in movements:
+            inventory.post_journal_entry(
+                db, product_id=m.product_id, user_id=user.id,
+                quantity_change=-m.quantity_change, movement_type="adjustment",
+                from_location_id=m.to_location_id, to_location_id=m.from_location_id,
+                lot_id=m.lot_id, lpn_id=m.lpn_id, serial_id=m.serial_id,
+                reference_type="order_cancellation",
+                reference=f"Reversal of {o.order_number}",
+                notes=f"Stock reversed on order '{o.order_number}' deletion",
+            )
     order_number = o.order_number
     db.execute(OrderItem.__table__.delete().where(OrderItem.__table__.c.order_id == order_id))
     db.delete(o)

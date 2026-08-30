@@ -49,9 +49,9 @@ export default function Pagination({ page, totalPages, onPageChange, pageSize, o
           </button>
           {pages.map((p, i) =>
             p === "..." ? (
-              <span key={`e${i}`} className="px-1 text-faint">…</span>
+              <span key={`e${i}`} className="px-1 text-faint" aria-hidden="true">…</span>
             ) : (
-              <button key={p} className={`pagination-btn ${p === page ? "active" : ""}`} onClick={() => onPageChange(p)}>
+              <button key={p} className={`pagination-btn ${p === page ? "active" : ""}`} onClick={() => onPageChange(p)} aria-label={`Page ${p}`} aria-current={p === page ? "page" : undefined}>
                 {p}
               </button>
             )

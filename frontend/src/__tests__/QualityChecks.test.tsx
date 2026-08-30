@@ -120,7 +120,7 @@ describe("QualityChecks Page", () => {
     await waitFor(() => expect(screen.getByText(/LOT-5/)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("QC lot"), { target: { value: "5" } });
     fireEvent.change(screen.getByLabelText("QC result"), { target: { value: "fail" } });
-    expect(screen.getByText(/Failing this check will quarantine the linked lot/)).toBeInTheDocument();
+    expect(screen.getByText(/Failing this check quarantines the linked lot/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save Check" }));
     await waitFor(() => expect(postMock).toHaveBeenCalledWith("/quality-checks", {
@@ -179,7 +179,7 @@ describe("QualityChecks Page", () => {
 
     fireEvent.change(screen.getByLabelText("QC product"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("QC result"), { target: { value: "fail" } });
-    expect(screen.getByText(/Failing without a linked lot will block shipments/)).toBeInTheDocument();
+    expect(screen.getByText(/Failing this check blocks sales and shipments of this product/)).toBeInTheDocument();
   });
 
   it("edits an existing check and disables immutable fields", async () => {

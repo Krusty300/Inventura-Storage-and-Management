@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import queryClient from "../api/queryClient";
 import api from "../api/client";
 import { canUser } from "../utils/permissions";
 import type { User } from "../types";
@@ -77,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    queryClient.clear();
     setToken(null);
     setUser(null);
     setLoggingOut(false);

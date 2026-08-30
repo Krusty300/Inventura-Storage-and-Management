@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChevronRight, ChevronDown, MapPin, Pencil, Trash2, Package, Eye, FolderOpen, Folder, FileText, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import { PAGE_SIZE_LOOKUP } from "../utils/constants";
+import { PAGE_SIZE_LOOKUP, LOCATION_TYPES, LOCATION_TYPE_LABELS } from "../utils/constants";
+import type { LocationType } from "../utils/constants";
 import type { Location, LocationTree } from "../types";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Modal from "../components/Modal";
@@ -21,7 +22,7 @@ import { errorMessage } from "../utils/errors";
 interface LocationForm {
   name: string;
   code: string;
-  location_type: string;
+  location_type: LocationType;
   parent_id: string;
   is_active: boolean;
 }
@@ -42,7 +43,6 @@ export default function Locations() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Location | null>(null);
   const [deleting, setDeleting] = useState<Location | null>(null);
-  const [viewing, setViewing] = useState<Location | null>(null);
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
@@ -53,6 +53,9 @@ export default function Locations() {
   const currencySymbol = settings?.currency_symbol || "$";
   const q = search.trim().toLowerCase();
   const { exportCsv } = useExportCsv();
+
+  const canEdit = can("locations.update");
+  const canDelete = can("locations.delete");
 
   const { data: tree, isLoading, isError } = useQuery({
     queryKey: ["locations", "tree"],
@@ -84,8 +87,16 @@ export default function Locations() {
       addToast("Location deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["locations"] });
     },
-    onError: (err: any) => addToast(errorMessage(err, "Cannot delete location"), "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot delete location"), "error"),
   });
+
+  const viewing = useMemo(() => {
+    const locParam = searchParams.get("location");
+    if (!locParam) return null;
+    const id = Number(locParam);
+    if (!Number.isInteger(id)) return null;
+    return (all || []).find((l) => l.id === id) ?? null;
+  }, [all, searchParams]);
 
   const openDetail = (loc: Location) => {
     setSearchParams((prev) => {
@@ -95,12 +106,15 @@ export default function Locations() {
     }, { replace: true });
   };
 
-  const printLabel = (id: number) => {
-    api.get(`/labels/location/${id}`, { responseType: "blob" }).then(({ data }) => {
+  const printLabel = async (id: number) => {
+    try {
+      const { data } = await api.get(`/labels/location/${id}`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    });
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to print label"), "error");
+    }
   };
 
   const closeDetail = () => {
@@ -111,29 +125,27 @@ export default function Locations() {
     }, { replace: true });
   };
 
-  useEffect(() => {
-    const locParam = searchParams.get("location");
-    if (!locParam) {
-      setViewing(null);
-      return;
-    }
-    const id = Number(locParam);
-    if (!Number.isInteger(id)) return;
-    const found = (all || []).find((l) => l.id === id);
-    if (found && viewing?.id !== found.id) setViewing(found);
-  }, [all, viewing, searchParams]);
+  const matches = useCallback((n: LocationTree) => {
+    const label = LOCATION_TYPE_LABELS[n.location_type]?.toLowerCase() ?? "";
+    return (
+      n.name.toLowerCase().includes(q) ||
+      (n.code || "").toLowerCase().includes(q) ||
+      n.location_type.toLowerCase().includes(q) ||
+      label.includes(q)
+    );
+  }, [q]);
 
-  const matches = (n: LocationTree) =>
-    n.name.toLowerCase().includes(q) ||
-    (n.code || "").toLowerCase().includes(q) ||
-    n.location_type.toLowerCase().includes(q);
+  const visibleTree = useMemo(() => {
+    if (!q) return tree || [];
+    const filterTree = (nodes: LocationTree[]): LocationTree[] =>
+      nodes.reduce<LocationTree[]>((acc, n) => {
+        const kids = filterTree(n.children || []);
+        if (matches(n) || kids.length > 0) acc.push({ ...n, children: kids });
+        return acc;
+      }, []);
+    return filterTree(tree || []);
+  }, [tree, q, matches]);
 
-  const filterTree = (nodes: LocationTree[]): LocationTree[] =>
-    nodes
-      .filter((n) => matches(n) || filterTree(n.children || []).length > 0)
-      .map((n) => ({ ...n, children: filterTree(n.children || []) }));
-
-  const visibleTree = q ? filterTree(tree || []) : tree || [];
   const isSearching = q.length > 0;
 
   const allIds = useMemo(() => {
@@ -143,12 +155,14 @@ export default function Locations() {
     return ids;
   }, [tree]);
 
-  const toggle = (id: number) => {
-    const next = new Set(expanded);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setExpanded(next);
-  };
+  const toggle = useCallback((id: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const expandAll = () => setExpanded(new Set(allIds));
   const collapseAll = () => setExpanded(new Set());
@@ -160,15 +174,14 @@ export default function Locations() {
   const renderNode = (node: LocationTree, depth: number, forceOpen: boolean) => {
     const hasChildren = (node.children?.length || 0) > 0;
     const isOpen = forceOpen || expanded.has(node.id);
-    const canEdit = can("locations.update");
-    const canDelete = can("locations.delete");
     return (
       <div key={node.id}>
         <div
           className="flex items-center gap-2 px-3 py-2 hover:bg-app border-b border-border"
           style={{ paddingLeft: `${depth * 24 + 12}px` }}
           role="treeitem"
-          aria-label={`${node.path} — ${node.location_type}${node.is_active ? "" : ", inactive"}`}
+          aria-expanded={hasChildren ? isOpen : undefined}
+          aria-label={`${node.path} — ${LOCATION_TYPE_LABELS[node.location_type]}${node.is_active ? "" : ", inactive"}`}
         >
           <button
             onClick={() => toggle(node.id)}
@@ -180,14 +193,14 @@ export default function Locations() {
           </button>
           <MapPin size={16} className={node.is_active ? "text-indigo-500" : "text-faint"} />
           <span className="font-medium text-ink">{node.path}</span>
-          <span className="text-xs text-faint capitalize">{node.location_type}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full capitalize ${TYPE_BADGE[node.location_type] ?? "badge-neutral"}`}>{LOCATION_TYPE_LABELS[node.location_type]}</span>
           {!node.is_active && <span className="badge badge-neutral">Inactive</span>}
           <span className="ml-auto flex items-center gap-3 text-xs text-muted" aria-label={`${node.path} stats`}>
             <span className="flex items-center gap-1"><Package size={12} />{node.stock_line_count} lines</span>
             <span>{node.total_quantity} units</span>
             <span>{formatCurrency(node.stock_value, currencySymbol)}</span>
             <span>{node.lpn_count} LPNs</span>
-            <span>{node.lot_count ?? 0} lots</span>
+            <span>{node.lot_count} lots</span>
           </span>
           <div className="flex gap-1">
             <button onClick={() => printLabel(node.id)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print label ${node.path}`}>
@@ -240,15 +253,15 @@ export default function Locations() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        {summaryLoading ? (
-          <Skeleton variant="card" rows={8} />
-        ) : summaryCards.map((card) => (
-          <div key={card.label} className="card">
-            <p className="text-sm text-muted">{card.label}</p>
-            <p className="text-2xl font-bold mt-1">{card.value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        {summaryLoading
+          ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} variant="card" rows={1} />)
+          : summaryCards.map((card) => (
+            <div key={card.label} className="card">
+              <p className="text-sm text-muted">{card.label}</p>
+              <p className="text-2xl font-bold mt-1">{card.value}</p>
+            </div>
+          ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -315,6 +328,18 @@ export default function Locations() {
   );
 }
 
+const TYPE_BADGE: Record<LocationType, string> = {
+  zone: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  aisle: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  shelf: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  bin: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  storage: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  receiving: "bg-teal-500/10 text-teal-700 dark:text-teal-300",
+  shipping: "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+  wip: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  quarantine: "bg-red-500/10 text-red-700 dark:text-red-300",
+};
+
 function LocationFormModal({ location, locations, onClose, onSaved }: {
   location: Location | null;
   locations: Location[];
@@ -354,7 +379,7 @@ function LocationFormModal({ location, locations, onClose, onSaved }: {
       else await api.post("/locations", payload);
       addToast(location ? "Location updated" : "Location created", "success");
       onSaved();
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast(errorMessage(err, "Error saving location"), "error");
     }
     setSaving(false);
@@ -374,13 +399,10 @@ function LocationFormModal({ location, locations, onClose, onSaved }: {
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Type</label>
-            <select className="select" value={form.location_type} onChange={(e) => setForm({ ...form, location_type: e.target.value })}>
-              <option value="bin">Bin</option>
-              <option value="zone">Zone</option>
-              <option value="aisle">Aisle</option>
-              <option value="shelf">Shelf</option>
-              <option value="storage">Storage</option>
-              <option value="receiving">Receiving</option>
+            <select className="select" value={form.location_type} onChange={(e) => setForm({ ...form, location_type: e.target.value as LocationType })}>
+              {LOCATION_TYPES.map((t) => (
+                <option key={t} value={t}>{LOCATION_TYPE_LABELS[t]}</option>
+              ))}
             </select>
           </div>
         </div>

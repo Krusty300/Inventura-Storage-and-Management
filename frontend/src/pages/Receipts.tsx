@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Eye, PackagePlus, Printer, Search } from "lucide-react";
+import { Eye, Printer, Search } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Receipt } from "../types";
@@ -15,6 +15,7 @@ import { exportCSV } from "../utils/csv";
 import { useToast } from "../context/ToastContext";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
+import { errorMessage } from "../utils/errors";
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -57,7 +58,7 @@ export default function Receipts() {
     try {
       const { data } = await api.get(`/receipts/${r.id}/pdf`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       addToast("Failed to generate PDF", "error");
@@ -72,15 +73,15 @@ export default function Receipts() {
           <button onClick={handleExport} className="btn-secondary" aria-label="Export receipts to CSV">Export</button>
           {can("receipts.create") && (
             <button onClick={() => setShowForm(true)} className="btn-primary">
-              <PackagePlus size={16} className="inline mr-1" />Record Receipt
+              Record Receipt
             </button>
           )}
         </div>
       </div>
 
       {isError && (
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          Failed to load receipts: {(error as any)?.message}
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          {errorMessage(error, "Failed to load receipts")}
         </div>
       )}
 

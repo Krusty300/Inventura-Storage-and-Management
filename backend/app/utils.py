@@ -48,3 +48,22 @@ def log_activity(db: Session, user_id: int, username: str, action: str, entity_t
 def broadcast_change(entity_type: str, action: str):
     from app.ws_manager import manager
     manager.broadcast_sync({"event": "entity_changed", "entity": entity_type, "action": action})
+
+
+def broadcast_change_user(user_id: int, entity_type: str, action: str):
+    """Broadcast an entity change to a single user's connected clients only."""
+    from app.ws_manager import manager
+    manager.send_to_user_sync(user_id, {"event": "entity_changed", "entity": entity_type, "action": action})
+
+
+def detect_image_ext(data: bytes) -> str | None:
+    """Return the real image extension from magic bytes, or None if not an image."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    return None

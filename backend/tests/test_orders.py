@@ -292,7 +292,7 @@ def test_receive_order_attributes_receiving_user(auth_headers):
         "items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 5.00}],
     }, headers=auth_headers).json()
     db = TestingSessionLocal()
-    db.add(User(username="receiver", email="receiver@example.com", password_hash=hash_password("testpass123"), role="worker"))
+    db.add(User(username="receiver", email="receiver@example.com", password_hash=hash_password("testpass123"), role="worker", is_approved=True))
     db.commit()
     db.close()
     login = client.post("/api/auth/login", json={"username": "receiver", "password": "testpass123"})

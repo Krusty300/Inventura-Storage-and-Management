@@ -75,6 +75,18 @@ export default function GlobalSearch() {
     setActive((a) => Math.min(a, Math.max(results.length - 1, 0)));
   }, [results]);
 
+  useEffect(() => {
+    const handler = () => {
+      setOpen(true);
+      setTimeout(() => {
+        const input = document.querySelector<HTMLInputElement>('[aria-label="Global search"]');
+        input?.focus();
+      }, 50);
+    };
+    window.addEventListener("open-global-search", handler);
+    return () => window.removeEventListener("open-global-search", handler);
+  }, []);
+
   const select = (r: GlobalSearchResult) => {
     setOpen(false);
     setQuery("");
@@ -117,7 +129,7 @@ export default function GlobalSearch() {
         />
         {isFetching && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+            <div className="h-4 w-4 rounded bg-subtle-strong animate-pulse" />
           </div>
         )}
       </div>

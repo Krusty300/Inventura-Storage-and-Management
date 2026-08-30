@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import Modal from "./Modal";
+import Skeleton from "./Skeleton";
 import LocationPicker from "./LocationPicker";
 import StockLocationHints from "./StockLocationHints";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
@@ -11,6 +12,7 @@ import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { productLabel } from "../utils/variants";
 import { useToast } from "../context/ToastContext";
 import type { LPN, Product } from "../types";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   onClose: () => void;
@@ -152,7 +154,7 @@ function ReceiptItemRow({ row, idx, productList, rowProducts, locations, onChang
               </option>
             ))}
           </datalist>
-          {lpnsLoading && <p className="text-xs text-faint mt-1">Loading LPNs...</p>}
+          {lpnsLoading && <Skeleton variant="text" className="w-24 h-3 mt-1" />}
         </div>
       </div>
       {product?.is_serialized && (
@@ -182,15 +184,18 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
   const { addToast } = useToast();
 
   const productList = useSelectableProducts();
-  const [suppliers, setSuppliers] = useState<{ id: number; name: string }[]>([]);
-  const [locations, setLocations] = useState<{ id: number; path: string }[]>([]);
-  const [lpns, setLpns] = useState<{ id: number; lpn_number: string }[]>([]);
-
-  useEffect(() => {
-    api.get("/suppliers", { params: { limit: PAGE_SIZE_PICKER } }).then(({ data }) => setSuppliers(data.items));
-    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
-    api.get("/lpns", { params: { limit: PAGE_SIZE_PICKER } }).then(({ data }) => setLpns(data.items));
-  }, []);
+  const { data: suppliers = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["suppliers", "picker"],
+    queryFn: async () => (await api.get("/suppliers", { params: { limit: PAGE_SIZE_PICKER } })).data.items,
+  });
+  const { data: locations = [] } = useQuery<{ id: number; path: string }[]>({
+    queryKey: ["locations", "lookup"],
+    queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
+  const { data: lpns = [] } = useQuery<{ id: number; lpn_number: string }[]>({
+    queryKey: ["lpns", "picker"],
+    queryFn: async () => (await api.get("/lpns", { params: { limit: PAGE_SIZE_PICKER } })).data.items,
+  });
 
   const supplierOwned = useMemo(() => {
     if (!supplier_id) return [];
@@ -277,8 +282,8 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
       });
       addToast(`Receipt ${data.receipt_number} recorded`, "success");
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error recording receipt", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error recording receipt"), "error");
     }
     setSaving(false);
   };

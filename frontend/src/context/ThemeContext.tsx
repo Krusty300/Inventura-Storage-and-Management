@@ -26,24 +26,42 @@ function resolve(theme: ThemeMode): ResolvedTheme {
   return theme === "system" ? getSystemTheme() : theme;
 }
 
+function applyTheme(mode: ThemeMode): ResolvedTheme {
+  const resolved = resolve(mode);
+  document.documentElement.classList.toggle("dark", resolved === "dark");
+  document.documentElement.style.colorScheme = resolved;
+  return resolved;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>(readStoredTheme);
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => resolve(readStoredTheme()));
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => applyTheme(readStoredTheme()));
 
   useEffect(() => {
+    let cancelled = false;
     const apply = (mode: ThemeMode) => {
       const resolved = resolve(mode);
       setResolvedTheme(resolved);
+      document.documentElement.classList.add("no-transition");
       document.documentElement.classList.toggle("dark", resolved === "dark");
       document.documentElement.style.colorScheme = resolved;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!cancelled) document.documentElement.classList.remove("no-transition");
+        });
+      });
     };
     apply(theme);
     if (theme === "system") {
       const mq = window.matchMedia("(prefers-color-scheme: dark)");
       const onChange = () => apply("system");
       mq.addEventListener("change", onChange);
-      return () => mq.removeEventListener("change", onChange);
+      return () => {
+        cancelled = true;
+        mq.removeEventListener("change", onChange);
+      };
     }
+    return () => { cancelled = true; };
   }, [theme]);
 
   const setTheme = (mode: ThemeMode) => {

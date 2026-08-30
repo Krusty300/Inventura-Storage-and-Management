@@ -47,15 +47,53 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 
 def _detect_image_ext(data: bytes) -> str | None:
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return ".png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return ".jpg"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return ".gif"
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return ".webp"
-    return None
+    from app.utils import detect_image_ext
+    return detect_image_ext(data)
+
+
+# Maps NoteLink entity_type → (SQLAlchemy model class, label column name)
+_ENTITY_MODELS: dict[str, tuple[type, str]] = {}
+
+
+def _get_entity_models() -> dict[str, tuple[type, str]]:
+    if _ENTITY_MODELS:
+        return _ENTITY_MODELS
+    from app.models import (
+        ASN, BOM, Customer, CycleCount, Location, Lot, LPN,
+        Order, Product, QualityCheck, Receipt, Sale, SerialNumber,
+        Shipment, Supplier, WorkOrder,
+    )
+    _ENTITY_MODELS.update({
+        "product": (Product, "name"),
+        "order": (Order, "order_number"),
+        "sale": (Sale, "invoice_number"),
+        "supplier": (Supplier, "name"),
+        "customer": (Customer, "name"),
+        "location": (Location, "name"),
+        "shipment": (Shipment, "shipment_number"),
+        "work_order": (WorkOrder, "wo_number"),
+        "cycle_count": (CycleCount, "cc_number"),
+        "receipt": (Receipt, "receipt_number"),
+        "bom": (BOM, "name"),
+        "lot": (Lot, "lot_number"),
+        "lpn": (LPN, "lpn_number"),
+        "serial_number": (SerialNumber, "serial_number"),
+        "quality_check": (QualityCheck, "qc_number"),
+        "asn": (ASN, "asn_number"),
+    })
+    return _ENTITY_MODELS
+
+
+def resolve_entity_label(db: Session, entity_type: str, entity_id: int) -> str:
+    models = _get_entity_models()
+    entry = models.get(entity_type)
+    if not entry:
+        return ""
+    model_cls, col_name = entry
+    obj = db.get(model_cls, entity_id)
+    if not obj:
+        return ""
+    return getattr(obj, col_name, "") or ""
 
 
 def _serialize_note(note: Note) -> dict:
@@ -80,7 +118,7 @@ def _serialize_note(note: Note) -> dict:
         "username": note.user.username if note.user else "",
         "assigned_to_name": note.assigned_to.username if note.assigned_to else None,
         "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in note.tags],
-        "links": [{"id": l.id, "entity_type": l.entity_type, "entity_id": l.entity_id} for l in note.links],
+        "links": [{"id": l.id, "entity_type": l.entity_type, "entity_id": l.entity_id, "entity_label": l.entity_label or ""} for l in note.links],
     }
 
 
@@ -268,7 +306,8 @@ def create_note(data: NoteCreate, db: Session = Depends(get_db), user: User = De
             db.add(NoteTagLink(note_id=note.id, tag_id=tag_id))
 
     for link_data in data.links:
-        db.add(NoteLink(note_id=note.id, entity_type=link_data.entity_type, entity_id=link_data.entity_id))
+        label = link_data.entity_label or resolve_entity_label(db, link_data.entity_type, link_data.entity_id)
+        db.add(NoteLink(note_id=note.id, entity_type=link_data.entity_type, entity_id=link_data.entity_id, entity_label=label))
 
     db.commit()
     db.refresh(note)
@@ -304,6 +343,7 @@ def create_template(data: NoteTemplateCreate, db: Session = Depends(get_db), use
     db.add(template)
     db.commit()
     db.refresh(template)
+    broadcast_change("note", "created")
     return template
 
 
@@ -325,6 +365,7 @@ def update_template(template_id: int, data: NoteTemplateCreate, db: Session = De
     template.recurrence = data.recurrence
     db.commit()
     db.refresh(template)
+    broadcast_change("note", "updated")
     return template
 
 
@@ -335,6 +376,7 @@ def delete_template(template_id: int, db: Session = Depends(get_db), user: User 
         raise HTTPException(status_code=404, detail="Template not found")
     db.delete(template)
     db.commit()
+    broadcast_change("note", "deleted")
     return {"ok": True}
 
 
@@ -365,6 +407,14 @@ def update_note(note_id: int, data: NoteUpdate, db: Session = Depends(get_db), u
     if "recurrence" in update_data and update_data["recurrence"] not in VALID_RECURRENCE:
         raise HTTPException(status_code=400, detail=f"Invalid recurrence: {update_data['recurrence']}")
 
+    if "image_url" in update_data and not update_data["image_url"] and note.image_url:
+        old_path = UPLOAD_DIR / Path(note.image_url).name
+        try:
+            if old_path.exists():
+                old_path.unlink()
+        except Exception:
+            pass
+
     for k, v in update_data.items():
         setattr(note, k, v)
 
@@ -393,6 +443,13 @@ def update_note(note_id: int, data: NoteUpdate, db: Session = Depends(get_db), u
 def delete_note(note_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("notes.delete"))):
     note = get_or_404(Note, note_id, db)
     title = note.title
+    if note.image_url:
+        old_path = UPLOAD_DIR / Path(note.image_url).name
+        try:
+            if old_path.exists():
+                old_path.unlink()
+        except Exception:
+            pass
     db.delete(note)
     db.commit()
     log_activity(db, user.id, user.username, "delete", "note", note_id, f"Deleted note '{title}'")
@@ -420,7 +477,7 @@ def toggle_complete(note_id: int, db: Session = Depends(get_db), user: User = De
             db.add(new_note)
             db.flush()
             for link in note.links:
-                db.add(NoteLink(note_id=new_note.id, entity_type=link.entity_type, entity_id=link.entity_id))
+                db.add(NoteLink(note_id=new_note.id, entity_type=link.entity_type, entity_id=link.entity_id, entity_label=link.entity_label or ""))
             log_activity(db, user.id, user.username, "create", "note", new_note.id, f"Recurring note '{new_note.title}' created")
 
     db.commit()
@@ -533,7 +590,7 @@ def duplicate_note(note_id: int, db: Session = Depends(get_db), user: User = Dep
     for tag_link in db.query(NoteTagLink).filter(NoteTagLink.note_id == original.id).all():
         db.add(NoteTagLink(note_id=new_note.id, tag_id=tag_link.tag_id))
     for link in original.links:
-        db.add(NoteLink(note_id=new_note.id, entity_type=link.entity_type, entity_id=link.entity_id))
+        db.add(NoteLink(note_id=new_note.id, entity_type=link.entity_type, entity_id=link.entity_id, entity_label=link.entity_label or ""))
     db.commit()
     db.refresh(new_note)
     new_note = db.query(Note).options(
@@ -606,12 +663,12 @@ def add_link(note_id: int, data: NoteLinkCreate, db: Session = Depends(get_db), 
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Link already exists")
-    link = NoteLink(note_id=note.id, entity_type=data.entity_type, entity_id=data.entity_id)
+    link = NoteLink(note_id=note.id, entity_type=data.entity_type, entity_id=data.entity_id, entity_label=data.entity_label or resolve_entity_label(db, data.entity_type, data.entity_id))
     db.add(link)
     db.commit()
     db.refresh(link)
     broadcast_change("note", "updated")
-    return {"id": link.id, "entity_type": link.entity_type, "entity_id": link.entity_id}
+    return {"id": link.id, "entity_type": link.entity_type, "entity_id": link.entity_id, "entity_label": link.entity_label}
 
 
 @router.delete("/{note_id}/links/{link_id}")

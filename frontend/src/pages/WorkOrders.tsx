@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CheckCircle, Eye, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -22,6 +22,7 @@ import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function WorkOrders() {
   const formatDate = useDateFormat();
@@ -64,8 +65,8 @@ export default function WorkOrders() {
       await fn();
       addToast(msg, "success");
       refresh();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Action failed", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Action failed"), "error");
     }
   };
 
@@ -73,7 +74,7 @@ export default function WorkOrders() {
     try {
       const { data } = await api.get(`/work-orders/${w.id}/pdf`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       addToast("Failed to generate PDF", "error");
@@ -210,22 +211,17 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
   const [priority, setPriority] = useState(wo?.priority || "normal");
   const [notes, setNotes] = useState(wo?.notes || "");
   const [mode, setMode] = useState<"bom" | "items">(wo?.bom_id ? "bom" : "items");
-  const [boms, setBoms] = useState<BOM[]>([]);
+  const { data: boms = [] } = useQuery<BOM[]>({
+    queryKey: ["boms", "by-product", productId],
+    queryFn: async () => (await api.get("/boms", { params: { product_id: productId, limit: PAGE_SIZE } })).data.items,
+    enabled: !!productId,
+  });
   const [bomId, setBomId] = useState(wo?.bom_id ? String(wo.bom_id) : "");
   const [rows, setRows] = useState(
     wo?.items.map((i) => ({ product_id: String(i.product_id), quantity: String(i.quantity_required) })) || [{ product_id: "", quantity: "1" }]
   );
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
-
-  useEffect(() => {
-    if (!productId) {
-      setBoms([]);
-      setBomId("");
-      return;
-    }
-    api.get("/boms", { params: { product_id: productId, limit: PAGE_SIZE } }).then(({ data }) => setBoms(data.items));
-  }, [productId]);
 
   const setRow = (idx: number, key: string, value: string) => {
     setRows(rows.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
@@ -272,8 +268,8 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
         addToast(`Work order ${data.wo_number} created`, "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving work order", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error saving work order"), "error");
     }
     setSaving(false);
   };
@@ -543,14 +539,12 @@ function CompleteModal({ wo, onClose, onSaved }: { wo: WorkOrder; onClose: () =>
   const [receiveLocationId, setReceiveLocationId] = useState("");
   const [lotNumber, setLotNumber] = useState("");
   const [serials, setSerials] = useState("");
-  const [backflush, setBackflush] = useState(false);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const { data: locations = [] } = useQuery<Location[]>({
+    queryKey: ["locations", "lookup"],
+    queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
-
-  useEffect(() => {
-    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -572,18 +566,15 @@ function CompleteModal({ wo, onClose, onSaved }: { wo: WorkOrder; onClose: () =>
         received_qty: parseInt(receivedQty) || wo.quantity,
         receive_location_id: Number(receiveLocationId),
         lot_number: lotNumber.trim() || undefined,
-        backflush,
         serial_numbers: serialList,
       });
       addToast(`${wo.wo_number} completed`, "success");
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error completing work order", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error completing work order"), "error");
     }
     setSaving(false);
   };
-
-  const needsBackflush = wo.items.some((i) => i.quantity_issued < i.quantity_required);
 
   return (
     <Modal open onClose={onClose} title={`Complete ${wo.wo_number}`} wide>
@@ -611,12 +602,6 @@ function CompleteModal({ wo, onClose, onSaved }: { wo: WorkOrder; onClose: () =>
             <label className="block text-sm font-medium text-ink mb-1">FG Lot Number (optional)</label>
             <input className="input" value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} placeholder="e.g. FG-0001" />
           </div>
-        )}
-        {needsBackflush && (
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input type="checkbox" className="rounded" checked={backflush} onChange={(e) => setBackflush(e.target.checked)} />
-            Backflush remaining components ({wo.total_required - wo.total_issued} units still needed)
-          </label>
         )}
         <p className="text-xs text-muted">
           {wo.is_serialized

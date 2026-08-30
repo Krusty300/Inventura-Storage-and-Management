@@ -24,6 +24,8 @@ function mockCatalog(products: ReturnType<typeof makeProduct>[], qcs: any[] = []
     if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD", tax_rate: 10 } });
     if (url === "/quality-checks") return Promise.resolve({ data: { items: qcs, total: qcs.length, page: 1, pages: 1 } });
     if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations, unallocated: 0 } });
+    if (url === "/promotions") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+    if (url === "/sales-channels/all") return Promise.resolve({ data: [] });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
 }
@@ -57,6 +59,8 @@ describe("SaleForm", () => {
       if (url === "/products") return Promise.resolve({ data: { items: [] } });
     if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD", tax_rate: 10 } });
       if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/promotions") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/sales-channels/all") return Promise.resolve({ data: [] });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
@@ -245,9 +249,29 @@ describe("SaleForm", () => {
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
     const tile = await screen.findByRole("button", { name: /Widget/ });
     fireEvent.click(tile);
-    expect(await screen.findByText(/pending quality check and can't be sold yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/quality check and can't be sold yet/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it("allows adding a product with a location-scoped quality check and blocks it until an unaffected location is chosen", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget], [{
+      id: 1, qc_number: "QC-1", product_id: 7, lot_id: null, location_id: 1,
+      work_order_id: null, batch_number: "", result: "fail", notes: "",
+      checked_by: 1, checked_at: null, created_at: "", product_name: "Widget",
+      lot_number: "", location_name: "Warehouse A", wo_number: "", checker_username: "",
+    }]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    // a location-scoped QC must not block adding the product to the cart
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    expect(screen.getByLabelText("Quantity for Widget")).toHaveValue(1);
+    // with no (auto) location chosen the line item is blocked and guides the user
+    expect(await screen.findByText(/choose a different location or resolve the QC/)).toBeInTheDocument();
+    // choosing an unaffected location clears the block
+    await screen.findByRole("option", { name: /Store B \(8\)/ });
+    fireEvent.change(screen.getByLabelText("Fulfill from location"), { target: { value: "2" } });
+    expect(screen.queryByText(/choose a different location or resolve the QC/)).not.toBeInTheDocument();
   });
 
   it("allows a sale when the pending quality check belongs to a different product", async () => {

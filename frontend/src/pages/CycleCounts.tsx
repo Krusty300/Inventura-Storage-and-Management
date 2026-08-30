@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Eye, ClipboardCheck, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -20,6 +20,7 @@ import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function CycleCounts() {
   const formatDate = useDateFormat();
@@ -50,7 +51,7 @@ export default function CycleCounts() {
     try {
       const { data } = await api.get(`/cycle-counts/${c.id}/pdf`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       addToast("Failed to generate PDF", "error");
@@ -148,53 +149,44 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState([{ product_id: "" }]);
   const [saving, setSaving] = useState(false);
-  const [expectedByProduct, setExpectedByProduct] = useState<Record<number, number>>({});
-  const [locationProducts, setLocationProducts] = useState<{ product_id: number; label: string }[]>([]);
   const { addToast } = useToast();
   const productList = useSelectableProducts();
-  const [locations, setLocations] = useState<Location[]>([]);
+  const { data: locations = [] } = useQuery<Location[]>({
+    queryKey: ["locations", "lookup"],
+    queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
 
-  useEffect(() => {
-    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
-  }, []);
+  const { data: locationDetail } = useQuery({
+    queryKey: ["location-detail", location_id],
+    queryFn: async () => (await api.get(`/locations/${location_id}/detail`)).data,
+    enabled: !!location_id,
+  });
 
-  useEffect(() => {
-    if (!location_id) {
-      setExpectedByProduct({});
-      setLocationProducts([]);
-      return;
+  const { expectedByProduct, locationProducts } = useMemo(() => {
+    if (!locationDetail) return { expectedByProduct: {} as Record<number, number>, locationProducts: [] as { product_id: number; label: string }[] };
+    const map: Record<number, number> = {};
+    const productMap: Record<number, string> = {};
+    const serializedIds = new Set((locationDetail.serials || []).map((s: { product_id: number }) => s.product_id));
+    for (const sl of locationDetail.stock_lines) {
+      map[sl.product_id] = (map[sl.product_id] || 0) + sl.quantity;
+      productMap[sl.product_id] = `${sl.product_name}${sl.sku ? ` (${sl.sku})` : ""}`;
     }
-    api
-      .get(`/locations/${location_id}/detail`)
-      .then(({ data }) => {
-        const map: Record<number, number> = {};
-        const productMap: Record<number, string> = {};
-        const serializedIds = new Set((data.serials || []).map((s: { product_id: number }) => s.product_id));
-        for (const sl of data.stock_lines) {
-          map[sl.product_id] = (map[sl.product_id] || 0) + sl.quantity;
-          productMap[sl.product_id] = `${sl.product_name}${sl.sku ? ` (${sl.sku})` : ""}`;
-        }
-        for (const s of data.serials || []) {
-          map[s.product_id] = (map[s.product_id] || 0) + 1;
-          if (!productMap[s.product_id]) {
-            productMap[s.product_id] = `${s.product_name}${s.sku ? ` (${s.sku})` : ""}`;
-          }
-        }
-        setExpectedByProduct(map);
-        setLocationProducts(
-          Object.entries(productMap)
-            .map(([id, label]) => ({
-              product_id: Number(id),
-              label: serializedIds.has(Number(id)) ? `${label} (Serialized)` : label,
-            }))
-            .sort((a, b) => a.label.localeCompare(b.label))
-        );
-      })
-      .catch(() => {
-        setExpectedByProduct({});
-        setLocationProducts([]);
-      });
-  }, [location_id]);
+    for (const s of locationDetail.serials || []) {
+      map[s.product_id] = (map[s.product_id] || 0) + 1;
+      if (!productMap[s.product_id]) {
+        productMap[s.product_id] = `${s.product_name}${s.sku ? ` (${s.sku})` : ""}`;
+      }
+    }
+    return {
+      expectedByProduct: map,
+      locationProducts: Object.entries(productMap)
+        .map(([id, label]) => ({
+          product_id: Number(id),
+          label: serializedIds.has(Number(id)) ? `${label} (Serialized)` : label,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    };
+  }, [locationDetail]);
 
   const expectedQty = (productId: string) => (productId ? expectedByProduct[Number(productId)] ?? 0 : 0);
 
@@ -227,8 +219,8 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       });
       addToast(`Cycle count ${data.cc_number} created`, "success");
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error creating cycle count", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error creating cycle count"), "error");
     }
     setSaving(false);
   };
@@ -323,7 +315,7 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
                 <th className="px-3 py-2 font-medium text-muted text-right">Counted</th>
                 <th className="px-3 py-2 font-medium text-muted text-right">Variance</th>
                 <th className="px-3 py-2 font-medium text-muted text-right">Unit Cost</th>
-                <th className="px-3 py-2 font-medium text-muted text-right">Variance $</th>
+                <th className="px-3 py-2 font-medium text-muted text-right">Variance ({currencySymbol})</th>
                 <th className="px-3 py-2 font-medium text-muted">Status</th>
               </tr>
             </thead>
@@ -366,24 +358,21 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
   );
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [onHandNow, setOnHandNow] = useState<Record<number, number>>({});
-  const [onHandLoaded, setOnHandLoaded] = useState(false);
   const { addToast } = useToast();
 
-  useEffect(() => {
-    if (count.location_id == null) return;
-    setOnHandLoaded(false);
-    api
-      .get(`/locations/${count.location_id}/detail`)
-      .then(({ data }) => {
-        const map: Record<number, number> = {};
-        for (const sl of data.stock_lines || []) map[sl.product_id] = (map[sl.product_id] || 0) + sl.quantity;
-        for (const s of data.serials || []) map[s.product_id] = (map[s.product_id] || 0) + 1;
-        setOnHandNow(map);
-      })
-      .catch(() => setOnHandNow({}))
-      .finally(() => setOnHandLoaded(true));
-  }, [count.location_id]);
+  const { data: locationDetail, isLoading: onHandLoading } = useQuery({
+    queryKey: ["location-detail", count.location_id],
+    queryFn: async () => (await api.get(`/locations/${count.location_id}/detail`)).data,
+    enabled: count.location_id != null,
+  });
+
+  const onHandNow = useMemo(() => {
+    if (!locationDetail) return {} as Record<number, number>;
+    const map: Record<number, number> = {};
+    for (const sl of locationDetail.stock_lines || []) map[sl.product_id] = (map[sl.product_id] || 0) + sl.quantity;
+    for (const s of locationDetail.serials || []) map[s.product_id] = (map[s.product_id] || 0) + 1;
+    return map;
+  }, [locationDetail]);
 
   const changedItems = count.items.filter((item) => {
     const now = onHandNow[item.product_id];
@@ -434,8 +423,8 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
       }
       addToast(data.status === "completed" ? "Cycle count completed" : "Count saved", "success");
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error submitting count", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error submitting count"), "error");
     }
     setSaving(false);
   };
@@ -506,7 +495,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
           )}
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-ink">Counted Quantities</p>
-            <button type="button" onClick={fillFromOnHand} disabled={!onHandLoaded} className="btn-secondary text-xs py-1 px-2">
+            <button type="button" onClick={fillFromOnHand} disabled={onHandLoading} className="btn-secondary text-xs py-1 px-2">
               Set all = on-hand
             </button>
           </div>

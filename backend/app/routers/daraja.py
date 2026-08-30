@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.sale import Sale
 from app.services.auth import require_permission
 from app.services.daraja import config as daraja_config, stk_push, b2c_payment, parse_stk_callback, parse_b2c_callback
+from app.utils import broadcast_change
 
 router = APIRouter(prefix="/api/daraja", tags=["daraja"])
 
@@ -74,11 +75,15 @@ def initiate_stk_push(body: StkPushRequest, user=Depends(require_permission("sal
 
 
 @router.post("/mock-confirm")
-def mock_stk_confirm(checkout_request_id: str = "", db=Depends(get_db), user=Depends(require_permission("sales.create"))):
+def mock_stk_confirm(checkout_request_id: str = "", db=Depends(get_db), user=Depends(require_permission("sales.refund"))):
     """Simulate an STK Push callback for testing without Safaricom."""
+    if not daraja_config.mock:
+        raise HTTPException(status_code=403, detail="mock-confirm is only available in mock mode")
     checkout_id = checkout_request_id or "ws_CO_MOCK123"
     sale = db.query(Sale).filter(Sale.payment_checkout_request_id == checkout_id).first()
     if sale:
+        if sale.payment_status != "pending":
+            raise HTTPException(status_code=400, detail=f"Sale payment status is '{sale.payment_status}' — can only confirm pending payments")
         sale.payment_status = "completed"
         sale.status = "completed"
         from app.utils import log_activity, broadcast_change
@@ -109,6 +114,7 @@ def initiate_b2c_refund(body: B2CRefundRequest, db=Depends(get_db), user=Depends
             sale.refund_checkout_request_id = conversation_id
             sale.refund_status = "pending"
             db.commit()
+            broadcast_change("sale", "updated")
     return {
         "success": result["response_code"] == "0",
         "conversation_id": conversation_id,

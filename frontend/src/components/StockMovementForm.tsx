@@ -9,6 +9,7 @@ import Modal from "./Modal";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { isSelectable, productLabel } from "../utils/variants";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   movement?: StockMovement | null;
@@ -75,8 +76,8 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
         addToast("Stock movement recorded", "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || `Error ${isEdit ? "updating" : "recording"} movement`, "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, `Error ${isEdit ? "updating" : "recording"} movement`), "error");
     }
     setSaving(false);
   };
@@ -132,9 +133,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Reference (e.g. PO#)</label>
           <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
-          {movementType === "return" && (
-            <p className="text-xs text-faint mt-1">Leave blank to auto-generate a reference (RET-...).</p>
-          )}
+          <p className="text-xs text-faint mt-1">Leave blank to auto-generate a reference.</p>
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>

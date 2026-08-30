@@ -22,11 +22,13 @@ class NoteLinkOut(BaseModel):
     id: int
     entity_type: str
     entity_id: int
+    entity_label: str = ""
 
 
 class NoteLinkCreate(BaseModel):
     entity_type: str
     entity_id: int
+    entity_label: str = ""
 
 
 class NoteOut(BaseModel):

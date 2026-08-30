@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, Trash2, Upload, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Category, Location, Product, ProductImage, Supplier } from "../types";
@@ -22,6 +23,8 @@ interface AttrRow {
   value: string;
 }
 
+const sectionLabel = "text-xs font-semibold uppercase tracking-widest text-faint";
+
 export default function ProductForm({ product, parent, onClose, onSaved }: Props) {
   const isVariantMode = !!product?.is_variant || !!parent;
   const isParentWithVariants = !!product && !product.is_variant && hasVariants(product);
@@ -38,9 +41,19 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const [removedImageIds, setRemovedImageIds] = useState<number[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const formInitRef = useRef(false);
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ["categories"],
+    queryFn: async () => (await api.get("/categories")).data.items,
+  });
+  const { data: suppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["suppliers", "picker"],
+    queryFn: async () => (await api.get("/suppliers")).data.items,
+  });
+  const { data: locations = [] } = useQuery<Location[]>({
+    queryKey: ["locations", "lookup"],
+    queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const { addToast } = useToast();
@@ -53,10 +66,9 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   }, [product, settings, form.reorder_level]);
 
   useEffect(() => {
-    api.get("/categories").then(({ data }) => setCategories(data.items));
-    api.get("/suppliers").then(({ data }) => setSuppliers(data.items));
-    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
+    if (formInitRef.current) return;
     if (product) {
+      formInitRef.current = true;
       setForm({
         sku: product.sku, name: product.name, description: product.description,
         category_id: product.category_id?.toString() || "",
@@ -80,6 +92,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         setImagePreviews([product.image_url]);
       }
     } else if (parent) {
+      formInitRef.current = true;
       setForm((f) => ({ ...f, sku: "", name: parent.name, category_id: parent.category_id?.toString() || "", supplier_id: parent.supplier_id?.toString() || "", location: parent.location || "" }));
     }
   }, [product, parent]);
@@ -149,7 +162,9 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
       }
       if (productId) {
         for (const id of removedImageIds) {
-          await api.delete(`/products/${productId}/images/${id}`).catch(() => {});
+          await api.delete(`/products/${productId}/images/${id}`).catch((err) => {
+            if (err?.response?.status !== 404) console.error("Failed to delete image", err);
+          });
         }
         if (imageFiles.length > 0) {
           const fd = new FormData();
@@ -159,19 +174,19 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         }
       }
       onSaved();
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast(errorMessage(err, "Error saving product"), "error");
     }
     setSaving(false);
   };
 
-  const field = (label: string, key: string, type = "text", required = false) => (
+  const field = (label: string, key: Exclude<keyof typeof form, "is_active" | "is_serialized">, type = "text", required = false) => (
     <div>
       <label className="block text-sm font-medium text-ink mb-1">{label}</label>
       <input
         type={type}
         className="input"
-        value={(form as any)[key]}
+        value={form[key]}
         onChange={(e) => setForm({ ...form, [key]: e.target.value })}
         required={required}
       />
@@ -179,14 +194,14 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   );
 
   const inheritedInfo = (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3">
       <div>
-        <label className="block text-sm font-medium text-ink mb-1">Category</label>
-        <div className="input bg-app">{product?.category_name || parent?.category_name || "—"}</div>
+        <p className={`${sectionLabel} mb-1`}>Category</p>
+        <p className="text-sm text-ink">{product?.category_name || parent?.category_name || "—"}</p>
       </div>
       <div>
-        <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-        <div className="input bg-app">{product?.supplier_name || parent?.supplier_name || "—"}</div>
+        <p className={`${sectionLabel} mb-1`}>Supplier</p>
+        <p className="text-sm text-ink">{product?.supplier_name || parent?.supplier_name || "—"}</p>
       </div>
     </div>
   );
@@ -210,11 +225,19 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         setRemovedImageIds((prev) => [...prev, img.id]);
       }
       setExistingImages((prev) => prev.filter((_, i) => i !== idx));
-      setImagePreviews((prev) => prev.filter((_, i) => i !== idx));
+      setImagePreviews((prev) => {
+        const url = prev[idx];
+        if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+        return prev.filter((_, i) => i !== idx);
+      });
     } else {
       const newIdx = idx - existingImages.length;
       setImageFiles((prev) => prev.filter((_, i) => i !== newIdx));
-      setImagePreviews((prev) => prev.filter((_, i) => i !== idx));
+      setImagePreviews((prev) => {
+        const url = prev[idx];
+        if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+        return prev.filter((_, i) => i !== idx);
+      });
     }
   }, [existingImages]);
 
@@ -224,169 +247,190 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
     if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
   }, [addFiles]);
 
+  const docTitle = product ? `Edit ${product.sku ? `${product.sku}: ` : ""}${product.name}` : parent ? `Add Variant: ${parent.name}` : "New Product";
+
   return (
     <SlideOver open onClose={onClose} title={product ? "Edit Product" : parent ? `Add Variant: ${parent.name}` : "Add Product"} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {field("SKU *", "sku", "text", true)}
-          {field("Name *", "name", "text", true)}
+      <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+        <div className="border-b border-border px-6 py-4 flex items-center justify-between">
+          <div>
+            <p className={sectionLabel}>{product ? "Edit Product" : parent ? "Add Variant" : "New Product"}</p>
+            <p className="text-xl font-bold text-ink mt-0.5 tracking-tight">{docTitle}</p>
+          </div>
         </div>
-
-        {isVariantMode && inheritedInfo}
-
-        {!isVariantMode && (
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Description</label>
-            <textarea className="input" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </div>
-        )}
-
-        {!isVariantMode && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Category</label>
-              <select className="select" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
-                <option value="">None</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+        <form onSubmit={handleSubmit} className="space-y-0">
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={`${sectionLabel} mb-3`}>General Information</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {field("SKU *", "sku", "text", true)}
+              {field("Name *", "name", "text", true)}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-              <select className="select" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
-                <option value="">None</option>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-          </div>
-        )}
 
-        {isVariantMode && (
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm font-medium text-ink">Attributes</label>
-              <button type="button" onClick={() => setAttributes([...attributes, { key: "", value: "" }])} className="btn-secondary text-xs py-1 px-2">
-                <Plus size={14} className="inline mr-1" />Add Attribute
-              </button>
-            </div>
-            {attributes.length === 0 && <p className="text-xs text-faint mb-1">No attributes yet. Add things like Color, Size, or Flavor.</p>}
-            <div className="space-y-2">
-              {attributes.map((a, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
-                  <input className="input text-sm flex-1" placeholder="Attribute (e.g. Color)" value={a.key} onChange={(e) => setAttr(idx, "key", e.target.value)} />
-                  <input className="input text-sm flex-1" placeholder="Value (e.g. Red)" value={a.value} onChange={(e) => setAttr(idx, "value", e.target.value)} />
-                  <button type="button" onClick={() => setAttributes(attributes.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove attribute">
-                    <Trash2 size={16} />
-                  </button>
+            {isVariantMode && <div className="mt-4">{inheritedInfo}</div>}
+
+            {!isVariantMode && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-ink mb-1">Description</label>
+                <textarea className="input" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+            )}
+
+            {!isVariantMode && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Category</label>
+                  <select className="select" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
+                    <option value="">None</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {field("Unit Price", "unit_price", "number")}
-          {field("Cost Price", "cost_price", "number")}
-          {isParentWithVariants ? (
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
-              <div className="input bg-app">{product?.total_quantity ?? product?.quantity ?? 0}</div>
-            </div>
-          ) : (
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
-              <input
-                type="number"
-                className="input"
-                value={form.quantity}
-                onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                disabled={form.is_serialized}
-              />
-            </div>
-          )}
-          {field("Reorder Level", "reorder_level", "number")}
-        </div>
-
-        {!isVariantMode && form.is_serialized && (
-          <p className="text-xs text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-lg px-3 py-2">
-            Serialized products track stock per serial number. Quantity must be 0 — stock is added by recording receipts with serial numbers.
-          </p>
-        )}
-
-        {isParentWithVariants && (
-          <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2">
-            Stock is held on this product's variants. Adjust quantities on individual variants.
-          </p>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Location *</label>
-            <LocationPicker value={form.location} onChange={(v) => setForm({ ...form, location: v })} placeholder="e.g. A-01-B" />
-            {error && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{error}</p>}
-          </div>
-          {field("Barcode", "barcode")}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {field("Batch Number", "batch_number")}
-          {field("Expiry Date", "expiry_date", "date")}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {!isVariantMode && (
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Serialized (tracked per unit)</label>
-              <select
-                className="select"
-                value={form.is_serialized ? "1" : "0"}
-                onChange={(e) => setForm({ ...form, is_serialized: e.target.value === "1", quantity: "0" })}
-                disabled={isParentWithVariants || isVariantMode}
-              >
-                <option value="0">No</option>
-                <option value="1">Yes</option>
-              </select>
-            </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Status</label>
-            <select className="select" value={form.is_active ? "1" : "0"} onChange={(e) => setForm({ ...form, is_active: e.target.value === "1" })}>
-              <option value="1">Active</option>
-              <option value="0">Inactive</option>
-            </select>
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Images</label>
-          <div
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${dragOver ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10" : "border-border hover:border-indigo-400"}`}
-          >
-            <Upload size={20} className="mx-auto text-muted mb-1" />
-            <p className="text-sm text-muted">Drag & drop images here or <span className="text-indigo-600 dark:text-indigo-400 font-medium">browse</span></p>
-            <p className="text-xs text-faint mt-0.5">JPEG, PNG, GIF, WebP — max 10 MB each</p>
-            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-          </div>
-          {imagePreviews.length > 0 && (
-            <div className="flex gap-2 mt-3 flex-wrap">
-              {imagePreviews.map((src, i) => (
-                <div key={i} className="relative group">
-                  <img src={src} alt="" className="w-16 h-16 rounded object-cover border border-border" />
-                  <button type="button" onClick={() => removeImage(i)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove image">
-                    <X size={12} />
-                  </button>
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
+                  <select className="select" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
+                    <option value="">None</option>
+                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
                 </div>
-              ))}
+              </div>
+            )}
+          </div>
+
+          {isVariantMode && (
+            <div className="px-6 py-5 border-b border-dashed border-border">
+              <p className={`${sectionLabel} mb-3`}>Attributes</p>
+              <div className="flex items-center justify-between mb-2">
+                <button type="button" onClick={() => setAttributes([...attributes, { key: "", value: "" }])} className="btn-secondary text-xs py-1 px-2">
+                  <Plus size={14} className="inline mr-1" />Add Attribute
+                </button>
+              </div>
+              {attributes.length === 0 && <p className="text-xs text-faint mb-1">No attributes yet. Add things like Color, Size, or Flavor.</p>}
+              <div className="space-y-2">
+                {attributes.map((a, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <input className="input text-sm flex-1" placeholder="Attribute (e.g. Color)" value={a.key} onChange={(e) => setAttr(idx, "key", e.target.value)} />
+                    <input className="input text-sm flex-1" placeholder="Value (e.g. Red)" value={a.value} onChange={(e) => setAttr(idx, "value", e.target.value)} />
+                    <button type="button" onClick={() => setAttributes(attributes.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove attribute">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-        </div>
-        <div className="flex justify-end gap-3 pt-4">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">
-            {saving ? "Saving..." : product ? "Update" : parent ? "Create Variant" : "Create"}
-          </button>
-        </div>
-      </form>
+
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={`${sectionLabel} mb-3`}>Pricing &amp; Stock</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {field("Unit Price", "unit_price", "number")}
+              {field("Cost Price", "cost_price", "number")}
+              {isParentWithVariants ? (
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
+                  <div className="input bg-app">{product?.total_quantity ?? product?.quantity ?? 0}</div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={form.quantity}
+                    onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                    disabled={form.is_serialized}
+                  />
+                </div>
+              )}
+              {field("Reorder Level", "reorder_level", "number")}
+            </div>
+
+            {!isVariantMode && form.is_serialized && (
+              <p className="text-xs text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-lg px-3 py-2 mt-4">
+                Serialized products track stock per serial number. Quantity must be 0 — stock is added by recording receipts with serial numbers.
+              </p>
+            )}
+
+            {isParentWithVariants && (
+              <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2 mt-4">
+                Stock is held on this product's variants. Adjust quantities on individual variants.
+              </p>
+            )}
+          </div>
+
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={`${sectionLabel} mb-3`}>Location &amp; Tracking</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Location *</label>
+                <LocationPicker value={form.location} onChange={(v) => setForm({ ...form, location: v })} placeholder="e.g. A-01-B" />
+                {error && <p className="text-xs text-red-600 dark:text-red-400 mt-1">{error}</p>}
+              </div>
+              {field("Barcode", "barcode")}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              {field("Batch Number", "batch_number")}
+              {field("Expiry Date", "expiry_date", "date")}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              {!isVariantMode && (
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Serialized (tracked per unit)</label>
+                  <select
+                    className="select"
+                    value={form.is_serialized ? "1" : "0"}
+                    onChange={(e) => setForm({ ...form, is_serialized: e.target.value === "1", quantity: "0" })}
+                    disabled={isParentWithVariants || isVariantMode}
+                  >
+                    <option value="0">No</option>
+                    <option value="1">Yes</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Status</label>
+                <select className="select" value={form.is_active ? "1" : "0"} onChange={(e) => setForm({ ...form, is_active: e.target.value === "1" })}>
+                  <option value="1">Active</option>
+                  <option value="0">Inactive</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 py-5">
+            <p className={`${sectionLabel} mb-3`}>Images</p>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${dragOver ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10" : "border-border hover:border-indigo-400"}`}
+            >
+              <Upload size={20} className="mx-auto text-muted mb-1" />
+              <p className="text-sm text-muted">Drag & drop images here or <span className="text-indigo-600 dark:text-indigo-400 font-medium">browse</span></p>
+              <p className="text-xs text-faint mt-0.5">JPEG, PNG, GIF, WebP — max 10 MB each</p>
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
+            </div>
+            {imagePreviews.length > 0 && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                {imagePreviews.map((src, i) => (
+                  <div key={i} className="relative group">
+                    <img src={src} alt="" className="w-16 h-16 rounded object-cover border border-border" />
+                    <button type="button" onClick={() => removeImage(i)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove image">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 px-6 py-4 border-t border-border">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">
+              {saving ? "Saving..." : product ? "Update" : parent ? "Create Variant" : "Create"}
+            </button>
+          </div>
+        </form>
+      </div>
     </SlideOver>
   );
 }

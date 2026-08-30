@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Modal from "./Modal";
 import api from "../api/client";
+import { errorMessage } from "../utils/errors";
 
 export interface BulkFieldOption {
   value: string;
@@ -54,8 +55,8 @@ export default function EntityBulkEditModal({ ids, entityLabel, endpoint, fields
       }
       await api.patch(endpoint, body);
       onSaved();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Bulk edit failed");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Bulk edit failed"));
     }
     setSubmitting(false);
   };
@@ -94,7 +95,7 @@ export default function EntityBulkEditModal({ ids, entityLabel, endpoint, fields
           </div>
         ))}
 
-        {error && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
+        {error && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>

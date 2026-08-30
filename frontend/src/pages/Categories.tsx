@@ -19,6 +19,7 @@ import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function Categories() {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
@@ -54,7 +55,7 @@ export default function Categories() {
     },
   });
 
-  const { data: tree } = useQuery({
+  const { data: tree, isLoading: treeLoading } = useQuery({
     queryKey: ["categories", "tree"],
     queryFn: async () => {
       const { data } = await api.get("/categories/tree");
@@ -129,8 +130,8 @@ export default function Categories() {
       addToast("Category deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["categories"] });
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Cannot delete category", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Cannot delete category"), "error");
     },
   });
 
@@ -172,7 +173,7 @@ export default function Categories() {
         </div>
       </div>
 
-      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load categories: {(error as any)?.message}</div>}
+      {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load categories")}</div>}
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">
@@ -248,6 +249,8 @@ export default function Categories() {
         </table>
           </div>
         </div>
+      ) : treeLoading ? (
+        <Skeleton variant="rows" rows={5} cols={3} />
       ) : visibleTree.length === 0 ? (
         <EmptyState title={q ? "No matching categories" : "No categories"} message={q ? `Nothing matched "${search}".` : "Create your first category to organize products."} actionLabel={q ? undefined : "Add Category"} onAction={q ? undefined : () => { setEditing(null); setShowForm(true); }} />
       ) : (

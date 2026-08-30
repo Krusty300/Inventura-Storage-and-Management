@@ -11,9 +11,23 @@ def _get_prefix(db: Session, name: str, default: str) -> str:
     prefix_map = {
         "shipment": s.shipment_prefix,
         "work_order": s.work_order_prefix,
-        "sale": s.sale_prefix,
         "invoice": s.invoice_prefix,
         "purchase_order": s.po_prefix,
+        "receipt": s.receipt_prefix,
+        "asn": s.asn_prefix,
+        "quality_check": s.qc_prefix,
+        "cycle_count": s.cc_prefix,
+        "return": s.return_prefix,
+        "transfer": s.transfer_prefix,
+        "unallocated_move": s.unallocated_prefix,
+        "quarantine": s.quarantine_prefix,
+        "lpn": s.lpn_prefix,
+        "lpn_move": s.lpn_move_prefix,
+        "lpn_load": s.lpn_load_prefix,
+        "lpn_unload": s.lpn_unload_prefix,
+        "stock_in": s.stock_in_prefix,
+        "stock_out": s.stock_out_prefix,
+        "adjustment": s.adjustment_prefix,
     }
     return prefix_map.get(name, default)
 

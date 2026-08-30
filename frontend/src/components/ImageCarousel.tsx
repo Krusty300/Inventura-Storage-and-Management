@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ProductImage } from "../types";
+import { getPlaceholder, onImageError } from "../utils/placeholders";
 
 interface Props {
   images: ProductImage[];
@@ -10,10 +11,8 @@ interface Props {
 }
 
 export default function ImageCarousel({ images, imageUrl, alt, className = "" }: Props) {
-  const allImages = images.length > 0 ? images : imageUrl ? [{ id: 0, url: imageUrl, sort_order: 0 }] : [];
+  const allImages = images.length > 0 ? images : imageUrl ? [{ id: 0, url: imageUrl, sort_order: 0 }] : [{ id: -1, url: getPlaceholder(), sort_order: 0 }];
   const [current, setCurrent] = useState(0);
-
-  if (allImages.length === 0) return null;
 
   const hasMultiple = allImages.length > 1;
 
@@ -24,6 +23,7 @@ export default function ImageCarousel({ images, imageUrl, alt, className = "" }:
           src={allImages[current].url}
           alt={alt}
           className="w-full max-w-md h-64 rounded-lg object-cover border border-border"
+          onError={onImageError}
         />
       </div>
       {hasMultiple && (
@@ -49,7 +49,7 @@ export default function ImageCarousel({ images, imageUrl, alt, className = "" }:
                 onClick={() => setCurrent(i)}
                 className={`w-8 h-8 rounded border-2 overflow-hidden ${i === current ? "border-indigo-500" : "border-border opacity-60 hover:opacity-100"}`}
               >
-                <img src={img.url} alt="" className="w-full h-full object-cover" />
+                <img src={img.url} alt="" className="w-full h-full object-cover" onError={onImageError} />
               </button>
             ))}
           </div>

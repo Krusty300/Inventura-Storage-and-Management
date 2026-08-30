@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Eye, FileText, ArrowLeftRight, Search, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -20,6 +20,7 @@ import { useExportCsv } from "../hooks/useExportCsv";
 import { productLabel } from "../utils/variants";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function LPNs() {
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
@@ -29,6 +30,7 @@ export default function LPNs() {
   const [viewing, setViewing] = useState<LPN | null>(null);
   const [moving, setMoving] = useState<LPN | null>(null);
   const [deleting, setDeleting] = useState<LPN | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const { addToast } = useToast();
@@ -46,7 +48,7 @@ export default function LPNs() {
       queryClient.invalidateQueries({ queryKey: ["lpns"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot delete LPN", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot delete LPN"), "error"),
   });
 
   const { data, isLoading, isError } = useQuery({
@@ -64,9 +66,34 @@ export default function LPNs() {
   const printLabel = (id: number) => {
     api.get(`/labels/pallet/${id}`, { responseType: "blob" }).then(({ data }) => {
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     });
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleAll = () => {
+    if (selected.size === lpns.length) setSelected(new Set());
+    else setSelected(new Set(lpns.map((l) => l.id)));
+  };
+
+  const batchPrint = async () => {
+    for (const id of selected) {
+      try {
+        const { data } = await api.get(`/labels/pallet/${id}`, { responseType: "blob" });
+        const url = URL.createObjectURL(data);
+        window.open(url, "_blank", "noopener,noreferrer");
+        await new Promise((r) => setTimeout(r, 300));
+      } catch { /* skip failed labels */ }
+    }
+    setSelected(new Set());
   };
 
   return (
@@ -75,6 +102,11 @@ export default function LPNs() {
         <h1 className="text-2xl font-bold text-ink">LPNs (Pallets & Totes)</h1>
         <div className="flex items-center gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export LPNs to CSV">Export</button>
+          {selected.size > 0 && (
+            <button onClick={batchPrint} className="btn-secondary inline-flex items-center gap-1">
+              <FileText size={14} /> Print Labels ({selected.size})
+            </button>
+          )}
           {can("lpns.create") && (
             <button onClick={() => setShowForm(true)} className="btn-primary">
               Create LPN
@@ -95,6 +127,9 @@ export default function LPNs() {
         <table className="w-full text-sm" role="grid" aria-label="LPNs table">
           <thead>
             <tr className="bg-app text-left">
+              <th scope="col" className="px-4 py-3 font-medium text-muted w-10">
+                <input type="checkbox" className="rounded border-border-strong" checked={lpns.length > 0 && selected.size === lpns.length} onChange={toggleAll} aria-label="Select all LPNs" />
+              </th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">LPN #</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
@@ -113,6 +148,9 @@ export default function LPNs() {
               <EmptyState title="No LPNs yet" message="Create LPNs to track pallets and totes through the warehouse." actionLabel="Create LPN" onAction={() => setShowForm(true)} />
             ) : lpns.map((l) => (
               <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(l); }}>
+                <td className="px-4 py-3">
+                  <input type="checkbox" className="rounded border-border-strong" checked={selected.has(l.id)} onChange={() => toggleSelect(l.id)} onClick={(e) => e.stopPropagation()} aria-label={`Select ${l.lpn_number}`} />
+                </td>
                 <td className="px-4 py-3 font-medium">{l.lpn_number}</td>
                 <td className="px-4 py-3 text-muted capitalize">{l.lpn_type}</td>
                 <td className="px-4 py-3 text-muted">{l.location_name || "—"}</td>
@@ -174,11 +212,10 @@ function LpnCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const [location_id, setLocationId] = useState("");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
-  const [locations, setLocations] = useState<Location[]>([]);
-
-  useEffect(() => {
-    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
-  }, []);
+  const { data: locations = [] } = useQuery<Location[]>({
+    queryKey: ["locations", "lookup"],
+    queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,8 +228,8 @@ function LpnCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
       });
       addToast(`LPN ${data.lpn_number} created`, "success");
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error creating LPN", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error creating LPN"), "error");
     }
     setSaving(false);
   };
@@ -592,8 +629,8 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
       addToast(`Stock ${isLoad ? "loaded into" : "unloaded from"} ${lpn.lpn_number}`, "success");
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Operation failed", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Operation failed"), "error");
     }
     setSaving(false);
   };
@@ -740,7 +777,7 @@ function LpnMoveModal({ lpn, onClose, onSaved }: { lpn: LPN; onClose: () => void
       queryClient.invalidateQueries({ queryKey: ["products"] });
       onSaved();
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Move failed", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Move failed"), "error"),
   });
 
   return (

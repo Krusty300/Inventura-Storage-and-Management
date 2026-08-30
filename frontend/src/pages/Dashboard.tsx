@@ -1,5 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -13,6 +13,7 @@ import {
   ClipboardList,
   ShieldCheck,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend } from "recharts";
 import api from "../api/client";
 import type {
@@ -32,7 +33,7 @@ import type {
 } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { canUser } from "../utils/permissions";
-import { movementBadgeClass } from "../utils/statusBadges";
+import { movementBadgeClass, movementLabel } from "../utils/movementTypes";
 import { useSettings } from "../hooks/useSettings";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
@@ -41,30 +42,31 @@ import GlobalSearch from "../components/GlobalSearch";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ProgressBar from "../components/ProgressBar";
 import Skeleton from "../components/Skeleton";
+import AttachmentSection from "../components/AttachmentSection";
+import { errorMessage } from "../utils/errors";
 
 const TREND_OPTIONS = [7, 30, 90];
 
+const stale1m = 60 * 1000;
+
+async function safeGet<T>(url: string, params?: Record<string, string | number>): Promise<T | null> {
+  try {
+    const { data } = await api.get(url, { params });
+    return data as T;
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status && status >= 400 && status < 500) {
+      return null;
+    }
+    throw err;
+  }
+}
+
 export default function Dashboard() {
   const formatDate = useDateFormat();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [error, setError] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
-  const [trends, setTrends] = useState<StockMovementTrends | null>(null);
-  const [valuation, setValuation] = useState<InventoryValuation | null>(null);
-  const [salesStats, setSalesStats] = useState<SalesStats | null>(null);
-  const [exceptions, setExceptions] = useState<ExceptionsReport | null>(null);
-  const [stockoutRisk, setStockoutRisk] = useState<StockoutRisk | null>(null);
-  const [lpns, setLpns] = useState<PaginatedResponse<LPN> | null>(null);
-  const [receipts, setReceipts] = useState<PaginatedResponse<Receipt> | null>(null);
-  const [orderSummary, setOrderSummary] = useState<OrderSummary | null>(null);
-  const [profit, setProfit] = useState<ProfitAnalysis | null>(null);
-  const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
-  const [costReport, setCostReport] = useState<ManufacturingCostReport | null>(null);
-  const [overdueNotesCount, setOverdueNotesCount] = useState(0);
   const [trendDays, setTrendDays] = useState(30);
   const [topProductsDays, setTopProductsDays] = useState(30);
   const [riskLeadTime, setRiskLeadTime] = useState(7);
-  const [autoRefresh, setAutoRefresh] = useState(false);
   const [confirmReorder, setConfirmReorder] = useState(false);
   const [reordering, setReordering] = useState(false);
   const navigate = useNavigate();
@@ -72,96 +74,106 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const queryClient = useQueryClient();
 
-  const get = useCallback(async <T,>(url: string, config?: { params?: Record<string, string | number> }): Promise<T | null> => {
-    try {
-      const res = await api.get(url, config);
-      return res.data as T;
-    } catch {
-      return null;
-    }
-  }, []);
+  const statsQuery = useQuery({
+    queryKey: ["dashboard", "stats"],
+    queryFn: async () => (await api.get("/dashboard/stats")).data as DashboardStats,
+    refetchInterval: stale1m,
+  });
+  const stats = statsQuery.data;
 
-  const fetchStats = useCallback(async () => {
-    setError("");
-    setRefreshing(true);
-    try {
-      const statsRes = await api.get("/dashboard/stats");
-      setStats(statsRes.data);
-    } catch {
-      setError("Failed to load dashboard data");
-      addToast("Failed to load dashboard data", "error");
-      setRefreshing(false);
-      return;
-    }
-    const [salesData, valData, excData, lpnData, recData, ordData, profData, costData] = await Promise.all([
-      get<SalesStats>("/sales/stats"),
-      get<InventoryValuation>("/reports/inventory-valuation"),
-      get<ExceptionsReport>("/reports/exceptions"),
-      get<PaginatedResponse<LPN>>("/lpns?limit=20"),
-      get<PaginatedResponse<Receipt>>("/receipts?limit=20"),
-      get<OrderSummary>("/reports/order-summary"),
-      get<ProfitAnalysis>("/reports/profit-analysis"),
-      get<ManufacturingCostReport>("/costing/report"),
-    ]);
-    if (salesData === null || valData === null || excData === null || lpnData === null || recData === null || ordData === null || profData === null || costData === null) {
-      addToast("Some dashboard data failed to load", "error");
-    }
-    setSalesStats(salesData);
-    setValuation(valData);
-    setExceptions(excData);
-    setLpns(lpnData);
-    setReceipts(recData);
-    setOrderSummary(ordData);
-    setProfit(profData);
-    setCostReport(costData);
-    const overdueData = await get<number>("/notes/overdue-count");
-    setOverdueNotesCount(overdueData ?? 0);
-    setRefreshing(false);
-  }, [get, addToast]);
+  const salesQuery = useQuery({
+    queryKey: ["dashboard", "sales"],
+    queryFn: () => safeGet<SalesStats>("/sales/stats"),
+    refetchInterval: stale1m,
+  });
+  const salesStats = salesQuery.data;
 
-  const fetchRisk = useCallback(async () => {
-    const r = await get<StockoutRisk>("/reports/stockout-risk", { params: { lead_time_days: riskLeadTime } });
-    setStockoutRisk(r);
-  }, [get, riskLeadTime]);
+  const valuationQuery = useQuery({
+    queryKey: ["dashboard", "valuation"],
+    queryFn: () => safeGet<InventoryValuation>("/reports/inventory-valuation"),
+    refetchInterval: stale1m,
+  });
+  const valuation = valuationQuery.data;
 
-  const fetchTrends = useCallback(async () => {
-    const t = await get<StockMovementTrends>(`/reports/stock-movement-trends?days=${trendDays}`);
-    setTrends(t);
-  }, [get, trendDays]);
+  const exceptionsQuery = useQuery({
+    queryKey: ["dashboard", "exceptions"],
+    queryFn: () => safeGet<ExceptionsReport>("/reports/exceptions"),
+    refetchInterval: stale1m,
+  });
+  const exceptions = exceptionsQuery.data;
 
-  const fetchTopProducts = useCallback(async () => {
-    const start = new Date(Date.now() - topProductsDays * 86400000).toISOString().slice(0, 10);
-    const s = await get<SalesSummary>(`/reports/sales-summary?start_date=${start}`);
-    setSalesSummary(s);
-  }, [get, topProductsDays]);
+  const lpnsQuery = useQuery({
+    queryKey: ["dashboard", "lpns"],
+    queryFn: () => safeGet<PaginatedResponse<LPN>>("/lpns", { limit: 20 }),
+    refetchInterval: stale1m,
+  });
+  const lpns = lpnsQuery.data;
 
-  useEffect(() => { fetchStats(); }, [fetchStats]);
-  useEffect(() => { fetchRisk(); }, [fetchRisk]);
-  useEffect(() => { fetchTrends(); }, [fetchTrends]);
-  useEffect(() => { fetchTopProducts(); }, [fetchTopProducts]);
+  const receiptsQuery = useQuery({
+    queryKey: ["dashboard", "receipts"],
+    queryFn: () => safeGet<PaginatedResponse<Receipt>>("/receipts", { limit: 20 }),
+    refetchInterval: stale1m,
+  });
+  const receipts = receiptsQuery.data;
 
-  const refreshingRef = useRef(false);
-  useEffect(() => {
-    refreshingRef.current = refreshing;
-  }, [refreshing]);
+  const orderQuery = useQuery({
+    queryKey: ["dashboard", "orderSummary"],
+    queryFn: () => safeGet<OrderSummary>("/reports/order-summary"),
+    refetchInterval: stale1m,
+  });
+  const orderSummary = orderQuery.data;
 
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const id = setInterval(() => {
-      if (refreshingRef.current) return;
-      fetchStats();
-      fetchRisk();
-      fetchTrends();
-      fetchTopProducts();
-    }, 60000);
-    return () => clearInterval(id);
-  }, [autoRefresh, fetchStats, fetchRisk, fetchTrends, fetchTopProducts]);
+  const profitQuery = useQuery({
+    queryKey: ["dashboard", "profit"],
+    queryFn: () => safeGet<ProfitAnalysis>("/reports/profit-analysis"),
+    refetchInterval: stale1m,
+  });
+  const profit = profitQuery.data;
+
+  const costQuery = useQuery({
+    queryKey: ["dashboard", "costReport"],
+    queryFn: () => safeGet<ManufacturingCostReport>("/costing/report"),
+    refetchInterval: stale1m,
+  });
+  const costReport = costQuery.data;
+
+  const overdueQuery = useQuery({
+    queryKey: ["dashboard", "overdueNotes"],
+    queryFn: () => safeGet<number>("/notes/overdue-count"),
+    refetchInterval: stale1m,
+  });
+  const overdueNotesCount = overdueQuery.data ?? 0;
+
+  const riskQuery = useQuery({
+    queryKey: ["dashboard", "stockoutRisk", riskLeadTime],
+    queryFn: () => safeGet<StockoutRisk>("/reports/stockout-risk", { lead_time_days: riskLeadTime }),
+    staleTime: stale1m,
+  });
+  const stockoutRisk = riskQuery.data;
+
+  const trendsQuery = useQuery({
+    queryKey: ["dashboard", "trends", trendDays],
+    queryFn: () => safeGet<StockMovementTrends>("/reports/stock-movement-trends", { days: trendDays }),
+    staleTime: stale1m,
+  });
+  const trends = trendsQuery.data;
+
+  const topProductsQuery = useQuery({
+    queryKey: ["dashboard", "topProducts", topProductsDays],
+    queryFn: () => {
+      const start = new Date(Date.now() - topProductsDays * 86_400_000).toISOString().slice(0, 10);
+      return safeGet<SalesSummary>("/reports/sales-summary", { start_date: start });
+    },
+    staleTime: stale1m,
+  });
+  const salesSummary = topProductsQuery.data;
 
   const exportPdf = () => {
     api.get("/reports/dashboard/pdf", { params: { lead_time_days: riskLeadTime }, responseType: "blob" }).then(({ data }) => {
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }).catch(() => {
       addToast("Failed to export dashboard PDF", "error");
@@ -176,19 +188,19 @@ export default function Dashboard() {
       const { data } = await api.post("/orders/reorder-low-stock", { product_ids: ids });
       addToast(`Created ${data.length} purchase order(s) for ${ids.length} low-stock item(s)`, "success");
       setConfirmReorder(false);
-      fetchStats();
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       navigate("/orders");
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to create purchase order", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to create purchase order"), "error");
     }
     setReordering(false);
   };
 
-  if (error && !stats) {
+  if (statsQuery.isError && !stats) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>
-        <button onClick={fetchStats} className="btn-primary text-sm">Retry</button>
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load dashboard data</div>
+        <button onClick={() => statsQuery.refetch()} className="btn-primary text-sm">Retry</button>
       </div>
     );
   }
@@ -227,7 +239,7 @@ export default function Dashboard() {
     { label: "New QC", permission: "quality_checks.create", path: "/quality-checks", icon: ShieldCheck },
   ];
 
-  const inventoryCards = [
+  const inventoryCards: DashboardCard[] = [
     { label: "Active Products", value: stats.total_products, link: "/products" },
     {
       label: "Inventory Value",
@@ -245,7 +257,7 @@ export default function Dashboard() {
     { label: "Receipts", value: receipts?.total ?? 0, link: "/receiving", minRole: "manager" as const },
   ];
 
-  const fulfillmentCards = [
+  const fulfillmentCards: DashboardCard[] = [
     { label: "Open Shipments", value: stats.open_shipments ?? 0, link: "/shipments" },
     { label: "Pending Orders", value: pendingOrders, link: "/orders" },
     { label: "Pending ASNs", value: exceptions?.summary?.pending_asns ?? 0, link: "/asns", minRole: "manager" as const },
@@ -258,12 +270,12 @@ export default function Dashboard() {
     { label: "Overdue Notes", value: overdueNotesCount, link: "/notes", highlight: overdueNotesCount > 0 },
   ];
 
-  const manufacturingCards = [
+  const manufacturingCards: DashboardCard[] = [
     { label: "Open Work Orders", value: stats.open_work_orders ?? 0, link: "/work-orders", minRole: "manager" as const },
-    { label: "Pending QC", value: stats.pending_quality_checks ?? 0, link: "/quality-checks", minRole: "manager" as const },
+    { label: "Pending/Failed QC", value: stats.pending_quality_checks ?? 0, link: "/quality-checks", minRole: "manager" as const },
   ];
 
-  const businessCards = [
+  const businessCards: DashboardCard[] = [
     { label: "Orders", value: stats.total_orders, link: "/orders", minRole: "manager" as const },
     { label: "Categories", value: stats.total_categories, minRole: "manager" as const },
     { label: "Suppliers", value: stats.total_suppliers, minRole: "manager" as const },
@@ -274,6 +286,14 @@ export default function Dashboard() {
     if (!minRole || !user?.role) return true;
     return (ROLE_RANK[user.role] ?? 0) >= (ROLE_RANK[minRole] ?? 0);
   };
+
+  interface DashboardCard {
+    label: string;
+    value: string | number;
+    link?: string;
+    minRole?: string;
+    highlight?: boolean;
+  }
 
   const statSections = [
     { title: "Inventory", cards: inventoryCards, minRole: "manager" as const },
@@ -292,30 +312,21 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-ink">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-muted">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="rounded border-border-strong"
-            />
-            Auto-refresh (60s)
-          </label>
           <button onClick={exportPdf} className="btn-secondary inline-flex items-center gap-2" aria-label="Export dashboard PDF">
             pdf
           </button>
-          <button onClick={fetchStats} disabled={refreshing} className="btn-secondary" aria-label="Refresh dashboard">
-            {refreshing ? "refreshing…" : "refresh"}
+          <button onClick={() => queryClient.invalidateQueries({ queryKey: ["dashboard"] })} disabled={statsQuery.isFetching} className="btn-secondary" aria-label="Refresh dashboard">
+            {statsQuery.isFetching ? "refreshing…" : "refresh"}
           </button>
         </div>
       </div>
 
       <GlobalSearch />
 
-      {error && (
-        <div className="flex items-center justify-between bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          <span>{error}</span>
-          <button onClick={fetchStats} className="btn-secondary text-sm">Retry</button>
+      {statsQuery.isError && stats && (
+        <div role="alert" className="flex items-center justify-between bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          <span>Some dashboard data failed to load</span>
+          <button onClick={() => queryClient.invalidateQueries({ queryKey: ["dashboard"] })} className="btn-secondary text-sm">Retry</button>
         </div>
       )}
 
@@ -336,6 +347,11 @@ export default function Dashboard() {
               </button>
             ))}
         </div>
+      </div>
+
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-4">Documents</h2>
+        <AttachmentSection entityType="dashboard" entityId={0} canEdit={canUser(user, "dashboard.view")} />
       </div>
 
       {riskSummary && hasMinRole("manager") && (
@@ -379,7 +395,7 @@ export default function Dashboard() {
 
       {statSections.map((section) => {
         if (!hasMinRole(section.minRole)) return null;
-        const visibleCards = section.cards.filter((c) => hasMinRole((c as any).minRole));
+        const visibleCards = section.cards.filter((c) => hasMinRole(c.minRole));
         if (visibleCards.length === 0) return null;
         return (
           <div key={section.title} className="space-y-3">
@@ -389,10 +405,10 @@ export default function Dashboard() {
                 <div
                   key={card.label}
                   onClick={() => card.link && navigate(card.link)}
-                  className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""} ${(card as any).highlight ? "border-l-4 border-l-red-500" : ""}`}
+                  className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""} ${card.highlight ? "border-l-4 border-l-red-500" : ""}`}
                 >
                   <p className="text-sm text-muted">{card.label}</p>
-                  <p className={`text-2xl font-bold mt-1 ${(card as any).highlight ? "text-red-600 dark:text-red-400" : ""}`}>{card.value}</p>
+                  <p className={`text-2xl font-bold mt-1 ${card.highlight ? "text-red-600 dark:text-red-400" : ""}`}>{card.value}</p>
                 </div>
               ))}
             </div>
@@ -601,7 +617,7 @@ export default function Dashboard() {
                     <ArrowDownRight className="text-red-500" size={16} />
                   )}
                   <span className="font-medium">{m.product_name}</span>
-                  <span className={`badge ${movementBadgeClass(m.movement_type)}`}>{m.movement_type}</span>
+                  <span className={`badge ${movementBadgeClass(m.movement_type)}`}>{movementLabel(m.movement_type)}</span>
                 </div>
                 <span className={m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
                   {m.quantity_change > 0 ? "+" : ""}
@@ -824,7 +840,7 @@ export default function Dashboard() {
         {hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Pending Quality Checks</h2>
+            <h2 className="text-lg font-semibold">Quality Checks to Process</h2>
             <button onClick={() => navigate("/quality-checks")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
           </div>
           {stats.quality_checks_to_process.length > 0 ? (
@@ -835,12 +851,12 @@ export default function Dashboard() {
                     <span className="font-medium">{q.qc_number}</span>
                     <span className="text-muted ml-2">{q.product_name}</span>
                   </div>
-                  <span className="text-amber-600 dark:text-amber-400 font-medium">{q.result}</span>
+                  <span className={`font-medium ${q.result === "pending" ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>{q.result}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No pending quality checks</p>
+            <p className="text-muted text-sm py-16 text-center">No pending or failed quality checks</p>
           )}
         </div>
         )}

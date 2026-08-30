@@ -3,6 +3,7 @@ import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useQuery } from "@tanstack/react-query";
 import { Shield, ShieldOff, ShieldCheck } from "lucide-react";
 import api from "../api/client";
+import Skeleton from "./Skeleton";
 import Modal from "./Modal";
 import type { PaginatedResponse, User } from "../types";
 import { statusBadge } from "../utils/statusBadges";
@@ -78,7 +79,7 @@ export default function UserDetail({ user, onClose }: Props) {
         <div className="pt-4 border-t border-border">
           <h3 className="text-base font-semibold text-ink mb-3">Recent Activity</h3>
           {isLoading ? (
-            <p className="text-muted py-2">Loading activity...</p>
+            <Skeleton variant="rows" rows={3} cols={3} />
           ) : logs.length === 0 ? (
             <p className="text-muted py-2">No activity recorded for this user.</p>
           ) : (

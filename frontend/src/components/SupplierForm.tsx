@@ -3,6 +3,7 @@ import api from "../api/client";
 import type { Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
 import Modal from "./Modal";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   supplier: Supplier | null;
@@ -54,8 +55,8 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
         addToast("Supplier created", "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving supplier", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error saving supplier"), "error");
     }
     setSaving(false);
   };
@@ -63,7 +64,7 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
   const field = (label: string, key: string) => (
     <div>
       <label className="block text-sm font-medium text-ink mb-1">{label}</label>
-      <input className="input" value={(form as any)[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required={key === "name"} />
+      <input className="input" value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required={key === "name"} />
     </div>
   );
 

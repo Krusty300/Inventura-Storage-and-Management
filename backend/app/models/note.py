@@ -63,6 +63,7 @@ class NoteLink(Base):
     note_id: Mapped[int] = mapped_column(Integer, ForeignKey("notes.id", ondelete="CASCADE"), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
     entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_label: Mapped[str] = mapped_column(String(200), default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     note = relationship("Note", back_populates="links")

@@ -35,7 +35,7 @@ describe("Profile Page", () => {
   it("renders account info and active sessions", async () => {
     renderWithProviders(<Profile />);
     expect(await screen.findByText("tester@example.com")).toBeInTheDocument();
-    expect(screen.getByText("Chrome")).toBeInTheDocument();
+    expect(await screen.findByText("Chrome")).toBeInTheDocument();
     expect(screen.getByText("Safari")).toBeInTheDocument();
     expect(screen.getByText("This device")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Upload Avatar/ })).toBeInTheDocument();
@@ -79,6 +79,7 @@ describe("Profile Page", () => {
     const inputs = document.querySelectorAll<HTMLInputElement>('input[type="password"]');
     fireEvent.change(inputs[0], { target: { value: "oldpass1" } });
     fireEvent.change(inputs[1], { target: { value: "newpass123" } });
+    fireEvent.change(inputs[2], { target: { value: "newpass123" } });
     fireEvent.click(submit);
     await waitFor(() => expect(putMock).toHaveBeenCalledWith("/users/password/change", {
       current_password: "oldpass1",

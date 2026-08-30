@@ -5,6 +5,8 @@ import api from "../api/client";
 import type { Supplier, Category } from "../types";
 import { errorMessage } from "../utils/errors";
 
+const sectionLabel = "text-xs font-semibold uppercase tracking-widest text-faint";
+
 interface Props {
   ids: number[];
   onClose: () => void;
@@ -41,45 +43,50 @@ export default function BulkEditModal({ ids, onClose, onSaved }: Props) {
       if (reorderLevel !== "") body.reorder_level = parseInt(reorderLevel);
       await api.patch("/products/bulk-edit", body);
       onSaved();
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(errorMessage(err, "Bulk edit failed"));
     }
     setSubmitting(false);
   };
 
   return (
-    <Modal open onClose={onClose} title={`Edit ${ids.length} Product(s)`}>
-      <div className="space-y-4">
-        <p className="text-sm text-muted">Only fields you change will be updated.</p>
-
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-          <select className="select" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-            <option value="">— No change —</option>
-            {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+    <Modal open onClose={onClose} title={`Edit ${ids.length} Product(s)`} wide>
+      <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+        <div className="border-b border-border px-6 py-4">
+          <p className={sectionLabel}>Bulk Edit</p>
+          <h3 className="text-lg font-bold text-ink mt-0.5 tracking-tight">Edit {ids.length} Product(s)</h3>
+          <p className="text-sm text-muted">Only fields you change will be updated.</p>
         </div>
+        <div className="space-y-5 px-6 py-5">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
+            <select className="select" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <option value="">— No change —</option>
+              {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Category</label>
-          <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">— No change —</option>
-            {(categories || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Category</label>
+            <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <option value="">— No change —</option>
+              {(categories || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Reorder Level</label>
-          <input type="number" min={0} className="input" placeholder="— No change —" value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} />
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Reorder Level</label>
+            <input type="number" min={0} className="input" placeholder="— No change —" value={reorderLevel} onChange={(e) => setReorderLevel(e.target.value)} />
+          </div>
 
-        {error && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
+          {error && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>
-          <button onClick={handleSubmit} disabled={!hasChanges || submitting} className="btn-primary text-sm px-3 py-1.5">
-            {submitting ? "Saving..." : `Update ${ids.length} Product(s)`}
-          </button>
+          <div className="flex gap-2 justify-end pt-2 border-t border-border">
+            <button onClick={onClose} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>
+            <button onClick={handleSubmit} disabled={!hasChanges || submitting} className="btn-primary text-sm px-3 py-1.5">
+              {submitting ? "Saving..." : `Update ${ids.length} Product(s)`}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>

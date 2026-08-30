@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -6,7 +6,7 @@ from app.models.notification import Notification
 from app.models.product import Product
 from app.models.settings import Settings
 from app.models.user import User
-from app.utils import broadcast_change
+from app.utils import broadcast_change_user
 
 
 def _get_settings(db: Session) -> Settings:
@@ -14,23 +14,36 @@ def _get_settings(db: Session) -> Settings:
     if not s:
         s = Settings(store_name="My Store", currency_symbol="$")
         db.add(s)
-        db.commit()
+        db.flush()
         db.refresh(s)
     return s
 
 
 def create_notification(db: Session, user_id: int, title: str, message: str = "", type: str = "info", link: str = "") -> Notification:
-    n = Notification(user_id=user_id, title=title, message=message, type=type, link=link)
+    n = Notification(
+        user_id=user_id, title=title, message=message, type=type, link=link,
+        # Set explicitly: existing SQLite tables predate server_default and
+        # have no DEFAULT clause, leaving created_at NULL otherwise.
+        created_at=datetime.now(timezone.utc),
+    )
     db.add(n)
-    broadcast_change("notification", "created")
+    broadcast_change_user(user_id, "notification", "created")
     return n
 
 
-def notify_admins(db: Session, title: str, message: str = "", type: str = "info", link: str = "") -> list[Notification]:
-    from app.services.permissions import has_permission
+def _admin_users(db: Session, *, exclude_user_id: int | None = None):
     admins = db.query(User).filter(User.is_active == True, User.role.in_(["admin", "manager"])).all()
+    if exclude_user_id is None:
+        return admins
+    filtered = [a for a in admins if a.id != exclude_user_id]
+    # If the actor is the only eligible admin, keep them so at least one
+    # recipient always gets the notification (single-admin installs).
+    return filtered if filtered else admins
+
+
+def notify_admins(db: Session, title: str, message: str = "", type: str = "info", link: str = "", exclude_user_id: int | None = None) -> list[Notification]:
     created = []
-    for admin in admins:
+    for admin in _admin_users(db, exclude_user_id=exclude_user_id):
         created.append(create_notification(db, admin.id, title, message, type, link))
     return created
 
@@ -58,7 +71,7 @@ def notify_low_stock(db: Session, product: Product) -> list[Notification]:
         return []
     title = f"Low stock: {product.display_name}"
     created = []
-    for admin in db.query(User).filter(User.is_active == True, User.role.in_(["admin", "manager"])).all():
+    for admin in _admin_users(db):
         already = db.query(Notification).filter(
             Notification.user_id == admin.id,
             Notification.type == "warning",
@@ -84,22 +97,30 @@ def notify_expiring(db: Session, product: Product) -> list[Notification]:
     today = date.today()
     days_left = (product.expiry_date - today).days
     if days_left < 0:
-        return notify_admins(
-            db,
-            f"Expired stock: {product.display_name}",
-            f"Batch {product.batch_number or '—'} expired on {product.expiry_date.isoformat()}.",
-            type="warning",
-            link="/products",
-        )
-    if days_left <= s.expiry_warning_days:
-        return notify_admins(
-            db,
-            f"Expiring soon: {product.display_name}",
-            f"Batch {product.batch_number or '—'} expires in {days_left} day(s).",
-            type="warning",
-            link="/products",
-        )
-    return []
+        title = f"Expired stock: {product.display_name}"
+        message = f"Batch {product.batch_number or '—'} expired on {product.expiry_date.isoformat()}."
+        link = "/products"
+    elif days_left <= s.expiry_warning_days:
+        title = f"Expiring soon: {product.display_name}"
+        message = f"Batch {product.batch_number or '—'} expires in {days_left} day(s)."
+        link = "/products"
+    else:
+        return []
+    created = []
+    for admin in _admin_users(db):
+        already = db.query(Notification).filter(
+            Notification.user_id == admin.id,
+            Notification.type == "warning",
+            Notification.title == title,
+            Notification.is_read == False,  # noqa: E712
+        ).first()
+        if already:
+            continue
+        created.append(create_notification(
+            db, admin.id, title, message,
+            type="warning", link=link,
+        ))
+    return created
 
 
 def notify_lot_expired(db: Session, lot) -> list[Notification]:
@@ -114,7 +135,7 @@ def notify_lot_expired(db: Session, lot) -> list[Notification]:
         f"and was marked expired."
     )
     created = []
-    for admin in db.query(User).filter(User.is_active == True, User.role.in_(["admin", "manager"])).all():
+    for admin in _admin_users(db):
         already = db.query(Notification).filter(
             Notification.user_id == admin.id,
             Notification.type == "warning",

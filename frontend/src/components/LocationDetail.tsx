@@ -12,6 +12,7 @@ import { useSettings } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import Skeleton from "./Skeleton";
+import { errorMessage } from "../utils/errors";
 
 interface LocationDetailData {
   location: Location;
@@ -115,7 +116,7 @@ export default function LocationDetail({ location, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot update lot", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot update lot"), "error"),
   });
 
   const releaseSerialMutation = useMutation({
@@ -128,7 +129,7 @@ export default function LocationDetail({ location, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot release serial"), "error"),
   });
 
   const releaseReservedSerialMutation = useMutation({
@@ -142,7 +143,7 @@ export default function LocationDetail({ location, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["work-orders"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot release serial"), "error"),
   });
 
   const { data: detail, isLoading } = useQuery({
@@ -166,11 +167,14 @@ export default function LocationDetail({ location, onClose }: Props) {
   const stockLines = detail?.stock_lines || [];
   const lpns = detail?.lpns || [];
   const serials = detail?.serials || [];
+  const availableSerials = serials.filter((s) => s.status === "in_stock" || s.status === "quarantined");
+  const reservedSerials = serials.filter((s) => s.status === "reserved");
   const scrappedSerials = detail?.scrapped_serials || [];
   const movements = detail?.movements || [];
   const logs = activity?.items || [];
-  const totalStockQty = stockLines.reduce((sum, sl) => sum + sl.quantity, 0) + serials.length;
-  const totalStockValue = stockLines.reduce((sum, sl) => sum + sl.value, 0) + serials.reduce((sum, s) => sum + s.value, 0);
+  const totalStockQty = stockLines.reduce((sum, sl) => sum + sl.quantity, 0) + availableSerials.length;
+  const totalStockValue = stockLines.reduce((sum, sl) => sum + sl.value, 0) + availableSerials.reduce((sum, s) => sum + s.value, 0);
+  const lotCount = new Set(stockLines.filter((sl) => sl.lot_id).map((sl) => sl.lot_id)).size;
 
   return (
     <Modal open onClose={onClose} title={location.path} xwide>
@@ -215,8 +219,13 @@ export default function LocationDetail({ location, onClose }: Props) {
           <div className="flex items-center gap-1.5 text-xs text-muted">
             <span className="font-medium text-ink">{lpns.length}</span> LPNs
           </div>
+          {lotCount > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-muted">
+              <span className="font-medium text-ink">{lotCount}</span> lot{lotCount !== 1 ? "s" : ""}
+            </div>
+          )}
           <div className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="font-medium text-ink">{serials.length}</span> serials
+            <span className="font-medium text-ink">{serials.length}</span> serials{reservedSerials.length > 0 ? <span className="text-amber-600 dark:text-amber-400">({reservedSerials.length} reserved)</span> : null}
           </div>
           <div className="ml-auto text-xs text-muted">
             Value: <span className="font-medium text-ink">{formatCurrency(totalStockValue, currencySymbol)}</span>
@@ -245,7 +254,7 @@ export default function LocationDetail({ location, onClose }: Props) {
               <>
             {stockLines.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Bulk stock ({stockLines.length} lines, {totalStockQty} units)</p>
+                <p className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Bulk stock ({stockLines.length} lines, {stockLines.reduce((sum, sl) => sum + sl.quantity, 0)} units)</p>
                 <div className="overflow-x-auto max-h-72 overflow-y-auto border border-border rounded-lg">
                   <table className="w-full text-sm" role="grid" aria-label="Stock at location">
                     <thead>

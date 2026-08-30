@@ -7,6 +7,8 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from sqlalchemy import update
+
 from app.config import settings
 from app.database import get_db
 from app.models.session import UserSession
@@ -57,8 +59,10 @@ def get_current_user(
             raise HTTPException(status_code=401, detail="Invalid token")
         now = datetime.now(timezone.utc)
         if session.last_seen_at is None or (now - session.last_seen_at).total_seconds() > LAST_SEEN_REFRESH_SECONDS:
-            session.last_seen_at = now
-            db.commit()
+            db.execute(
+                update(UserSession).where(UserSession.jti == jti).values(last_seen_at=now),
+                execution_options={"synchronize_event": False},
+            )
     user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")

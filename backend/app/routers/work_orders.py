@@ -85,7 +85,7 @@ def _issue_component(db: Session, wo: WorkOrder, item: WorkOrderItem, quantity: 
                 product_id=item.product_id,
                 user_id=user_id,
                 quantity_change=-1,
-                movement_type=inventory.ISSUE,
+                movement_type=inventory.BACKFLUSH,
                 from_location_id=serial.location_id,
                 to_location_id=wo.wip_location_id,
                 lot_id=serial.lot_id,
@@ -104,7 +104,7 @@ def _issue_component(db: Session, wo: WorkOrder, item: WorkOrderItem, quantity: 
             product_id=item.product_id,
             user_id=user_id,
             quantity_change=-take,
-            movement_type=inventory.ISSUE,
+            movement_type=inventory.BACKFLUSH,
             from_location_id=source_location,
             to_location_id=wo.wip_location_id,
             lot_id=lot_id,
@@ -132,7 +132,7 @@ def _revert_component_issues(db: Session, wo: WorkOrder, user_id: int) -> int:
         .filter(
             StockMovement.reference_type == "work_order",
             StockMovement.reference == wo.wo_number,
-            StockMovement.movement_type == inventory.ISSUE,
+            StockMovement.movement_type.in_([inventory.ISSUE, inventory.BACKFLUSH]),
         )
         .order_by(StockMovement.id.desc())
         .all()
@@ -172,7 +172,7 @@ def _consume_issued_serials(db: Session, wo: WorkOrder) -> int:
         .filter(
             StockMovement.reference_type == "work_order",
             StockMovement.reference == wo.wo_number,
-            StockMovement.movement_type == inventory.ISSUE,
+            StockMovement.movement_type.in_([inventory.ISSUE, inventory.BACKFLUSH]),
             StockMovement.serial_id.isnot(None),
         )
         .all()
@@ -183,7 +183,18 @@ def _consume_issued_serials(db: Session, wo: WorkOrder) -> int:
         if serial is None or serial.product_id != m.product_id:
             continue
         if serial.status in (inventory.SERIAL_STATUS_RESERVED, inventory.SERIAL_STATUS_INACTIVE):
-            serial.status = inventory.SERIAL_STATUS_CONSUMED
+            inventory.post_journal_entry(
+                db,
+                product_id=m.product_id,
+                user_id=wo.created_by,
+                quantity_change=-1,
+                movement_type=inventory.CONSUME,
+                from_location_id=wo.wip_location_id,
+                serial_id=serial.id,
+                reference_type="work_order",
+                reference=wo.wo_number,
+                notes=f"Consumed by {wo.wo_number}",
+            )
             consumed += 1
     return consumed
 
@@ -240,7 +251,7 @@ def _register_output_serials(db: Session, wo: WorkOrder, data: WorkOrderComplete
             raise inventory.InventoryError(f"Serial number '{sn}' is already registered for '{wo.product.display_name}'")
     created: list[SerialNumber] = []
     for sn in serials:
-        serial = SerialNumber(product_id=wo.product_id, serial_number=sn, status="in_stock", lot_id=lot.id if lot else None)
+        serial = SerialNumber(product_id=wo.product_id, serial_number=sn, status="in_stock", lot_id=lot.id if lot else None, location_id=data.receive_location_id)
         db.add(serial)
         db.flush()
         created.append(serial)
@@ -509,12 +520,9 @@ def complete_work_order(wo_id: int, data: WorkOrderComplete, db: Session = Depen
         raise HTTPException(status_code=400, detail="Work order must be released or in progress to complete")
     get_or_404(Location, data.receive_location_id, db)
     received_qty = data.received_qty if data.received_qty is not None else wo.quantity
+    if received_qty > wo.quantity:
+        raise HTTPException(status_code=400, detail="Received quantity cannot exceed the work order quantity")
     try:
-        if data.backflush:
-            for item in wo.items:
-                remaining = item.quantity_required - item.quantity_issued
-                if remaining > 0:
-                    _issue_component(db, wo, item, remaining, user.id)
         lot = None
         if data.lot_number and data.lot_number.strip():
             lot = Lot(product_id=wo.product_id, lot_number=data.lot_number.strip(), status="in_stock")

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, AlertTriangle, Info, PackageCheck } from "lucide-react";
+import { Bell, CheckCheck, AlertTriangle, Info, PackageCheck, X, ArrowRight } from "lucide-react";
 import api from "../api/client";
 import type { Notification } from "../types";
 import { useRealtime } from "../context/RealtimeContext";
+import { useToast } from "../context/ToastContext";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
+import { errorMessage } from "../utils/errors";
 
 const typeIcon: Record<string, typeof Info> = {
   warning: AlertTriangle,
@@ -20,6 +22,7 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const { subscribe } = useRealtime();
+  const { addToast } = useToast();
   const formatDateTime = useDateTimeFormat();
 
   const load = useCallback(async (withItems: boolean) => {
@@ -28,7 +31,7 @@ export default function NotificationBell() {
       setUnread(count);
       if (withItems) {
         const { data } = await api.get("/notifications", { params: { limit: 20 } });
-        setItems(data);
+        setItems(data.items);
       }
     } catch {
       // ignore
@@ -66,17 +69,38 @@ export default function NotificationBell() {
   }, []);
 
   const markAllRead = async () => {
-    await api.put("/notifications/read-all");
-    setUnread(0);
-    setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    try {
+      await api.put("/notifications/read-all");
+      setUnread(0);
+      setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to mark all as read"), "error");
+    }
   };
+
   const openNotification = async (n: Notification) => {
     setOpen(false);
     if (!n.is_read) {
-      await api.put(`/notifications/${n.id}/read`);
-      setUnread((u) => Math.max(0, u - 1));
+      try {
+        await api.put(`/notifications/${n.id}/read`);
+        setUnread((u) => Math.max(0, u - 1));
+      } catch (err: unknown) {
+        addToast(errorMessage(err, "Failed to update notification"), "error");
+        return;
+      }
     }
     if (n.link) navigate(n.link);
+  };
+
+  const dismiss = async (e: React.MouseEvent, n: Notification) => {
+    e.stopPropagation();
+    try {
+      await api.delete(`/notifications/${n.id}`);
+      setItems((prev) => prev.filter((x) => x.id !== n.id));
+      if (!n.is_read) setUnread((u) => Math.max(0, u - 1));
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to dismiss notification"), "error");
+    }
   };
 
   return (
@@ -126,31 +150,49 @@ export default function NotificationBell() {
           {items.length === 0 ? (
             <p className="px-4 py-8 text-sm text-muted text-center">No notifications</p>
           ) : (
-            <div className="divide-y divide-border">
-              {items.map((n) => {
-                const Icon = typeIcon[n.type] || Info;
-                return (
-                  <button
-                    key={n.id}
-                    onClick={() => openNotification(n)}
-                    className={`w-full text-left px-4 py-3 hover:bg-app flex gap-3 ${n.is_read ? "opacity-70" : ""}`}
-                  >
-                    <Icon
-                      size={16}
-                      className={n.type === "warning" ? "text-amber-500 mt-0.5" : "text-emerald-500 mt-0.5"}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-ink truncate">{n.title}</p>
-                      {n.message && <p className="text-xs text-muted truncate">{n.message}</p>}
-                      <p className="text-[10px] text-faint mt-0.5">
-                        {formatDateTime(n.created_at)}
-                      </p>
+            <>
+              <div className="divide-y divide-border">
+                {items.map((n) => {
+                  const Icon = typeIcon[n.type] || Info;
+                  return (
+                    <div
+                      key={n.id}
+                      className={`group flex w-full text-left px-4 py-3 hover:bg-app gap-3 cursor-pointer ${n.is_read ? "opacity-70" : ""}`}
+                      onClick={() => openNotification(n)}
+                    >
+                      <Icon
+                        size={16}
+                        className={n.type === "warning" ? "text-amber-500 mt-0.5" : "text-emerald-500 mt-0.5"}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-ink truncate">{n.title}</p>
+                        {n.message && <p className="text-xs text-muted truncate">{n.message}</p>}
+                        <p className="text-[10px] text-faint mt-0.5">
+                          {formatDateTime(n.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={(e) => dismiss(e, n)}
+                          className="p-1 rounded text-faint hover:text-red-600 hover:bg-subtle"
+                          aria-label={`Dismiss ${n.title}`}
+                          title="Dismiss"
+                        >
+                          <X size={14} />
+                        </button>
+                        {!n.is_read && <span className="w-2 h-2 bg-indigo-500 rounded-full" />}
+                      </div>
                     </div>
-                    {!n.is_read && <span className="w-2 h-2 bg-indigo-500 rounded-full ml-auto mt-1.5" />}
-                  </button>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => { setOpen(false); navigate("/notifications"); }}
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-border text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-app"
+              >
+                View all <ArrowRight size={14} />
+              </button>
+            </>
           )}
         </div>
       )}

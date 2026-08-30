@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class OrderItemCreate(BaseModel):
@@ -14,6 +14,12 @@ class OrderCreate(BaseModel):
     supplier_id: Optional[int] = None
     notes: str = ""
     items: list[OrderItemCreate]
+
+    @model_validator(mode="after")
+    def _validate_items_not_empty(self):
+        if not self.items:
+            raise ValueError("Order must contain at least one item")
+        return self
 
 
 class OrderUpdate(BaseModel):

@@ -186,7 +186,7 @@ describe("OrderDetail receive", () => {
     await vi.waitFor(() => expect(queryClient.getQueryState(["locations", "order-picker"])?.status).toBe("success"));
     fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Main Warehouse" } });
     await vi.waitFor(() => expect(queryClient.getQueryState(["lpns", "by-location", 5])?.status).toBe("success"));
-    expect((screen.getByLabelText("LPN for Widget") as HTMLInputElement).value).toBe("LPN-1001");
+    await vi.waitFor(() => expect((screen.getByLabelText("LPN for Widget") as HTMLInputElement).value).toBe("LPN-1001"));
     fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
     await vi.waitFor(() => {
       expect(putMock).toHaveBeenCalledWith("/orders/1", {

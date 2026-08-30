@@ -1,19 +1,22 @@
-"""Comprehensive seed script for the Inventory Management System.
+"""Comprehensive seed script for the Inventory Management System
+(Kenyan market edition - all prices in Kenyan Shillings, KSh).
 
 Run from the backend directory:
     python seed.py
 
 Wipes existing data and inserts realistic demo data across every entity:
 users, settings, locations (two buildings, aisles A-F + north annex), a
-20-category product tree, 12 suppliers (with lead times), customers,
-~96 products (incl. variants, serialized items and manufactured bundles),
-lot-tracked beverages (incl. expired/quarantined/sold lots), serial numbers
-(every lifecycle status for two serialized products), LPNs, purchase orders,
-receipts, ASNs, cycle counts (all statuses incl. variances), sales (incl.
-refunds), stock movements, notifications, activity logs, document sequences,
-BOMs, work orders (every status incl. serialized + genealogy manufacturing),
-quality checks, lot genealogy links, and shipments across the full
-picking/packing/shipping lifecycle (incl. shipment->invoice).
+20-category product tree, 12 Kenyan suppliers (with lead times), Kenyan
+customers, ~96 products (incl. variants, serialized items and manufactured
+bundles), lot-tracked beverages (incl. expired/quarantined/sold lots), serial
+numbers (every lifecycle status for two serialized products), LPNs, purchase
+orders, receipts, ASNs, cycle counts (all statuses incl. variances), sales
+(incl. refunds, M-Pesa payment methods), stock movements, notifications,
+activity logs, document sequences, BOMs, work orders (every status incl.
+serialized + genealogy manufacturing), quality checks, lot genealogy links,
+shipments across the full picking/packing/shipping lifecycle (incl.
+shipment->invoice), plus price lists, promotions, sales channels, customer
+groups and notes.
 
 Stock is always posted through inventory.post_journal_entry so the ledger,
 stock_lines and product.quantity stay consistent, and sales flow through
@@ -36,6 +39,11 @@ from app.models import (
     WorkOrder, WorkOrderItem,
 )
 from app.models.activity_log import ActivityLog
+from app.models.customer_group import CustomerGroup
+from app.models.note import Note, NoteTag, NoteTagLink, NoteLink, NoteTemplate
+from app.models.price_list import PriceList, PriceListItem
+from app.models.promotion import Promotion
+from app.models.sales_channel import SalesChannel
 from app.models.settings import Settings
 from app.services import inventory
 from app.services.auth import hash_password
@@ -45,6 +53,13 @@ random.seed(42)
 
 
 def wipe_all(db):
+    db.execute(text("PRAGMA foreign_keys=OFF"))
+    db.query(NoteTagLink).delete()
+    db.query(NoteLink).delete()
+    db.query(Note).delete()
+    db.query(NoteTag).delete()
+    db.query(NoteTemplate).delete()
+    db.query(Promotion).delete()
     db.query(StockMovement).delete()
     db.query(StockLine).delete()
     db.query(LotLink).delete()
@@ -66,8 +81,10 @@ def wipe_all(db):
     db.query(Shipment).delete()
     db.query(SaleItem).delete()
     db.query(Sale).delete()
+    db.query(SalesChannel).delete()
     db.query(OrderItem).delete()
     db.query(Order).delete()
+    db.query(PriceListItem).delete()
     db.query(Product).delete()
     db.query(Location).delete()
     db.query(Notification).delete()
@@ -75,6 +92,8 @@ def wipe_all(db):
     db.query(Customer).delete()
     db.query(Supplier).delete()
     db.query(Category).delete()
+    db.query(CustomerGroup).delete()
+    db.query(PriceList).delete()
     db.query(DocumentSequence).delete()
     db.query(Settings).delete()
     db.query(UserSession).delete()
@@ -84,6 +103,7 @@ def wipe_all(db):
     except Exception:
         pass
     db.commit()
+    db.execute(text("PRAGMA foreign_keys=ON"))
 
 
 def days_ago(n, hour=10, minute=0):
@@ -119,16 +139,16 @@ def _post(db, user, product, qty, mtype, ts, to_loc=None, from_loc=None,
 
 def create_users(db):
     users = [
-        User(username="admin", email="admin@inventory.com",
-             password_hash=hash_password("admin123"), role="admin", created_at=days_ago(45)),
-        User(username="michael", email="michael@inventory.com",
-             password_hash=hash_password("worker123"), role="worker", created_at=days_ago(40)),
-        User(username="sarah", email="sarah@inventory.com",
-             password_hash=hash_password("worker123"), role="worker", created_at=days_ago(35)),
-        User(username="david", email="david@inventory.com",
-             password_hash=hash_password("worker123"), role="worker", created_at=days_ago(30)),
-        User(username="jessica", email="jessica@inventory.com",
-             password_hash=hash_password("worker123"), role="worker", created_at=days_ago(15)),
+        User(username="admin", email="admin@jumboinventory.co.ke",
+             password_hash=hash_password("admin123"), role="admin", is_approved=True, created_at=days_ago(45)),
+        User(username="james", email="james@jumboinventory.co.ke",
+             password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(40)),
+        User(username="wanjiku", email="wanjiku@jumboinventory.co.ke",
+             password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(35)),
+        User(username="otieno", email="otieno@jumboinventory.co.ke",
+             password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(30)),
+        User(username="amina", email="amina@jumboinventory.co.ke",
+             password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(15)),
     ]
     db.add_all(users)
     db.commit()
@@ -139,26 +159,26 @@ def create_users(db):
 
 def create_settings(db):
     s = Settings(
-        store_name="Joey's Inventory",
-        address="123 Main Street, Springfield",
-        phone="555-0100",
-        email="store@inventory.com",
-        currency_symbol="$",
-        tax_rate=7.5,
+        store_name="Jumbo Inventory Store",
+        address="Industrial Area, Nairobi, Kenya",
+        phone="+254 722 123 456",
+        email="info@jumboinventory.co.ke",
+        currency_symbol="KSh",
+        currency_code="KES",
+        tax_rate=16.0,
         default_reorder_level=10,
         expiry_warning_days=30,
         low_stock_alerts=True,
         expiry_alerts=True,
         shipment_prefix="SHP",
         work_order_prefix="WO",
-        sale_prefix="SALE",
         invoice_prefix="INV",
         po_prefix="PO",
         require_qc_before_ship=False,
         auto_allocate_stock=False,
         enforce_fefo=True,
         default_costing_method="weighted_average",
-        fiscal_year_start_month=1,
+        fiscal_year_start_month=7,
         default_items_per_page=50,
         date_format="YYYY-MM-DD",
     )
@@ -271,30 +291,30 @@ def create_categories(db):
 
 def create_suppliers(db):
     data = [
-        ("TechSource Distribution", "Karen Liu", "sales@techsource.example", "555-0101",
-         "1200 Commerce Way, Portland, OR", "Electronics wholesaler, ships nationwide.", 7, True),
-        ("GlobalOffice Partners", "Robert Chen", "orders@globaloffice.example", "555-0102",
-         "88 Business Park Dr, Austin, TX", "Office supplies with bulk discounts.", 5, True),
-        ("Beverage Wholesale Co", "Maria Gomez", "hello@beveragewholesale.example", "555-0103",
-         "450 Harbor Blvd, Seattle, WA", "Local distributor for coffee and drinks.", 3, True),
-        ("CleanSupplies Ltd", "David Okafor", "contact@cleansupplies.example", "555-0104",
-         "12 Industrial Rd, Chicago, IL", "Janitorial supplies and hygiene products.", 4, True),
-        ("ACME Paper Co", "Helen Zhang", "info@acmepaper.example", "555-0105",
-         "300 Mill Street, Dayton, OH", "Paper and packaging specialist.", 6, True),
-        ("Sunrise Electronics", "Tom Nakamura", "sales@sunriseelec.example", "555-0106",
-         "77 Tech Park Ave, San Jose, CA", "Components and consumer electronics.", 9, True),
-        ("PrimeData Systems", "Alice Foster", "b2b@primedata.example", "555-0107",
-         "55 Innovation Ct, Denver, CO", "IT equipment and peripherals.", 8, True),
-        ("DrinksDirect", "Omar Haddad", "support@drinksdirect.example", "555-0108",
-         "909 Canopy St, Miami, FL", "Soft drinks and energy beverages.", 4, True),
-        ("NexusGear Components", "Priya Patel", "orders@nexusgear.example", "555-0109",
-         "210 Circuit Blvd, Austin, TX", "Cables, storage and networking gear.", 6, True),
-        ("PackRight Supplies", "Luis Mendes", "sales@packright.example", "555-0110",
-         "77 Box Lane, Columbus, OH", "Packaging and mailroom essentials.", 5, True),
-        ("SnackLine Foods", "Emily Tran", "orders@snackline.example", "555-0111",
-         "430 Cracker Rd, Denver, CO", "Snack and vending distribution.", 4, True),
-        ("Quantum Manufacturing", "Greg Hale", "hello@quantummfg.example", "555-0112",
-         "9 Industrial Pkwy, Reno, NV", "Contract manufacturer (currently on hold).", 12, False),
+        ("Saficom Technology", "James Kariuki", "sales@saficomtech.co.ke", "+254 711 234 567",
+         "Industrial Area, Nairobi", "Electronics and tech accessories wholesaler.", 5, True),
+        ("Brookside Dairy Ltd", "Mary Wambui", "orders@brookside.co.ke", "+254 722 345 678",
+         "North Road, Nairobi", "Dairy products and beverages distributor.", 3, True),
+        ("Bidco Africa", "Peter Odhiambo", "supplies@bidcoafrica.com", "+254 733 456 789",
+         "Thika Road, Thika", "FMCG products - cooking oil, soap, detergents.", 4, True),
+        ("Kenya Cleaning Supplies", "Amina Hassan", "info@kenclean.co.ke", "+254 710 567 890",
+         "Eastleigh, Nairobi", "Cleaning and hygiene products supplier.", 4, True),
+        ("Regal Paper House", "Grace Muthoni", "orders@regalpaper.co.ke", "+254 721 678 901",
+         "Luthuli Avenue, Nairobi", "Paper, packaging and stationery specialist.", 6, True),
+        ("Flash Electronics Kenya", "David Mwangi", "sales@flashelec.co.ke", "+254 700 789 012",
+         "Lunga Lunga Road, Nairobi", "Consumer electronics and components.", 7, True),
+        ("Konnect IT Solutions", "Alice Njeri", "b2b@konnectit.co.ke", "+254 712 890 123",
+         "Westlands, Nairobi", "IT equipment, laptops and peripherals.", 8, True),
+        ("Coca-Cola Beverages Africa", "Omar Abdullahi", "orders@ccba.co.ke", "+254 733 901 234",
+         "Mombasa Road, Nairobi", "Soft drinks and non-alcoholic beverages.", 3, True),
+        ("Syntar Technologies", "Priya Sharma", "procurement@syntar.co.ke", "+254 720 012 345",
+         "Biashara Street, Mombasa", "Cables, networking and storage solutions.", 6, True),
+        ("Carton Master Ltd", "Joseph Kamau", "sales@cartonmaster.co.ke", "+254 711 123 456",
+         "Donholm, Nairobi", "Packaging materials and cartons.", 5, True),
+        ("Snax Ltd", "Fatima Ali", "orders@snaxltd.co.ke", "+254 702 234 567",
+         "Gilgil Town", "Snack and confectionery distributor.", 4, True),
+        ("Quantum Manufacturing KE", "Greg Ochieng", "hello@quantumke.co.ke", "+254 722 345 670",
+         "Athi River EPZ", "Contract manufacturer (currently on hold).", 12, False),
     ]
     suppliers = []
     for name, contact, email, phone, addr, notes, lead, active in data:
@@ -310,38 +330,38 @@ def create_suppliers(db):
 
 def create_customers(db):
     data = [
-        ("Acme Retail Store", "555-0201", "purchasing@acmeretail.example",
-         "12 Main St, Springfield", "frequent", "Monthly bulk buyer."),
-        ("Downtown Cafe", "555-0202", "orders@downtowncafe.example",
-         "340 Elm Ave, Springfield", "frequent", "Weekly coffee and cup orders."),
-        ("FreshMart Grocery", "555-0203", "buyer@freshmart.example",
-         "800 Market Blvd, Lakeside", "frequent", "Large grocery account."),
-        ("Jane Doe", "555-0204", "jane.doe@example.com",
-         "55 Oak Lane, Springfield", "walk-in", ""),
-        ("TechNest Ltd", "555-0205", "it@technest.example",
-         "910 Innovation Dr, Riverton", "frequent", "Buys electronics quarterly."),
-        ("City Office Hub", "555-0206", "procurement@cityoffice.example",
-         "77 Civic Center, Springfield", "frequent", "Office supplies for 200 staff."),
-        ("John Smith", "555-0207", "john.smith@example.com",
-         "23 Birch St, Lakeside", "walk-in", ""),
-        ("Bright Learning Center", "555-0208", "admin@brightlearning.example",
-         "150 School Rd, Riverton", "frequent", "Seasonal school supply orders."),
-        ("Riverside Hotel", "555-0209", "purchasing@riversidehotel.example",
-         "1 Riverfront Plaza, Springfield", "frequent", "Housekeeping and snack orders."),
-        ("Harborview Bistro", "555-0210", "kitchen@harborview.example",
-         "88 Harbor Rd, Lakeside", "frequent", "Weekly beverage and coffee orders."),
-        ("Alice Nguyen", "555-0211", "alice.nguyen@example.com",
-         "321 Maple Dr, Riverton", "walk-in", ""),
-        ("Midtown Bookstore", "555-0212", "store@midtownbooks.example",
-         "450 Main Ave, Springfield", "frequent", "Stationery and packing supplies."),
-        ("Solar Peak Energy", "555-0213", "ops@solarmax.example",
-         "77 Energy Way, Lakeside", "frequent", "IT equipment and safety gear."),
-        ("Old Warehouse Co", "555-0214", "office@oldwh.example",
-         "5 Dusty Rd, Riverton", "walk-in", "Inactive account - no orders for a year."),
+        ("Java House Nairobi", "+254 710 100 201", "procurement@javahouse.co.ke",
+         "Kenyatta Avenue, Nairobi", "frequent", "Weekly coffee and beverage orders."),
+        ("Naivas Supermarket", "+254 721 100 202", "buyer@naivas.co.ke",
+         "Moi Avenue, Nairobi", "frequent", "Large grocery retail chain account."),
+        ("Quickmart Supermarket", "+254 733 100 203", "orders@quickmart.co.ke",
+         "Thika Road, Nairobi", "frequent", "Monthly grocery and FMCG orders."),
+        ("Faith Wanjiru", "+254 712 100 204", "faith.wanjiru@gmail.com",
+         "Karen, Nairobi", "walk-in", ""),
+        ("ICT Authority", "+254 700 100 205", "procurement@icta.go.ke",
+         "Waiyaki Way, Nairobi", "frequent", "Government IT equipment procurement."),
+        ("Nairobi County Government", "+254 722 100 206", "stores@nairobi.go.ke",
+         "City Hall, Nairobi", "frequent", "Office supplies for county offices."),
+        ("Peter Otieno", "+254 711 100 207", "peter.otieno@yahoo.com",
+         "Kisumu Town", "walk-in", ""),
+        ("Kabrai Academy", "+254 733 100 208", "admin@kabrai.ac.ke",
+         "Ruiru, Kiambu", "frequent", "School supplies and equipment."),
+        ("Sarova Hotels Group", "+254 710 100 209", "purchasing@sarovahotels.com",
+         "White Sands, Mombasa", "frequent", "Hotel supplies and amenities."),
+        ("Carnivore Restaurant", "+254 721 100 210", "kitchen@carnivore.co.ke",
+         "Langata Road, Nairobi", "frequent", "Weekly beverage and cleaning orders."),
+        ("Amina Mohamed", "+254 712 100 211", "amina.m@outlook.com",
+         "Westlands, Nairobi", "walk-in", ""),
+        ("Text Book Centre", "+254 700 100 212", "store@textbookcentre.com",
+         "Kenyatta Avenue, Nairobi", "frequent", "Stationery and packaging supplies."),
+        ("KenGen PLC", "+254 722 100 213", "ops@kengen.co.ke",
+         "Stima Plaza, Nairobi", "frequent", "IT equipment and safety gear."),
+        ("Old Town Traders", "+254 711 100 214", "office@oldtowntraders.co.ke",
+         "Old Town, Mombasa", "walk-in", "Inactive account - no orders for a year."),
     ]
     customers = []
     for name, phone, email, addr, ctype, notes in data:
-        active = name != "Old Warehouse Co"
+        active = name != "Old Town Traders"
         c = Customer(name=name, phone=phone, email=email, address=addr,
                      customer_type=ctype, notes=notes, is_active=active,
                      created_at=days_ago(36))
@@ -356,177 +376,177 @@ def build_products(db, cats, suppliers, locs):
     sup = {s.name: s for s in suppliers}
     cat = {c.name: c for c in cats.values()}
     rows = [
-        # sku, name, desc, category, supplier, unit, cost, reorder, bin, barcode
+        # sku, name, desc, category, supplier, unit (KSh), cost (KSh), reorder, bin, barcode
         ("TECH-001", "Laptop Stand Pro", "Ergonomic aluminum laptop stand",
-         "Computers", "TechSource Distribution", 89.99, 45.00, 15, "A-01-01", "490000000001"),
+         "Computers", "Saficom Technology", 12500, 6500, 15, "A-01-01", "490000000001"),
         ("TECH-002", "Wireless Mouse M300", "Silent 2.4G wireless mouse",
-         "Computers", "PrimeData Systems", 24.99, 12.50, 15, "A-01-02", "490000000002"),
+         "Computers", "Konnect IT Solutions", 3500, 1800, 15, "A-01-02", "490000000002"),
         ("TECH-003", "Mechanical Keyboard K87", "Tenkeyless hot-swap mechanical keyboard",
-         "Computers", "PrimeData Systems", 59.99, 32.00, 10, "A-01-03", "490000000003"),
+         "Computers", "Konnect IT Solutions", 8500, 4600, 10, "A-01-03", "490000000003"),
         ("TECH-010", "24\" IPS Monitor", "Full HD IPS desktop monitor",
-         "Computers", "PrimeData Systems", 199.99, 120.00, 5, "E-01-01", "490000000010"),
+         "Computers", "Konnect IT Solutions", 28000, 17000, 5, "E-01-01", "490000000010"),
         ("TECH-011", "USB-C Hub 7-in-1", "Aluminum USB-C hub with HDMI and SD",
-         "Computers", "PrimeData Systems", 39.99, 20.00, 10, "E-01-02", "490000000011"),
+         "Computers", "Konnect IT Solutions", 5500, 2800, 10, "E-01-02", "490000000011"),
         ("TECH-012", "Laptop Sleeve 13\"", "Padded neoprene laptop sleeve",
-         "Computers", "TechSource Distribution", 24.99, 11.00, 12, "E-01-03", "490000000012"),
+         "Computers", "Saficom Technology", 3500, 1500, 12, "E-01-03", "490000000012"),
         ("TECH-014", "External SSD 1TB", "USB 3.2 portable solid state drive",
-         "Computers", "NexusGear Components", 119.99, 70.00, 8, "E-02-02", "490000000014"),
+         "Computers", "Syntar Technologies", 16500, 9800, 8, "E-02-02", "490000000014"),
         ("TECH-036", "Mechanical Keyboard TKL RGB", "Hot-swap RGB mechanical keyboard",
-         "Computers", "PrimeData Systems", 79.99, 42.00, 5, "A-01-02", "490000000036"),
+         "Computers", "Konnect IT Solutions", 11000, 5800, 5, "A-01-02", "490000000036"),
         ("TECH-037", "Ergonomic Mouse Vertical", "Vertical grip wireless mouse",
-         "Computers", "PrimeData Systems", 34.99, 18.00, 10, "A-01-03", "490000000037"),
+         "Computers", "Konnect IT Solutions", 4800, 2500, 10, "A-01-03", "490000000037"),
         ("TECH-040", "Workstation Bundle", "Mouse, hub and dock workstation bundle",
-         "Computers", "PrimeData Systems", 1499.99, 950.00, 2, "N1-01", "490000000040"),
+         "Computers", "Konnect IT Solutions", 210000, 132000, 2, "N1-01", "490000000040"),
         ("TECH-041", "USB-C Starter Kit", "Charger, cables and power bank starter kit",
-         "Computers", "TechSource Distribution", 89.99, 45.00, 5, "E-01-01", "490000000041"),
+         "Computers", "Saficom Technology", 12500, 6500, 5, "E-01-01", "490000000041"),
         ("TECH-004", "Smartphone Charger 65W", "GaN fast charger with USB-C",
-         "Phones", "TechSource Distribution", 34.99, 18.00, 20, "A-02-01", "490000000004"),
+         "Phones", "Saficom Technology", 4800, 2500, 20, "A-02-01", "490000000004"),
         ("TECH-005", "USB-C Cable 2m", "Braided USB-C to USB-C cable",
-         "Phones", "TechSource Distribution", 12.99, 5.00, 30, "A-02-02", "490000000005"),
+         "Phones", "Saficom Technology", 1800, 700, 30, "A-02-02", "490000000005"),
         ("TECH-006", "Phone Stand Alu", "Adjustable aluminum phone stand",
-         "Phones", "Sunrise Electronics", 14.99, 7.20, 15, "A-02-03", "490000000006"),
+         "Phones", "Flash Electronics Kenya", 2000, 1000, 15, "A-02-03", "490000000006"),
         ("TECH-016", "Power Bank 20000mAh", "20K mAh fast-charge power bank",
-         "Phones", "Sunrise Electronics", 49.99, 26.00, 10, "E-02-02", "490000000016"),
+         "Phones", "Flash Electronics Kenya", 6800, 3600, 10, "E-02-02", "490000000016"),
         ("TECH-017", "Car Charger 45W", "Dual-port USB-C car charger",
-         "Phones", "TechSource Distribution", 19.99, 9.00, 10, "E-01-01", "490000000017"),
+         "Phones", "Saficom Technology", 2700, 1200, 10, "E-01-01", "490000000017"),
         ("TECH-018", "Screen Protector 3pk", "Tempered glass screen protector set",
-         "Phones", "TechSource Distribution", 9.99, 2.50, 30, "E-01-03", "490000000018"),
+         "Phones", "Saficom Technology", 1400, 350, 30, "E-01-03", "490000000018"),
         ("TECH-007", "Bluetooth Speaker Mini", "Portable IPX7 waterproof speaker",
-         "Audio", "TechSource Distribution", 44.99, 25.00, 12, "A-03-01", "490000000007"),
+         "Audio", "Saficom Technology", 6200, 3500, 12, "A-03-01", "490000000007"),
         ("TECH-008", "Noise-Cancelling Headphones", "Over-ear ANC wireless headphones",
-         "Audio", "PrimeData Systems", 149.99, 85.00, 5, "A-03-02", "490000000008"),
+         "Audio", "Konnect IT Solutions", 21000, 11800, 5, "A-03-02", "490000000008"),
         ("TECH-009", "Studio Mic Kit", "USB condenser mic with pop filter",
-         "Audio", "Sunrise Electronics", 99.99, 55.00, 8, "A-03-03", "490000000009"),
+         "Audio", "Flash Electronics Kenya", 13800, 7600, 8, "A-03-03", "490000000009"),
         ("TECH-013", "1080p Webcam", "Full HD webcam with privacy shutter",
-         "Audio", "Sunrise Electronics", 44.99, 22.00, 8, "E-02-01", "490000000013"),
+         "Audio", "Flash Electronics Kenya", 6200, 3000, 8, "E-02-01", "490000000013"),
         ("TECH-019", "Bluetooth Speaker Max", "High-output portable party speaker",
-         "Audio", "TechSource Distribution", 129.99, 70.00, 4, "E-02-01", "490000000019"),
+         "Audio", "Saficom Technology", 18000, 9600, 4, "E-02-01", "490000000019"),
         ("TECH-033", "HDMI Cable 2m", "4K HDMI 2.1 cable",
-         "Audio", "TechSource Distribution", 11.99, 3.80, 20, "E-01-01", "490000000033"),
+         "Audio", "Saficom Technology", 1600, 520, 20, "E-01-01", "490000000033"),
         ("TECH-020", "WiFi Router AX3000", "Dual-band WiFi 6 router",
-         "Networking", "NexusGear Components", 89.99, 48.00, 8, "N1-01", "490000000020"),
+         "Networking", "Syntar Technologies", 12500, 6600, 8, "N1-01", "490000000020"),
         ("TECH-021", "Ethernet Cable 10m", "Cat6 shielded ethernet cable",
-         "Networking", "NexusGear Components", 12.99, 4.00, 20, "N1-02", "490000000021"),
+         "Networking", "Syntar Technologies", 1800, 550, 20, "N1-02", "490000000021"),
         ("TECH-022", "8-Port Network Switch", "Gigabit unmanaged network switch",
-         "Networking", "NexusGear Components", 34.99, 18.00, 8, "N1-01", "490000000022"),
+         "Networking", "Syntar Technologies", 4800, 2500, 8, "N1-01", "490000000022"),
         ("TECH-023", "WiFi Extender", "Dual-band range extender",
-         "Networking", "Sunrise Electronics", 39.99, 19.00, 8, "N1-02", "490000000023"),
+         "Networking", "Flash Electronics Kenya", 5500, 2600, 8, "N1-02", "490000000023"),
         ("TECH-024", "USB Drive 64GB", "USB 3.0 flash drive",
-         "Storage Media", "NexusGear Components", 12.99, 5.50, 30, "E-02-02", "490000000024"),
+         "Storage Media", "Syntar Technologies", 1800, 770, 30, "E-02-02", "490000000024"),
         ("TECH-026", "microSD Card 128GB", "A2 U3 microSD memory card",
-         "Storage Media", "NexusGear Components", 19.99, 9.00, 20, "N2-02", "490000000026"),
+         "Storage Media", "Syntar Technologies", 2700, 1250, 20, "N2-02", "490000000026"),
         ("TECH-027", "External HDD 2TB", "USB 3.0 portable hard drive",
-         "Storage Media", "NexusGear Components", 79.99, 45.00, 6, "N2-01", "490000000027"),
+         "Storage Media", "Syntar Technologies", 11000, 6200, 6, "N2-01", "490000000027"),
         ("TECH-028", "AA Batteries 24pk", "Alkaline AA batteries, 24 pack",
-         "Batteries", "Sunrise Electronics", 14.99, 7.00, 25, "E-01-02", "490000000028"),
+         "Batteries", "Flash Electronics Kenya", 2000, 970, 25, "E-01-02", "490000000028"),
         ("TECH-029", "AAA Batteries 24pk", "Alkaline AAA batteries, 24 pack",
-         "Batteries", "Sunrise Electronics", 13.99, 6.50, 25, "E-02-02", "490000000029"),
+         "Batteries", "Flash Electronics Kenya", 1900, 900, 25, "E-02-02", "490000000029"),
         ("TECH-031", "Rechargeable Battery Kit", "AA/AAA rechargeable kit with charger",
-         "Batteries", "Sunrise Electronics", 29.99, 16.00, 10, "E-01-03", "490000000031"),
+         "Batteries", "Flash Electronics Kenya", 4100, 2200, 10, "E-01-03", "490000000031"),
         ("TECH-032", "Power Strip 6-Outlet", "Surge-protected power strip",
-         "Batteries", "PrimeData Systems", 24.99, 12.00, 10, "E-02-01", "490000000032"),
+         "Batteries", "Konnect IT Solutions", 3400, 1650, 10, "E-02-01", "490000000032"),
         ("TECH-034", "USB-A to USB-C Adapter", "2-pack USB-A to USB-C adapters",
-         "Cables & Adapters", "TechSource Distribution", 7.99, 2.20, 40, "E-01-02", "490000000034"),
+         "Cables & Adapters", "Saficom Technology", 1100, 300, 40, "E-01-02", "490000000034"),
         ("TECH-035", "DisplayPort Cable 2m", "DP 1.4 cable for monitors",
-         "Cables & Adapters", "NexusGear Components", 13.99, 4.50, 15, "E-02-02", "490000000035"),
+         "Cables & Adapters", "Syntar Technologies", 1900, 620, 15, "E-02-02", "490000000035"),
         ("OFF-010", "A4 Paper Ream (500)", "80gsm multi-purpose copy paper",
-         "Paper Products", "ACME Paper Co", 6.99, 3.80, 50, "B-01-01", "490000000042"),
+         "Paper Products", "Regal Paper House", 950, 520, 50, "B-01-01", "490000000042"),
         ("OFF-011", "Sticky Notes 3x3", "Assorted color sticky notes, 12 pads",
-         "Paper Products", "GlobalOffice Partners", 3.49, 1.20, 40, "B-01-02", "490000000043"),
+         "Paper Products", "Regal Paper House", 480, 165, 40, "B-01-02", "490000000043"),
         ("OFF-012", "Letter Envelopes Pack", "Self-seal envelopes, pack of 100",
-         "Paper Products", "ACME Paper Co", 8.99, 4.50, 30, "B-01-03", "490000000044"),
+         "Paper Products", "Regal Paper House", 1250, 620, 30, "B-01-03", "490000000044"),
         ("OFF-016", "A4 Paper 5-Ream Case", "Five-ream case of copy paper",
-         "Paper Products", "ACME Paper Co", 29.99, 17.00, 15, "F-01-01", "490000000048"),
+         "Paper Products", "Regal Paper House", 4100, 2350, 15, "F-01-01", "490000000048"),
         ("OFF-018", "Mailing Labels 100pk", "Avery-style mailing labels",
-         "Paper Products", "PackRight Supplies", 14.99, 6.50, 20, "F-01-03", "490000000050"),
+         "Paper Products", "Carton Master Ltd", 2000, 890, 20, "F-01-03", "490000000050"),
         ("OFF-013", "Gel Pens 12pk", "Smooth-writing gel pens, 0.5mm",
-         "Writing Instruments", "GlobalOffice Partners", 9.99, 4.20, 30, "B-02-01", "490000000045"),
+         "Writing Instruments", "Regal Paper House", 1380, 580, 30, "B-02-01", "490000000045"),
         ("OFF-014", "Highlighter 5pk", "Chisel tip fluorescent highlighters",
-         "Writing Instruments", "GlobalOffice Partners", 7.49, 3.10, 30, "B-02-02", "490000000046"),
+         "Writing Instruments", "Regal Paper House", 1030, 430, 30, "B-02-02", "490000000046"),
         ("OFF-015", "Whiteboard Markers 8pk", "Low-odor dry erase markers",
-         "Writing Instruments", "ACME Paper Co", 11.99, 5.80, 20, "B-02-03", "490000000047"),
+         "Writing Instruments", "Regal Paper House", 1650, 800, 20, "B-02-03", "490000000047"),
         ("OFF-019", "Ballpoint Pens 50pk", "Classic ballpoint pens, box of 50",
-         "Writing Instruments", "GlobalOffice Partners", 19.99, 9.50, 15, "F-02-01", "490000000051"),
+         "Writing Instruments", "Regal Paper House", 2700, 1310, 15, "F-02-01", "490000000051"),
         ("OFF-020", "Permanent Markers 8pk", "Permanent markers, 8 assorted colors",
-         "Writing Instruments", "ACME Paper Co", 12.99, 5.90, 20, "F-02-02", "490000000052"),
+         "Writing Instruments", "Regal Paper House", 1790, 810, 20, "F-02-02", "490000000052"),
         ("OFF-017", "Kraft Mailer 10pk", "Padded kraft shipping mailers",
-         "Packaging", "PackRight Supplies", 9.99, 4.00, 30, "F-01-02", "490000000049"),
+         "Packaging", "Carton Master Ltd", 1380, 550, 30, "F-01-02", "490000000049"),
         ("OFF-021", "Packing Tape 6pk", "Clear packing tape, 6 rolls",
-         "Packaging", "PackRight Supplies", 18.99, 9.00, 15, "B-03-01", "490000000053"),
+         "Packaging", "Carton Master Ltd", 2600, 1240, 15, "B-03-01", "490000000053"),
         ("OFF-022", "Bubble Wrap 100ft", "Bubble cushioning roll",
-         "Packaging", "PackRight Supplies", 24.99, 12.00, 10, "B-03-02", "490000000054"),
+         "Packaging", "Carton Master Ltd", 3400, 1650, 10, "B-03-02", "490000000054"),
         ("OFF-023", "Shipping Boxes 12x9x6 25pk", "Corrugated shipping boxes, 25 pack",
-         "Packaging", "PackRight Supplies", 29.99, 15.00, 10, "B-03-01", "490000000055"),
+         "Packaging", "Carton Master Ltd", 4100, 2070, 10, "B-03-01", "490000000055"),
         ("OFF-024", "Poly Mailers 50pk", "Self-seal poly mailers, 50 pack",
-         "Packaging", "PackRight Supplies", 19.99, 9.00, 25, "F-01-02", "490000000056"),
+         "Packaging", "Carton Master Ltd", 2700, 1240, 25, "F-01-02", "490000000056"),
         ("OFF-025", "Hanging Folders 25pk", "Letter-size hanging folders",
-         "Filing & Storage", "GlobalOffice Partners", 22.99, 11.00, 15, "F-01-03", "490000000057"),
+         "Filing & Storage", "Regal Paper House", 3150, 1520, 15, "F-01-03", "490000000057"),
         ("OFF-026", "Binder 2\" 12pk", "Two-inch ring binders, 12 pack",
-         "Filing & Storage", "GlobalOffice Partners", 34.99, 18.00, 10, "F-02-01", "490000000058"),
+         "Filing & Storage", "Regal Paper House", 4800, 2490, 10, "F-02-01", "490000000058"),
         ("OFF-027", "Document Trays 3pk", "Stackable mesh document trays",
-         "Filing & Storage", "GlobalOffice Partners", 24.99, 12.50, 10, "F-02-02", "490000000059"),
+         "Filing & Storage", "Regal Paper House", 3400, 1720, 10, "F-02-02", "490000000059"),
         ("OFF-028", "File Box 4pk", "Lid-and-base file storage boxes",
-         "Filing & Storage", "PackRight Supplies", 21.99, 10.00, 8, "N1-02", "490000000060"),
+         "Filing & Storage", "Carton Master Ltd", 3000, 1380, 8, "N1-02", "490000000060"),
         ("OFF-030", "Desk Kit", "Pens, highlighters and folders desk starter kit",
-         "Filing & Storage", "GlobalOffice Partners", 49.99, 22.00, 5, "F-02-02", "490000000061"),
+         "Filing & Storage", "Regal Paper House", 7500, 3300, 5, "F-02-02", "490000000061"),
         ("BEV-016", "Ground Coffee 1kg", "Medium roast whole bean coffee",
-         "Coffee & Tea", "Beverage Wholesale Co", 18.99, 11.00, 20, "C-01-01", "490000000016"),
+         "Coffee & Tea", "Brookside Dairy Ltd", 2600, 1520, 20, "C-01-01", "490000000016"),
         ("BEV-017", "Green Tea Box 20", "Organic green tea bags, 20 count",
-         "Coffee & Tea", "Beverage Wholesale Co", 9.49, 5.50, 20, "C-01-02", "490000000017"),
+         "Coffee & Tea", "Brookside Dairy Ltd", 1310, 760, 20, "C-01-02", "490000000017"),
         ("BEV-018", "Espresso Capsules 10", "Compatible espresso pods, 10 pack",
-         "Coffee & Tea", "Beverage Wholesale Co", 12.99, 7.80, 15, "C-01-03", "490000000018"),
+         "Coffee & Tea", "Brookside Dairy Ltd", 1790, 1070, 15, "C-01-03", "490000000018"),
         ("BEV-022", "Instant Coffee Jar", "Freeze-dried instant coffee, 200g",
-         "Coffee & Tea", "Beverage Wholesale Co", 11.99, 6.00, 15, "C-03-01", "490000000022"),
+         "Coffee & Tea", "Brookside Dairy Ltd", 1650, 830, 15, "C-03-01", "490000000022"),
         ("BEV-023", "Herbal Tea Box 20", "Caffeine-free herbal tea, 20 count",
-         "Coffee & Tea", "Beverage Wholesale Co", 8.99, 4.50, 15, "C-03-02", "490000000023"),
+         "Coffee & Tea", "Brookside Dairy Ltd", 1240, 620, 15, "C-03-02", "490000000023"),
         ("BEV-024", "Coffee Filters 100pk", "White paper drip coffee filters",
-         "Coffee & Tea", "Beverage Wholesale Co", 6.99, 2.80, 20, "N1-01", "490000000024"),
+         "Coffee & Tea", "Brookside Dairy Ltd", 960, 390, 20, "N1-01", "490000000024"),
         ("BEV-036", "Coffee Gift Box", "Coffee, filters and mug gift presentation",
-         "Coffee & Tea", "Beverage Wholesale Co", 45.99, 22.00, 4, "C-03-02", "490000000036"),
+         "Coffee & Tea", "Brookside Dairy Ltd", 6300, 3040, 4, "C-03-02", "490000000036"),
         ("BEV-020", "Cola 12pk", "Classic cola, 330ml cans",
-         "Soft Drinks", "DrinksDirect", 7.99, 4.20, 40, "C-02-02", "490000000020"),
+         "Soft Drinks", "Coca-Cola Beverages Africa", 1100, 580, 40, "C-02-02", "490000000020"),
         ("BEV-021", "Energy Drink 24pk", "Sugar-free energy drink, 250ml",
-         "Soft Drinks", "DrinksDirect", 29.99, 16.50, 15, "C-02-03", "490000000021"),
+         "Soft Drinks", "Coca-Cola Beverages Africa", 4100, 2270, 15, "C-02-03", "490000000021"),
         ("BEV-025", "Iced Tea 24pk", "Lemon iced tea, 330ml cans",
-         "Soft Drinks", "DrinksDirect", 16.99, 9.00, 20, "N1-02", "490000000025"),
+         "Soft Drinks", "Coca-Cola Beverages Africa", 2340, 1240, 20, "N1-02", "490000000025"),
         ("BEV-026", "Fruit Juice 12pk", "Mixed fruit juice, 250ml cartons",
-         "Soft Drinks", "DrinksDirect", 18.99, 10.00, 15, "C-03-02", "490000000026"),
+         "Soft Drinks", "Coca-Cola Beverages Africa", 2600, 1380, 15, "C-03-02", "490000000026"),
         ("BEV-027", "Cola Zero 12pk", "Zero-sugar cola, 330ml cans",
-         "Soft Drinks", "DrinksDirect", 7.99, 4.20, 30, "C-02-03", "490000000027"),
+         "Soft Drinks", "Coca-Cola Beverages Africa", 1100, 580, 30, "C-02-03", "490000000027"),
         ("BEV-019", "Sparkling Water 24pk", "Naturally sparkling mineral water",
-         "Bottled Water", "DrinksDirect", 14.99, 8.00, 30, "C-02-01", "490000000019"),
+         "Bottled Water", "Coca-Cola Beverages Africa", 2070, 1100, 30, "C-02-01", "490000000019"),
         ("BEV-035", "Mineral Water 24pk", "Still mineral water, 500ml bottles",
-         "Bottled Water", "DrinksDirect", 12.99, 6.50, 40, "C-02-01", "490000000035"),
+         "Bottled Water", "Coca-Cola Beverages Africa", 1790, 890, 40, "C-02-01", "490000000035"),
         ("BEV-031", "Granola Bars 24pk", "Oat and honey granola bars",
-         "Snacks", "SnackLine Foods", 21.99, 11.50, 15, "N2-01", "490000000031"),
+         "Snacks", "Snax Ltd", 3030, 1590, 15, "N2-01", "490000000031"),
         ("BEV-032", "Potato Chips 24pk", "Sea salt potato chips, single bags",
-         "Snacks", "SnackLine Foods", 25.99, 14.00, 15, "N2-02", "490000000032"),
+         "Snacks", "Snax Ltd", 3580, 1930, 15, "N2-02", "490000000032"),
         ("BEV-033", "Mixed Nuts 1kg", "Roasted salted mixed nuts",
-         "Snacks", "SnackLine Foods", 17.99, 9.50, 10, "N2-01", "490000000033"),
+         "Snacks", "Snax Ltd", 2480, 1310, 10, "N2-01", "490000000033"),
         ("BEV-034", "Chocolate Bar 10pk", "Milk chocolate bars, 10 pack",
-         "Snacks", "SnackLine Foods", 19.99, 10.00, 15, "N2-02", "490000000034"),
+         "Snacks", "Snax Ltd", 2750, 1380, 15, "N2-02", "490000000034"),
         ("BEV-037", "Snack Box", "Granola, nuts and chocolate break room box",
-         "Snacks", "SnackLine Foods", 34.99, 15.00, 5, "N2-01", "490000000037"),
+         "Snacks", "Snax Ltd", 4800, 2070, 5, "N2-01", "490000000037"),
         ("BEV-030", "Beverage Combo Pack", "Coffee, tea and espresso combo box",
-         "Coffee & Tea", "Beverage Wholesale Co", 24.99, 10.50, 10, "C-03-01", "490000000030"),
+         "Coffee & Tea", "Brookside Dairy Ltd", 3440, 1450, 10, "C-03-01", "490000000030"),
         ("CLN-022", "All-Purpose Cleaner 1L", "Multi-surface disinfectant spray",
-         "Cleaning Supplies", "CleanSupplies Ltd", 5.99, 2.40, 30, "D-01-01", "490000000022"),
+         "Cleaning Supplies", "Kenya Cleaning Supplies", 830, 330, 30, "D-01-01", "490000000022"),
         ("CLN-023", "Microfiber Cloths 10pk", "Reusable lint-free cleaning cloths",
-         "Cleaning Supplies", "CleanSupplies Ltd", 12.99, 6.00, 20, "D-01-02", "490000000023"),
+         "Cleaning Supplies", "Kenya Cleaning Supplies", 1790, 830, 20, "D-01-02", "490000000023"),
         ("CLN-024", "Hand Sanitizer 500ml", "Alcohol gel hand sanitizer pump",
-         "Cleaning Supplies", "CleanSupplies Ltd", 4.99, 1.80, 30, "D-01-03", "490000000024"),
+         "Cleaning Supplies", "Kenya Cleaning Supplies", 690, 250, 30, "D-01-03", "490000000024"),
         ("CLN-025", "Paper Towels 12pk", "Multi-fold paper towels, 12 packs",
-         "Cleaning Supplies", "CleanSupplies Ltd", 18.99, 9.50, 15, "D-02-01", "490000000025"),
+         "Cleaning Supplies", "Kenya Cleaning Supplies", 2620, 1310, 15, "D-02-01", "490000000025"),
         ("CLN-026", "Trash Bags 40pk", "Heavy-duty trash bags, 40 pack",
-         "Cleaning Supplies", "CleanSupplies Ltd", 11.99, 5.20, 20, "D-02-02", "490000000026"),
+         "Cleaning Supplies", "Kenya Cleaning Supplies", 1650, 720, 20, "D-02-02", "490000000026"),
         ("CLN-027", "Dish Soap 1L", "Gentle dish soap, 1L bottle",
-         "Cleaning Supplies", "CleanSupplies Ltd", 5.49, 2.20, 25, "F-02-01", "490000000027"),
+         "Cleaning Supplies", "Kenya Cleaning Supplies", 760, 300, 25, "F-02-01", "490000000027"),
         ("CLN-028", "Glass Cleaner 500ml", "Streak-free glass cleaner",
-         "Cleaning Supplies", "CleanSupplies Ltd", 4.79, 1.90, 25, "F-02-02", "490000000028"),
+         "Cleaning Supplies", "Kenya Cleaning Supplies", 660, 260, 25, "F-02-02", "490000000028"),
         ("CLN-029", "Disposable Gloves 100pk", "Powder-free nitrile gloves",
-         "Safety & PPE", "CleanSupplies Ltd", 15.99, 7.00, 10, "N2-02", "490000000029"),
+         "Safety & PPE", "Kenya Cleaning Supplies", 2210, 970, 10, "N2-02", "490000000029"),
         ("CLN-030", "Dust Masks 50pk", "Disposable protective dust masks",
-         "Safety & PPE", "CleanSupplies Ltd", 9.99, 4.00, 20, "N2-01", "490000000030"),
+         "Safety & PPE", "Kenya Cleaning Supplies", 1380, 550, 20, "N2-01", "490000000030"),
     ]
     products = []
     by_sku = {}
@@ -570,8 +590,8 @@ def build_products(db, cats, suppliers, locs):
     parent1 = Product(
         sku="TECH-015", name="Wireless Earbuds Pro",
         description="True wireless earbuds with active noise cancelling",
-        category_id=cat["Audio"].id, supplier_id=sup["PrimeData Systems"].id,
-        unit_price=79.99, cost_price=42.00, quantity=0, reorder_level=12,
+        category_id=cat["Audio"].id, supplier_id=sup["Konnect IT Solutions"].id,
+        unit_price=11000, cost_price=5800, quantity=0, reorder_level=12,
         location="A-04-01", location_id=locs["A-04-01"].id, barcode="490000000015",
         is_active=True, created_at=days_ago(18),
     )
@@ -586,7 +606,7 @@ def build_products(db, cats, suppliers, locs):
         v = Product(
             sku=sku, name=parent1.name, category_id=parent1.category_id,
             supplier_id=parent1.supplier_id, parent_id=parent1.id, attributes=attrs,
-            unit_price=79.99, cost_price=42.00, quantity=0, reorder_level=5,
+            unit_price=11000, cost_price=5800, quantity=0, reorder_level=5,
             location="A-04-01", location_id=locs["A-04-01"].id, barcode=barcode,
             is_active=True, created_at=days_ago(18),
         )
@@ -602,8 +622,8 @@ def build_products(db, cats, suppliers, locs):
     parent2 = Product(
         sku="BEV-029", name="Insulated Travel Mug",
         description="Double-wall insulated travel mug, 400ml",
-        category_id=cat["Coffee & Tea"].id, supplier_id=sup["Beverage Wholesale Co"].id,
-        unit_price=19.99, cost_price=9.00, quantity=0, reorder_level=10,
+        category_id=cat["Coffee & Tea"].id, supplier_id=sup["Brookside Dairy Ltd"].id,
+        unit_price=2700, cost_price=1240, quantity=0, reorder_level=10,
         location="F-02-01", location_id=locs["F-02-01"].id, barcode="490000000029",
         is_active=True, created_at=days_ago(16),
     )
@@ -618,7 +638,7 @@ def build_products(db, cats, suppliers, locs):
         v = Product(
             sku=sku, name=parent2.name, category_id=parent2.category_id,
             supplier_id=parent2.supplier_id, parent_id=parent2.id, attributes=attrs,
-            unit_price=19.99, cost_price=9.00, quantity=0, reorder_level=4,
+            unit_price=2700, cost_price=1240, quantity=0, reorder_level=4,
             location="F-02-01", location_id=locs["F-02-01"].id, barcode=barcode,
             is_active=True, created_at=days_ago(16),
         )
@@ -634,8 +654,8 @@ def build_products(db, cats, suppliers, locs):
     serial_prod = Product(
         sku="TECH-030", name="Smart Watch Pro",
         description="GPS smart watch with health monitoring",
-        category_id=cat["Phones"].id, supplier_id=sup["PrimeData Systems"].id,
-        unit_price=249.99, cost_price=140.00, quantity=0, reorder_level=5,
+        category_id=cat["Phones"].id, supplier_id=sup["Konnect IT Solutions"].id,
+        unit_price=34500, cost_price=19400, quantity=0, reorder_level=5,
         is_serialized=True, location="A-04-02", location_id=locs["A-04-02"].id,
         barcode="490000000038", is_active=True, created_at=days_ago(25),
     )
@@ -649,8 +669,8 @@ def build_products(db, cats, suppliers, locs):
     laptop = Product(
         sku="TECH-038", name="ProLaptop X1",
         description="14\" business laptop, 16GB RAM, 512GB SSD",
-        category_id=cat["Computers"].id, supplier_id=sup["PrimeData Systems"].id,
-        unit_price=1299.99, cost_price=820.00, quantity=0, reorder_level=3,
+        category_id=cat["Computers"].id, supplier_id=sup["Konnect IT Solutions"].id,
+        unit_price=180000, cost_price=113000, quantity=0, reorder_level=3,
         is_serialized=True, location="A-04-03", location_id=locs["A-04-03"].id,
         barcode="490000000068", is_active=True, created_at=days_ago(22),
     )
@@ -664,8 +684,8 @@ def build_products(db, cats, suppliers, locs):
     dock = Product(
         sku="TECH-039", name="USB-C Dock Pro",
         description="Dual 4K display USB-C docking station",
-        category_id=cat["Cables & Adapters"].id, supplier_id=sup["NexusGear Components"].id,
-        unit_price=79.99, cost_price=42.00, quantity=0, reorder_level=8,
+        category_id=cat["Cables & Adapters"].id, supplier_id=sup["Syntar Technologies"].id,
+        unit_price=11000, cost_price=5800, quantity=0, reorder_level=8,
         is_serialized=True, location="E-01-02", location_id=locs["E-01-02"].id,
         barcode="490000000069", is_active=True, created_at=days_ago(18),
     )
@@ -683,33 +703,33 @@ def create_lots(db, by_sku, suppliers):
     sup = {s.name: s for s in suppliers}
     lots: dict[str, dict[str, Lot]] = {}
     specs = [
-        ("BEV-016", "B-9161", 150, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-016", "B-8150", -3, "expired", "Beverage Wholesale Co"),
-        ("BEV-017", "B-8170", 25, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-017", "Q-7090", 80, "quarantined", "Beverage Wholesale Co"),
-        ("BEV-017", "B-7100", -5, "expired", "Beverage Wholesale Co"),
-        ("BEV-018", "B-8180", 45, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-018", "B-8190", 60, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-019", "B-8191", 70, "in_stock", "DrinksDirect"),
-        ("BEV-020", "B-8201", 50, "in_stock", "DrinksDirect"),
-        ("BEV-020", "B-8202", 80, "in_stock", "DrinksDirect"),
-        ("BEV-021", "B-8211", 12, "in_stock", "DrinksDirect"),
-        ("BEV-021", "B-8222", -3, "expired", "DrinksDirect"),
-        ("BEV-022", "B-8221", 40, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-022", "B-8223", 90, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-023", "B-8231", 35, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-024", "B-8241", 120, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-025", "B-8251", 45, "in_stock", "DrinksDirect"),
-        ("BEV-025", "B-8252", 70, "in_stock", "DrinksDirect"),
-        ("BEV-026", "B-8261", 20, "in_stock", "DrinksDirect"),
-        ("BEV-027", "B-8271", 55, "in_stock", "DrinksDirect"),
-        ("BEV-030", "FG-3001", 90, "in_stock", "Beverage Wholesale Co"),
-        ("BEV-030", "FG-3002", 95, "sold", "Beverage Wholesale Co"),
-        ("BEV-031", "B-8311", 75, "in_stock", "SnackLine Foods"),
-        ("BEV-032", "B-8321", 30, "in_stock", "SnackLine Foods"),
-        ("BEV-033", "B-8331", 65, "in_stock", "SnackLine Foods"),
-        ("BEV-034", "B-8341", 90, "in_stock", "SnackLine Foods"),
-        ("BEV-035", "B-8351", 60, "in_stock", "DrinksDirect"),
+        ("BEV-016", "B-9161", 150, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-016", "B-8150", -3, "expired", "Brookside Dairy Ltd"),
+        ("BEV-017", "B-8170", 25, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-017", "Q-7090", 80, "quarantined", "Brookside Dairy Ltd"),
+        ("BEV-017", "B-7100", -5, "expired", "Brookside Dairy Ltd"),
+        ("BEV-018", "B-8180", 45, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-018", "B-8190", 60, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-019", "B-8191", 70, "in_stock", "Coca-Cola Beverages Africa"),
+        ("BEV-020", "B-8201", 50, "in_stock", "Coca-Cola Beverages Africa"),
+        ("BEV-020", "B-8202", 80, "in_stock", "Coca-Cola Beverages Africa"),
+        ("BEV-021", "B-8211", 12, "in_stock", "Coca-Cola Beverages Africa"),
+        ("BEV-021", "B-8222", -3, "expired", "Coca-Cola Beverages Africa"),
+        ("BEV-022", "B-8221", 40, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-022", "B-8223", 90, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-023", "B-8231", 35, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-024", "B-8241", 120, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-025", "B-8251", 45, "in_stock", "Coca-Cola Beverages Africa"),
+        ("BEV-025", "B-8252", 70, "in_stock", "Coca-Cola Beverages Africa"),
+        ("BEV-026", "B-8261", 20, "in_stock", "Coca-Cola Beverages Africa"),
+        ("BEV-027", "B-8271", 55, "in_stock", "Coca-Cola Beverages Africa"),
+        ("BEV-030", "FG-3001", 90, "in_stock", "Brookside Dairy Ltd"),
+        ("BEV-030", "FG-3002", 95, "sold", "Brookside Dairy Ltd"),
+        ("BEV-031", "B-8311", 75, "in_stock", "Snax Ltd"),
+        ("BEV-032", "B-8321", 30, "in_stock", "Snax Ltd"),
+        ("BEV-033", "B-8331", 65, "in_stock", "Snax Ltd"),
+        ("BEV-034", "B-8341", 90, "in_stock", "Snax Ltd"),
+        ("BEV-035", "B-8351", 60, "in_stock", "Coca-Cola Beverages Africa"),
     ]
     for sku, lot_number, expiry_off, status, sup_name in specs:
         lot = Lot(product_id=by_sku[sku].id, lot_number=lot_number,
@@ -909,42 +929,42 @@ def create_orders(db, users, suppliers, by_sku):
     sup = {s.name: s for s in suppliers}
 
     order_specs = [
-        (28, "received", "TechSource Distribution", "Initial electronics order",
-         [("TECH-001", 8, 40.00), ("TECH-004", 25, 16.50), ("TECH-007", 15, 22.00)]),
-        (24, "received", "ACME Paper Co", "Office paper replenishment",
-         [("OFF-010", 100, 3.20), ("OFF-012", 40, 3.90)]),
-        (21, "received", "GlobalOffice Partners", "Stationery restock",
-         [("OFF-011", 80, 1.00), ("OFF-013", 50, 3.60), ("OFF-014", 40, 2.70)]),
-        (16, "received", "Beverage Wholesale Co", "Break room coffee",
-         [("BEV-016", 15, 9.50), ("BEV-017", 30, 4.80), ("BEV-018", 20, 6.50)]),
-        (12, "received", "CleanSupplies Ltd", "Janitorial restock",
-         [("CLN-022", 60, 2.00), ("CLN-023", 30, 5.20), ("CLN-024", 40, 1.50)]),
-        (9, "pending", "PrimeData Systems", "Peripherals order",
-         [("TECH-002", 30, 11.00), ("TECH-003", 20, 29.00)]),
-        (8, "received", "DrinksDirect", "Soft drinks replenishment",
-         [("BEV-020", 24, 4.00), ("BEV-021", 12, 15.00)]),
-        (6, "pending", "TechSource Distribution", "Accessories restock",
-         [("TECH-005", 80, 4.20), ("TECH-006", 20, 6.00)]),
-        (30, "cancelled", "Sunrise Electronics", "Cancelled - wrong pricing",
-         [("TECH-009", 10, 50.00)]),
-        (5, "pending", "ACME Paper Co", "Paper reorder",
-         [("OFF-010", 120, 3.20)]),
-        (10, "received", "NexusGear Components", "Storage and networking",
-         [("TECH-014", 20, 68.00), ("TECH-020", 15, 46.00), ("TECH-021", 50, 3.60)]),
-        (8, "received", "SnackLine Foods", "Break room snacks",
-         [("BEV-031", 40, 10.50), ("BEV-032", 30, 13.00), ("BEV-033", 20, 8.80)]),
-        (7, "received", "PackRight Supplies", "Packaging restock",
-         [("OFF-021", 30, 8.00), ("OFF-022", 20, 11.00), ("OFF-023", 15, 13.50)]),
-        (6, "received", "DrinksDirect", "Water and juice",
-         [("BEV-019", 40, 7.50), ("BEV-026", 25, 9.00), ("BEV-035", 50, 6.00)]),
-        (5, "received", "Beverage Wholesale Co", "Coffee and tea",
-         [("BEV-022", 30, 5.50), ("BEV-023", 30, 4.00), ("BEV-024", 40, 2.40)]),
-        (4, "pending", "GlobalOffice Partners", "Filing restock",
-         [("OFF-025", 40, 10.00), ("OFF-026", 20, 16.50)]),
-        (11, "cancelled", "CleanSupplies Ltd", "Cancelled - stock found",
-         [("CLN-029", 20, 6.50)]),
-        (3, "pending", "NexusGear Components", "Networking reorder",
-         [("TECH-022", 20, 17.00), ("TECH-024", 50, 5.00)]),
+        (28, "received", "Saficom Technology", "Initial electronics order",
+         [("TECH-001", 8, 6500), ("TECH-004", 25, 2500), ("TECH-007", 15, 3500)]),
+        (24, "received", "Regal Paper House", "Office paper replenishment",
+         [("OFF-010", 100, 520), ("OFF-012", 40, 620)]),
+        (21, "received", "Regal Paper House", "Stationery restock",
+         [("OFF-011", 80, 165), ("OFF-013", 50, 580), ("OFF-014", 40, 430)]),
+        (16, "received", "Brookside Dairy Ltd", "Break room coffee",
+         [("BEV-016", 15, 1520), ("BEV-017", 30, 760), ("BEV-018", 20, 1070)]),
+        (12, "received", "Kenya Cleaning Supplies", "Janitorial restock",
+         [("CLN-022", 60, 330), ("CLN-023", 30, 830), ("CLN-024", 40, 250)]),
+        (9, "pending", "Konnect IT Solutions", "Peripherals order",
+         [("TECH-002", 30, 1800), ("TECH-003", 20, 4600)]),
+        (8, "received", "Coca-Cola Beverages Africa", "Soft drinks replenishment",
+         [("BEV-020", 24, 580), ("BEV-021", 12, 2270)]),
+        (6, "pending", "Saficom Technology", "Accessories restock",
+         [("TECH-005", 80, 700), ("TECH-006", 20, 1000)]),
+        (30, "cancelled", "Flash Electronics Kenya", "Cancelled - wrong pricing",
+         [("TECH-009", 10, 7600)]),
+        (5, "pending", "Regal Paper House", "Paper reorder",
+         [("OFF-010", 120, 520)]),
+        (10, "received", "Syntar Technologies", "Storage and networking",
+         [("TECH-014", 20, 9800), ("TECH-020", 15, 6600), ("TECH-021", 50, 550)]),
+        (8, "received", "Snax Ltd", "Break room snacks",
+         [("BEV-031", 40, 1590), ("BEV-032", 30, 1930), ("BEV-033", 20, 1310)]),
+        (7, "received", "Carton Master Ltd", "Packaging restock",
+         [("OFF-021", 30, 1240), ("OFF-022", 20, 1650), ("OFF-023", 15, 2070)]),
+        (6, "received", "Coca-Cola Beverages Africa", "Water and juice",
+         [("BEV-019", 40, 1100), ("BEV-026", 25, 1380), ("BEV-035", 50, 890)]),
+        (5, "received", "Brookside Dairy Ltd", "Coffee and tea",
+         [("BEV-022", 30, 830), ("BEV-023", 30, 620), ("BEV-024", 40, 390)]),
+        (4, "pending", "Regal Paper House", "Filing restock",
+         [("OFF-025", 40, 1520), ("OFF-026", 20, 2490)]),
+        (11, "cancelled", "Kenya Cleaning Supplies", "Cancelled - stock found",
+         [("CLN-029", 20, 970)]),
+        (3, "pending", "Syntar Technologies", "Networking reorder",
+         [("TECH-022", 20, 2500), ("TECH-024", 50, 770)]),
     ]
 
     orders = []
@@ -973,45 +993,45 @@ def create_receipts(db, users, suppliers, by_sku, lots, locs):
     sup = {s.name: s for s in suppliers}
     specs = [
         # (days_ago, supplier, reference, notes, [(sku, qty, cost, bin, lot_num)])
-        (27, "TechSource Distribution", "PO-0001", "Electronics receiving",
-         [("TECH-001", 8, 40.00, "A-01-01", None),
-          ("TECH-004", 25, 16.50, "A-02-01", None),
-          ("TECH-007", 15, 22.00, "A-03-01", None)]),
-        (23, "ACME Paper Co", "PO-0002", "Paper receiving",
-         [("OFF-010", 100, 3.20, "B-01-01", None),
-          ("OFF-012", 40, 3.90, "B-01-03", None)]),
-        (20, "GlobalOffice Partners", "PO-0003", "Stationery receiving",
-         [("OFF-011", 80, 1.00, "B-01-02", None),
-          ("OFF-013", 50, 3.60, "B-02-01", None),
-          ("OFF-014", 40, 2.70, "B-02-02", None)]),
-        (15, "Beverage Wholesale Co", "PO-0004", "Coffee and tea receiving",
-         [("BEV-016", 15, 9.50, "C-01-01", "B-9161"),
-          ("BEV-017", 30, 4.80, "C-01-02", "B-8170"),
-          ("BEV-018", 20, 6.50, "C-01-03", "B-8180")]),
-        (11, "CleanSupplies Ltd", "PO-0005", "Janitorial receiving",
-         [("CLN-022", 60, 2.00, "D-01-01", None),
-          ("CLN-023", 30, 5.20, "D-01-02", None),
-          ("CLN-024", 40, 1.50, "D-01-03", None)]),
-        (9, "NexusGear Components", "PO-0011", "Storage and networking receiving",
-         [("TECH-014", 20, 68.00, "E-02-02", None),
-          ("TECH-020", 15, 46.00, "N1-01", None),
-          ("TECH-021", 50, 3.60, "N1-02", None)]),
-        (7, "SnackLine Foods", "PO-0012", "Snacks receiving",
-         [("BEV-031", 40, 10.50, "N2-01", "B-8311"),
-          ("BEV-032", 30, 13.00, "N2-02", "B-8321"),
-          ("BEV-033", 20, 8.80, "N2-01", "B-8331")]),
-        (6, "PackRight Supplies", "PO-0013", "Packaging receiving",
-         [("OFF-021", 30, 8.00, "B-03-01", None),
-          ("OFF-022", 20, 11.00, "B-03-02", None),
-          ("OFF-023", 15, 13.50, "B-03-01", None)]),
-        (5, "DrinksDirect", "PO-0014", "Water and juice receiving",
-         [("BEV-019", 40, 7.50, "C-02-01", "B-8191"),
-          ("BEV-026", 25, 9.00, "C-03-02", "B-8261"),
-          ("BEV-035", 50, 6.00, "C-02-01", "B-8351")]),
-        (4, "Beverage Wholesale Co", "PO-0015", "Coffee and tea receiving",
-         [("BEV-022", 30, 5.50, "C-03-01", "B-8221"),
-          ("BEV-023", 30, 4.00, "C-03-02", "B-8231"),
-          ("BEV-024", 40, 2.40, "N1-01", "B-8241")]),
+        (27, "Saficom Technology", "PO-0001", "Electronics receiving",
+         [("TECH-001", 8, 6500, "A-01-01", None),
+          ("TECH-004", 25, 2500, "A-02-01", None),
+          ("TECH-007", 15, 3500, "A-03-01", None)]),
+        (23, "Regal Paper House", "PO-0002", "Paper receiving",
+         [("OFF-010", 100, 520, "B-01-01", None),
+          ("OFF-012", 40, 620, "B-01-03", None)]),
+        (20, "Regal Paper House", "PO-0003", "Stationery receiving",
+         [("OFF-011", 80, 165, "B-01-02", None),
+          ("OFF-013", 50, 580, "B-02-01", None),
+          ("OFF-014", 40, 430, "B-02-02", None)]),
+        (15, "Brookside Dairy Ltd", "PO-0004", "Coffee and tea receiving",
+         [("BEV-016", 15, 1520, "C-01-01", "B-9161"),
+          ("BEV-017", 30, 760, "C-01-02", "B-8170"),
+          ("BEV-018", 20, 1070, "C-01-03", "B-8180")]),
+        (11, "Kenya Cleaning Supplies", "PO-0005", "Janitorial receiving",
+         [("CLN-022", 60, 330, "D-01-01", None),
+          ("CLN-023", 30, 830, "D-01-02", None),
+          ("CLN-024", 40, 250, "D-01-03", None)]),
+        (9, "Syntar Technologies", "PO-0011", "Storage and networking receiving",
+         [("TECH-014", 20, 9800, "E-02-02", None),
+          ("TECH-020", 15, 6600, "N1-01", None),
+          ("TECH-021", 50, 550, "N1-02", None)]),
+        (7, "Snax Ltd", "PO-0012", "Snacks receiving",
+         [("BEV-031", 40, 1590, "N2-01", "B-8311"),
+          ("BEV-032", 30, 1930, "N2-02", "B-8321"),
+          ("BEV-033", 20, 1310, "N2-01", "B-8331")]),
+        (6, "Carton Master Ltd", "PO-0013", "Packaging receiving",
+         [("OFF-021", 30, 1240, "B-03-01", None),
+          ("OFF-022", 20, 1650, "B-03-02", None),
+          ("OFF-023", 15, 2070, "B-03-01", None)]),
+        (5, "Coca-Cola Beverages Africa", "PO-0014", "Water and juice receiving",
+         [("BEV-019", 40, 1100, "C-02-01", "B-8191"),
+          ("BEV-026", 25, 1380, "C-03-02", "B-8261"),
+          ("BEV-035", 50, 890, "C-02-01", "B-8351")]),
+        (4, "Brookside Dairy Ltd", "PO-0015", "Coffee and tea receiving",
+         [("BEV-022", 30, 830, "C-03-01", "B-8221"),
+          ("BEV-023", 30, 620, "C-03-02", "B-8231"),
+          ("BEV-024", 40, 390, "N1-01", "B-8241")]),
     ]
     receipts = []
     rcp_counter = 1
@@ -1046,33 +1066,33 @@ def create_asns(db, users, suppliers, by_sku, lots, locs):
     asns = []
     asn_counter = 1
 
-    # 1) Pending - accessories from TechSource (matches pending PO-0008).
+    # 1) Pending - accessories from Saficom Technology (matches pending PO-0008).
     asn = ASN(asn_number=f"ASN-{asn_counter:04d}",
-              supplier_id=sup["TechSource Distribution"].id, user_id=admin.id,
+              supplier_id=sup["Saficom Technology"].id, user_id=admin.id,
               expected_arrival=date.today() + timedelta(days=5),
               notes="Accessories restock - awaiting carrier",
               created_at=days_ago(2, hour=9))
     db.add(asn)
     db.flush()
-    for sku, qty, cost, bin_code in [("TECH-005", 80, 4.20, "A-02-02"),
-                                     ("TECH-006", 20, 6.00, "A-02-03")]:
+    for sku, qty, cost, bin_code in [("TECH-005", 80, 700, "A-02-02"),
+                                     ("TECH-006", 20, 1000, "A-02-03")]:
         db.add(ASNItem(asn_id=asn.id, product_id=by_sku[sku].id, expected_qty=qty,
                        unit_cost=cost, location_id=locs[bin_code].id))
     asns.append(asn)
     asn_counter += 1
 
-    # 2) Partial - keyboards/mice from PrimeData (matches pending PO-0006).
+    # 2) Partial - keyboards/mice from Konnect IT Solutions (matches pending PO-0006).
     asn = ASN(asn_number=f"ASN-{asn_counter:04d}",
-              supplier_id=sup["PrimeData Systems"].id, user_id=admin.id,
+              supplier_id=sup["Konnect IT Solutions"].id, user_id=admin.id,
               expected_arrival=date.today() + timedelta(days=2),
               notes="Partial delivery - backorder remaining",
               created_at=days_ago(6, hour=10))
     db.add(asn)
     db.flush()
     db.add(ASNItem(asn_id=asn.id, product_id=by_sku["TECH-002"].id,
-                   expected_qty=30, unit_cost=11.00, location_id=locs["A-01-02"].id))
+                   expected_qty=30, unit_cost=1800, location_id=locs["A-01-02"].id))
     db.add(ASNItem(asn_id=asn.id, product_id=by_sku["TECH-003"].id,
-                   expected_qty=20, unit_cost=29.00, location_id=locs["A-01-03"].id))
+                   expected_qty=20, unit_cost=4600, location_id=locs["A-01-03"].id))
     db.flush()
     item = db.query(ASNItem).filter(ASNItem.asn_id == asn.id,
                                     ASNItem.product_id == by_sku["TECH-002"].id).first()
@@ -1083,16 +1103,16 @@ def create_asns(db, users, suppliers, by_sku, lots, locs):
     asns.append(asn)
     asn_counter += 1
 
-    # 3) Fully received - soft drinks from DrinksDirect.
+    # 3) Fully received - soft drinks from Coca-Cola Beverages Africa.
     asn = ASN(asn_number=f"ASN-{asn_counter:04d}",
-              supplier_id=sup["DrinksDirect"].id, user_id=admin.id,
+              supplier_id=sup["Coca-Cola Beverages Africa"].id, user_id=admin.id,
               expected_arrival=days_ago(7).date(), notes="Soft drinks delivery",
               status="received", received_at=days_ago(7, hour=14),
               created_at=days_ago(10, hour=9))
     db.add(asn)
     db.flush()
-    for sku, qty, cost, bin_code, lot_num in [("BEV-020", 24, 4.00, "C-02-02", None),
-                                              ("BEV-021", 12, 15.00, "C-02-03", "B-8211")]:
+    for sku, qty, cost, bin_code, lot_num in [("BEV-020", 24, 580, "C-02-02", None),
+                                              ("BEV-021", 12, 2270, "C-02-03", "B-8211")]:
         lot = lots[sku][lot_num].id if lot_num else None
         db.add(ASNItem(asn_id=asn.id, product_id=by_sku[sku].id, expected_qty=qty,
                        received_qty=qty, unit_cost=cost, location_id=locs[bin_code].id))
@@ -1103,43 +1123,43 @@ def create_asns(db, users, suppliers, by_sku, lots, locs):
     asns.append(asn)
     asn_counter += 1
 
-    # 4) Pending - networking from NexusGear (matches pending PO-0018).
+    # 4) Pending - networking from Syntar Technologies (matches pending PO-0018).
     asn = ASN(asn_number=f"ASN-{asn_counter:04d}",
-              supplier_id=sup["NexusGear Components"].id, user_id=admin.id,
+              supplier_id=sup["Syntar Technologies"].id, user_id=admin.id,
               expected_arrival=date.today() + timedelta(days=7),
               notes="Networking reorder - in transit",
               created_at=days_ago(1, hour=10))
     db.add(asn)
     db.flush()
-    for sku, qty, cost, bin_code in [("TECH-022", 20, 17.00, "N1-01"),
-                                     ("TECH-024", 50, 5.00, "E-02-02")]:
+    for sku, qty, cost, bin_code in [("TECH-022", 20, 2500, "N1-01"),
+                                     ("TECH-024", 50, 770, "E-02-02")]:
         db.add(ASNItem(asn_id=asn.id, product_id=by_sku[sku].id, expected_qty=qty,
                        unit_cost=cost, location_id=locs[bin_code].id))
     asns.append(asn)
     asn_counter += 1
 
-    # 5) Cancelled - gloves from CleanSupplies (matches cancelled PO-0017).
+    # 5) Cancelled - gloves from Kenya Cleaning Supplies (matches cancelled PO-0017).
     asn = ASN(asn_number=f"ASN-{asn_counter:04d}",
-              supplier_id=sup["CleanSupplies Ltd"].id, user_id=admin.id,
+              supplier_id=sup["Kenya Cleaning Supplies"].id, user_id=admin.id,
               expected_arrival=days_ago(9).date(), notes="Cancelled - stock found",
               status="cancelled", created_at=days_ago(12, hour=9))
     db.add(asn)
     db.flush()
     db.add(ASNItem(asn_id=asn.id, product_id=by_sku["CLN-029"].id,
-                   expected_qty=20, unit_cost=6.50, location_id=locs["N2-02"].id))
+                   expected_qty=20, unit_cost=970, location_id=locs["N2-02"].id))
     asns.append(asn)
     asn_counter += 1
 
-    # 6) Pending - paper from ACME (matches pending PO-0010).
+    # 6) Pending - paper from Regal Paper House (matches pending PO-0010).
     asn = ASN(asn_number=f"ASN-{asn_counter:04d}",
-              supplier_id=sup["ACME Paper Co"].id, user_id=admin.id,
+              supplier_id=sup["Regal Paper House"].id, user_id=admin.id,
               expected_arrival=date.today() + timedelta(days=3),
               notes="Paper reorder - truck dispatched",
               created_at=days_ago(1, hour=8))
     db.add(asn)
     db.flush()
     db.add(ASNItem(asn_id=asn.id, product_id=by_sku["OFF-010"].id,
-                   expected_qty=120, unit_cost=3.20, location_id=locs["B-01-01"].id))
+                   expected_qty=120, unit_cost=520, location_id=locs["B-01-01"].id))
     asns.append(asn)
     asn_counter += 1
 
@@ -1309,7 +1329,7 @@ def _make_sale(db, worker, customer, created, items, settings, invoice=None):
         invoice_number=invoice, customer_id=customer.id, user_id=worker.id,
         subtotal=round(subtotal, 2), tax_amount=round(tax, 2),
         total_amount=round(subtotal + tax, 2),
-        status="completed", payment_method=random.choice(["cash", "card", "transfer"]),
+        status="completed", payment_method=random.choice(["mpesa", "mpesa", "mpesa", "cash", "card", "transfer"]),
         created_at=created,
     )
     db.add(sale)
@@ -1340,36 +1360,36 @@ def create_sales(db, users, customers, products, by_sku):
 
     # (days_ago, customer, [(sku, qty), ...])
     sale_plan = [
-        (25, "Acme Retail Store", [("OFF-010", 6), ("OFF-011", 4), ("OFF-013", 5)]),
-        (24, "Downtown Cafe", [("BEV-016", 4), ("BEV-017", 2), ("BEV-018", 3)]),
-        (23, "TechNest Ltd", [("TECH-002", 3), ("TECH-005", 5), ("TECH-006", 2)]),
-        (22, "City Office Hub", [("OFF-014", 4), ("OFF-015", 3), ("CLN-022", 6)]),
-        (21, "FreshMart Grocery", [("BEV-020", 5), ("BEV-019", 4), ("BEV-021", 2)]),
-        (20, "Jane Doe", [("TECH-004", 1), ("TECH-005", 2)]),
-        (19, "Bright Learning Center", [("OFF-011", 5), ("OFF-013", 6), ("CLN-024", 4)]),
-        (18, "Acme Retail Store", [("BEV-030", 2), ("BEV-016", 3), ("BEV-018", 2)]),
-        (17, "TechNest Ltd", [("TECH-001", 2), ("TECH-003", 2), ("TECH-007", 2)]),
-        (16, "City Office Hub", [("OFF-010", 8), ("OFF-012", 3), ("OFF-025", 3)]),
-        (15, "Downtown Cafe", [("BEV-022", 3), ("BEV-023", 3), ("BEV-024", 4)]),
-        (14, "John Smith", [("TECH-005", 3), ("TECH-034", 2), ("TECH-018", 2)]),
-        (13, "FreshMart Grocery", [("BEV-035", 5), ("BEV-025", 3), ("BEV-026", 3)]),
-        (12, "Acme Retail Store", [("CLN-025", 2), ("CLN-026", 3), ("CLN-022", 5)]),
-        (11, "TechNest Ltd", [("TECH-008", 1), ("TECH-009", 2), ("TECH-013", 2)]),
-        (10, "City Office Hub", [("OFF-017", 3), ("OFF-018", 4), ("OFF-024", 4)]),
-        (9, "Downtown Cafe", [("BEV-020", 4), ("BEV-027", 3), ("BEV-031", 3)]),
-        (8, "Bright Learning Center", [("OFF-019", 3), ("OFF-020", 3), ("CLN-027", 3)]),
-        (7, "Acme Retail Store", [("TECH-010", 1), ("TECH-011", 2), ("TECH-014", 2)]),
-        (7, "Jane Doe", [("BEV-029-STEEL", 1), ("TECH-033", 1), ("TECH-036", 1)]),
-        (6, "TechNest Ltd", [("TECH-016", 2), ("TECH-017", 2), ("TECH-020", 2)]),
-        (6, "City Office Hub", [("OFF-021", 3), ("OFF-022", 2), ("OFF-023", 2)]),
-        (5, "FreshMart Grocery", [("BEV-032", 3), ("BEV-033", 3), ("BEV-034", 2)]),
-        (5, "Downtown Cafe", [("BEV-035", 4), ("BEV-019", 3), ("BEV-026", 2)]),
-        (4, "Acme Retail Store", [("TECH-021", 5), ("TECH-022", 1), ("TECH-024", 2)]),
-        (4, "TechNest Ltd", [("TECH-027", 1), ("TECH-028", 2), ("TECH-029", 2)]),
-        (3, "City Office Hub", [("OFF-026", 2), ("OFF-027", 2), ("OFF-028", 1)]),
-        (3, "Bright Learning Center", [("CLN-028", 3), ("CLN-029", 2), ("CLN-030", 3)]),
-        (2, "Acme Retail Store", [("TECH-015-BLK", 2), ("TECH-015-WHT", 1), ("TECH-037", 1)]),
-        (2, "FreshMart Grocery", [("BEV-025", 3), ("BEV-031", 4), ("BEV-034", 2)]),
+        (25, "Java House Nairobi", [("OFF-010", 6), ("OFF-011", 4), ("OFF-013", 5)]),
+        (24, "Carnivore Restaurant", [("BEV-016", 4), ("BEV-017", 2), ("BEV-018", 3)]),
+        (23, "ICT Authority", [("TECH-002", 3), ("TECH-005", 5), ("TECH-006", 2)]),
+        (22, "Nairobi County Government", [("OFF-014", 4), ("OFF-015", 3), ("CLN-022", 6)]),
+        (21, "Naivas Supermarket", [("BEV-020", 5), ("BEV-019", 4), ("BEV-021", 2)]),
+        (20, "Faith Wanjiru", [("TECH-004", 1), ("TECH-005", 2)]),
+        (19, "Kabrai Academy", [("OFF-011", 5), ("OFF-013", 6), ("CLN-024", 4)]),
+        (18, "Java House Nairobi", [("BEV-030", 2), ("BEV-016", 3), ("BEV-018", 2)]),
+        (17, "ICT Authority", [("TECH-001", 2), ("TECH-003", 2), ("TECH-007", 2)]),
+        (16, "Nairobi County Government", [("OFF-010", 8), ("OFF-012", 3), ("OFF-025", 3)]),
+        (15, "Carnivore Restaurant", [("BEV-022", 3), ("BEV-023", 3), ("BEV-024", 4)]),
+        (14, "Peter Otieno", [("TECH-005", 3), ("TECH-034", 2), ("TECH-018", 2)]),
+        (13, "Naivas Supermarket", [("BEV-035", 5), ("BEV-025", 3), ("BEV-026", 3)]),
+        (12, "Java House Nairobi", [("CLN-025", 2), ("CLN-026", 3), ("CLN-022", 5)]),
+        (11, "ICT Authority", [("TECH-008", 1), ("TECH-009", 2), ("TECH-013", 2)]),
+        (10, "Nairobi County Government", [("OFF-017", 3), ("OFF-018", 4), ("OFF-024", 4)]),
+        (9, "Carnivore Restaurant", [("BEV-020", 4), ("BEV-027", 3), ("BEV-031", 3)]),
+        (8, "Kabrai Academy", [("OFF-019", 3), ("OFF-020", 3), ("CLN-027", 3)]),
+        (7, "Java House Nairobi", [("TECH-010", 1), ("TECH-011", 2), ("TECH-014", 2)]),
+        (7, "Faith Wanjiru", [("BEV-029-STEEL", 1), ("TECH-033", 1), ("TECH-036", 1)]),
+        (6, "ICT Authority", [("TECH-016", 2), ("TECH-017", 2), ("TECH-020", 2)]),
+        (6, "Nairobi County Government", [("OFF-021", 3), ("OFF-022", 2), ("OFF-023", 2)]),
+        (5, "Naivas Supermarket", [("BEV-032", 3), ("BEV-033", 3), ("BEV-034", 2)]),
+        (5, "Carnivore Restaurant", [("BEV-035", 4), ("BEV-019", 3), ("BEV-026", 2)]),
+        (4, "Java House Nairobi", [("TECH-021", 5), ("TECH-022", 1), ("TECH-024", 2)]),
+        (4, "ICT Authority", [("TECH-027", 1), ("TECH-028", 2), ("TECH-029", 2)]),
+        (3, "Nairobi County Government", [("OFF-026", 2), ("OFF-027", 2), ("OFF-028", 1)]),
+        (3, "Kabrai Academy", [("CLN-028", 3), ("CLN-029", 2), ("CLN-030", 3)]),
+        (2, "Java House Nairobi", [("TECH-015-BLK", 2), ("TECH-015-WHT", 1), ("TECH-037", 1)]),
+        (2, "Naivas Supermarket", [("BEV-025", 3), ("BEV-031", 4), ("BEV-034", 2)]),
     ]
 
     sale_records = []
@@ -1382,7 +1402,7 @@ def create_sales(db, users, customers, products, by_sku):
 
     # Refund 1: Cola 12pk sale fully refunded, restoring stock to its lot.
     created = days_ago(2, hour=12)
-    customer = customer_by_name["FreshMart Grocery"]
+    customer = customer_by_name["Naivas Supermarket"]
     record = _make_sale(db, worker, customer, created, [("BEV-020", 3)], settings)
     invoice = record["invoice"]
     originals = db.query(StockMovement).filter(
@@ -1416,7 +1436,7 @@ def create_sales(db, users, customers, products, by_sku):
 
     # Refund 2: USB-C Cable sale fully refunded.
     created = days_ago(1, hour=15)
-    customer = customer_by_name["Jane Doe"]
+    customer = customer_by_name["Faith Wanjiru"]
     record = _make_sale(db, worker, customer, created, [("TECH-005", 2)], settings)
     invoice = record["invoice"]
     originals = db.query(StockMovement).filter(
@@ -1467,7 +1487,7 @@ def create_serialized_sales(db, users, customers, serials, by_sku, locs):
         invoice = f"INV-S{counter:04d}"
         sale = Sale(invoice_number=invoice, customer_id=customer.id, user_id=worker.id,
                     subtotal=price, tax_amount=tax, total_amount=price + tax,
-                    status="completed", payment_method="card",
+                    status="completed", payment_method="mpesa",
                     notes=f"Serial {serial.serial_number}", created_at=created)
         db.add(sale)
         db.flush()
@@ -2131,7 +2151,7 @@ def create_shipments(db, users, customers, by_sku, locs, serial_batches=None):
         s.updated_at = ts
 
     # Shipped: weekly office restock (non-lot products).
-    s1 = new_shipment("SHP-0001", "Acme Retail Store", carrier="UPS",
+    s1 = new_shipment("SHP-0001", "Java House Nairobi", carrier="UPS",
                       tracking="1Z999AA10123456784", notes="Weekly office restock",
                       created_days=5)
     add_items(s1, [("OFF-010", 5), ("CLN-022", 4), ("BEV-020", 3)])
@@ -2140,32 +2160,32 @@ def create_shipments(db, users, customers, by_sku, locs, serial_batches=None):
     ship(s1, days_ago(3, hour=9))
 
     # Packed: lot-tracked beverage order staged but not yet shipped.
-    s2 = new_shipment("SHP-0002", "Downtown Cafe", carrier="FedEx",
+    s2 = new_shipment("SHP-0002", "Carnivore Restaurant", carrier="FedEx",
                       notes="Break room restock", created_days=3)
     add_items(s2, [("BEV-016", 2), ("BEV-018", 3)])
     pick(s2, [("BEV-016", 2), ("BEV-018", 3)], days_ago(2, hour=11))
     pack(s2, days_ago(1, hour=9))
 
     # Picking: picked to staging, awaiting pack.
-    s3 = new_shipment("SHP-0003", "TechNest Ltd", notes="Electronics accessories",
+    s3 = new_shipment("SHP-0003", "ICT Authority", notes="Electronics accessories",
                       created_days=2)
     add_items(s3, [("TECH-005", 4), ("TECH-006", 2)])
     pick(s3, [("TECH-005", 4), ("TECH-006", 2)], days_ago(1, hour=10))
 
     # Draft: no picking activity yet.
-    s4 = new_shipment("SHP-0004", "City Office Hub", notes="Stationery order",
+    s4 = new_shipment("SHP-0004", "Nairobi County Government", notes="Stationery order",
                       created_days=1)
     add_items(s4, [("OFF-013", 10), ("OFF-014", 10)])
 
     # Cancelled: cancelled before any picking.
-    s5 = new_shipment("SHP-0005", "FreshMart Grocery", notes="Cancelled by customer",
+    s5 = new_shipment("SHP-0005", "Naivas Supermarket", notes="Cancelled by customer",
                       created_days=1)
     add_items(s5, [("BEV-019", 6)])
     s5.status = "cancelled"
     s5.updated_at = days_ago(0, hour=8)
 
     # Shipped + invoice: serialized unit shipped with serial tracking.
-    s6 = new_shipment("SHP-0006", "TechNest Ltd", carrier="DHL",
+    s6 = new_shipment("SHP-0006", "ICT Authority", carrier="DHL",
                       tracking="DHL 1234 5678 90", notes="Serialized device order",
                       created_days=3)
     add_items(s6, [("TECH-030", 2)])
@@ -2174,7 +2194,7 @@ def create_shipments(db, users, customers, by_sku, locs, serial_batches=None):
     ship(s6, days_ago(1, hour=10))
 
     # Shipped + invoice created from the shipment (create-sale flow).
-    s7 = new_shipment("SHP-0007", "Jane Doe", notes="Online order", created_days=4)
+    s7 = new_shipment("SHP-0007", "Faith Wanjiru", notes="Online order", created_days=4)
     add_items(s7, [("TECH-002", 2), ("TECH-006", 1)])
     pick(s7, [("TECH-002", 2), ("TECH-006", 1)], days_ago(4, hour=15))
     pack(s7, days_ago(4, hour=16))
@@ -2204,7 +2224,7 @@ def create_shipments(db, users, customers, by_sku, locs, serial_batches=None):
     # once none of its units remain in stock.
     if serial_batches and serial_batches.get("watch_batch1"):
         batch1_serials = serial_batches["watch_batch1"]
-        s8 = new_shipment("SHP-0008", "TechNest Ltd", carrier="DHL",
+        s8 = new_shipment("SHP-0008", "ICT Authority", carrier="DHL",
                           tracking="DHL 9988 7766 55", notes="Serialized lot sale - SW-BATCH-1",
                           created_days=1)
         add_items(s8, [("TECH-030", len(batch1_serials))])
@@ -2248,7 +2268,7 @@ def create_shipments(db, users, customers, by_sku, locs, serial_batches=None):
         db.flush()
 
     # Shipped + invoice: laptop shipped with serial tracking.
-    s9 = new_shipment("SHP-0009", "Solar Peak Energy", carrier="DHL",
+    s9 = new_shipment("SHP-0009", "KenGen PLC", carrier="DHL",
                       tracking="DHL 1122 3344 55", notes="Laptop order - invoiced",
                       created_days=2)
     add_items(s9, [("TECH-038", 1)])
@@ -2277,18 +2297,18 @@ def create_shipments(db, users, customers, by_sku, locs, serial_batches=None):
     s9.sale_id = sale.id
 
     # Picking: laptop picked to staging, awaiting pack.
-    s10 = new_shipment("SHP-0010", "TechNest Ltd", notes="Laptop for deployment",
+    s10 = new_shipment("SHP-0010", "ICT Authority", notes="Laptop for deployment",
                        created_days=1)
     add_items(s10, [("TECH-038", 1)])
     pick(s10, [("TECH-038", 1)], days_ago(0, hour=11))
 
     # Draft: mixed stationery + beverage order.
-    s11 = new_shipment("SHP-0011", "Riverside Hotel", notes="Housekeeping order",
+    s11 = new_shipment("SHP-0011", "Sarova Hotels Group", notes="Housekeeping order",
                        created_days=1)
     add_items(s11, [("OFF-011", 8), ("OFF-018", 5), ("BEV-020", 6)])
 
     # Shipped: lot-tracked beverage order.
-    s12 = new_shipment("SHP-0012", "Harborview Bistro", carrier="FedEx",
+    s12 = new_shipment("SHP-0012", "Carnivore Restaurant", carrier="FedEx",
                        tracking="FEDEX 8812 0098 21", notes="Beverage restock",
                        created_days=1)
     add_items(s12, [("BEV-016", 3), ("BEV-018", 2), ("BEV-020", 4)])
@@ -2299,7 +2319,7 @@ def create_shipments(db, users, customers, by_sku, locs, serial_batches=None):
     # Shipped: serialized laptop lot batch (LP-BATCH-2) -> lot flips to sold.
     if serial_batches and serial_batches.get("laptop_batch2"):
         batch_serials = serial_batches["laptop_batch2"]
-        s13 = new_shipment("SHP-0013", "Midtown Bookstore", carrier="DHL",
+        s13 = new_shipment("SHP-0013", "Text Book Centre", carrier="DHL",
                            tracking="DHL 5566 7788 99", notes="Serialized lot sale - LP-BATCH-2",
                            created_days=1)
         add_items(s13, [("TECH-038", len(batch_serials))])
@@ -2370,7 +2390,13 @@ def seed_document_sequences(db, sales_count, orders, receipts, asns, ccs, transf
         ("shipment", 14),
     ]
     for name, next_value in rows:
-        db.add(DocumentSequence(name=name, next_value=next_value))
+        db.execute(
+            text(
+                "INSERT INTO document_sequences (name, next_value) VALUES (:name, :val) "
+                "ON CONFLICT(name) DO UPDATE SET next_value = :val"
+            ),
+            {"name": name, "val": next_value},
+        )
     db.commit()
 
 
@@ -2447,7 +2473,7 @@ def create_notifications(db, users, products, sale_records, shipments, wos):
 
     for w in workers:
         notes.append(Notification(
-            user_id=w.id, type="info", title="Welcome to the warehouse",
+            user_id=w.id, type="info", title="Karibu! Welcome to the warehouse",
             message="You are signed in with worker permissions.",
             link="/", is_read=False, created_at=days_ago(random.randint(1, 4)),
         ))
@@ -2464,8 +2490,8 @@ def create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, b
         (admin, "create", "location", 1, "Created location 'Main Warehouse'", 60),
         (admin, "create", "location", 2, "Created location 'North Annex'", 40),
         (admin, "create", "category", 1, "Created category 'Electronics'", 40),
-        (admin, "create", "supplier", 1, "Created supplier 'TechSource Distribution'", 38),
-        (admin, "create", "customer", 1, "Created customer 'Acme Retail Store'", 36),
+        (admin, "create", "supplier", 1, "Created supplier 'Saficom Technology'", 38),
+        (admin, "create", "customer", 1, "Created customer 'Java House Nairobi'", 36),
         (admin, "create", "product", 1, "Created product 'Laptop Stand Pro'", 30),
         (admin, "create", "product", by_sku["TECH-030"].id, "Created serialized product 'Smart Watch Pro'", 25),
         (admin, "create", "product", by_sku["TECH-038"].id, "Created serialized product 'ProLaptop X1'", 22),
@@ -2483,7 +2509,7 @@ def create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, b
         (worker, "cancel", "cycle_count", ccs[5].id, f"Cancelled cycle count '{ccs[5].cc_number}'", 0),
         (worker, "create", "sale", sale_records[0]["id"], f"Sale '{sale_records[0]['invoice']}'", 25),
         (worker, "create", "stock_movement", 3, "out movement of 4 x 'Wireless Mouse M300'", 2),
-        (admin, "create", "customer", 8, "Created customer 'Bright Learning Center'", 1),
+        (admin, "create", "customer", 8, "Created customer 'Kabrai Academy'", 1),
         (admin, "update", "stock_movement", 2, "Updated stock movement #2", 1),
     ]
     if wos:
@@ -2510,6 +2536,152 @@ def create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, b
                            entity_type=entity, entity_id=eid, description=desc,
                            created_at=days_ago(day, hour=random.randint(8, 17))))
     db.commit()
+
+
+def create_sales_channels(db):
+    channels = [
+        SalesChannel(name="In-Store", type="store", is_active=True),
+        SalesChannel(name="Online Store", type="webstore", is_active=True),
+        SalesChannel(name="M-Pesa Till", type="store", is_active=True),
+        SalesChannel(name="Wholesale Desk", type="b2b", is_active=True),
+        SalesChannel(name="Tele-Sales", type="marketplace", is_active=True),
+    ]
+    db.add_all(channels)
+    db.commit()
+    for c in channels:
+        db.refresh(c)
+    return channels
+
+
+def create_price_lists(db, products):
+    pl_default = PriceList(name="Default Retail", description="Standard retail pricing for walk-in customers",
+                           valid_from=date.today() - timedelta(days=90), valid_to=date.today() + timedelta(days=365),
+                           is_default=True, is_active=True)
+    pl_wholesale = PriceList(name="Wholesale Tier", description="10-12% discount for bulk purchases of 10+ units",
+                             valid_from=date.today() - timedelta(days=60), valid_to=date.today() + timedelta(days=305),
+                             is_default=False, is_active=True)
+    pl_corporate = PriceList(name="Corporate", description="Negotiated pricing for government and corporate accounts",
+                             valid_from=date.today() - timedelta(days=30), valid_to=date.today() + timedelta(days=335),
+                             is_default=False, is_active=True)
+    db.add_all([pl_default, pl_wholesale, pl_corporate])
+    db.flush()
+
+    for p in products:
+        if p.is_variant or p.is_serialized or p.parent_id is not None:
+            continue
+        if p.unit_price > 0:
+            db.add(PriceListItem(price_list_id=pl_default.id, product_id=p.id,
+                                 price=float(p.unit_price), min_qty=1))
+            wholesale_price = round(float(p.unit_price) * 0.88, 2)
+            db.add(PriceListItem(price_list_id=pl_wholesale.id, product_id=p.id,
+                                 price=wholesale_price, min_qty=10))
+            corporate_price = round(float(p.unit_price) * 0.92, 2)
+            db.add(PriceListItem(price_list_id=pl_corporate.id, product_id=p.id,
+                                 price=corporate_price, min_qty=1))
+    db.commit()
+    return [pl_default, pl_wholesale, pl_corporate]
+
+
+def create_customer_groups(db, price_lists):
+    pl_by_name = {p.name: p for p in price_lists}
+    groups = [
+        CustomerGroup(name="Retail", description="Standard walk-in customers",
+                      price_list_id=pl_by_name["Default Retail"].id),
+        CustomerGroup(name="Wholesale", description="Bulk buyers and resellers",
+                      price_list_id=pl_by_name["Wholesale Tier"].id),
+        CustomerGroup(name="Corporate", description="Government and corporate accounts",
+                      price_list_id=pl_by_name["Corporate"].id),
+    ]
+    db.add_all(groups)
+    db.commit()
+    for g in groups:
+        db.refresh(g)
+    return groups
+
+
+def create_promotions(db):
+    promos = [
+        Promotion(code="NAIROBI10", description="10% off all electronics - Nairobi launch promo",
+                  discount_type="percentage", value=10.0, min_qty=1, min_amount=5000,
+                  valid_from=date.today() - timedelta(days=30), valid_to=date.today() + timedelta(days=60),
+                  max_uses=100, used_count=12, is_active=True),
+        Promotion(code="BULK20", description="20% off orders above KSh 50,000",
+                  discount_type="percentage", value=20.0, min_qty=5, min_amount=50000,
+                  valid_from=date.today() - timedelta(days=15), valid_to=date.today() + timedelta(days=90),
+                  max_uses=50, used_count=5, is_active=True),
+        Promotion(code="FREESHIP", description="Free shipping on all orders above KSh 10,000",
+                  discount_type="fixed", value=500.0, min_qty=1, min_amount=10000,
+                  valid_from=date.today() - timedelta(days=7), valid_to=date.today() + timedelta(days=120),
+                  max_uses=0, used_count=23, is_active=True),
+        Promotion(code="CNY2026", description="Chinese New Year clearance - 15% off all cables",
+                  discount_type="percentage", value=15.0, min_qty=2, min_amount=0,
+                  valid_from=date.today() - timedelta(days=60), valid_to=date.today() - timedelta(days=30),
+                  max_uses=200, used_count=200, is_active=False),
+    ]
+    db.add_all(promos)
+    db.commit()
+    return promos
+
+
+def create_notes_data(db, users):
+    admin = next(u for u in users if u.role == "admin")
+    wanjiku = next(u for u in users if u.username == "wanjiku")
+    otieno = next(u for u in users if u.username == "otieno")
+    amina = next(u for u in users if u.username == "amina")
+
+    tags = [
+        NoteTag(name="Urgent", color="#ef4444"),
+        NoteTag(name="Restock", color="#f59e0b"),
+        NoteTag(name="QC", color="#8b5cf6"),
+        NoteTag(name="Supplier", color="#3b82f6"),
+        NoteTag(name="Maintenance", color="#10b981"),
+    ]
+    db.add_all(tags)
+    db.flush()
+    tag_by_name = {t.name: t for t in tags}
+
+    notes = [
+        Note(title="Reorder Coca-Cola products", body="Coca-Cola Beverages Africa delivery expected next week. Check BEV-020 (Cola 12pk) and BEV-021 (Energy Drink) stock levels before order arrives.",
+             category="todo", priority="high", is_pinned=True, user_id=admin.id, assigned_to_id=otieno.id,
+             created_at=days_ago(2, hour=9)),
+        Note(title="QC Alert: Batch Q-7090 quarantined", body="Lot B-8170 (Green Tea Box 20) quarantined due to packaging damage. Contact Brookside Dairy for replacement. 80 units affected.",
+             category="alert", priority="urgent", user_id=admin.id, assigned_to_id=wanjiku.id,
+             created_at=days_ago(3, hour=14)),
+        Note(title="Nairobi County Government bulk order", body="County government requesting quote for 200x OFF-010 (A4 Paper Ream) and 50x OFF-021 (Packing Tape). Use Corporate price list.",
+             category="note", priority="high", user_id=wanjiku.id, assigned_to_id=admin.id,
+             created_at=days_ago(1, hour=11)),
+        Note(title="Warehouse shelf Aisle D maintenance", body="D-01-02 shelf slightly damaged. Schedule repair before next delivery. Notify Otieno.",
+             category="note", priority="normal", user_id=otieno.id, assigned_to_id=admin.id,
+             created_at=days_ago(4, hour=10)),
+        Note(title="M-Pesa till reconciliation", body="Monthly till reconciliation due by 5th. Check all mpesa sales from the past month against Safaricom statements.",
+             category="todo", priority="normal", user_id=admin.id, assigned_to_id=amina.id,
+             due_date=days_ago(-5, hour=9),
+             recurrence="monthly", created_at=days_ago(5, hour=9)),
+        Note(title="Expired stock removal", body="Remove expired lots: B-8150 (Ground Coffee), B-7100 (Green Tea), B-8222 (Energy Drink). Update disposal log.",
+             category="todo", priority="high", user_id=admin.id, assigned_to_id=otieno.id,
+             created_at=days_ago(1, hour=8)),
+        Note(title="New supplier onboarding", body="Konnect IT Solutions requesting to add new product line. Schedule meeting to discuss terms and pricing.",
+             category="note", priority="normal", user_id=amina.id,
+             created_at=days_ago(6, hour=15)),
+        Note(title="Carnivore Restaurant weekly order due", body="Weekly beverage order from Carnivore Restaurant. Check BEV-016 (Ground Coffee), BEV-019 (Sparkling Water), BEV-024 (Coffee Filters).",
+             category="todo", priority="normal", user_id=wanjiku.id, assigned_to_id=otieno.id,
+             created_at=days_ago(0, hour=8)),
+    ]
+    db.add_all(notes)
+    db.flush()
+
+    db.add(NoteTagLink(note_id=notes[0].id, tag_id=tag_by_name["Restock"].id))
+    db.add(NoteTagLink(note_id=notes[0].id, tag_id=tag_by_name["Supplier"].id))
+    db.add(NoteTagLink(note_id=notes[1].id, tag_id=tag_by_name["Urgent"].id))
+    db.add(NoteTagLink(note_id=notes[1].id, tag_id=tag_by_name["QC"].id))
+    db.add(NoteTagLink(note_id=notes[4].id, tag_id=tag_by_name["Maintenance"].id))
+    db.add(NoteTagLink(note_id=notes[6].id, tag_id=tag_by_name["Supplier"].id))
+
+    product = db.query(Product).filter(Product.sku == "BEV-020").first()
+    if product:
+        db.add(NoteLink(note_id=notes[0].id, entity_type="product", entity_id=product.id))
+    db.commit()
+    return notes, tags
 
 
 def main():
@@ -2546,6 +2718,11 @@ def main():
                                 asns, ccs, transfers, lpns, boms, wos, qcs)
         shipments = create_shipments(db, users, customers, by_sku, locs,
                                      serial_batches=serial_batches)
+        price_lists = create_price_lists(db, products)
+        sales_channels = create_sales_channels(db)
+        customer_groups = create_customer_groups(db, price_lists)
+        promos = create_promotions(db)
+        notes_data, note_tags = create_notes_data(db, users)
         create_notifications(db, users, products, sale_records, shipments, wos)
         create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, by_sku, wos)
         db.commit()
@@ -2572,15 +2749,22 @@ def main():
         print(f"  Lot Links         : {db.query(LotLink).count()}")
         print(f"  Shipments         : {len(shipments)}")
         print(f"  Sales             : {db.query(Sale).count()}")
+        print(f"  Price Lists       : {len(price_lists)}")
+        print(f"  Price List Items  : {db.query(PriceListItem).count()}")
+        print(f"  Sales Channels    : {len(sales_channels)}")
+        print(f"  Customer Groups   : {len(customer_groups)}")
+        print(f"  Promotions        : {len(promos)}")
+        print(f"  Notes             : {db.query(Note).count()}")
+        print(f"  Note Tags         : {len(note_tags)}")
         print(f"  Stock Lines       : {db.query(StockLine).count()}")
         print(f"  Stock Movements   : {db.query(StockMovement).count()}")
         print(f"  Activity Logs     : {db.query(ActivityLog).count()}")
         print(f"  Notifications     : {db.query(Notification).count()}")
         print("  Demo login        : admin / admin123")
-        print("                     : michael / worker123")
-        print("                     : sarah   / worker123")
-        print("                     : david   / worker123")
-        print("                     : jessica / worker123")
+        print("                     : james  / worker123")
+        print("                     : wanjiku / worker123")
+        print("                     : otieno / worker123")
+        print("                     : amina  / worker123")
         print("=" * 60)
     finally:
         db.close()

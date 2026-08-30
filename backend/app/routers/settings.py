@@ -3,13 +3,14 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.constants import CURRENCIES
 from app.database import get_db
 from app.models.settings import Settings
 from app.services.auth import require_permission
+from app.utils import broadcast_change
 
 router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_permission("settings.view"))])
 
@@ -32,9 +33,23 @@ class SettingsUpdate(BaseModel):
     expiry_alerts: Optional[bool] = None
     shipment_prefix: Optional[str] = None
     work_order_prefix: Optional[str] = None
-    sale_prefix: Optional[str] = None
     invoice_prefix: Optional[str] = None
     po_prefix: Optional[str] = None
+    receipt_prefix: Optional[str] = None
+    asn_prefix: Optional[str] = None
+    qc_prefix: Optional[str] = None
+    cc_prefix: Optional[str] = None
+    return_prefix: Optional[str] = None
+    transfer_prefix: Optional[str] = None
+    unallocated_prefix: Optional[str] = None
+    quarantine_prefix: Optional[str] = None
+    lpn_prefix: Optional[str] = None
+    lpn_move_prefix: Optional[str] = None
+    lpn_load_prefix: Optional[str] = None
+    lpn_unload_prefix: Optional[str] = None
+    stock_in_prefix: Optional[str] = None
+    stock_out_prefix: Optional[str] = None
+    adjustment_prefix: Optional[str] = None
     require_qc_before_ship: Optional[bool] = None
     auto_allocate_stock: Optional[bool] = None
     enforce_fefo: Optional[bool] = None
@@ -47,12 +62,51 @@ class SettingsUpdate(BaseModel):
     bank_details: Optional[str] = None
     footer_note: Optional[str] = None
 
+    @field_validator("tax_rate")
+    @classmethod
+    def validate_tax_rate(cls, v: float | None) -> float | None:
+        if v is not None and (v < 0 or v > 100):
+            raise ValueError("tax_rate must be between 0 and 100")
+        return v
+
+    @field_validator("default_reorder_level")
+    @classmethod
+    def validate_reorder(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("default_reorder_level must be >= 0")
+        return v
+
+    @field_validator("expiry_warning_days")
+    @classmethod
+    def validate_expiry_days(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 365):
+            raise ValueError("expiry_warning_days must be between 1 and 365")
+        return v
+
+    @field_validator("fiscal_year_start_month")
+    @classmethod
+    def validate_fiscal_month(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 12):
+            raise ValueError("fiscal_year_start_month must be between 1 and 12")
+        return v
+
+    @field_validator("default_items_per_page")
+    @classmethod
+    def validate_per_page(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 500):
+            raise ValueError("default_items_per_page must be between 1 and 500")
+        return v
+
 
 SETTING_FIELDS = [
     "id", "store_name", "address", "phone", "email", "currency_symbol", "currency_code",
     "tax_rate", "default_reorder_level",
     "expiry_warning_days", "low_stock_alerts", "expiry_alerts",
-    "shipment_prefix", "work_order_prefix", "sale_prefix", "invoice_prefix", "po_prefix",
+    "shipment_prefix", "work_order_prefix", "invoice_prefix", "po_prefix",
+    "receipt_prefix", "asn_prefix", "qc_prefix", "cc_prefix",
+    "return_prefix", "transfer_prefix", "unallocated_prefix", "quarantine_prefix",
+    "lpn_prefix", "lpn_move_prefix", "lpn_load_prefix", "lpn_unload_prefix",
+    "stock_in_prefix", "stock_out_prefix", "adjustment_prefix",
     "require_qc_before_ship", "auto_allocate_stock", "enforce_fefo",
     "default_costing_method", "fiscal_year_start_month",
     "default_items_per_page", "date_format",
@@ -75,15 +129,8 @@ def _serialize(s: Settings) -> dict:
 
 
 def _detect_image_ext(data: bytes) -> str | None:
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return ".png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return ".jpg"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return ".gif"
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return ".webp"
-    return None
+    from app.utils import detect_image_ext
+    return detect_image_ext(data)
 
 
 @router.get("")
@@ -102,10 +149,24 @@ def update_settings(data: SettingsUpdate, db: Session = Depends(get_db), user=De
     s = get_or_create_settings(db)
     if data.currency_code is not None and data.currency_code not in CURRENCIES:
         raise HTTPException(status_code=400, detail=f"currency_code must be one of {', '.join(CURRENCIES)}")
+    PREFIX_FIELDS = [
+        "shipment_prefix", "work_order_prefix", "invoice_prefix", "po_prefix",
+        "receipt_prefix", "asn_prefix", "qc_prefix", "cc_prefix",
+        "return_prefix", "transfer_prefix", "unallocated_prefix", "quarantine_prefix",
+        "lpn_prefix", "lpn_move_prefix", "lpn_load_prefix", "lpn_unload_prefix",
+        "stock_in_prefix", "stock_out_prefix", "adjustment_prefix",
+    ]
     for k, v in data.model_dump(exclude_unset=True).items():
+        if k in PREFIX_FIELDS and isinstance(v, str):
+            v = v.strip()
+            if not v:
+                raise HTTPException(status_code=400, detail=f"{k} cannot be empty")
+            if len(v) > 20:
+                raise HTTPException(status_code=400, detail=f"{k} must be 20 characters or fewer")
         setattr(s, k, v)
     db.commit()
     db.refresh(s)
+    broadcast_change("settings", "updated")
     return _serialize(s)
 
 
@@ -126,14 +187,22 @@ def upload_logo(
     detected = _detect_image_ext(content)
     if detected is None:
         raise HTTPException(status_code=400, detail="File content is not a supported image")
+    s = get_or_create_settings(db)
+    if s.logo_url:
+        old_path = UPLOAD_DIR / Path(s.logo_url).name
+        try:
+            if old_path.exists():
+                old_path.unlink()
+        except Exception:
+            pass
     UPLOAD_DIR.mkdir(exist_ok=True)
     filename = f"logo_{uuid4().hex}{detected}"
     filepath = UPLOAD_DIR / filename
     with open(filepath, "wb") as f:
         f.write(content)
-    s = get_or_create_settings(db)
     s.logo_url = f"/uploads/{filename}"
     db.commit()
+    broadcast_change("settings", "updated")
     return {"logo_url": s.logo_url}
 
 
@@ -143,6 +212,14 @@ def remove_logo(
     user=Depends(require_permission("settings.update")),
 ):
     s = get_or_create_settings(db)
+    if s.logo_url:
+        old_path = UPLOAD_DIR / Path(s.logo_url).name
+        try:
+            if old_path.exists():
+                old_path.unlink()
+        except Exception:
+            pass
     s.logo_url = ""
     db.commit()
+    broadcast_change("settings", "updated")
     return {"logo_url": ""}

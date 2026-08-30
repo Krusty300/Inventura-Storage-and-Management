@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -66,7 +66,8 @@ describe("ASNs Page", () => {
     mockASNs([mockASN()]);
     renderWithProviders(<ASNs />);
     expect(await screen.findByText("ASN-0001")).toBeInTheDocument();
-    expect(screen.getByText("Acme Supplies")).toBeInTheDocument();
+    const table = screen.getByRole("grid", { name: "ASNs table" });
+    expect(within(table).getByText("Acme Supplies")).toBeInTheDocument();
     expect(screen.getByText("pending")).toBeInTheDocument();
     expect(screen.getByLabelText("Receive progress for ASN-0001")).toBeInTheDocument();
   });
@@ -121,8 +122,9 @@ describe("ASNs Page", () => {
     });
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
-    await screen.findByRole("option", { name: "Acme Supplies" });
-    fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "1" } });
+    const dialog = await screen.findByRole("dialog", { name: "New ASN" });
+    await within(dialog).findByRole("option", { name: "Acme Supplies" });
+    fireEvent.change(within(dialog).getByLabelText("Supplier"), { target: { value: "1" } });
 
     expect(await screen.findByText(/1 linked product/)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Gadget (SKU-2)" })).toBeInTheDocument();
@@ -149,11 +151,13 @@ describe("ASNs Page", () => {
     });
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
-    await screen.findByRole("option", { name: "Acme Supplies" });
-    fireEvent.change(screen.getByLabelText("Product"), { target: { value: "1" } });
-    fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "1" } });
+    const dialog = await screen.findByRole("dialog", { name: "New ASN" });
+    await within(dialog).findByRole("option", { name: "Acme Supplies" });
+    await within(dialog).findByRole("option", { name: "Widget (SKU-1)" });
+    fireEvent.change(within(dialog).getByLabelText("Product"), { target: { value: "1" } });
+    fireEvent.change(within(dialog).getByLabelText("Supplier"), { target: { value: "1" } });
     await waitFor(() => expect(screen.queryByText("Loading supplier products...")).not.toBeInTheDocument());
-    expect(screen.getByLabelText("Product")).toHaveValue("1");
+    await waitFor(() => expect(within(dialog).getByLabelText("Product")).toHaveValue("1"));
     expect(screen.getByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
     expect(screen.queryByText(/Loaded 1 product/)).not.toBeInTheDocument();
   });
@@ -205,8 +209,9 @@ describe("ASNs Page", () => {
     });
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
-    await screen.findByRole("option", { name: "Acme Supplies" });
-    fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "1" } });
+    const dialog = await screen.findByRole("dialog", { name: "New ASN" });
+    await within(dialog).findByRole("option", { name: "Acme Supplies" });
+    fireEvent.change(within(dialog).getByLabelText("Supplier"), { target: { value: "1" } });
 
     expect(await screen.findByRole("option", { name: "T-Shirt - Red / M (TSHIRT-RED-M)" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "T-Shirt - Blue / L (TSHIRT-BLUE-L)" })).toBeInTheDocument();

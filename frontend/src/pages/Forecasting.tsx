@@ -20,6 +20,7 @@ import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast } from "../context/ToastContext";
+import { errorMessage } from "../utils/errors";
 
 const SERVICE_LEVELS = [
   { value: "0.9", label: "90%" },
@@ -63,8 +64,8 @@ export default function Forecasting() {
       queryClient.invalidateQueries({ queryKey: ["forecasting"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Auto-reorder failed", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Auto-reorder failed"), "error");
     },
   });
 
@@ -131,7 +132,7 @@ export default function Forecasting() {
       {isLoading && <Skeleton variant="rows" rows={8} cols={7} />}
       {isError && (
         <div className="flex flex-col items-center justify-center h-48 gap-3">
-          <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load forecasting data</div>
+          <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load forecasting data</div>
           <button onClick={() => refetch()} className="btn-primary text-sm">Retry</button>
         </div>
       )}

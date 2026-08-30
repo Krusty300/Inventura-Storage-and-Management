@@ -17,6 +17,7 @@ function mockCustomers(
   opts: { frequentProducts?: Record<string, unknown>[]; stats?: Record<string, unknown> } = {}
 ) {
   getMock.mockImplementation((url: string) => {
+    if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
     if (url === "/customers") return Promise.resolve({ data: { items, total: items.length, page: 1, pages: 1 } });
     if (url === "/customers/1/stats") return Promise.resolve({ data: { total_sales: 1, total_spent: 10, avg_order_value: 10, last_purchase_at: null, ...(opts.stats || {}) } });
     if (url === "/customers/1/frequent-products") return Promise.resolve({ data: opts.frequentProducts || [] });

@@ -8,11 +8,14 @@ import type { LPN, Order, OrderItem } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
+import Skeleton from "./Skeleton";
+import AttachmentSection from "./AttachmentSection";
 import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
 import LocationPicker from "./LocationPicker";
 import SlideOver from "./SlideOver";
 import StockLocationHints from "./StockLocationHints";
+import { useAuth } from "../context/AuthContext";
 
 interface Props {
   order: Order;
@@ -133,7 +136,7 @@ function ReceiveRow({
           </option>
         ))}
       </datalist>
-      {entry.location && lpnsLoading && <p className="text-xs text-faint mt-1">Loading LPNs...</p>}
+      {entry.location && lpnsLoading && <Skeleton variant="text" className="w-28 h-3 mt-1" />}
       {entry.location && !lpnsLoading && lpns.length === 0 && (
         <p className="text-xs text-faint mt-1">No LPNs at this location - create one to receive onto a pallet</p>
       )}
@@ -173,6 +176,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const [receiving, setReceiving] = useState(false);
   const [receiveEntries, setReceiveEntries] = useState<Record<number, ReceiveEntry>>({});
   const { addToast } = useToast();
+  const { can } = useAuth();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
 
@@ -198,7 +202,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const printPdf = () => {
     api.get(`/orders/${order.id}/pdf`, { responseType: "blob" }).then(({ data }) => {
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }).catch(() => addToast("Failed to generate PDF", "error"));
   };
@@ -209,7 +213,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
       await api.put(`/orders/${order.id}`, { status });
       addToast(`Order ${status === "received" ? "marked as received" : "cancelled"}`, "success");
       onUpdated();
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast(errorMessage(err, "Failed to update order"), "error");
     }
   };
@@ -274,7 +278,7 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
       await api.put(`/orders/${order.id}`, payload);
       addToast("Order marked as received", "success");
       onUpdated();
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast(errorMessage(err, "Failed to receive order"), "error");
     }
   };
@@ -283,72 +287,92 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
 
   return (
     <SlideOver open onClose={onClose} title={order.order_number} wide ariaLabel={`Order ${order.order_number}`}>
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-muted">Supplier:</span>
-            <p className="font-medium">{order.supplier_name || "—"}</p>
+      <div className="space-y-5">
+        <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+          <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-faint">Purchase Order</p>
+              <h3 className="text-2xl font-bold text-ink mt-1 tracking-tight">{order.order_number}</h3>
+              <div className="mt-2"><span className={`badge ${order.status === "received" ? "badge-success" : order.status === "cancelled" ? "badge-danger" : order.status === "pending" ? "badge-warning" : "badge-info"}`}>{order.status}</span></div>
+            </div>
+            <div className="text-right text-sm">
+              <p className="text-muted">Date</p>
+              <p className="font-medium text-ink">{formatDate(order.created_at)}</p>
+              {order.username && (
+                <p className="text-muted mt-2">Created by <span className="font-medium text-ink">{order.username}</span></p>
+              )}
+            </div>
           </div>
-          <div>
-            <span className="text-muted">Status:</span>
-            <p className="font-medium capitalize">{order.status}</p>
-          </div>
-          <div>
-            <span className="text-muted">Date:</span>
-            <p className="font-medium">{formatDate(order.created_at)}</p>
-          </div>
-          <div>
-            <span className="text-muted">Created by:</span>
-            <p className="font-medium">{order.username}</p>
-          </div>
-        </div>
 
-        <div>
-          <h3 className="text-sm font-medium text-ink mb-2">Items</h3>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-app">
-                <th className="px-3 py-2 text-left text-muted">Product</th>
-                <th className="px-3 py-2 text-left text-muted">SKU</th>
-                <th className="px-3 py-2 text-right text-muted">Qty</th>
-                <th className="px-3 py-2 text-right text-muted">Price</th>
-                <th className="px-3 py-2 text-right text-muted">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {order.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-3 py-2">
-                    {item.product_name}
-                    {item.is_serialized && (
-                      <span className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30">
-                        <Fingerprint size={12} />
-                        serialized
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-muted">{item.sku || "\u2014"}</td>
-                  <td className="px-3 py-2 text-right">{item.quantity}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(item.unit_price, currencySymbol)}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(item.quantity * item.unit_price, currencySymbol)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="font-medium">
-                <td colSpan={4} className="px-3 py-2 text-right">Total:</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(order.total_amount, currencySymbol)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {order.notes && (
-          <div>
-            <span className="text-sm text-muted">Notes:</span>
-            <p className="text-sm mt-1">{order.notes}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3 px-6 py-5 text-sm border-b border-dashed border-border">
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Supplier</p>
+              <p className="font-medium text-ink">{order.supplier_name || "—"}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Items</p>
+              <p className="font-medium text-ink">{order.items.length}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Total Qty</p>
+              <p className="font-medium text-ink">{order.items.reduce((sum, i) => sum + i.quantity, 0)}</p>
+            </div>
           </div>
-        )}
+
+          <div className="px-6 py-5">
+            <div className="overflow-x-auto -mx-2 px-2">
+              <table className="w-full min-w-max text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-faint border-b border-border">
+                    <th className="py-2.5 pr-3 text-left font-medium">Product</th>
+                    <th className="py-2.5 px-3 text-left font-medium">SKU</th>
+                    <th className="py-2.5 px-3 text-center font-medium">Qty</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Price</th>
+                    <th className="py-2.5 pl-3 text-right font-medium">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {order.items.map((item) => (
+                    <tr key={item.id}>
+                      <td className="py-3 pr-3 font-medium text-ink">
+                        {item.product_name}
+                        {item.is_serialized && (
+                          <span className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30">
+                            <Fingerprint size={12} />
+                            serialized
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-muted whitespace-nowrap">{item.sku || "\u2014"}</td>
+                      <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.quantity}</td>
+                      <td className="py-3 px-3 text-right text-muted whitespace-nowrap">{formatCurrency(item.unit_price, currencySymbol)}</td>
+                      <td className="py-3 pl-3 text-right text-ink font-medium whitespace-nowrap">{formatCurrency(item.quantity * item.unit_price, currencySymbol)}</td>
+                    </tr>
+                  ))}
+                  {order.items.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-muted">No items on this order</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-5 border-t-2 border-double border-border pt-4 flex justify-end">
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-wide text-faint">Total Amount</p>
+                <p className="text-2xl font-bold text-ink">{formatCurrency(order.total_amount, currencySymbol)}</p>
+              </div>
+            </div>
+          </div>
+
+          {order.notes && (
+            <div className="px-6 pb-5 text-sm">
+              <p className="text-faint text-xs uppercase tracking-wide mb-1">Notes</p>
+              <p className="text-muted">{order.notes}</p>
+            </div>
+          )}
+        </div>
 
         {receiving && (
           <div className="bg-app rounded-lg p-4 space-y-3">
@@ -396,6 +420,8 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
             </div>
           </div>
         )}
+
+        <AttachmentSection entityType="order" entityId={order.id} canEdit={can("orders.update")} />
       </div>
     </SlideOver>
   );

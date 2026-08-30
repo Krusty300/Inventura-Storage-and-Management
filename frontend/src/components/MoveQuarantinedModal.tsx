@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
+import Skeleton from "./Skeleton";
 import type { Location, QuarantinedLocation, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
 
@@ -110,7 +111,7 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
         </p>
 
         {isPending ? (
-          <p className="text-sm text-faint">Loading quarantined stock...</p>
+          <Skeleton variant="rows" rows={3} cols={2} />
         ) : quarantinedLocations.length === 0 ? (
           <p className="text-sm text-faint">No quarantined stock at any location.</p>
         ) : (

@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
+import Skeleton from "./Skeleton";
 import type { Location, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
 
@@ -63,7 +64,7 @@ export default function QuarantineSerialModal({ serial, onClose, onSaved }: Prop
         </p>
 
         {isPending ? (
-          <p className="text-sm text-faint">Loading quarantine areas...</p>
+          <Skeleton variant="rows" rows={2} cols={2} />
         ) : quarantineAreas.length === 0 ? (
           <p className="text-sm text-faint">No active quarantine areas exist. Create a location with type &quot;quarantine&quot; first.</p>
         ) : (

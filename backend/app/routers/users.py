@@ -13,7 +13,7 @@ from app.schemas.user import UserOut
 from app.services.auth import get_current_user, require_permission, hash_password, verify_password
 from app.services.password_policy import validate_password
 from app.services.permissions import ALL_PERMISSIONS, has_permission
-from app.utils import log_activity
+from app.utils import log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -102,6 +102,7 @@ def approve_user(
     log_activity(db, current_user.id, current_user.username, "approve", "user", u.id,
                  f"Approved user '{u.username}' (role={u.role})")
     db.commit()
+    broadcast_change("user", "updated")
     return u
 
 
@@ -127,6 +128,7 @@ def reject_user(
     log_activity(db, current_user.id, current_user.username, "reject", "user", u.id,
                  f"Rejected user '{u.username}'")
     db.commit()
+    broadcast_change("user", "updated")
     return u
 
 
@@ -209,6 +211,7 @@ def create_user(
     log_activity(db, current_user.id, current_user.username, "create", "user", user.id,
                  f"Created user '{user.username}' ({user.role})")
     db.commit()
+    broadcast_change("user", "created")
     return user
 
 
@@ -247,6 +250,7 @@ def update_user(
     log_activity(db, current_user.id, current_user.username, "update", "user", u.id,
                  f"Updated user '{u.username}' ({changed})")
     db.commit()
+    broadcast_change("user", "updated")
     return u
 
 
@@ -270,6 +274,7 @@ def reset_password(
     log_activity(db, current_user.id, current_user.username, "reset_password", "user", u.id,
                  f"Reset password for user '{u.username}'; all sessions signed out")
     db.commit()
+    broadcast_change("user", "updated")
     return {"ok": True}
 
 
@@ -289,6 +294,7 @@ def delete_user(
     log_activity(db, current_user.id, current_user.username, "delete", "user", u.id,
                  f"Deactivated user '{u.username}'")
     db.commit()
+    broadcast_change("user", "deleted")
     return {"ok": True}
 
 
@@ -312,4 +318,5 @@ def change_password(
     log_activity(db, current_user.id, current_user.username, "change_password", "user", current_user.id,
                  "Changed password; all sessions signed out")
     db.commit()
+    broadcast_change("user", "updated")
     return {"ok": True}

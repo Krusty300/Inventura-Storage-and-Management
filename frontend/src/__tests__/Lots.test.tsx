@@ -140,7 +140,7 @@ describe("Lots Page", () => {
     });
     renderWithProviders(<Lots />);
     expect(await screen.findByText("LOT-0001")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Quarantined" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by status" }), { target: { value: "quarantined" } });
     expect(await screen.findByText("LOT-0003")).toBeInTheDocument();
     expect(screen.queryByText("LOT-0001")).not.toBeInTheDocument();
   });
@@ -163,7 +163,7 @@ describe("Lots Page", () => {
     });
     renderWithProviders(<Lots />);
     expect(await screen.findByText("LOT-0001")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Sold" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by status" }), { target: { value: "sold" } });
     expect(await screen.findByText("LOT-0004")).toBeInTheDocument();
     expect(screen.queryByText("LOT-0001")).not.toBeInTheDocument();
   });

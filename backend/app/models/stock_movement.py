@@ -35,7 +35,7 @@ class StockMovement(Base):
     to_location = relationship("Location", foreign_keys=[to_location_id])
     lot = relationship("Lot", back_populates="stock_movements")
     serial_number = relationship("SerialNumber", back_populates="stock_movements")
-    lpn = relationship("LPN")
+    lpn = relationship("LPN", back_populates="stock_movements")
 
     @property
     def product_name(self) -> str:

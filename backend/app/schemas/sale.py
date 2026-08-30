@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SaleItemCreate(BaseModel):
@@ -25,6 +25,12 @@ class SaleCreate(BaseModel):
     discount_amount: float = Field(default=0.0, ge=0)
     promo_code: Optional[str] = None
     notes: str = ""
+
+    @model_validator(mode="after")
+    def _validate_items_not_empty(self):
+        if not self.items:
+            raise ValueError("Sale must contain at least one item")
+        return self
 
 
 class RefundRequest(BaseModel):

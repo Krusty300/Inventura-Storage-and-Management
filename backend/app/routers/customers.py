@@ -92,6 +92,9 @@ def list_customers(
     return {"items": items, "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 
+ALLOWED_CUSTOMER_BULK_FIELDS = {"name", "phone", "email", "address", "customer_type", "notes", "group_id", "is_active"}
+
+
 @router.patch("/bulk-edit")
 def bulk_edit_customers(data: CustomerBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("customers.bulk"))):
     customers = db.query(Customer).filter(Customer.id.in_(data.ids)).all()
@@ -113,13 +116,14 @@ def bulk_edit_customers(data: CustomerBulkEdit, db: Session = Depends(get_db), u
             raise HTTPException(status_code=400, detail="Duplicate customer: another customer already uses the same email")
     for c in customers:
         for k, v in updates.items():
-            setattr(c, k, v)
+            if k in ALLOWED_CUSTOMER_BULK_FIELDS:
+                setattr(c, k, v)
     db.commit()
     log_activity(db, user.id, user.username, "update", "customer", None,
                  f"Bulk-edited {len(customers)} customer(s): {', '.join(f'{k}={v}' for k, v in updates.items())}")
     db.commit()
     broadcast_change("customer", "updated")
-    return {"updated": len(customers), "fields": list(updates.keys())}
+    return {"updated": len(customers), "fields": [k for k in updates if k in ALLOWED_CUSTOMER_BULK_FIELDS]}
 
 
 @router.post("/import", response_model=CustomerImportResult)

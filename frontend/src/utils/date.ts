@@ -16,6 +16,8 @@ export function formatDate(value?: Date | string | null, format?: string, fallba
       return `${day}-${month}-${year}`;
     case "DD/MM/YYYY":
       return `${day}/${month}/${year}`;
+    case "DD.MM.YYYY":
+      return `${day}.${month}.${year}`;
     case "MM-DD-YYYY":
       return `${month}-${day}-${year}`;
     case "YYYY-MM-DD":
@@ -23,6 +25,22 @@ export function formatDate(value?: Date | string | null, format?: string, fallba
     default:
       return d.toLocaleDateString();
   }
+}
+
+export function daysUntil(date: Date | string): number {
+  const d = typeof date === "string" ? parseLocalDate(date) : date;
+  const now = new Date();
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.ceil((target.getTime() - today.getTime()) / 86_400_000);
+}
+
+export function daysAgo(date: Date | string): number {
+  const d = typeof date === "string" ? parseLocalDate(date) : date;
+  const now = new Date();
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((today.getTime() - target.getTime()) / 86_400_000);
 }
 
 export function formatDateTime(value?: Date | string | null, format?: string, fallback = "—"): string {

@@ -5,6 +5,7 @@ import type { User } from "../types";
 import Modal from "./Modal";
 import { useToast } from "../context/ToastContext";
 import { permissionGroups } from "../utils/permissions";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   user: User;
@@ -45,8 +46,8 @@ export default function PermissionsEditor({ user, onClose, onSaved }: Props) {
       await api.put(`/users/${user.id}`, { permissions: [...selected] });
       addToast(`Permissions updated for ${user.username}`, "success");
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to update permissions", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to update permissions"), "error");
     }
     setSaving(false);
   };

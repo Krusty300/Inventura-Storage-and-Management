@@ -4,6 +4,31 @@ export interface ProductImage {
   sort_order: number;
 }
 
+export interface Attachment {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  doc_key: string;
+  version: number;
+  original_filename: string;
+  content_type: string;
+  size: number;
+  uploaded_by: number | null;
+  username: string;
+  created_at: string;
+  url: string;
+}
+
+export interface AttachmentDocument {
+  doc_key: string;
+  version: number;
+  created_at: string;
+  uploaded_by: number | null;
+  username: string;
+  current: Attachment;
+  versions: Attachment[];
+}
+
 export interface Product {
   id: number;
   sku: string;
@@ -416,9 +441,23 @@ export interface Settings {
   expiry_alerts: boolean;
   shipment_prefix: string;
   work_order_prefix: string;
-  sale_prefix: string;
   invoice_prefix: string;
   po_prefix: string;
+  receipt_prefix: string;
+  asn_prefix: string;
+  qc_prefix: string;
+  cc_prefix: string;
+  return_prefix: string;
+  transfer_prefix: string;
+  unallocated_prefix: string;
+  quarantine_prefix: string;
+  lpn_prefix: string;
+  lpn_move_prefix: string;
+  lpn_load_prefix: string;
+  lpn_unload_prefix: string;
+  stock_in_prefix: string;
+  stock_out_prefix: string;
+  adjustment_prefix: string;
   require_qc_before_ship: boolean;
   auto_allocate_stock: boolean;
   enforce_fefo: boolean;
@@ -426,6 +465,11 @@ export interface Settings {
   fiscal_year_start_month: number;
   default_items_per_page: number;
   date_format: string;
+  logo_url: string;
+  tax_id: string;
+  payment_terms: string;
+  bank_details: string;
+  footer_note: string;
 }
 
 export interface SaleItem {
@@ -548,10 +592,9 @@ export interface Location {
   name: string;
   path: string;
   parent_id: number | null;
-  location_type: string;
+  location_type: import("../utils/constants").LocationType;
   is_active: boolean;
   created_at: string;
-  updated_at: string;
   stock_line_count: number;
   lpn_count: number;
   lot_count: number;
@@ -692,12 +735,14 @@ export interface ExceptionsReport {
     quarantined_lots: number;
     open_cycle_counts: number;
     pending_asns: number;
+    quality_checks: number;
   };
   low_stock: { id: number; name: string; sku: string; quantity: number; reorder_level: number; category: string; supplier: string }[];
   zero_stock: { id: number; name: string; sku: string }[];
   quarantined_lots: { id: number; lot_number: string; product_name: string; product_id: number; on_hand: number; expiry_date: string | null; received_date: string }[];
   open_cycle_counts: { id: number; cc_number: string; status: string; location: string; has_variance: boolean; total_expected: number; total_variance: number; created_at: string }[];
   pending_asns: { id: number; asn_number: string; supplier: string; expected_arrival: string | null; items_pending: number; created_at: string }[];
+  quality_checks: { id: number; qc_number: string; product_id: number; product_name: string; location_id: number | null; location_name: string; result: string; lot_number: string; checked_at: string | null }[];
 }
 
 export interface InventoryAgingItem {
@@ -948,6 +993,7 @@ export interface NoteLink {
   id: number;
   entity_type: string;
   entity_id: number;
+  entity_label: string;
 }
 
 export interface Note {

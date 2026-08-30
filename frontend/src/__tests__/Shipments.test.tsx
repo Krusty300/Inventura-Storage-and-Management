@@ -256,8 +256,9 @@ describe("Shipments", () => {
     });
     renderWithProviders(<Shipments />);
     fireEvent.click(await screen.findByRole("button", { name: "New Shipment" }));
-    fireEvent.change(await screen.findByRole("combobox", { name: /Product/ }), { target: { value: "1" } });
-    await screen.findByRole("option", { name: "A (3)" });
+    const widgetOption = await screen.findByRole("option", { name: "Widget (SKU-1)" });
+    fireEvent.change(widgetOption.closest("select")!, { target: { value: "1" } });
+    await screen.findByRole("option", { name: "A (3)" }, { timeout: 5000 });
     fireEvent.change(screen.getByLabelText("Source location"), { target: { value: "10" } });
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Shipment" }));

@@ -99,28 +99,49 @@ def _ensure_products_active(shipment: Shipment, action: str) -> None:
         )
 
 
-def _qc_blocker(db: Session, shipment: Shipment) -> QualityCheck | None:
-    """Return the quality check that should block this shipment from being
-    picked or shipped, if any. A FAILED check always blocks; a PENDING check
-    blocks only when the 'require QC before shipping' setting is enabled."""
-    product_ids = [item.product_id for item in shipment.items if item.product_id]
-    if not product_ids:
-        return None
-    qc = (
+def _qc_blocker(db: Session, product_id: int, location_id: int | None) -> QualityCheck | None:
+    """Return the quality check, if any, that blocks picking/shipping a
+    shipment item drawn from ``product_id`` at ``location_id``.
+
+    A FAILED check always blocks the matching scope; a PENDING check blocks
+    only when the 'require QC before shipping' setting is enabled. A check is
+    location-aware: a location-scoped check only blocks an item drawn from that
+    location (an item with no fixed location, or a product/lot-wide check,
+    matches any scope). This keeps a failed check at one location from
+    silently blocking the same product at other locations."""
+    s = db.query(Settings).first()
+    checks = (
         db.query(QualityCheck)
         .options(joinedload(QualityCheck.product))
-        .filter(
-            QualityCheck.product_id.in_(product_ids),
-            QualityCheck.result.in_(("pending", "fail")),
-        )
+        .filter(QualityCheck.product_id == product_id)
         .order_by(QualityCheck.created_at.desc())
-        .first()
+        .all()
     )
-    if qc is None:
-        return None
-    s = db.query(Settings).first()
-    if qc.result == "fail" or (s and s.require_qc_before_ship):
-        return qc
+    for qc in checks:
+        if qc.result not in ("pending", "fail"):
+            continue
+        if (
+            qc.location_id is not None
+            and location_id is not None
+            and qc.location_id != location_id
+        ):
+            continue
+        if qc.result == "fail" or (s and s.require_qc_before_ship):
+            return qc
+    return None
+
+
+def _qc_blocker_for_shipment(db: Session, shipment: Shipment) -> QualityCheck | None:
+    """Return the first quality check blocking any item of ``shipment``."""
+    seen: set[tuple[int | None, int | None]] = set()
+    for item in shipment.items:
+        key = (item.product_id, item.location_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        qc = _qc_blocker(db, item.product_id, item.location_id)
+        if qc is not None:
+            return qc
     return None
 
 
@@ -316,7 +337,7 @@ def pick_shipment(shipment_id: int, data: ShipmentPickRequest | None = None, db:
     if shipment.status not in PICKABLE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Only {'/'.join(PICKABLE_STATUSES)} shipments can be picked")
     _ensure_products_active(shipment, "pick")
-    qc = _qc_blocker(db, shipment)
+    qc = _qc_blocker_for_shipment(db, shipment)
     if qc:
         raise HTTPException(
             status_code=400,
@@ -372,7 +393,7 @@ def ship_shipment(
     if shipment.status not in SHIPPABLE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Only {'/'.join(SHIPPABLE_STATUSES)} shipments can be shipped")
     _ensure_products_active(shipment, "ship")
-    qc = _qc_blocker(db, shipment)
+    qc = _qc_blocker_for_shipment(db, shipment)
     if qc:
         raise HTTPException(
             status_code=400,

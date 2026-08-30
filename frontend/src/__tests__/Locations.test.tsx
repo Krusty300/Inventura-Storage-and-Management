@@ -70,7 +70,7 @@ describe("Locations Page", () => {
     mockLocations([mockLocationTree({ children: [mockLocationTree({ id: 2, code: "A-01-01", name: "Bin A-01", path: "Bin A-01", parent_id: 1, location_type: "bin", stock_line_count: 5, lpn_count: 2, total_quantity: 40, stock_value: 60, children: [] })] })]);
     renderWithProviders(<Locations />);
     expect(await screen.findByText("Aisle A")).toBeInTheDocument();
-    expect(screen.getByText("aisle")).toBeInTheDocument();
+    expect(screen.getByText("Aisle")).toBeInTheDocument();
     expect(screen.getByText("3 lines")).toBeInTheDocument();
     expect(screen.getByText("120 units")).toBeInTheDocument();
     expect(screen.getByText("1 lots")).toBeInTheDocument();
@@ -216,7 +216,7 @@ describe("Locations Page", () => {
     renderWithProviders(<Locations />);
     fireEvent.click(await screen.findByLabelText("View Aisle A"));
     expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
     await vi.waitFor(() => expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument());
   });
 
@@ -225,7 +225,7 @@ describe("Locations Page", () => {
     renderWithProviders(<Locations />);
     fireEvent.click(await screen.findByLabelText("View Aisle A"));
     expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
     await vi.waitFor(() => expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument());
     expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument();
   });

@@ -3,6 +3,7 @@ import api from "../api/client";
 import type { Category } from "../types";
 import { useToast } from "../context/ToastContext";
 import Modal from "./Modal";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   category: Category | null;
@@ -35,8 +36,8 @@ export default function CategoryForm({ category, onClose, onSaved }: Props) {
         addToast("Category created", "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving category", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error saving category"), "error");
     }
     setSaving(false);
   };

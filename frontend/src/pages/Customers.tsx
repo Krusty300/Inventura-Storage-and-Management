@@ -19,12 +19,16 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 import { formatCurrency } from "../utils/currency";
-import { parseLocalDate } from "../utils/date";
+import { useSettings } from "../hooks/useSettings";
+import { daysAgo } from "../utils/date";
+import { errorMessage } from "../utils/errors";
 
 import { usePageSize } from "../hooks/usePageSize";
 
 export default function Customers() {
   const formatDate = useDateFormat();
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [typeFilter, setTypeFilter] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
@@ -86,7 +90,7 @@ export default function Customers() {
 
   const recencyClass = (date: string | null | undefined) => {
     if (!date) return "text-muted";
-    const days = Math.floor((Date.now() - parseLocalDate(date).getTime()) / 86400000);
+    const days = daysAgo(date);
     if (days <= 30) return "text-emerald-600 dark:text-emerald-400";
     if (days <= 90) return "text-muted";
     return "text-amber-600 dark:text-amber-400";
@@ -140,9 +144,9 @@ export default function Customers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-ink">Customers</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {can("customers.import") && (
             <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import customers from CSV">
               Import
@@ -158,7 +162,7 @@ export default function Customers() {
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1 min-w-0 max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input
             className="input pl-10"
@@ -169,7 +173,7 @@ export default function Customers() {
           />
         </div>
         <select
-          className="select w-44"
+          className="select w-full sm:w-44"
           value={typeFilter}
           onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
           aria-label="Filter by type"
@@ -179,7 +183,7 @@ export default function Customers() {
           <option value="walk-in">Walk-in</option>
         </select>
         <select
-          className="select w-44"
+          className="select w-full sm:w-44"
           value={groupFilter}
           onChange={(e) => { setGroupFilter(e.target.value); setPage(1); }}
           aria-label="Filter by group"
@@ -200,11 +204,11 @@ export default function Customers() {
 
       <BulkActionBar count={selectedIds.size} canEdit={can("customers.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
 
-      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load customers: {(error as any)?.message}</div>}
+      {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load customers")}</div>}
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Customers table">
+          <table className="w-full text-sm min-w-[700px]" aria-label="Customers table">
             <thead>
               <tr className="bg-app text-left">
                 <th scope="col" className="px-4 py-3">
@@ -212,13 +216,13 @@ export default function Customers() {
                 </th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Phone</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Email</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted hidden lg:table-cell">Email</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Group</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Orders</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Total Spent</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Avg Order</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Last Purchase</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted hidden md:table-cell">Group</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Orders</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Total Spent</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right hidden lg:table-cell">Avg Order</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted hidden sm:table-cell">Last Purchase</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
@@ -233,41 +237,47 @@ export default function Customers() {
                     <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} />
                   </td>
                   <td className="px-4 py-3 font-medium">
-                    {c.name}
-                    {!c.is_active && <span className="badge badge-warning ml-2">Inactive</span>}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="truncate max-w-[180px]">{c.name}</span>
+                      {!c.is_active && <span className="badge badge-warning shrink-0">Inactive</span>}
+                    </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 whitespace-nowrap">
                     {c.phone ? <a href={`tel:${c.phone}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{c.phone}</a> : <span className="text-muted">—</span>}
                   </td>
-                  <td className="px-4 py-3">
-                    {c.email ? <a href={`mailto:${c.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{c.email}</a> : <span className="text-muted">—</span>}
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    <div className="truncate max-w-[200px]">
+                      {c.email ? <a href={`mailto:${c.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{c.email}</a> : <span className="text-muted">—</span>}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`badge ${c.customer_type === "frequent" ? "badge-success" : "badge-info"}`}>
                       {c.customer_type}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-muted">{c.group_name || "—"}</td>
-                  <td className="px-4 py-3 text-muted">{c.total_sales ?? 0}</td>
-                  <td className="px-4 py-3 text-muted">{formatCurrency(c.total_spent ?? 0)}</td>
-                  <td className="px-4 py-3 text-muted">
-                    {c.total_sales ? formatCurrency((c.total_spent ?? 0) / c.total_sales) : "—"}
+                  <td className="px-4 py-3 text-muted hidden md:table-cell">
+                    <div className="truncate max-w-[120px]">{c.group_name || "—"}</div>
                   </td>
-                  <td className={`px-4 py-3 ${recencyClass(c.last_purchase_at)}`}>
+                  <td className="px-4 py-3 text-muted text-right">{(c.total_sales ?? 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-muted text-right">{formatCurrency(c.total_spent ?? 0, currencySymbol)}</td>
+                  <td className="px-4 py-3 text-muted text-right hidden lg:table-cell">
+                    {c.total_sales ? formatCurrency(Math.round((c.total_spent ?? 0) / c.total_sales * 100) / 100, currencySymbol) : "—"}
+                  </td>
+                  <td className={`px-4 py-3 ${recencyClass(c.last_purchase_at)} hidden sm:table-cell whitespace-nowrap`}>
                     {c.last_purchase_at ? formatDate(c.last_purchase_at) : "Never"}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${c.name}`}><Eye size={16} /></button>
+                    <div className="flex gap-1">
+                      <button onClick={() => setViewing(c)} className="p-2 rounded-md text-faint hover:text-indigo-600 dark:text-indigo-400 hover:bg-app" aria-label={`View ${c.name}`}><Eye size={16} /></button>
                       {!c.is_active && can("customers.update") && (
-                        <button onClick={() => restoreMutation.mutate(c.id)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Restore ${c.name}`}>
+                        <button onClick={() => restoreMutation.mutate(c.id)} className="p-2 rounded-md text-faint hover:text-green-600 dark:text-green-400 hover:bg-app" aria-label={`Restore ${c.name}`}>
                           <RefreshCw size={16} />
                         </button>
                       )}
-                      <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${c.name}`}>
+                      <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-2 rounded-md text-faint hover:text-indigo-600 dark:text-indigo-400 hover:bg-app" aria-label={`Edit ${c.name}`}>
                         <Pencil size={16} />
                       </button>
-                      <button onClick={() => setDeleting(c)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${c.name}`}>
+                      <button onClick={() => setDeleting(c)} className="p-2 rounded-md text-faint hover:text-red-600 dark:text-red-400 hover:bg-app" aria-label={`Delete ${c.name}`}>
                         <Trash2 size={16} />
                       </button>
                     </div>

@@ -153,8 +153,8 @@ describe("Receipts Page", () => {
       ],
     });
     openReceiptForm();
-    const supplier = await screen.findByLabelText("Supplier");
-    fireEvent.change(supplier, { target: { value: "5" } });
+    expect(await screen.findByRole("option", { name: "Fresh Farms" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "5" } });
     await waitFor(() => expect(screen.getByLabelText("Product")).toHaveValue("20"));
     expect(screen.getByLabelText("Unit cost")).toHaveValue(2.5);
     expect(screen.queryByRole("option", { name: "Eggs (E-1)" })).not.toBeInTheDocument();
@@ -167,7 +167,7 @@ describe("Receipts Page", () => {
       ],
     });
     openReceiptForm();
-    fireEvent.change(await screen.findByLabelText("Product"), { target: { value: "3" } });
+    await selectProduct("3", "Widget (SKU-3)");
     await waitFor(() => expect(screen.getByLabelText("Unit cost")).toHaveValue(7));
   });
 

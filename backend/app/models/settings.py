@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Float, Integer, String, Text, func
+from sqlalchemy import Boolean, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -17,7 +17,7 @@ class Settings(Base):
     email: Mapped[str] = mapped_column(String(120), default="")
     currency_symbol: Mapped[str] = mapped_column(String(10), default="$")
     currency_code: Mapped[str] = mapped_column(String(10), default="USD")
-    tax_rate: Mapped[float] = mapped_column(Float, default=0.0)
+    tax_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=0.0)
     default_reorder_level: Mapped[int] = mapped_column(default=10)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
@@ -27,9 +27,23 @@ class Settings(Base):
 
     shipment_prefix: Mapped[str] = mapped_column(String(20), default="SHP")
     work_order_prefix: Mapped[str] = mapped_column(String(20), default="WO")
-    sale_prefix: Mapped[str] = mapped_column(String(20), default="SALE")
     invoice_prefix: Mapped[str] = mapped_column(String(20), default="INV")
     po_prefix: Mapped[str] = mapped_column(String(20), default="PO")
+    receipt_prefix: Mapped[str] = mapped_column(String(20), default="RCP")
+    asn_prefix: Mapped[str] = mapped_column(String(20), default="ASN")
+    qc_prefix: Mapped[str] = mapped_column(String(20), default="QC")
+    cc_prefix: Mapped[str] = mapped_column(String(20), default="CC")
+    return_prefix: Mapped[str] = mapped_column(String(20), default="RET")
+    transfer_prefix: Mapped[str] = mapped_column(String(20), default="TRF")
+    unallocated_prefix: Mapped[str] = mapped_column(String(20), default="UNL")
+    quarantine_prefix: Mapped[str] = mapped_column(String(20), default="QAR")
+    lpn_prefix: Mapped[str] = mapped_column(String(20), default="LPN")
+    lpn_move_prefix: Mapped[str] = mapped_column(String(20), default="MOV")
+    lpn_load_prefix: Mapped[str] = mapped_column(String(20), default="LOD")
+    lpn_unload_prefix: Mapped[str] = mapped_column(String(20), default="ULD")
+    stock_in_prefix: Mapped[str] = mapped_column(String(20), default="SI")
+    stock_out_prefix: Mapped[str] = mapped_column(String(20), default="SO")
+    adjustment_prefix: Mapped[str] = mapped_column(String(20), default="ADJ")
 
     require_qc_before_ship: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_allocate_stock: Mapped[bool] = mapped_column(Boolean, default=False)

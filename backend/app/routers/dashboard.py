@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -23,7 +23,7 @@ from app.models.promotion import Promotion
 from app.schemas.dashboard import DashboardStats
 from app.services.auth import get_current_user, require_permission
 from app.services import inventory
-from app.services.inventory import TRANSFER_OUT, SERIAL_STATUS_QUARANTINED, sellable_qty_subquery
+from app.services.inventory import NON_ACTIVITY_MOVEMENT_TYPES, TRANSFER_OUT, SERIAL_STATUS_QUARANTINED, sellable_qty_subquery
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(require_permission("dashboard.view"))])
 
@@ -57,7 +57,7 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
 
     movements_today = db.query(func.count(StockMovement.id)).filter(
         StockMovement.created_at >= today_start,
-        StockMovement.movement_type != TRANSFER_OUT,  # count each transfer pair once
+        StockMovement.movement_type.notin_(NON_ACTIVITY_MOVEMENT_TYPES | {TRANSFER_OUT}),  # exclude bookkeeping; count each transfer pair once
     ).scalar() or 0
 
     open_shipments = db.query(func.count(Shipment.id)).filter(
@@ -67,7 +67,7 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         WorkOrder.status.in_(["planned", "released", "in_progress"])
     ).scalar() or 0
     pending_quality_checks = db.query(func.count(QualityCheck.id)).filter(
-        QualityCheck.result == "pending"
+        QualityCheck.result.in_(["pending", "fail"])
     ).scalar() or 0
     quarantined_units = (
         db.query(func.coalesce(func.sum(StockLine.quantity), 0))
@@ -134,8 +134,11 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
     quality_checks_to_process = (
         db.query(QualityCheck)
         .options(joinedload(QualityCheck.product))
-        .filter(QualityCheck.result == "pending")
-        .order_by(QualityCheck.created_at.asc())
+        .filter(QualityCheck.result.in_(["pending", "fail"]))
+        .order_by(
+            case((QualityCheck.result == "pending", 0), else_=1),
+            QualityCheck.created_at.asc(),
+        )
         .limit(5)
         .all()
     )

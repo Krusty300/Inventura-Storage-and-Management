@@ -15,11 +15,12 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useExportCsv } from "../hooks/useExportCsv";
-import { parseLocalDate } from "../utils/date";
+import { daysUntil } from "../utils/date";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function Lots() {
   const formatDate = useDateFormat();
@@ -51,7 +52,7 @@ export default function Lots() {
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot update lot", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot update lot"), "error"),
   });
 
   const { data, isLoading, isError, error } = useQuery({
@@ -74,14 +75,14 @@ export default function Lots() {
   const printLabel = (id: number) => {
     api.get(`/labels/lot/${id}`, { responseType: "blob" }).then(({ data }) => {
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     });
   };
 
   const expiryBadge = (expiry: string | null) => {
     if (!expiry) return <span className="text-faint">—</span>;
-    const days = Math.ceil((parseLocalDate(expiry).getTime() - Date.now()) / 86400000);
+    const days = daysUntil(expiry);
     if (days < 0) return <span className="badge badge-danger">Expired</span>;
     if (days <= 30) return <span className="badge badge-warning">Expires {formatDate(expiry)}</span>;
     return <span className="text-muted text-xs">{formatDate(expiry)}</span>;
@@ -95,8 +96,8 @@ export default function Lots() {
       </div>
 
       {isError && (
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          Failed to load lots: {(error as any)?.message}
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          {errorMessage(error, "Failed to load lots")}
         </div>
       )}
 
@@ -111,6 +112,7 @@ export default function Lots() {
           <option value="expired">Expired</option>
           <option value="quarantined">Quarantined</option>
           <option value="depleted">Depleted</option>
+          <option value="sold">Sold</option>
         </select>
       </div>
 

@@ -19,6 +19,7 @@ import { exportCSV } from "../utils/csv";
 const PASSWORD_HINT = "At least 8 characters.";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function Users() {
   const formatDate = useDateFormat();
@@ -82,7 +83,7 @@ export default function Users() {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setApproving(null);
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Failed to approve user", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Failed to approve user"), "error"),
   });
 
   const rejectMutation = useMutation({
@@ -92,7 +93,7 @@ export default function Users() {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setRejecting(null);
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Failed to reject user", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Failed to reject user"), "error"),
   });
 
   const handleExport = () => {
@@ -137,7 +138,7 @@ export default function Users() {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setEditingId(null);
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Failed to update user", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Failed to update user"), "error"),
   });
 
   const deleteMutation = useMutation({
@@ -147,7 +148,7 @@ export default function Users() {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setDeleting(null);
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot deactivate user", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot deactivate user"), "error"),
   });
 
   const reactivateMutation = useMutation({
@@ -157,7 +158,7 @@ export default function Users() {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setReactivating(null);
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Failed to reactivate user", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Failed to reactivate user"), "error"),
   });
 
   const requestRoleChange = (user: User, role: string) => {
@@ -459,16 +460,16 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
       await api.post("/users", form);
       addToast(`User ${form.username} created`, "success");
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to create user", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to create user"), "error");
     }
     setSaving(false);
   };
 
-  const field = (label: string, key: string, id: string, type = "text") => (
+  const field = (label: string, key: keyof typeof form, id: string, type = "text") => (
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-ink mb-1">{label}</label>
-      <input id={id} type={type} className="input" value={(form as any)[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
+      <input id={id} type={type} className="input" value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
     </div>
   );
 
@@ -511,8 +512,8 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: User; onClose: (
       await api.post(`/users/${user.id}/reset-password`, { new_password });
       addToast(`Password reset for ${user.username}`, "success");
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to reset password", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to reset password"), "error");
     }
     setSaving(false);
   };

@@ -26,10 +26,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Order, OrderItem, Product, StockMovement, Supplier
-from app.services.inventory import SHIP, quarantined_qty_by_product
+from app.services.inventory import BACKFLUSH, CONSUME, ISSUE, SHIP, quarantined_qty_by_product
 
-# Outward movement types treated as demand (legacy "out", "sale", and "ship").
-DEMAND_MOVEMENT_TYPES = ("out", "sale", SHIP)
+# Outward movement types treated as demand. Includes customer outflows
+# (legacy "out", "sale", "ship") plus manufacturing consumption (backflush,
+# issue, consume) so products consumed by work orders still drive replenishment.
+DEMAND_MOVEMENT_TYPES = ("out", "sale", SHIP, BACKFLUSH, ISSUE, CONSUME)
 
 DEFAULT_SERVICE_LEVEL = 0.95
 DEFAULT_HISTORY_DAYS = 90

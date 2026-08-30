@@ -123,15 +123,18 @@ def validate_promotion(db: Session, code: str, subtotal: float, total_qty: int) 
 
 
 def apply_promotion(db: Session, promo: Promotion) -> bool:
-    """Atomically increment used_count for a promotion.
+    """Atomically check max_uses and increment used_count for a promotion.
 
-    Returns True if the increment succeeded, False if max_uses already reached.
+    Uses a WHERE clause that re-checks the limit inside the UPDATE so two
+    concurrent requests cannot both succeed.  Returns True if the increment
+    succeeded, False if max_uses was already reached.
     """
-    if promo.max_uses > 0 and promo.used_count >= promo.max_uses:
-        return False
+    conditions = [Promotion.id == promo.id, Promotion.is_active == True]
+    if promo.max_uses > 0:
+        conditions.append(Promotion.used_count < promo.max_uses)
     result = db.execute(
         update(Promotion)
-        .where(Promotion.id == promo.id, Promotion.is_active == True)
+        .where(*conditions)
         .values(used_count=Promotion.used_count + 1)
     )
     db.flush()

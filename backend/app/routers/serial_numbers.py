@@ -31,7 +31,7 @@ def _latest_references(db: Session, serial_ids: list[int]) -> dict[int, str]:
         db.query(StockMovement.serial_id, StockMovement.reference)
         .filter(
             StockMovement.serial_id.in_(serial_ids),
-            StockMovement.movement_type.in_([inventory.ISSUE, inventory.RELEASE]),
+            StockMovement.movement_type.in_([inventory.ISSUE, inventory.BACKFLUSH, inventory.RELEASE]),
             StockMovement.reference_type == "work_order",
             StockMovement.reference != "",
         )
@@ -175,6 +175,7 @@ def update_serial_status(serial_id: int, data: SerialStatusUpdate, db: Session =
         broadcast_change("product", "updated")
         broadcast_change("lot", "updated")
         broadcast_change("stock_movement", "created")
+        broadcast_change("serial_number", "updated")
         return serial
     if data.status not in allowed:
         raise HTTPException(status_code=400, detail="Serial status can only be toggled between 'in_stock' and 'inactive'")
@@ -208,6 +209,7 @@ def update_serial_status(serial_id: int, data: SerialStatusUpdate, db: Session =
     db.commit()
     broadcast_change("product", "updated")
     broadcast_change("stock_movement", "created")
+    broadcast_change("serial_number", "updated")
     return serial
 
 

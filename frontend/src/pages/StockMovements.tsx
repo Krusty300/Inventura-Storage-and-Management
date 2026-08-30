@@ -17,10 +17,13 @@ import { exportCSV } from "../utils/csv";
 import { useToast } from "../context/ToastContext";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
+import { MOVEMENT_TYPES, movementBadgeClass, movementLabel } from "../utils/movementTypes";
 
 export default function StockMovements() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+  const [movementType, setMovementType] = useState(() => new URLSearchParams(window.location.search).get("movement_type") ?? "all");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
@@ -34,10 +37,11 @@ export default function StockMovements() {
   const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["stock-movements", debouncedSearch, page, pageSize],
+    queryKey: ["stock-movements", debouncedSearch, movementType, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (movementType !== "all") params.movement_type = movementType;
       const { data } = await api.get("/stock-movements", { params });
       return data as PaginatedResponse<StockMovement>;
     },
@@ -49,8 +53,8 @@ export default function StockMovements() {
       addToast("Stock movement deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["stock-movements"] });
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Cannot delete movement", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Cannot delete movement"), "error");
     },
   });
 
@@ -93,13 +97,24 @@ export default function StockMovements() {
         </div>
       </div>
 
-      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load movements: {(error as any)?.message}</div>}
+      {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load movements")}</div>}
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by product, reference, or notes..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search stock movements" />
         </div>
+        <select
+          className="input w-auto"
+          value={movementType}
+          onChange={(e) => { setMovementType(e.target.value); setPage(1); }}
+          aria-label="Filter by movement type"
+        >
+          <option value="all">All types</option>
+          {MOVEMENT_TYPES.map((t) => (
+            <option key={t} value={t}>{movementLabel(t)}</option>
+          ))}
+        </select>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -130,8 +145,8 @@ export default function StockMovements() {
                 </td>
                 <td className="px-4 py-3 font-medium">{m.product_name}</td>
                 <td className="px-4 py-3">
-                  <span className={`badge ${["in", "receive", "transfer_in", "sale_return", "count"].includes(m.movement_type) ? "badge-success" : ["out", "sale", "transfer_out", "issue", "backflush", "return"].includes(m.movement_type) ? "badge-danger" : "badge-info"}`}>
-                    {m.movement_type}
+                  <span className={`badge ${movementBadgeClass(m.movement_type)}`}>
+                    {movementLabel(m.movement_type)}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-muted">

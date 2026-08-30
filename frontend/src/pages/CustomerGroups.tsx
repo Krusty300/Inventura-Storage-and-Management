@@ -11,8 +11,8 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-
-const formatDate = (d: string) => new Date(d).toLocaleDateString();
+import { useDateFormat } from "../hooks/useDateFormat";
+import { errorMessage } from "../utils/errors";
 
 export default function CustomerGroups() {
   const [search, setSearch] = useState("");
@@ -25,6 +25,7 @@ export default function CustomerGroups() {
   const { addToast } = useToast();
   const { can } = useAuth();
   const debouncedSearch = useDebounce(search, 300);
+  const formatDate = useDateFormat();
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["customer-groups", debouncedSearch, page, pageSize],
@@ -45,8 +46,8 @@ export default function CustomerGroups() {
       addToast("Customer group deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["customer-groups"] });
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Cannot delete customer group", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Cannot delete customer group"), "error");
     },
   });
 
@@ -64,8 +65,8 @@ export default function CustomerGroups() {
       </div>
 
       {isError && (
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          Failed to load customer groups: {(error as any)?.message}
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          {errorMessage(error, "Failed to load customer groups")}
         </div>
       )}
 
@@ -178,9 +179,17 @@ export default function CustomerGroups() {
 function CustomerGroupForm({ group, onClose, onSaved }: { group: CustomerGroup | null; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(group?.name || "");
   const [description, setDescription] = useState(group?.description || "");
-  const [priceListId, setPriceListId] = useState(group?.price_list_id != null ? String(group.price_list_id) : "");
+  const [priceListId, setPriceListId] = useState<number | null>(group?.price_list_id ?? null);
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+
+  const { data: priceLists = [] } = useQuery({
+    queryKey: ["price-lists", "picker"],
+    queryFn: async () => {
+      const { data } = await api.get("/price-lists", { params: { limit: 500 } });
+      return (data.items ?? []) as { id: number; name: string; is_default: boolean }[];
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,7 +198,7 @@ function CustomerGroupForm({ group, onClose, onSaved }: { group: CustomerGroup |
       const payload = {
         name: name.trim(),
         description: description.trim(),
-        price_list_id: priceListId ? Number(priceListId) : null,
+        price_list_id: priceListId,
       };
       if (group) {
         await api.put(`/customer-groups/${group.id}`, payload);
@@ -199,8 +208,8 @@ function CustomerGroupForm({ group, onClose, onSaved }: { group: CustomerGroup |
         addToast(`Customer group "${payload.name}" created`, "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving customer group", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error saving customer group"), "error");
     }
     setSaving(false);
   };
@@ -232,17 +241,21 @@ function CustomerGroupForm({ group, onClose, onSaved }: { group: CustomerGroup |
           />
         </div>
         <div>
-          <label htmlFor="cg-price-list" className="block text-sm font-medium text-ink mb-1">Price List ID</label>
-          <input
+          <label htmlFor="cg-price-list" className="block text-sm font-medium text-ink mb-1">Price List</label>
+          <select
             id="cg-price-list"
-            type="number"
-            min={1}
             className="input"
-            value={priceListId}
-            onChange={(e) => setPriceListId(e.target.value)}
-            placeholder="Leave empty for no price list"
-          />
-          <p className="text-xs text-faint mt-1">ID of the price list applied to customers in this group.</p>
+            value={priceListId ?? ""}
+            onChange={(e) => setPriceListId(e.target.value ? Number(e.target.value) : null)}
+            aria-label="Assign price list"
+          >
+            <option value="">None (no price list)</option>
+            {priceLists.map((pl) => (
+              <option key={pl.id} value={pl.id}>
+                {pl.name}{pl.is_default ? " (default)" : ""}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

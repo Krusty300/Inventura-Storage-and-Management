@@ -372,7 +372,7 @@ def test_trace_returns_movements_and_work_orders(auth_headers):
     assert any(wo_["role"] == "produced" for wo_ in fg_trace["work_orders"])
 
     comp_trace = client.get(f"/api/products/{comp['id']}/trace", headers=auth_headers).json()
-    assert any(m["movement_type"] == "issue" and m["reference"] == wo["wo_number"] for m in comp_trace["outgoing"])
+    assert any(m["movement_type"] == "backflush" and m["reference"] == wo["wo_number"] for m in comp_trace["outgoing"])
     assert any(wo_["role"] == "consumed" and wo_["wo_number"] == wo["wo_number"] for wo_ in comp_trace["work_orders"])
 
 

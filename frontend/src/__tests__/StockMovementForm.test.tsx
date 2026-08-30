@@ -33,10 +33,11 @@ describe("StockMovementForm", () => {
     expect(await screen.findByText("Record Stock Movement")).toBeInTheDocument();
     expect(screen.queryByText("Location *")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "5" } });
+    const widgetOption = await screen.findByRole("option", { name: "Widget (W-5)" });
+    fireEvent.change(widgetOption.closest("select")!, { target: { value: "5" } });
 
     expect(await screen.findByText("Location *")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Main" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Main" })).toBeInTheDocument();
   });
 
   it("submits the chosen location for a stock in movement", async () => {
@@ -48,7 +49,8 @@ describe("StockMovementForm", () => {
     renderWithProviders(<StockMovementForm onClose={() => {}} onSaved={() => {}} />);
 
     await screen.findByText("Record Stock Movement");
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "5" } });
+    const widgetOption = await screen.findByRole("option", { name: "Widget (W-5)" });
+    fireEvent.change(widgetOption.closest("select")!, { target: { value: "5" } });
 
     await screen.findByRole("option", { name: "Shelf A" });
     fireEvent.change(screen.getAllByRole("combobox")[2], { target: { value: "10" } });
@@ -76,7 +78,8 @@ describe("StockMovementForm", () => {
     renderWithProviders(<StockMovementForm onClose={() => {}} onSaved={() => {}} />);
 
     await screen.findByText("Record Stock Movement");
-    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "7" } });
+    const gadgetOption = await screen.findByRole("option", { name: "Gadget (G-7)" });
+    fireEvent.change(gadgetOption.closest("select")!, { target: { value: "7" } });
     fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "out" } });
 
     await screen.findByRole("option", { name: "Bin B" });
@@ -110,15 +113,11 @@ describe("StockMovementForm", () => {
     expect(screen.queryByText("Location *")).not.toBeInTheDocument();
   });
 
-  it("shows the auto-reference hint only for a Return movement", async () => {
+  it("shows the auto-reference hint for all movement types", async () => {
     mockProductApi([makeProduct({ id: 5, name: "Widget", sku: "W-5" })], [{ id: 1, path: "Main", is_active: true }]);
     renderWithProviders(<StockMovementForm onClose={() => {}} onSaved={() => {}} />);
 
     await screen.findByText("Record Stock Movement");
-    expect(screen.queryByText(/auto-generate a reference/)).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "return" } });
-
-    expect(await screen.findByText("Leave blank to auto-generate a reference (RET-...).")).toBeInTheDocument();
+    expect(screen.getByText(/auto-generate a reference/)).toBeInTheDocument();
   });
 });

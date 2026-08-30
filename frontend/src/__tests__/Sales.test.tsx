@@ -90,7 +90,7 @@ describe("Sales Page", () => {
     fireEvent.click(await screen.findByLabelText("Refund INV-0001"));
     expect(screen.getByText(/Refund invoice "INV-0001"/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Refund" }));
-    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/sales/1/refund"));
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/sales/1/refund", { refund_method: "cash", refund_provider: undefined }));
   });
 
   it("updates the search input", async () => {

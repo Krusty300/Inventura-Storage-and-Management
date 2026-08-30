@@ -22,8 +22,10 @@ import { useExportCsv } from "../hooks/useExportCsv";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { formatCurrency } from "../utils/currency";
-import { parseLocalDate } from "../utils/date";
+import { getPlaceholder, onImageError } from "../utils/placeholders";
+import { daysUntil } from "../utils/date";
 import { hasVariants } from "../utils/variants";
+import { movementBadgeClass, movementLabel } from "../utils/movementTypes";
 
 import { usePageSize } from "../hooks/usePageSize";
 
@@ -165,7 +167,7 @@ export default function Products() {
         responseType: "blob",
       });
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       addToast("Failed to generate labels", "error");
@@ -176,7 +178,7 @@ export default function Products() {
 
   const expiryBadge = (p: Product) => {
     if (!p.expiry_date) return <span className="text-faint">—</span>;
-    const days = Math.ceil((parseLocalDate(p.expiry_date).getTime() - Date.now()) / 86400000);
+    const days = daysUntil(p.expiry_date);
     if (days < 0) return <span className="badge badge-danger">Expired</span>;
     if (days <= 30) return <span className="badge badge-warning">Expires {formatDate(p.expiry_date)}</span>;
     return <span className="text-muted text-xs">{formatDate(p.expiry_date)}</span>;
@@ -219,13 +221,6 @@ export default function Products() {
       return (r.product.reserved_qty || 0) + r.product.variants.filter((v) => v.is_active).reduce((sum, v) => sum + (v.reserved_qty || 0), 0);
     }
     return r.product.reserved_qty || 0;
-  };
-
-  const movementBadgeClass = (t: string) => {
-    if (["in", "receive", "transfer_in", "sale_return", "count"].includes(t)) return "badge-success";
-    if (["out", "sale", "transfer_out", "issue", "backflush", "return"].includes(t)) return "badge-danger";
-    if (t === "adjustment") return "badge-info";
-    return "badge-neutral";
   };
 
   return (
@@ -345,11 +340,13 @@ export default function Products() {
                       <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} aria-label={`Select ${p.display_name}`} />
                     </td>
                     <td className="px-4 py-3">
-                      {(p.images?.length > 0 ? p.images[0].url : p.image_url) ? (
-                        <img src={p.images?.length > 0 ? p.images[0].url : p.image_url} alt="" className="w-10 h-10 rounded object-cover" loading="lazy" />
-                      ) : (
-                        <div className="w-10 h-10 rounded bg-subtle flex items-center justify-center text-xs text-faint">N/A</div>
-                      )}
+                      <img
+                        src={p.images?.length > 0 ? p.images[0].url : p.image_url || getPlaceholder()}
+                        alt=""
+                        className="w-10 h-10 rounded object-cover"
+                        loading="lazy"
+                        onError={onImageError}
+                      />
                     </td>
                     <td className="px-4 py-3 font-medium">{p.sku}</td>
                     <td className="px-4 py-3">
@@ -541,7 +538,7 @@ export default function Products() {
               {movements.map((m) => (
                 <tr key={m.id}>
                   <td className="px-3 py-2 text-muted">{formatDate(m.created_at)}</td>
-                  <td className="px-3 py-2"><span className={`badge ${movementBadgeClass(m.movement_type)}`}>{m.movement_type}</span></td>
+                  <td className="px-3 py-2"><span className={`badge ${movementBadgeClass(m.movement_type)}`}>{movementLabel(m.movement_type)}</span></td>
                   <td className="px-3 py-2"><span className={m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>{m.quantity_change > 0 ? "+" : ""}{m.quantity_change}</span></td>
                   <td className="px-3 py-2 text-muted">{m.reference}</td>
                   <td className="px-3 py-2 text-muted">{m.username}</td>

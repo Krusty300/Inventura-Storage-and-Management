@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location } from "../types";
+import Skeleton from "./Skeleton";
 
 interface Props {
   value: string | number | null;
@@ -44,7 +45,7 @@ export default function LocationPicker({ value, onChange, placeholder = "Select 
           </option>
         ))}
       </datalist>
-      {isLoading && <p className="text-xs text-faint mt-1">Loading locations...</p>}
+      {isLoading && <Skeleton variant="text" className="w-32 h-3 mt-1" />}
     </div>
   );
 }

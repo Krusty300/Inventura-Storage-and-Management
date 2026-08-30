@@ -141,6 +141,8 @@ def list_locations(
     limit: int = Query(200, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
+    if location_type and location_type not in LOCATION_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid location type '{location_type}'. Must be one of: {', '.join(sorted(LOCATION_TYPES))}")
     q = db.query(Location).options(joinedload(Location.parent))
     if search:
         like = f"%{search}%"
@@ -184,7 +186,16 @@ def location_summary(db: Session = Depends(get_db)):
     active = db.query(func.count(Location.id)).filter(Location.is_active == True).scalar() or 0
     total_stock_lines = db.query(func.count(StockLine.id)).scalar() or 0
     total_lpns = db.query(func.count(LPN.id)).scalar() or 0
-    total_lots = db.query(func.count(Lot.id)).scalar() or 0
+    total_lots = db.query(
+        func.count(func.distinct(StockLine.lot_id))
+    ).filter(StockLine.lot_id.isnot(None)).scalar() or 0
+    serial_lots = db.query(
+        func.count(func.distinct(SerialNumber.lot_id))
+    ).filter(
+        SerialNumber.lot_id.isnot(None),
+        SerialNumber.status.in_((inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_QUARANTINED)),
+    ).scalar() or 0
+    total_lots = total_lots + serial_lots
     total_quantity = db.query(func.coalesce(func.sum(StockLine.quantity), 0)).scalar() or 0
     total_value = db.query(
         func.coalesce(func.sum(StockLine.quantity * Product.cost_price), 0)

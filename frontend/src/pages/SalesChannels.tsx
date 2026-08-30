@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Pencil, Trash2, Store } from "lucide-react";
+import { Pencil, Trash2, Store, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, SalesChannel } from "../types";
+import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -10,6 +11,8 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 const CHANNEL_TYPES = [
   { value: "store", label: "Store" },
@@ -23,7 +26,7 @@ const typeLabel = (t: string) => CHANNEL_TYPES.find((c) => c.value === t)?.label
 export default function SalesChannels() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<SalesChannel | null>(null);
   const [deleting, setDeleting] = useState<SalesChannel | null>(null);
@@ -51,8 +54,8 @@ export default function SalesChannels() {
       addToast("Sales channel deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["sales-channels"] });
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Cannot delete sales channel", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Cannot delete sales channel"), "error");
     },
   });
 
@@ -70,14 +73,15 @@ export default function SalesChannels() {
       </div>
 
       {isError && (
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          Failed to load sales channels: {(error as any)?.message}
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          {errorMessage(error, "Failed to load sales channels")}
         </div>
       )}
 
       <div className="relative max-w-md">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
         <input
-          className="input"
+          className="input pl-10"
           placeholder="Search by name..."
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -186,39 +190,36 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: SalesChannel | nu
         addToast(`Sales channel "${payload.name}" created`, "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to save sales channel", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to save sales channel"), "error");
     }
     setSaving(false);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="card max-w-md w-full mx-4 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-ink">{channel ? "Edit Channel" : "New Channel"}</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Name</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Main Store, Online Shop" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Type</label>
-            <select className="select" value={type} onChange={(e) => setType(e.target.value)}>
-              {CHANNEL_TYPES.map((ct) => (
-                <option key={ct.value} value={ct.value}>{ct.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <input type="checkbox" className="rounded border-border-strong" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} id="ch-active" />
-            <label htmlFor="ch-active" className="text-sm text-ink">Active</label>
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" disabled={saving || !name.trim()} className="btn-primary">{saving ? "Saving..." : channel ? "Update" : "Create"}</button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <Modal open onClose={onClose} title={channel ? "Edit Channel" : "New Channel"}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1" htmlFor="ch-name">Name *</label>
+          <input id="ch-name" className="input" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Main Store, Online Shop" maxLength={100} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1" htmlFor="ch-type">Type</label>
+          <select id="ch-type" className="select" value={type} onChange={(e) => setType(e.target.value)}>
+            {CHANNEL_TYPES.map((ct) => (
+              <option key={ct.value} value={ct.value}>{ct.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" className="rounded border-border-strong" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} id="ch-active" />
+          <label htmlFor="ch-active" className="text-sm text-ink">Active</label>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" disabled={saving || !name.trim()} className="btn-primary">{saving ? "Saving..." : channel ? "Update" : "Create"}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -1,17 +1,17 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SalesChannelCreate(BaseModel):
-    name: str
+    name: str = Field(max_length=100)
     type: str = "store"
     is_active: bool = True
 
 
 class SalesChannelUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=100)
     type: Optional[str] = None
     is_active: Optional[bool] = None
 

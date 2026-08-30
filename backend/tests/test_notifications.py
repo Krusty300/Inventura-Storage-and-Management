@@ -10,7 +10,7 @@ def _make_product(auth_headers, sku="NOTIF-PROD", quantity=10, reorder_level=0):
 def test_sale_creates_notification_for_admin(auth_headers):
     prod = _make_product(auth_headers)
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
-    notifs = client.get("/api/notifications", headers=auth_headers).json()
+    notifs = client.get("/api/notifications", headers=auth_headers).json()["items"]
     assert len(notifs) >= 1
     assert client.get("/api/notifications/unread-count", headers=auth_headers).json() >= 1
     assert notifs[0]["is_read"] is False
@@ -19,7 +19,7 @@ def test_sale_creates_notification_for_admin(auth_headers):
 def test_mark_read_and_read_all(auth_headers):
     prod = _make_product(auth_headers)
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
-    notifs = client.get("/api/notifications", headers=auth_headers).json()
+    notifs = client.get("/api/notifications", headers=auth_headers).json()["items"]
     nid = notifs[0]["id"]
     resp = client.put(f"/api/notifications/{nid}/read", headers=auth_headers)
     assert resp.status_code == 200
@@ -33,26 +33,26 @@ def test_mark_read_and_read_all(auth_headers):
 def test_notification_belongs_to_owner(auth_headers):
     prod = _make_product(auth_headers)
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
-    nid = client.get("/api/notifications", headers=auth_headers).json()[0]["id"]
+    nid = client.get("/api/notifications", headers=auth_headers).json()["items"][0]["id"]
     client.post("/api/users", json={"username": "worker4", "email": "worker4@example.com", "password": "testpass123", "role": "worker"}, headers=auth_headers)
     token = client.post("/api/auth/login", json={"username": "worker4", "password": "testpass123"}).json()["access_token"]
     other = {"Authorization": f"Bearer {token}"}
     assert client.put(f"/api/notifications/{nid}/read", headers=other).status_code == 403
     assert client.delete(f"/api/notifications/{nid}", headers=other).status_code == 403
-    assert client.get("/api/notifications", headers=other).json() == []
+    assert client.get("/api/notifications", headers=other).json()["items"] == []
 
 
 def test_delete_notification(auth_headers):
     prod = _make_product(auth_headers)
     client.post("/api/sales", json={"items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}]}, headers=auth_headers)
-    nid = client.get("/api/notifications", headers=auth_headers).json()[0]["id"]
+    nid = client.get("/api/notifications", headers=auth_headers).json()["items"][0]["id"]
     resp = client.delete(f"/api/notifications/{nid}", headers=auth_headers)
     assert resp.status_code == 200
-    assert client.get("/api/notifications", headers=auth_headers).json() == []
+    assert client.get("/api/notifications", headers=auth_headers).json()["items"] == []
 
 
 def _low_stock_notifs(auth_headers):
-    return [n for n in client.get("/api/notifications", headers=auth_headers).json()
+    return [n for n in client.get("/api/notifications", headers=auth_headers).json()["items"]
             if n["type"] == "warning" and n["title"].startswith("Low stock:")]
 
 

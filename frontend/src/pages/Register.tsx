@@ -4,13 +4,13 @@ import { Loader2, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import AuthLayout from "../components/AuthLayout";
 import PasswordInput from "../components/PasswordInput";
+import { errorMessage } from "../utils/errors";
 
 export default function Register() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState("worker");
   const [error, setError] = useState("");
   const [confirmError, setConfirmError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,14 +28,14 @@ export default function Register() {
     }
     setSubmitting(true);
     try {
-      const result = await register(username, email, password, role);
-      if (result && (result as any).pending) {
+      const result = await register(username, email, password, "worker");
+      if (result?.pending) {
         setPendingApproval(true);
       } else {
         navigate("/");
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Registration failed. Username or email may already exist.");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Registration failed. Username or email may already exist."));
     } finally {
       setSubmitting(false);
     }
@@ -113,22 +113,6 @@ export default function Register() {
             autoComplete="email"
             required
           />
-        </div>
-        <div>
-          <label htmlFor="register-role" className="block text-sm font-medium text-ink mb-1">
-            Role
-          </label>
-          <select
-            id="register-role"
-            className="select"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            <option value="worker">Worker</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
-          </select>
-          <p className="text-xs text-muted mt-1">An admin will review and approve your registration.</p>
         </div>
         <div>
           <label htmlFor="password" className="block text-sm font-medium text-ink mb-1">

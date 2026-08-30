@@ -44,10 +44,10 @@ describe("StockMovements Page", () => {
   it("renders movement rows with product and type", async () => {
     mockMovements([mockMovement()]);
     renderWithProviders(<StockMovements />);
-    expect(await screen.findByText("Widget")).toBeInTheDocument();
-    expect(screen.getByText("out")).toBeInTheDocument();
-    expect(screen.getByText("-3")).toBeInTheDocument();
-    expect(screen.getByText("INV-0001")).toBeInTheDocument();
+    const row = (await screen.findByText("Widget")).closest("tr")!;
+    expect(within(row).getByText("Stock out")).toBeInTheDocument();
+    expect(within(row).getByText("-3")).toBeInTheDocument();
+    expect(within(row).getByText("INV-0001")).toBeInTheDocument();
   });
 
   it("shows admin actions for admins", async () => {

@@ -933,15 +933,8 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 def detect_image_ext(data: bytes) -> str | None:
     """Return the real image extension from magic bytes, or None if not an image."""
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return ".png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return ".jpg"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return ".gif"
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return ".webp"
-    return None
+    from app.utils import detect_image_ext as _detect
+    return _detect(data)
 
 
 @router.post("/{product_id}/upload-image")
@@ -964,6 +957,13 @@ def upload_product_image(product_id: int, file: UploadFile = File(...), db: Sess
         matches = detected == ext
     if not matches:
         raise HTTPException(status_code=400, detail=f"File content does not match its extension ({ext})")
+    if p.image_url:
+        old_path = UPLOAD_DIR / Path(p.image_url).name
+        try:
+            if old_path.exists():
+                old_path.unlink()
+        except Exception:
+            pass
     filename = f"{uuid.uuid4().hex}{detected}"
     filepath = UPLOAD_DIR / filename
     with open(filepath, "wb") as f:
@@ -1035,6 +1035,7 @@ def delete_product_image(product_id: int, image_id: int, db: Session = Depends(g
         remaining = db.query(ProductImage).filter(ProductImage.product_id == product_id).order_by(ProductImage.sort_order).first()
         p.image_url = remaining.url if remaining else ""
     db.commit()
+    broadcast_change("product", "updated")
     return {"ok": True}
 
 
@@ -1048,4 +1049,5 @@ def reorder_product_images(product_id: int, body: dict, db: Session = Depends(ge
         if img:
             img.sort_order = idx
     db.commit()
+    broadcast_change("product", "updated")
     return {"ok": True}

@@ -23,6 +23,7 @@ import { usePageSize } from "../hooks/usePageSize";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
 import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS, paymentLabel } from "../utils/payments";
+import { errorMessage } from "../utils/errors";
 
 export default function Shipments() {
   const formatDate = useDateFormat();
@@ -45,8 +46,8 @@ export default function Shipments() {
       addToast("Shipment deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["shipments"] });
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Cannot delete shipment", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Cannot delete shipment"), "error");
     },
   });
 
@@ -91,8 +92,8 @@ export default function Shipments() {
       </div>
 
       {isError && (
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          Failed to load shipments: {(error as any)?.message}
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          {errorMessage(error, "Failed to load shipments")}
         </div>
       )}
 
@@ -252,8 +253,8 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
         addToast("Shipment created", "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || (isEdit ? "Error updating shipment" : "Error creating shipment"), "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, (isEdit ? "Error updating shipment" : "Error creating shipment")), "error");
     }
     setSaving(false);
   };
@@ -422,8 +423,8 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
       await api.post(url);
       addToast(okMsg, "success");
       refresh();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Action failed", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Action failed"), "error");
     }
     setBusy(null);
   };
@@ -445,8 +446,8 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
       await api.post(`/shipments/${current.id}/ship`, null, { params: { carrier, tracking_number: tracking } });
       addToast(`${current.shipment_number} shipped`, "success");
       refresh();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error shipping", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error shipping"), "error");
     }
     setBusy(null);
   };
@@ -473,8 +474,8 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
       });
       addToast(`Invoice ${data.invoice_number} created`, "success");
       refresh();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error creating invoice", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error creating invoice"), "error");
     }
     setBusy(null);
   };
@@ -735,8 +736,8 @@ function PickSerialsModal({ shipment, onClose, onPicked }: {
       await api.post(`/shipments/${shipment.id}/pick`, { items });
       addToast("Picked", "success");
       onPicked();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error picking shipment", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error picking shipment"), "error");
     }
     setBusy(false);
   };

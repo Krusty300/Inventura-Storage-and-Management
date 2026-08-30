@@ -2,6 +2,7 @@ from math import ceil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import io
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -61,18 +62,21 @@ def load_sale(db: Session, sale_id: int) -> Sale:
     ])
 
 
-def _pending_qc_blockers(db: Session, product_id: int, location_id: int | None) -> list[QualityCheck]:
-    """Return pending quality checks that block selling ``product_id``.
+def _qc_blockers(db: Session, product_id: int, location_id: int | None) -> list[QualityCheck]:
+    """Return quality checks that block selling ``product_id``.
 
-    A pending check blocks when it is not scoped to a location (product- or
-    lot-wide) or when it covers the location the sale item is drawn from.
+    Both pending and failed checks block. A check blocks when it is not scoped
+    to a location (product- or lot-wide) or when it covers the location the
+    sale item is drawn from. This keeps a failed check scoped to one location
+    from silently blocking other locations, and makes a failed check block the
+    specific product/location instead of only relying on lot quarantine.
     """
-    pending = db.query(QualityCheck).filter(
+    blocking = db.query(QualityCheck).filter(
         QualityCheck.product_id == product_id,
-        QualityCheck.result == "pending",
+        QualityCheck.result.in_(("pending", "fail")),
     ).all()
     blockers = []
-    for qc in pending:
+    for qc in blocking:
         if qc.location_id is None:
             blockers.append(qc)
         elif location_id is None or qc.location_id == location_id:
@@ -93,22 +97,28 @@ def _restore_stock_for_sale(db: Session, sale: Sale, *, reason: str, invoice_ove
         if not product:
             continue
         if product.is_serialized:
-            if shipment is None:
-                continue
-            serial_ids = [
+            if shipment is not None:
+                shipment_filter = (
+                    StockMovement.reference_type == "shipment",
+                    StockMovement.reference == shipment.shipment_number,
+                )
+            else:
+                shipment_filter = (
+                    StockMovement.reference_type == "sale",
+                    StockMovement.reference == sale.invoice_number,
+                )
+            serial_ids = list(dict.fromkeys(
                 m.serial_id for m in db.query(StockMovement).filter(
                     StockMovement.product_id == product.id,
                     StockMovement.serial_id.isnot(None),
-                    StockMovement.reference_type == "shipment",
-                    StockMovement.reference == shipment.shipment_number,
+                    *shipment_filter,
                     StockMovement.quantity_change < 0,
                 ).all()
-            ]
+            ))
             pick_legs = db.query(StockMovement).filter(
                 StockMovement.product_id == product.id,
                 StockMovement.serial_id.isnot(None),
-                StockMovement.reference_type == "shipment",
-                StockMovement.reference == shipment.shipment_number,
+                *shipment_filter,
                 StockMovement.movement_type == inventory.TRANSFER_OUT,
             ).all()
             original_location = {m.serial_id: m.from_location_id for m in pick_legs}
@@ -125,6 +135,13 @@ def _restore_stock_for_sale(db: Session, sale: Sale, *, reason: str, invoice_ove
                 serial = db.get(SerialNumber, serial_id)
                 if serial is not None:
                     inventory.sync_serialized_lot_status(db, serial.lot_id)
+            if not serial_ids:
+                logging.getLogger("app.sales").warning(
+                    "No stock movements found to restore for serialized product '%s' "
+                    "(sale %s, shipment %s)",
+                    product.display_name, sale.invoice_number,
+                    shipment.shipment_number if shipment else "none",
+                )
             continue
         originals = db.query(StockMovement).filter(
             StockMovement.reference_type == "sale",
@@ -141,7 +158,7 @@ def _restore_stock_for_sale(db: Session, sale: Sale, *, reason: str, invoice_ove
                 continue
             inventory.post_journal_entry(
                 db, product_id=product.id, user_id=sale.user_id,
-                quantity_change=take, movement_type="return",
+                quantity_change=take, movement_type=inventory.SALE_RETURN,
                 from_location_id=m.from_location_id,
                 lot_id=m.lot_id, lpn_id=m.lpn_id,
                 reference_type="sale_return",
@@ -152,7 +169,7 @@ def _restore_stock_for_sale(db: Session, sale: Sale, *, reason: str, invoice_ove
         if restored < item.quantity:
             inventory.post_journal_entry(
                 db, product_id=product.id, user_id=sale.user_id,
-                quantity_change=item.quantity - restored, movement_type="return",
+                quantity_change=item.quantity - restored, movement_type=inventory.SALE_RETURN,
                 reference_type="sale_return",
                 reference=f"{reason} {ref}",
                 notes=f"Sale {reason.lower()} — stock restored",
@@ -280,6 +297,8 @@ _VALID_STATUS_TRANSITIONS = {
     "completed": {"refunded"},
 }
 
+ALLOWED_SALE_BULK_FIELDS = {"notes", "status", "payment_status"}
+
 @router.patch("/bulk-edit")
 def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("sales.bulk"))):
     sales = db.query(Sale).filter(Sale.id.in_(data.ids)).all()
@@ -296,13 +315,14 @@ def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depe
         if new_status and new_status not in _VALID_STATUS_TRANSITIONS.get(s.status, set()):
             raise HTTPException(status_code=400, detail=f"Invalid transition '{s.status}' → '{new_status}' for sale '{s.invoice_number}'")
         for k, v in updates.items():
-            setattr(s, k, v)
+            if k in ALLOWED_SALE_BULK_FIELDS:
+                setattr(s, k, v)
     db.commit()
     log_activity(db, user.id, user.username, "update", "sale", None,
                  f"Bulk-edited {len(sales)} sale(s): {', '.join(f'{k}={v}' for k, v in updates.items())}")
     db.commit()
     broadcast_change("sale", "updated")
-    return {"updated": len(sales), "fields": list(updates.keys())}
+    return {"updated": len(sales), "fields": [k for k in updates if k in ALLOWED_SALE_BULK_FIELDS]}
 
 
 @router.get("/stats")
@@ -406,13 +426,13 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
                 raise HTTPException(status_code=400, detail=f"Location {item_data.location_id} not found")
             if not loc.is_active:
                 raise HTTPException(status_code=400, detail=f"Location '{loc.path}' is inactive")
-        blockers = _pending_qc_blockers(db, product.id, item_data.location_id)
+        blockers = _qc_blockers(db, product.id, item_data.location_id)
         if blockers:
             qc_nums = ", ".join(qc.qc_number for qc in blockers)
             raise HTTPException(
                 status_code=400,
-                detail=f"'{product.display_name}' has pending quality check(s) {qc_nums} - "
-                "complete or cancel them before selling",
+                detail=f"'{product.display_name}' has {'failed' if all(q.result == 'fail' for q in blockers) else 'pending/failed'} "
+                f"quality check(s) {qc_nums} - complete or cancel them before selling",
             )
         products[item_data.product_id] = product
 
@@ -457,7 +477,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
             for lot_id, take, location_id, lpn_id in allocation:
                 inventory.post_journal_entry(
                     db, product_id=product.id, user_id=user.id,
-                    quantity_change=-take, movement_type="out",
+                    quantity_change=-take, movement_type=inventory.SALE,
                     lot_id=lot_id,
                     from_location_id=location_id,
                     lpn_id=lpn_id,
@@ -480,7 +500,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
                  f"Sale '{sale.invoice_number}' for ${float(sale.total_amount):.2f}")
     notify_admins(db, f"New sale {sale.invoice_number}",
                   f"{sale.customer_name or 'Walk-in'} · ${float(sale.total_amount):.2f}",
-                  type="success", link="/sales")
+                  type="success", link="/sales", exclude_user_id=user.id)
     for item in sale.items:
         if item.product:
             notify_low_stock(db, item.product)
@@ -524,7 +544,7 @@ def refund_sale(sale_id: int, data: RefundRequest | None = None, db: Session = D
     log_activity(db, user.id, user.username, "update", "sale", sale.id,
                  f"Refunded sale '{sale.invoice_number}'")
     notify_admins(db, f"Refund {sale.invoice_number}",
-                  f"${float(sale.total_amount):.2f} returned to stock", type="info", link="/sales")
+                  f"${float(sale.total_amount):.2f} returned to stock", type="info", link="/sales", exclude_user_id=user.id)
     db.commit()
     broadcast_change("sale", "updated")
     broadcast_change("stock_movement", "created")
@@ -537,6 +557,7 @@ def update_checkout_id(sale_id: int, checkout_request_id: str = "", db: Session 
     sale = load_sale(db, sale_id)
     sale.payment_checkout_request_id = checkout_request_id or None
     db.commit()
+    broadcast_change("sale", "updated")
     return {"ok": True}
 
 
@@ -557,7 +578,7 @@ def cancel_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
     log_activity(db, user.id, user.username, "update", "sale", sale.id,
                  f"Cancelled sale '{sale.invoice_number}' — stock restored")
     notify_admins(db, f"Sale {sale.invoice_number} cancelled",
-                  f"${float(sale.total_amount):.2f} returned to stock", type="warning", link="/sales")
+                  f"${float(sale.total_amount):.2f} returned to stock", type="warning", link="/sales", exclude_user_id=user.id)
     db.commit()
     broadcast_change("sale", "updated")
     broadcast_change("stock_movement", "created")

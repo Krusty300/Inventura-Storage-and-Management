@@ -28,6 +28,10 @@ def _item_count(db: Session, pl: PriceList) -> int:
     return db.query(PriceListItem).filter(PriceListItem.price_list_id == pl.id).count()
 
 
+def _load_options():
+    return [joinedload(PriceList.items).joinedload(PriceListItem.product)]
+
+
 @router.get("")
 def list_price_lists(
     search: str = Query(""),
@@ -55,7 +59,7 @@ def list_price_lists(
 
 @router.get("/{pl_id}", response_model=PriceListOut)
 def get_price_list(pl_id: int, db: Session = Depends(get_db)):
-    pl = get_or_404(PriceList, pl_id, db, options=[joinedload(PriceList.items)])
+    pl = get_or_404(PriceList, pl_id, db, options=_load_options())
     return PriceListOut.model_validate(pl)
 
 
@@ -78,7 +82,7 @@ def create_price_list(data: PriceListCreate, db: Session = Depends(get_db), user
     for item in data.items:
         db.add(PriceListItem(price_list_id=pl.id, product_id=item.product_id, price=item.price, min_qty=item.min_qty))
     db.commit()
-    pl = get_or_404(PriceList, pl.id, db, options=[joinedload(PriceList.items)])
+    pl = get_or_404(PriceList, pl.id, db, options=_load_options())
     log_activity(db, user.id, user.username, "create", "price_list", pl.id, f"Created price list '{pl.name}'")
     broadcast_change("price_list", "created")
     return PriceListOut.model_validate(pl)
@@ -109,7 +113,7 @@ def update_price_list(pl_id: int, data: PriceListUpdate, db: Session = Depends(g
         for item in data.items:
             db.add(PriceListItem(price_list_id=pl_id, product_id=item.product_id, price=item.price, min_qty=item.min_qty))
     db.commit()
-    pl = get_or_404(PriceList, pl_id, db, options=[joinedload(PriceList.items)])
+    pl = get_or_404(PriceList, pl_id, db, options=_load_options())
     log_activity(db, user.id, user.username, "update", "price_list", pl.id, f"Updated price list '{pl.name}'")
     broadcast_change("price_list", "updated")
     return PriceListOut.model_validate(pl)

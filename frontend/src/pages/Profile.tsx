@@ -3,10 +3,13 @@ import {
   Clock, Shield, Save, History, Camera, Trash2,
   Monitor, Download, LogOut,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
+import { errorMessage } from "../utils/errors";
+import Skeleton from "../components/Skeleton";
 
 interface ActivityEntry {
   id: number;
@@ -60,27 +63,29 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [pwSaving, setPwSaving] = useState(false);
-  const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const formInitRef = useRef(false);
+
+  const { data: activity = [], isLoading: activityLoading } = useQuery<ActivityEntry[]>({
+    queryKey: ["activity-logs", user?.id],
+    queryFn: async () => {
+      const { data } = await api.get("/activity-logs", { params: { limit: 10 } });
+      return data.items.filter((a: ActivityEntry) => a.user_id === user!.id).slice(0, 8);
+    },
+    enabled: !!user?.id,
+    placeholderData: [],
+  });
+
+  const queryClient = useQueryClient();
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery<SessionItem[]>({
+    queryKey: ["auth-sessions"],
+    queryFn: async () => (await api.get("/auth/sessions")).data,
+  });
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || formInitRef.current) return;
+    formInitRef.current = true;
     setForm({ username: user.username, email: user.email });
-    let cancelled = false;
-    api.get("/activity-logs", { params: { limit: 10 } }).then(({ data }) => {
-      if (cancelled) return;
-      setActivity(data.items.filter((a: ActivityEntry) => a.user_id === user.id).slice(0, 8));
-    }).catch(() => { if (!cancelled) setActivity([]); });
-    return () => { cancelled = true; };
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const loadSessions = () => {
-    api.get("/auth/sessions").then(({ data }) => setSessions(data)).catch(() => {});
-  };
-
-  useEffect(() => {
-    loadSessions();
-  }, []);
+  }, [user?.id, user?.username, user?.email]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,8 +94,8 @@ export default function Profile() {
       const { data } = await api.put("/auth/me", form);
       updateUser(data);
       addToast("Profile updated", "success");
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to update profile", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to update profile"), "error");
     }
     setSaving(false);
   };
@@ -108,8 +113,8 @@ export default function Profile() {
       setPw({ current_password: "", new_password: "", confirm_password: "" });
       logout();
       setTimeout(() => completeLogout(), 600);
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to change password", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to change password"), "error");
     }
     setPwSaving(false);
   };
@@ -121,10 +126,16 @@ export default function Profile() {
     fd.append("file", file);
     try {
       const { data } = await api.post("/auth/me/avatar", fd);
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        img.src = data.avatar_url;
+      });
       updateUser(data);
       addToast("Avatar updated", "success");
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to upload avatar", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to upload avatar"), "error");
     }
     if (fileRef.current) fileRef.current.value = "";
   };
@@ -134,8 +145,8 @@ export default function Profile() {
       const { data } = await api.delete("/auth/me/avatar");
       updateUser(data);
       addToast("Avatar removed", "success");
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to remove avatar", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to remove avatar"), "error");
     }
   };
 
@@ -143,9 +154,9 @@ export default function Profile() {
     try {
       await api.delete(`/auth/sessions/${id}`);
       addToast("Session signed out", "success");
-      loadSessions();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to revoke session", "error");
+      queryClient.invalidateQueries({ queryKey: ["auth-sessions"] });
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to revoke session"), "error");
     }
   };
 
@@ -153,9 +164,9 @@ export default function Profile() {
     try {
       await api.delete("/auth/sessions");
       addToast("Other sessions signed out", "success");
-      loadSessions();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to sign out other sessions", "error");
+      queryClient.invalidateQueries({ queryKey: ["auth-sessions"] });
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to sign out other sessions"), "error");
     }
   };
 
@@ -170,8 +181,8 @@ export default function Profile() {
       a.click();
       URL.revokeObjectURL(url);
       addToast("Data exported", "success");
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to export data", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to export data"), "error");
     }
   };
 
@@ -300,18 +311,10 @@ export default function Profile() {
                 </button>
               )}
             </div>
-            {sessions.length === 0 ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex items-center gap-3 py-3 animate-pulse">
-                    <div className="h-4 w-4 rounded bg-subtle" />
-                    <div className="flex-1 space-y-1.5">
-                      <div className="h-3.5 w-24 rounded bg-subtle" />
-                      <div className="h-2.5 w-40 rounded bg-subtle" />
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {sessionsLoading ? (
+              <Skeleton variant="rows" rows={3} cols={3} />
+            ) : sessions.length === 0 ? (
+              <p className="text-sm text-muted">No session data.</p>
             ) : activeSessions.length === 0 ? (
               <p className="text-sm text-muted">No active sessions.</p>
             ) : (
@@ -350,18 +353,8 @@ export default function Profile() {
               <History size={18} className="text-faint" />
               Recent Activity
             </h2>
-            {activity === null ? (
-              <div className="space-y-3">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="animate-pulse space-y-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-3 w-3 rounded bg-subtle" />
-                      <div className="h-3 w-16 rounded bg-subtle" />
-                    </div>
-                    <div className="h-3.5 w-full rounded bg-subtle" />
-                  </div>
-                ))}
-              </div>
+            {activityLoading ? (
+              <Skeleton variant="rows" rows={4} cols={3} />
             ) : activity.length === 0 ? (
               <p className="text-sm text-muted">No recent activity found.</p>
             ) : (

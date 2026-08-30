@@ -11,6 +11,7 @@ import Modal from "./Modal";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   sale: Sale;
@@ -58,7 +59,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
     try {
       const blob = await fetchPdfBlob();
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       addToast("Failed to generate PDF", "error");
@@ -88,7 +89,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       addToast("Refund marked complete", "success");
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Failed to update refund", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Failed to update refund"), "error"),
   });
 
   const stkPush = useMutation({
@@ -114,8 +115,8 @@ export default function SaleDetail({ sale, onClose }: Props) {
       }
       setStkBilling(false);
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || err.message || "STK Push failed", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "STK Push failed"), "error");
       setStkBilling(false);
     },
   });
@@ -142,8 +143,8 @@ export default function SaleDetail({ sale, onClose }: Props) {
       }
       setB2cPending(false);
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || err.message || "B2C refund failed", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "B2C refund failed"), "error");
       setB2cPending(false);
     },
   });
@@ -157,7 +158,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       onClose();
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cancellation failed", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cancellation failed"), "error"),
   });
 
   const deleteMutation = useMutation({
@@ -169,7 +170,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       onClose();
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Delete failed", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Delete failed"), "error"),
   });
 
   const refundBadge = refundStatus === "completed"
@@ -191,26 +192,102 @@ export default function SaleDetail({ sale, onClose }: Props) {
   return (
     <>
     <Modal open onClose={onClose} title={`Invoice ${sale.invoice_number}`} xwide>
-      <div className="space-y-4 text-sm">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <p className="text-muted">Customer: <span className="font-medium text-ink">{sale.customer_name}</span></p>
-            {sale.channel_name && <p className="text-muted">Channel: <span className="font-medium text-ink">{sale.channel_name}</span></p>}
-            <p className="text-muted">Date: <span className="font-medium text-ink">{formatDateTime(sale.created_at)}</span></p>
-            <p className="text-muted">Cashier: <span className="font-medium text-ink">{sale.username}</span></p>
+      <div className="space-y-5 text-sm">
+        <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+          <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-faint">Sales Invoice</p>
+              <h3 className="text-2xl font-bold text-ink mt-1 tracking-tight">{sale.invoice_number}</h3>
+              <div className="mt-2"><span className={`badge ${statusBadge(sale.status)}`}>{sale.status}</span></div>
+            </div>
+            <div className="text-right text-sm">
+              <p className="text-muted">Date</p>
+              <p className="font-medium text-ink">{formatDateTime(sale.created_at)}</p>
+              {sale.username && (
+                <p className="text-muted mt-2">Sold by <span className="font-medium text-ink">{sale.username}</span></p>
+              )}
+            </div>
           </div>
-          <div className="space-y-1 text-right">
-            <span className={`badge ${statusBadge(sale.status)}`}>{sale.status}</span>
-            <p className="text-muted">Payment: <span className="font-medium text-ink">{paymentLabel(sale.payment_method, sale.payment_provider)}</span></p>
-            {sale.payment_phone && <p className="text-muted">Payer phone: <span className="font-medium text-ink">{sale.payment_phone}</span></p>}
-            {sale.payment_reference && <p className="text-muted">Reference: <span className="font-medium text-ink font-mono">{sale.payment_reference}</span></p>}
-            {sale.payment_status && sale.status !== "cancelled" && sale.payment_status !== sale.status && (
-              <p className="text-muted">Payment: <span className={`badge ${paymentStatusBadge}`}>{sale.payment_status}</span></p>
-            )}
-            {sale.payment_provider_amount != null && (
-              <p className="text-muted">Provider Amount: <span className="font-medium text-ink">{formatCurrency(sale.payment_provider_amount, saleSymbol)}</span></p>
-            )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3 px-6 py-5 text-sm border-b border-dashed border-border">
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Customer</p>
+              <p className="font-medium text-ink">{sale.customer_name || "—"}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Channel</p>
+              <p className="font-medium text-ink">{sale.channel_name || "—"}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Cashier</p>
+              <p className="font-medium text-ink">{sale.username || "—"}</p>
+            </div>
           </div>
+
+          <div className="px-6 py-5">
+            <div className="overflow-x-auto -mx-2 px-2">
+              <table className="w-full min-w-max text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-faint border-b border-border">
+                    <th className="py-2.5 pr-3 text-left font-medium">Item</th>
+                    <th className="py-2.5 px-3 text-left font-medium">Location</th>
+                    <th className="py-2.5 px-3 text-center font-medium">Qty</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Price</th>
+                    <th className="py-2.5 pl-3 text-right font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {sale.items.map((item) => (
+                    <tr key={item.id}>
+                      <td className="py-3 pr-3 font-medium text-ink">{item.product_name}</td>
+                      <td className="py-3 px-3 text-muted whitespace-nowrap">{item.location || (item.locations ?? []).join(", ") || "\u2014"}</td>
+                      <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.quantity}</td>
+                      <td className="py-3 px-3 text-right text-muted whitespace-nowrap">{formatCurrency(item.unit_price, saleSymbol)}</td>
+                      <td className="py-3 pl-3 text-right text-ink font-medium whitespace-nowrap">{formatCurrency(item.line_total, saleSymbol)}</td>
+                    </tr>
+                  ))}
+                  {sale.items.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-muted">No items on this invoice</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-5 border-t-2 border-double border-border pt-4 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
+              <div className="space-y-2 text-sm">
+                {sale.payment_status && sale.status !== "cancelled" && sale.payment_status !== sale.status && (
+                  <p className="text-muted">Payment: <span className={`badge ${paymentStatusBadge}`}>{sale.payment_status}</span></p>
+                )}
+                <p className="text-muted">Method: <span className="font-medium text-ink">{paymentLabel(sale.payment_method, sale.payment_provider)}</span></p>
+                {sale.payment_phone && <p className="text-muted">Payer phone: <span className="font-medium text-ink">{sale.payment_phone}</span></p>}
+                {sale.payment_reference && <p className="text-muted">Reference: <span className="font-medium text-ink font-mono">{sale.payment_reference}</span></p>}
+                {sale.payment_provider_amount != null && (
+                  <p className="text-muted">Provider Amount: <span className="font-medium text-ink">{formatCurrency(sale.payment_provider_amount, saleSymbol)}</span></p>
+                )}
+              </div>
+              <div className="text-right">
+                <div className="max-w-[240px] ml-auto space-y-1.5">
+                  <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>{formatCurrency(sale.subtotal, saleSymbol)}</span></div>
+                  {sale.discount_amount > 0 && <div className="flex justify-between"><span className="text-muted">Discount</span><span className="text-red-600 dark:text-red-400">-{formatCurrency(sale.discount_amount, saleSymbol)}</span></div>}
+                  {sale.promo_discount > 0 && <div className="flex justify-between"><span className="text-muted">Promo ({sale.promo_code})</span><span className="text-red-600 dark:text-red-400">-{formatCurrency(sale.promo_discount, saleSymbol)}</span></div>}
+                  <div className="flex justify-between"><span className="text-muted">Tax</span><span>{formatCurrency(sale.tax_amount, saleSymbol)}</span></div>
+                  <div className="flex justify-between items-baseline pt-2 border-t border-dashed border-border">
+                    <span className="font-semibold text-ink">Total</span>
+                    <span className="text-xl font-bold text-ink">{formatCurrency(sale.total_amount, saleSymbol)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {sale.notes && (
+            <div className="px-6 pb-5 text-sm">
+              <p className="text-faint text-xs uppercase tracking-wide mb-1">Notes</p>
+              <p className="text-muted">{sale.notes}</p>
+            </div>
+          )}
         </div>
 
         {isMpesa && (sale.status === "completed" || sale.status === "pending") && !sale.refund_status && (
@@ -249,42 +326,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
           </div>
         )}
 
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-app text-left">
-              <th scope="col" className="px-3 py-2 font-medium text-muted">Item</th>
-              <th scope="col" className="px-3 py-2 font-medium text-muted">Location</th>
-              <th scope="col" className="px-3 py-2 font-medium text-muted">Qty</th>
-              <th scope="col" className="px-3 py-2 font-medium text-muted">Price</th>
-              <th className="px-3 py-2 font-medium text-muted text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {sale.items.map((item) => (
-              <tr key={item.id}>
-                <td className="px-3 py-2">{item.product_name}</td>
-                <td className="px-3 py-2 text-muted">{item.location || (item.locations ?? []).join(", ") || "\u2014"}</td>
-                <td className="px-3 py-2">{item.quantity}</td>
-                <td className="px-3 py-2">{formatCurrency(item.unit_price, saleSymbol)}</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(item.line_total, saleSymbol)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="flex justify-end">
-          <div className="w-56 space-y-1">
-            <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>{formatCurrency(sale.subtotal, saleSymbol)}</span></div>
-            {sale.discount_amount > 0 && <div className="flex justify-between"><span className="text-muted">Discount</span><span className="text-red-600 dark:text-red-400">-{formatCurrency(sale.discount_amount, saleSymbol)}</span></div>}
-            {sale.promo_discount > 0 && <div className="flex justify-between"><span className="text-muted">Promo ({sale.promo_code})</span><span className="text-red-600 dark:text-red-400">-{formatCurrency(sale.promo_discount, saleSymbol)}</span></div>}
-            <div className="flex justify-between"><span className="text-muted">Tax</span><span>{formatCurrency(sale.tax_amount, saleSymbol)}</span></div>
-            <div className="flex justify-between font-bold text-base"><span>Total</span><span>{formatCurrency(sale.total_amount, saleSymbol)}</span></div>
-          </div>
-        </div>
-
-        {sale.notes && <p className="text-muted">Notes: {sale.notes}</p>}
-
-        <div className="flex justify-between pt-2">
+        <div className="flex justify-between pt-1">
           <div className="flex gap-2">
             {sale.status === "pending" && can("sales.refund") && (
               <>

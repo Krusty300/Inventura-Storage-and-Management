@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Trash2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Order, Product, Supplier, Location } from "../types";
@@ -19,11 +20,19 @@ interface Props {
 
 export default function OrderForm({ order, onClose, onSaved }: Props) {
   const isEdit = !!order;
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const { data: suppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["suppliers", "picker"],
+    queryFn: async () => (await api.get("/suppliers")).data.items,
+  });
+  const { data: products = [] } = useQuery<Product[]>({
+    queryKey: ["products", "selectable"],
+    queryFn: async () => (await api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } })).data.items,
+  });
+  const { data: locations = [] } = useQuery<Location[]>({
+    queryKey: ["locations", "lookup"],
+    queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
   const [supplierId, setSupplierId] = useState(order?.supplier_id?.toString() || "");
-  const [supplierProducts, setSupplierProducts] = useState<Product[]>([]);
   const [notes, setNotes] = useState(order?.notes || "");
   const [items, setItems] = useState(
     order?.items?.map((i) => ({ product_id: i.product_id.toString(), quantity: i.quantity.toString(), unit_price: i.unit_price.toString() })) || [{ product_id: "", quantity: "1", unit_price: "0" }]
@@ -33,23 +42,11 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
 
-  useEffect(() => {
-    api.get("/suppliers").then(({ data }) => setSuppliers(data.items));
-    api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
-    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
-  }, []);
-
-  useEffect(() => {
-    setSupplierProducts([]);
-    if (!supplierId) return;
-    let cancelled = false;
-    api.get(`/suppliers/${supplierId}/products`, { params: { limit: 100 } })
-      .then(({ data }) => {
-        if (cancelled) return;
-        setSupplierProducts((data?.items || []) as Product[]);
-      });
-    return () => { cancelled = true; };
-  }, [supplierId, locations]);
+  const { data: supplierProducts = [] } = useQuery<Product[]>({
+    queryKey: ["supplier-products", supplierId],
+    queryFn: async () => (await api.get(`/suppliers/${supplierId}/products`, { params: { limit: 100 } })).data.items,
+    enabled: !!supplierId,
+  });
 
   const activeLocationIds = new Set(locations.filter((l) => l.is_active).map((l) => l.id));
   const hasActiveLocation = (p: Product) => !!p.location_id && activeLocationIds.has(p.location_id);
@@ -101,7 +98,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
         addToast("Order created", "success");
       }
       onSaved();
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast(errorMessage(err, `Error ${isEdit ? "updating" : "creating"} order`), "error");
     }
     setSaving(false);
@@ -116,13 +113,14 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
   const alreadyAdded = (productId: number) => items.some((i) => i.product_id === productId.toString());
 
-  const updateItem = (idx: number, field: string, value: string) => {
+  type OrderItem = { product_id: string; quantity: string; unit_price: string };
+  const updateItem = (idx: number, field: keyof OrderItem, value: string) => {
     if (field === "product_id" && value && alreadyAdded(parseInt(value))) {
       addToast("Product already added to this order", "error");
       return;
     }
     const updated = [...items];
-    (updated[idx] as any)[field] = value;
+    updated[idx][field] = value;
     if (field === "product_id") {
       const p = dropdownOptions.find((p) => p.id === parseInt(value));
       if (p) updated[idx].unit_price = p.cost_price.toString();
@@ -132,7 +130,12 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
   return (
     <Modal open onClose={onClose} title={isEdit ? "Edit Purchase Order" : "New Purchase Order"} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+        <div className="border-b border-border px-6 py-4">
+          <p className="text-xs font-semibold uppercase tracking-widest text-faint">{isEdit ? `Edit ${order!.order_number}` : "New Purchase Order"}</p>
+          <h3 className="text-lg font-bold text-ink mt-1 tracking-tight">{isEdit ? "Edit Purchase Order" : "New Purchase Order"}</h3>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
           <select className="select" aria-label="Supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
@@ -194,13 +197,14 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
-        <div className="flex justify-end gap-3 pt-2">
+        <div className="flex justify-end gap-3 pt-2 border-t border-border">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving} className="btn-primary">
             {saving ? (isEdit ? "Updating..." : "Creating...") : (isEdit ? "Update Order" : "Create Order")}
           </button>
         </div>
-      </form>
+        </form>
+      </div>
     </Modal>
   );
 }

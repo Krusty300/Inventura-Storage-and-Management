@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { AlertTriangle, PackageX, ShieldAlert, ClipboardList, Truck, Search, Undo2 } from "lucide-react";
+import { AlertTriangle, PackageX, ShieldAlert, ShieldCheck, ClipboardList, Truck, Search, Undo2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { ExceptionsReport, LotGenealogy } from "../types";
@@ -10,12 +10,13 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import ErrorState from "../components/ErrorState";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { errorMessage } from "../utils/errors";
 
 
-type Section = "low_stock" | "zero_stock" | "quarantined_lots" | "open_cycle_counts" | "pending_asns";
+type Section = "quality_checks" | "low_stock" | "zero_stock" | "quarantined_lots" | "open_cycle_counts" | "pending_asns";
 
 export default function Exceptions() {
-  const [section, setSection] = useState<Section>("low_stock");
+  const [section, setSection] = useState<Section>("quality_checks");
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["exceptions"],
@@ -26,6 +27,7 @@ export default function Exceptions() {
   });
 
   const sections: { key: Section; label: string; icon: typeof AlertTriangle; color: string }[] = [
+    { key: "quality_checks", label: "Quality Checks", icon: ShieldCheck, color: "bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400" },
     { key: "low_stock", label: "Low Stock", icon: AlertTriangle, color: "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" },
     { key: "zero_stock", label: "Out of Stock", icon: PackageX, color: "bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400" },
     { key: "quarantined_lots", label: "Quarantined Lots", icon: ShieldAlert, color: "bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400" },
@@ -41,7 +43,7 @@ export default function Exceptions() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-ink">Exceptions Dashboard</h1>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         {sections.map((s) => {
           const count = data.summary[s.key] ?? 0;
           const Icon = s.icon;
@@ -63,8 +65,9 @@ export default function Exceptions() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="px-4 py-3 bg-app border-b font-medium text-ink capitalize">{section.replace(/_/g, " ")}</div>
+        <div className="px-4 py-3 bg-app border-b font-medium text-ink">{section === "quality_checks" ? "Quality Checks" : section.replace(/_/g, " ")}</div>
         <div className="p-4 overflow-x-auto">
+          {section === "quality_checks" && <QualityCheckTable data={data} />}
           {section === "low_stock" && <LowStockTable data={data} />}
           {section === "zero_stock" && <ZeroStockTable data={data} />}
           {section === "quarantined_lots" && <QuarantineTable data={data} />}
@@ -73,6 +76,26 @@ export default function Exceptions() {
         </div>
       </div>
     </div>
+  );
+}
+
+function QualityCheckTable({ data }: { data: ExceptionsReport }) {
+  if (!data.quality_checks || data.quality_checks.length === 0) return <p className="text-sm text-muted">No pending or failed quality checks.</p>;
+  return (
+    <table className="w-full text-sm">
+      <thead><tr className="text-left text-muted border-b"><th className="py-2">QC #</th><th className="py-2">Product</th><th className="py-2">Location</th><th className="py-2">Lot</th><th className="py-2">Result</th></tr></thead>
+      <tbody className="divide-y divide-border">
+        {data.quality_checks.map((q) => (
+          <tr key={q.id}>
+            <td className="py-2 font-medium">{q.qc_number}</td>
+            <td className="py-2 text-muted">{q.product_name}</td>
+            <td className="py-2 text-muted">{q.location_name}</td>
+            <td className="py-2 text-muted">{q.lot_number || "—"}</td>
+            <td className="py-2"><span className={`badge ${q.result === "fail" ? "badge-danger" : "badge-warning"}`}>{q.result}</span></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -133,8 +156,8 @@ function QuarantineTable({ data }: { data: ExceptionsReport }) {
       await api.put(`/lots/${lot.id}`, { status: "in_stock" });
       addToast(`Lot ${lot.lot_number} released`, "success");
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to release lot", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to release lot"), "error");
     } finally {
       setReleasing(null);
     }

@@ -19,6 +19,7 @@ import { formatCurrency } from "../utils/currency";
 import ErrorState from "../components/ErrorState";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function Boms() {
   const formatDate = useDateFormat();
@@ -56,8 +57,8 @@ export default function Boms() {
       addToast("BOM deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["boms"] });
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Cannot delete BOM", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Cannot delete BOM"), "error");
     },
     onSettled: () => setDeleting(null),
   });
@@ -207,8 +208,8 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
         addToast(`BOM for '${data.product_name}' created`, "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving BOM", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error saving BOM"), "error");
     }
     setSaving(false);
   };

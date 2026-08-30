@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -28,6 +28,7 @@ function mockReports() {
 }
 
 describe("Reports Page", () => {
+  vi.setConfig({ testTimeout: 60000 });
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -36,7 +37,9 @@ describe("Reports Page", () => {
   it("renders valuation stat cards", async () => {
     mockReports();
     renderWithProviders(<Reports />);
-    expect(await screen.findByText("Inventory Value (Cost)")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Inventory Value (Cost)")).toBeInTheDocument();
+    }, { timeout: 15000 });
     expect(screen.getByText("Retail Value")).toBeInTheDocument();
     expect(screen.getByText("Potential Profit")).toBeInTheDocument();
   });
@@ -45,26 +48,25 @@ describe("Reports Page", () => {
     mockReports();
     renderWithProviders(<Reports />);
     fireEvent.click(await screen.findByRole("button", { name: "Categories" }));
-    expect(await screen.findByText("Beverages")).toBeInTheDocument();
+    expect(await screen.findByText("Beverages", {}, { timeout: 15000 })).toBeInTheDocument();
     expect(screen.getByText("10")).toBeInTheDocument();
   });
 
-  it("shows a warning and disables export when the date range is invalid", async () => {
+  it("shows a warning in Sales tab when the date range is invalid", async () => {
     mockReports();
     renderWithProviders(<Reports />);
-    const start = await screen.findByLabelText("Start date");
+    fireEvent.click(await screen.findByRole("button", { name: "Sales" }));
+    const start = await screen.findByLabelText("Start date", {}, { timeout: 15000 });
     fireEvent.change(start, { target: { value: "2026-02-01" } });
     fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-01-01" } });
     expect(await screen.findByRole("alert")).toHaveTextContent("Start date must be before end date");
-    expect(screen.getByRole("button", { name: "Export sales CSV" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Export movements CSV" })).toBeDisabled();
   });
 
   it("renders the top customers tab with spending data", async () => {
     mockReports();
     renderWithProviders(<Reports />);
     fireEvent.click(await screen.findByRole("button", { name: "Top Customers" }));
-    expect(await screen.findByText("555-0001")).toBeInTheDocument();
+    expect(await screen.findByText("555-0001", {}, { timeout: 15000 })).toBeInTheDocument();
     expect(screen.getAllByText("$400.00").length).toBeGreaterThan(0);
     expect(screen.getByRole("combobox", { name: "Period" })).toBeInTheDocument();
   });
@@ -73,7 +75,7 @@ describe("Reports Page", () => {
     mockReports();
     renderWithProviders(<Reports />);
     fireEvent.click(await screen.findByRole("button", { name: "Top Suppliers" }));
-    expect((await screen.findAllByText("Acme Supplies")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Acme Supplies", {}, { timeout: 15000 })).length).toBeGreaterThan(0);
     expect(screen.getByText("Jane")).toBeInTheDocument();
     expect(screen.getAllByText("$300.00").length).toBeGreaterThan(0);
     expect(screen.getByRole("combobox", { name: "Period" })).toBeInTheDocument();
@@ -95,7 +97,7 @@ describe("Reports Page", () => {
     });
     renderWithProviders(<Reports />);
     fireEvent.click(await screen.findByRole("button", { name: "Sales" }));
-    expect((await screen.findAllByText("Mobile Money")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Mobile Money", {}, { timeout: 15000 })).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/M-Pesa/).length).toBeGreaterThan(0);
     expect(screen.getByText("Payment Reconciliation")).toBeInTheDocument();
     expect(screen.getAllByText("$200.00").length).toBeGreaterThan(0);

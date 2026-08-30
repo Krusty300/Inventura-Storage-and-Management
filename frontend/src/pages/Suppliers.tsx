@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Supplier } from "../types";
 import { useDateFormat } from "../hooks/useDateFormat";
-import { parseLocalDate } from "../utils/date";
+import { daysAgo } from "../utils/date";
 import SupplierForm from "../components/SupplierForm";
 import SupplierDetail from "../components/SupplierDetail";
 import SupplierImportModal from "../components/SupplierImportModal";
@@ -20,11 +20,15 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
 import { formatCurrency } from "../utils/currency";
+import { useSettings } from "../hooks/useSettings";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function Suppliers() {
   const formatDate = useDateFormat();
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
@@ -57,8 +61,8 @@ export default function Suppliers() {
       addToast("Supplier deactivated", "success");
       queryClient.invalidateQueries({ queryKey: ["suppliers"] });
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Cannot deactivate supplier", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Cannot deactivate supplier"), "error");
     },
   });
 
@@ -76,7 +80,7 @@ export default function Suppliers() {
 
   const recencyClass = (date: string | null) => {
     if (!date) return "text-muted";
-    const days = Math.floor((Date.now() - parseLocalDate(date).getTime()) / 86400000);
+    const days = daysAgo(date);
     if (days <= 30) return "text-emerald-600 dark:text-emerald-400";
     if (days <= 90) return "text-muted";
     return "text-amber-600 dark:text-amber-400";
@@ -111,9 +115,9 @@ export default function Suppliers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-ink">Suppliers</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {can("suppliers.import") && (
             <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import suppliers from CSV">
               Import
@@ -128,10 +132,10 @@ export default function Suppliers() {
         </div>
       </div>
 
-      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load suppliers: {(error as any)?.message}</div>}
+      {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load suppliers")}</div>}
 
       <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1 min-w-0 max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by name, contact, or email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search suppliers" />
         </div>
@@ -150,20 +154,20 @@ export default function Suppliers() {
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Suppliers table">
+          <table className="w-full text-sm min-w-[700px]" aria-label="Suppliers table">
             <thead>
               <tr className="bg-app text-left">
                 <th scope="col" className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all suppliers" />
                 </th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Contact</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Email</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Phone</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Products</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Orders</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Total Spent</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Last Order</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted hidden md:table-cell">Contact</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted hidden lg:table-cell">Email</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted hidden lg:table-cell">Phone</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Products</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right hidden md:table-cell">Orders</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Total Spent</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted hidden sm:table-cell">Last Order</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
             </thead>
@@ -178,32 +182,38 @@ export default function Suppliers() {
                     <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(s.id)} onChange={() => toggleSelect(s.id)} aria-label={`Select ${s.name}`} />
                   </td>
                   <td className="px-4 py-3 font-medium">
-                    {s.name}
-                    {!s.is_active && <span className="badge badge-warning ml-2">Inactive</span>}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="truncate max-w-[180px]">{s.name}</span>
+                      {!s.is_active && <span className="badge badge-warning shrink-0">Inactive</span>}
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-muted">{s.contact_person}</td>
-                  <td className="px-4 py-3">
-                    {s.email ? <a href={`mailto:${s.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{s.email}</a> : <span className="text-muted">—</span>}
+                  <td className="px-4 py-3 text-muted hidden md:table-cell">
+                    <div className="truncate max-w-[120px]">{s.contact_person || "—"}</div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 hidden lg:table-cell">
+                    <div className="truncate max-w-[200px]">
+                      {s.email ? <a href={`mailto:${s.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{s.email}</a> : <span className="text-muted">—</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 hidden lg:table-cell whitespace-nowrap">
                     {s.phone ? <a href={`tel:${s.phone}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{s.phone}</a> : <span className="text-muted">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-muted">{s.product_count ?? 0}</td>
-                  <td className={`px-4 py-3 ${(s.total_orders ?? 0) === 0 ? "text-amber-600 dark:text-amber-400" : "text-muted"}`}>{s.total_orders ?? 0}</td>
-                  <td className="px-4 py-3 text-muted">{formatCurrency(s.total_spent ?? 0)}</td>
-                  <td className={`px-4 py-3 ${recencyClass(s.last_order_at ?? null)}`}>
+                  <td className="px-4 py-3 text-muted text-right">{(s.product_count ?? 0).toLocaleString()}</td>
+                  <td className={`px-4 py-3 text-right hidden md:table-cell ${(s.total_orders ?? 0) === 0 ? "text-amber-600 dark:text-amber-400" : "text-muted"}`}>{(s.total_orders ?? 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-muted text-right">{formatCurrency(s.total_spent ?? 0, currencySymbol)}</td>
+                  <td className={`px-4 py-3 ${recencyClass(s.last_order_at ?? null)} hidden sm:table-cell whitespace-nowrap`}>
                     {s.last_order_at ? formatDate(s.last_order_at) : "Never"}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${s.name}`}><Eye size={16} /></button>
+                    <div className="flex gap-1">
+                      <button onClick={() => setViewing(s)} className="p-2 rounded-md text-faint hover:text-indigo-600 dark:text-indigo-400 hover:bg-app" aria-label={`View ${s.name}`}><Eye size={16} /></button>
                       {!s.is_active && can("suppliers.update") && (
-                        <button onClick={() => restoreMutation.mutate(s.id)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Restore ${s.name}`}>
+                        <button onClick={() => restoreMutation.mutate(s.id)} className="p-2 rounded-md text-faint hover:text-green-600 dark:text-green-400 hover:bg-app" aria-label={`Restore ${s.name}`}>
                           <RefreshCw size={16} />
                         </button>
                       )}
-                      <button onClick={() => { setEditing(s); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${s.name}`}><Pencil size={16} /></button>
-                      <button onClick={() => setDeleting(s)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${s.name}`}><Trash2 size={16} /></button>
+                      <button onClick={() => { setEditing(s); setShowForm(true); }} className="p-2 rounded-md text-faint hover:text-indigo-600 dark:text-indigo-400 hover:bg-app" aria-label={`Edit ${s.name}`}><Pencil size={16} /></button>
+                      <button onClick={() => setDeleting(s)} className="p-2 rounded-md text-faint hover:text-red-600 dark:text-red-400 hover:bg-app" aria-label={`Delete ${s.name}`}><Trash2 size={16} /></button>
                     </div>
                   </td>
                 </tr>

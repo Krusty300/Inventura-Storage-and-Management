@@ -23,6 +23,7 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function Sales() {
   const formatDate = useDateFormat();
@@ -80,7 +81,7 @@ export default function Sales() {
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Refund failed", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Refund failed"), "error"),
   });
 
   const b2cRefundMutation = useMutation({
@@ -102,8 +103,8 @@ export default function Sales() {
         addToast(data.message || "B2C refund failed", "error");
       }
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || err.message || "B2C refund failed", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "B2C refund failed"), "error");
     },
   });
 
@@ -115,7 +116,7 @@ export default function Sales() {
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cancellation failed", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cancellation failed"), "error"),
   });
 
   const deleteMutation = useMutation({
@@ -126,7 +127,7 @@ export default function Sales() {
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Delete failed", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Delete failed"), "error"),
   });
 
   const sales = data?.items || [];
@@ -143,7 +144,7 @@ export default function Sales() {
   const printPdf = (id: number) => {
     api.get(`/sales/${id}/pdf`, { responseType: "blob" }).then(({ data }) => {
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }).catch(() => addToast("Failed to generate PDF", "error"));
   };
@@ -154,7 +155,7 @@ export default function Sales() {
     try {
       const { data } = await api.post("/sales/bulk-pdf", [...selectedIds], { responseType: "blob" });
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       addToast("Failed to generate combined PDF", "error");
@@ -215,8 +216,8 @@ export default function Sales() {
       <BulkActionBar count={selectedIds.size} canEdit={can("sales.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} onPrintSelected={bulkPrintPdf} printLoading={printSelectedLoading} />
 
       {isError && (
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          Failed to load sales: {(error as any)?.message}
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          {errorMessage(error, "Failed to load sales")}
         </div>
       )}
 

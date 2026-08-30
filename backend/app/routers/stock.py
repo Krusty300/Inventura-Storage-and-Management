@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/stock-movements", tags=["stock-movements"], depe
 
 
 @router.get("")
-def list_movements(search: str = Query(""), skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def list_movements(search: str = Query(""), movement_type: str = Query(""), skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     q = db.query(StockMovement).options(
         joinedload(StockMovement.product), joinedload(StockMovement.user),
         joinedload(StockMovement.from_location), joinedload(StockMovement.to_location),
@@ -42,6 +42,8 @@ def list_movements(search: str = Query(""), skip: int = 0, limit: int = 100, db:
         q = q.join(StockMovement.product).filter(
             Product.name.ilike(like) | Product.sku.ilike(like) | StockMovement.reference.ilike(like) | StockMovement.notes.ilike(like)
         )
+    if movement_type and movement_type != "all":
+        q = q.filter(StockMovement.movement_type == movement_type)
     total = q.count()
     items = q.order_by(StockMovement.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [StockMovementOut.model_validate(m) for m in items], "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
@@ -239,17 +241,40 @@ def record_movement(data: StockMovementCreate, db: Session = Depends(get_db), us
     if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
         raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - record movements on a specific variant")
     if product.is_serialized:
-        raise HTTPException(status_code=400, detail="Serialized products must be managed through receipts")
+        if not data.serial_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"'{product.display_name}' is serialized — provide a serial_id. "
+                    "Serialized products can also be managed via goods receipts (receive), "
+                    "transfer-serial, unallocated-move, or the sale refund flow."
+                ),
+            )
+        serial = db.get(SerialNumber, data.serial_id)
+        if serial is None or serial.product_id != product.id:
+            raise HTTPException(status_code=400, detail="Serial number does not match the selected product")
+    else:
+        if data.serial_id:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' is not serialized — remove serial_id")
     try:
         loc_id = require_active_location(db, product, data.location_id)
         reference = data.reference
-        if not reference and data.movement_type == "return":
-            reference = next_document_number(db, "return", "RET-")
+        if not reference:
+            _REF_SEQUENCES = {
+                "in": ("stock_in", "SI-"),
+                "out": ("stock_out", "SO-"),
+                "adjustment": ("adjustment", "ADJ-"),
+                "return": ("return", "RET-"),
+            }
+            seq = _REF_SEQUENCES.get(data.movement_type)
+            if seq:
+                reference = next_document_number(db, seq[0], seq[1])
         sm = inventory.post_journal_entry(
             db, product_id=product.id, user_id=user.id,
             quantity_change=data.quantity_change, movement_type=data.movement_type,
             from_location_id=loc_id if data.quantity_change < 0 else None,
             to_location_id=loc_id if data.quantity_change > 0 else None,
+            serial_id=data.serial_id,
             reference=reference, notes=data.notes,
         )
     except inventory.InventoryError as e:
@@ -271,7 +296,10 @@ def transfer_stock(data: StockMovementTransfer, db: Session = Depends(get_db), u
     if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
         raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - transfer a specific variant")
     if product.is_serialized:
-        raise HTTPException(status_code=400, detail="Serialized items must be transferred by scanning their serial number")
+        raise HTTPException(
+            status_code=400,
+            detail="Serialized items must be transferred by scanning their serial number (use the transfer-serial endpoint)",
+        )
     from_loc = get_or_404(Location, data.from_location_id, db)
     to_loc = get_or_404(Location, data.to_location_id, db)
     if not from_loc.is_active:
@@ -989,7 +1017,10 @@ def update_movement(movement_id: int, data: StockMovementUpdate, db: Session = D
             )
         except inventory.InventoryError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    ALLOWED_MOVEMENT_UPDATE_FIELDS = {"product_id", "quantity_change", "reference", "notes", "location_id"}
     for k, v in updates.items():
+        if k not in ALLOWED_MOVEMENT_UPDATE_FIELDS:
+            raise HTTPException(status_code=400, detail=f"Field '{k}' cannot be updated on a stock movement")
         setattr(sm, k, v)
     db.commit()
     db.refresh(sm)

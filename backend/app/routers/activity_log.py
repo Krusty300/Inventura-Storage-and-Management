@@ -11,6 +11,8 @@ from app.services.csv_export import csv_stream_response
 
 router = APIRouter(prefix="/api/activity-logs", tags=["activity-logs"], dependencies=[Depends(require_permission("activity.view"))])
 
+MAX_EXPORT_ROWS = 10_000
+
 
 @router.get("")
 def list_logs(
@@ -55,7 +57,7 @@ def export_logs(
         query = query.filter(ActivityLog.entity_id == entity_id)
     if action:
         query = query.filter(ActivityLog.action == action)
-    logs = query.order_by(ActivityLog.created_at.desc()).yield_per(500)
+    logs = query.order_by(ActivityLog.created_at.desc()).limit(MAX_EXPORT_ROWS).yield_per(500)
     return csv_stream_response(
         "activity_log_report",
         ["Date", "User", "Action", "Entity Type", "Entity ID", "Description"],

@@ -5,8 +5,11 @@ import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, Product } from "../types";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
+import { errorMessage } from "../utils/errors";
 
 const REASON_CODES = ["damaged", "lost", "found", "recount"];
+
+const sectionLabel = "text-xs font-semibold uppercase tracking-widest text-faint";
 
 interface Props {
   product: Product;
@@ -62,82 +65,84 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
         location_id: locationId ? parseInt(locationId) : null,
       });
       onAdjusted();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Adjustment failed");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Adjustment failed"));
     }
     setSubmitting(false);
   };
 
   return (
-    <Modal open onClose={onClose} title="Adjust Stock">
-      <div className="space-y-4">
-        <div className="text-sm">
-          <span className="font-medium">{product.display_name}</span>
-          <span className="text-muted ml-2">({product.sku})</span>
+    <Modal open onClose={onClose} title="Adjust Stock" wide>
+      <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+        <div className="border-b border-border px-6 py-4">
+          <p className={sectionLabel}>Stock Adjustment</p>
+          <h3 className="text-lg font-bold text-ink mt-0.5 tracking-tight">{product.display_name}</h3>
+          <p className="text-sm text-muted">{product.sku}</p>
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Location</label>
-          <select className="select" value={locationId} onChange={(e) => { setLocationTouched(true); setLocationId(e.target.value); }}>
-            <option value="">Default (product location)</option>
-            {locationOptions.map((l) => {
-              const count = stockCountByLoc.get(l.id);
-              return <option key={l.id} value={l.id}>{l.path}{count !== undefined ? ` (${count})` : ""}</option>;
-            })}
-          </select>
-          <p className="text-xs text-faint mt-1">
-            {locationId
-              ? `New quantity will be the target stock at this location (current: ${currentQty}).`
-              : "Applies to the product's default location. Pick a location to adjust stock there instead."}
-            {!locationTouched && locationId !== "" && " Auto-detected from existing stock."}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-5 px-6 py-5">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Current Quantity</label>
-            <div className="input bg-app">{currentQty}</div>
+            <label className="block text-sm font-medium text-ink mb-1">Location</label>
+            <select className="select" value={locationId} onChange={(e) => { setLocationTouched(true); setLocationId(e.target.value); }}>
+              <option value="">Default (product location)</option>
+              {locationOptions.map((l) => {
+                const count = stockCountByLoc.get(l.id);
+                return <option key={l.id} value={l.id}>{l.path}{count !== undefined ? ` (${count})` : ""}</option>;
+              })}
+            </select>
+            <p className="text-xs text-faint mt-1">
+              {locationId
+                ? `New quantity will be the target stock at this location (current: ${currentQty}).`
+                : "Applies to the product's default location. Pick a location to adjust stock there instead."}
+              {!locationTouched && locationId !== "" && " Auto-detected from existing stock."}
+            </p>
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Current Quantity</label>
+              <div className="input bg-app">{currentQty}</div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">New Quantity</label>
+              <input
+                type="number"
+                min={0}
+                className="input"
+                value={newQty}
+                onChange={(e) => setNewQty(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          {qtyDelta !== 0 && !isNaN(qtyDelta) && (
+            <div className={`text-sm font-medium ${qtyDelta > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+              Will {qtyDelta > 0 ? "add" : "remove"} {Math.abs(qtyDelta)} unit{Math.abs(qtyDelta) !== 1 ? "s" : ""}
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">New Quantity</label>
-            <input
-              type="number"
-              min={0}
-              className="input"
-              value={newQty}
-              onChange={(e) => setNewQty(e.target.value)}
-              autoFocus
-            />
+            <label className="block text-sm font-medium text-ink mb-1">Reason</label>
+            <select className="select" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
+              {REASON_CODES.map((rc) => (
+                <option key={rc} value={rc}>{rc.charAt(0).toUpperCase() + rc.slice(1)}</option>
+              ))}
+            </select>
           </div>
-        </div>
 
-        {qtyDelta !== 0 && !isNaN(qtyDelta) && (
-          <div className={`text-sm font-medium ${qtyDelta > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-            Will {qtyDelta > 0 ? "add" : "remove"} {Math.abs(qtyDelta)} unit{Math.abs(qtyDelta) !== 1 ? "s" : ""}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Notes (optional)</label>
+            <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
-        )}
 
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Reason</label>
-          <select className="select" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
-            {REASON_CODES.map((rc) => (
-              <option key={rc} value={rc}>{rc.charAt(0).toUpperCase() + rc.slice(1)}</option>
-            ))}
-          </select>
-        </div>
+          {error && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Notes (optional)</label>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </div>
-
-        {error && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}
-
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>
-          <button onClick={handleSubmit} disabled={!isValid || submitting} className="btn-primary text-sm px-3 py-1.5">
-            {submitting ? "Adjusting..." : "Adjust Stock"}
-          </button>
+          <div className="flex gap-2 justify-end pt-2 border-t border-border">
+            <button onClick={onClose} className="btn-secondary text-sm px-3 py-1.5">Cancel</button>
+            <button onClick={handleSubmit} disabled={!isValid || submitting} className="btn-primary text-sm px-3 py-1.5">
+              {submitting ? "Adjusting..." : "Adjust Stock"}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>

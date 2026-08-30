@@ -1,103 +1,44 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  Package,
-  Tags,
-  Truck,
-  ArrowLeftRight,
-  ShoppingCart,
-  Receipt,
   LogOut,
   Menu,
-  Users as UsersIcon,
-  History,
-  BarChart3,
-  Contact,
-  Settings as SettingsIcon,
-  MapPin,
-  ClipboardList,
-  Boxes,
-  Layers,
-  Fingerprint,
-  PackageCheck,
-  AlertTriangle,
-  Factory,
-  Workflow,
-  FlaskConical,
-  Sparkles,
-  PackageOpen,
-  TrendingUp,
   Sun,
   Moon,
   Monitor,
-  CircleUser,
   PanelLeftClose,
   PanelLeftOpen,
-  StickyNote,
-  BadgePercent,
-  Tag,
-  UsersRound,
-  Store,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemeMode } from "../context/ThemeContext";
 import NotificationBell from "./NotificationBell";
+import FloatingSidebar from "./FloatingSidebar";
+import DateTimeDisplay from "./DateTimeDisplay";
+import { navItems } from "../utils/navItems";
 
 const MIN_SIDEBAR_WIDTH = 208;
 const DEFAULT_SIDEBAR_WIDTH = 256;
 const MAX_SIDEBAR_WIDTH = 480;
+const MIN_FLOATING_WIDTH = 56;
+const DEFAULT_FLOATING_WIDTH = 72;
+const MAX_FLOATING_WIDTH = 200;
 const TABLET_MQ = "(min-width: 768px)";
+const DESKTOP_MQ = "(min-width: 1024px)";
 
-function useIsTablet() {
-  const [isTablet, setIsTablet] = useState<boolean>(() =>
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState<boolean>(() =>
     typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia(TABLET_MQ).matches
+      ? window.matchMedia(query).matches
       : false,
   );
   useEffect(() => {
-    const mq = window.matchMedia(TABLET_MQ);
-    const onChange = (e: MediaQueryListEvent) => setIsTablet(e.matches);
+    const mq = window.matchMedia(query);
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
-  }, []);
-  return isTablet;
+  }, [query]);
+  return matches;
 }
-
-const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard", perm: "dashboard.view" },
-  { to: "/products", icon: Package, label: "Products", perm: "products.view" },
-  { to: "/categories", icon: Tags, label: "Categories", perm: "categories.view" },
-  { to: "/suppliers", icon: Truck, label: "Suppliers", perm: "suppliers.view" },
-  { to: "/customers", icon: Contact, label: "Customers", perm: "customers.view" },
-  { to: "/orders", icon: ShoppingCart, label: "Orders", perm: "orders.view" },
-  { to: "/sales", icon: Receipt, label: "Sales", perm: "sales.view" },
-  { to: "/price-lists", icon: Tag, label: "Price Lists", perm: "price_lists.view" },
-  { to: "/promotions", icon: BadgePercent, label: "Promotions", perm: "promotions.view" },
-  { to: "/customer-groups", icon: UsersRound, label: "Customer Groups", perm: "customer_groups.view" },
-  { to: "/sales-channels", icon: Store, label: "Sales Channels", perm: "sales.view" },
-  { to: "/locations", icon: MapPin, label: "Locations", perm: "locations.view" },
-  { to: "/receiving", icon: PackageCheck, label: "Receiving", perm: "receipts.view" },
-  { to: "/asns", icon: Truck, label: "ASNs", perm: "asns.view" },
-  { to: "/lpns", icon: Boxes, label: "LPNs", perm: "lpns.view" },
-  { to: "/lots", icon: Layers, label: "Lots", perm: "lots.view" },
-  { to: "/serial-numbers", icon: Fingerprint, label: "Serial Numbers", perm: "serial_numbers.view" },
-  { to: "/cycle-counts", icon: ClipboardList, label: "Cycle Counts", perm: "cycle_counts.view" },
-  { to: "/boms", icon: Factory, label: "BOMs", perm: "bom.view" },
-  { to: "/work-orders", icon: Workflow, label: "Work Orders", perm: "work_orders.view" },
-  { to: "/planning", icon: Sparkles, label: "Planning", perm: "planning.view" },
-  { to: "/forecasting", icon: TrendingUp, label: "Forecasting", perm: "forecasting.view" },
-  { to: "/shipments", icon: PackageOpen, label: "Shipments", perm: "shipments.view" },
-  { to: "/quality-checks", icon: FlaskConical, label: "Quality", perm: "quality_checks.view" },
-  { to: "/stock-movements", icon: ArrowLeftRight, label: "Movements", perm: "stock.view" },
-  { to: "/exceptions", icon: AlertTriangle, label: "Exceptions", perm: "reports.view" },
-  { to: "/users", icon: UsersIcon, label: "Users", perm: "users.view" },
-  { to: "/reports", icon: BarChart3, label: "Reports", perm: "reports.view" },
-  { to: "/activity-log", icon: History, label: "Activity", perm: "activity.view" },
-  { to: "/notes", icon: StickyNote, label: "Notes", perm: "notes.view" },
-  { to: "/settings", icon: SettingsIcon, label: "Settings", perm: "settings.view" },
-  { to: "/profile", icon: CircleUser, label: "Profile", perm: "profile.view" },
-];
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -108,22 +49,49 @@ export default function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     () => localStorage.getItem("sidebarCollapsed") === "1",
   );
+  const [floatingWidth, setFloatingWidthState] = useState<number>(() => {
+    const saved = Number(localStorage.getItem("floatingSidebarWidth"));
+    return saved >= MIN_FLOATING_WIDTH && saved <= MAX_FLOATING_WIDTH ? saved : DEFAULT_FLOATING_WIDTH;
+  });
+  const floatingWidthRef = useRef(floatingWidth);
   const sidebarWidthRef = useRef(sidebarWidth);
+  const setFloatingWidth = useCallback((w: number) => {
+    setFloatingWidthState(w);
+    floatingWidthRef.current = w;
+    localStorage.setItem("floatingSidebarWidth", String(w));
+  }, []);
   const location = useLocation();
   const { logout, completeLogout, loggingOut, user, can } = useAuth();
   const { theme, setTheme } = useTheme();
-  const isTablet = useIsTablet();
+  const isTablet = useMediaQuery(TABLET_MQ);
+  const isDesktop = useMediaQuery(DESKTOP_MQ);
   const visibleNavItems = navItems.filter((item) => can(item.perm));
 
   const collapsed = isTablet && sidebarCollapsed;
+  const overlay = collapsed && !isDesktop;
 
-  const toggleSidebarCollapsed = () => {
+  const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem("sidebarCollapsed", next ? "1" : "0");
       return next;
     });
-  };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+        e.preventDefault();
+        toggleSidebarCollapsed();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("open-global-search"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleSidebarCollapsed]);
 
   const themeOptions: { mode: ThemeMode; icon: typeof Sun; label: string }[] = [
     { mode: "light", icon: Sun, label: "Light mode" },
@@ -160,6 +128,9 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-app overflow-hidden">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400">
+        Skip to main content
+      </a>
       <aside
         style={{ width: collapsed ? 0 : sidebarWidth }}
         aria-hidden={collapsed || undefined}
@@ -175,6 +146,7 @@ export default function Layout() {
                 key={item.to}
                 to={item.to}
                 className={`sidebar-link ${isActive ? "active" : ""}`}
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => setSidebarOpen(false)}
               >
                 <item.icon size={20} />
@@ -215,6 +187,18 @@ export default function Layout() {
         />
       </aside>
 
+      {collapsed && (
+        <FloatingSidebar
+          onExpand={toggleSidebarCollapsed}
+          onClose={toggleSidebarCollapsed}
+          width={floatingWidth}
+          onWidthChange={setFloatingWidth}
+          minWidth={MIN_FLOATING_WIDTH}
+          maxWidth={MAX_FLOATING_WIDTH}
+          overlay={overlay}
+        />
+      )}
+
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/50 md:hidden"
@@ -222,7 +206,10 @@ export default function Layout() {
         />
       )}
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div
+        className="flex-1 flex flex-col min-w-0"
+        style={collapsed && !overlay ? { marginLeft: floatingWidth } : undefined}
+      >
         <header className="bg-surface border-b border-border px-6 py-3 flex items-center justify-between relative z-20">
           <div className="flex items-center gap-3">
             <button onClick={() => setSidebarOpen(true)} className="text-muted md:hidden" aria-label="Open navigation">
@@ -239,6 +226,7 @@ export default function Layout() {
             <div className="hidden md:block text-lg font-semibold text-ink">Inventura Storage</div>
           </div>
           <div className="flex items-center gap-3">
+            <DateTimeDisplay />
             <div
               role="group"
               aria-label="Color theme"
@@ -277,17 +265,15 @@ export default function Layout() {
             </Link>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-6">
-          <div className={collapsed ? "mx-auto max-w-7xl" : ""}>
-            <Outlet />
-          </div>
+        <main id="main-content" className="flex-1 overflow-auto p-6">
+          <Outlet />
         </main>
       </div>
 
       {loggingOut && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-app/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="flex items-center gap-3 px-6 py-3 rounded-xl bg-surface border border-border shadow-lg">
-            <div className="h-4 w-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            <div className="h-4 w-4 rounded bg-subtle-strong animate-pulse" />
             <span className="text-sm font-medium text-ink">Signing out</span>
           </div>
         </div>

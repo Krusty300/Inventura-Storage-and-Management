@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
+import queryClient from "./api/queryClient";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
@@ -9,6 +10,7 @@ import Layout from "./components/Layout";
 import RequirePermission from "./components/RequirePermission";
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
+import PageLoader from "./components/PageLoader";
 
 function PageBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
@@ -48,27 +50,20 @@ const CustomerGroups = lazy(() => import("./pages/CustomerGroups"));
 const SalesChannels = lazy(() => import("./pages/SalesChannels"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
-
-const queryClient = new QueryClient();
-
-const spinner = (
-  <div className="flex items-center justify-center h-screen">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-300" />
-  </div>
-);
+const Notifications = lazy(() => import("./pages/Notifications"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, loggingOut } = useAuth();
-  if (loading) return spinner;
+  if (loading) return <PageLoader />;
   if (!user && !loggingOut) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
 function AppRoutes() {
   const { user, loading } = useAuth();
-  if (loading) return spinner;
+  if (loading) return <PageLoader />;
   return (
-    <Suspense fallback={spinner}>
+    <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
@@ -111,6 +106,7 @@ function AppRoutes() {
           <Route path="/activity-log" element={<PageBoundary><RequirePermission perm="activity.view"><ActivityLog /></RequirePermission></PageBoundary>} />
           <Route path="/settings" element={<PageBoundary><RequirePermission perm="settings.view"><Settings /></RequirePermission></PageBoundary>} />
           <Route path="/profile" element={<PageBoundary><RequirePermission perm="profile.view"><Profile /></RequirePermission></PageBoundary>} />
+          <Route path="/notifications" element={<PageBoundary><RequirePermission perm="notifications.view"><Notifications /></RequirePermission></PageBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

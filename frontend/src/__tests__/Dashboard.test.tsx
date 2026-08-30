@@ -84,8 +84,8 @@ function mockDashboard(overrides: { stats?: Record<string, unknown>; exceptions?
     if (url === "/reports/inventory-valuation") return Promise.resolve({ data: emptyValuation });
     if (url === "/reports/exceptions") return Promise.resolve({ data: exceptionsData });
     if (url === "/reports/stockout-risk") return Promise.resolve({ data: emptyRisk });
-    if (url === "/lpns?limit=20") return Promise.resolve({ data: lpnsData });
-    if (url === "/receipts?limit=20") return Promise.resolve({ data: receiptsData });
+    if (url === "/lpns") return Promise.resolve({ data: lpnsData });
+    if (url === "/receipts") return Promise.resolve({ data: receiptsData });
     if (url === "/reports/order-summary") return Promise.resolve({ data: emptyOrderSummary });
     if (url === "/reports/category-breakdown") return Promise.resolve({ data: [] });
     if (url === "/reports/profit-analysis") return Promise.resolve({ data: emptyProfit });
@@ -149,11 +149,11 @@ describe("Dashboard Page", () => {
     });
     renderWithProviders(<Dashboard />);
     expect(await screen.findAllByText("Pending ASNs")).toHaveLength(2);
-    expect(screen.getByText("ASN-100")).toBeInTheDocument();
-    expect(screen.getByText("CC-200")).toBeInTheDocument();
-    expect(screen.getByText("LPN-01")).toBeInTheDocument();
-    expect(screen.getByText("RCPT-1")).toBeInTheDocument();
-    expect(screen.getByText("BestSeller")).toBeInTheDocument();
+    expect(await screen.findByText("ASN-100")).toBeInTheDocument();
+    expect(await screen.findByText("CC-200")).toBeInTheDocument();
+    expect(await screen.findByText("LPN-01")).toBeInTheDocument();
+    expect(await screen.findByText("RCPT-1")).toBeInTheDocument();
+    expect(await screen.findByText("BestSeller")).toBeInTheDocument();
   });
 
   it("shows empty low stock and no-movement messages when there is no data", async () => {
@@ -220,7 +220,7 @@ describe("Dashboard Page", () => {
   it("shows error state with retry when the API fails", async () => {
     getMock.mockRejectedValue(new Error("boom"));
     renderWithProviders(<Dashboard />);
-    expect(await screen.findAllByText("Failed to load dashboard data")).toHaveLength(2);
+    expect(await screen.findByText("Failed to load dashboard data")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
@@ -280,11 +280,12 @@ describe("Dashboard Page", () => {
     );
     await screen.findByText("Active Products");
     expect(getMock).toHaveBeenCalledWith("/reports/stockout-risk", { params: { lead_time_days: 7 } });
-    const leadGroup = screen.getByLabelText("Stockout risk lead time");
+    const leadGroup = await screen.findByLabelText("Stockout risk lead time");
     fireEvent.click(within(leadGroup).getByRole("button", { name: "30d" }));
     await waitFor(() => {
       expect(getMock).toHaveBeenCalledWith("/reports/stockout-risk", { params: { lead_time_days: 30 } });
     });
+    expect(await screen.findByRole("button", { name: /High Stockout Risk/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /High Stockout Risk/ }));
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent("/reports?tab=stockout&lead_time_days=30");

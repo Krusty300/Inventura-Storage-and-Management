@@ -1,8 +1,10 @@
 import type { Receipt } from "../types";
 import Modal from "./Modal";
+import AttachmentSection from "./AttachmentSection";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
+import { useAuth } from "../context/AuthContext";
 
 interface Props {
   receipt: Receipt;
@@ -11,59 +13,100 @@ interface Props {
 
 export default function ReceiptDetail({ receipt, onClose }: Props) {
   const formatDateTime = useDateTimeFormat();
+  const { can } = useAuth();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const total = receipt.items.reduce((sum, i) => sum + i.quantity * i.unit_cost, 0);
   return (
-    <Modal open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} wide>
-      <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-4 text-sm">
+    <Modal open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} xwide>
+      <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+        <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-muted">Supplier</p>
-            <p className="font-medium">{receipt.supplier_name || "—"}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-faint">Goods Receipt Note</p>
+            <h3 className="text-2xl font-bold text-ink mt-1 tracking-tight">{receipt.receipt_number}</h3>
           </div>
-          <div>
+          <div className="text-right text-sm">
             <p className="text-muted">Date</p>
-            <p className="font-medium">{formatDateTime(receipt.created_at)}</p>
+            <p className="font-medium text-ink">{formatDateTime(receipt.created_at)}</p>
+            {receipt.username && (
+              <p className="text-muted mt-2">Received by <span className="font-medium text-ink">{receipt.username}</span></p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3 px-6 py-5 text-sm border-b border-dashed border-border">
+          <div>
+            <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Supplier</p>
+            <p className="font-medium text-ink">{receipt.supplier_name || "—"}</p>
           </div>
           <div>
-            <p className="text-muted">Reference</p>
-            <p className="font-medium">{receipt.reference || "—"}</p>
+            <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Reference</p>
+            <p className="font-medium text-ink">{receipt.reference || "—"}</p>
+          </div>
+          <div>
+            <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Lines</p>
+            <p className="font-medium text-ink">{receipt.items.length}</p>
           </div>
         </div>
-        {receipt.notes && <p className="text-sm text-muted">{receipt.notes}</p>}
-        <div className="border border-border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-app text-left">
-                <th className="px-4 py-2 font-medium text-muted">Product</th>
-                <th className="px-4 py-2 font-medium text-muted">Qty</th>
-                <th className="px-4 py-2 font-medium text-muted">Unit Cost</th>
-                <th className="px-4 py-2 font-medium text-muted text-right">Amount</th>
-                <th className="px-4 py-2 font-medium text-muted">Lot</th>
-                <th className="px-4 py-2 font-medium text-muted">Location</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {receipt.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-2 font-medium">{item.product_name}</td>
-                  <td className="px-4 py-2">{item.quantity}</td>
-                  <td className="px-4 py-2">{formatCurrency(item.unit_cost, currencySymbol)}</td>
-                  <td className="px-4 py-2 text-right">{formatCurrency(item.unit_cost * item.quantity, currencySymbol)}</td>
-                  <td className="px-4 py-2 text-muted">{item.lot_number || "\u2014"}</td>
-                  <td className="px-4 py-2 text-muted">{item.location_name || "\u2014"}</td>
+
+        <div className="px-6 py-5">
+          <div className="overflow-x-auto -mx-2 px-2">
+            <table className="w-full min-w-max text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-wide text-faint border-b border-border">
+                  <th className="py-2.5 pr-3 text-left font-medium">Item</th>
+                  <th className="py-2.5 px-3 font-medium">Qty</th>
+                  <th className="py-2.5 px-3 text-right font-medium">Unit Cost</th>
+                  <th className="py-2.5 px-3 text-right font-medium">Amount</th>
+                  <th className="py-2.5 px-3 text-right font-medium">Lot</th>
+                  <th className="py-2.5 pl-3 text-right font-medium">Location</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {receipt.items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="py-3 pr-3 font-medium text-ink">{item.product_name}</td>
+                    <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.quantity}</td>
+                    <td className="py-3 px-3 text-right text-muted whitespace-nowrap">{formatCurrency(item.unit_cost, currencySymbol)}</td>
+                    <td className="py-3 px-3 text-right text-ink font-medium whitespace-nowrap">{formatCurrency(item.unit_cost * item.quantity, currencySymbol)}</td>
+                    <td className="py-3 px-3 text-right text-muted whitespace-nowrap">{item.lot_number || "\u2014"}</td>
+                    <td className="py-3 pl-3 text-right text-muted whitespace-nowrap">{item.location_name || "\u2014"}</td>
+                  </tr>
+                ))}
+                {receipt.items.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-muted">No items on this receipt</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-5 border-t-2 border-double border-border pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="text-sm text-muted">
+              Total quantity: <span className="font-semibold text-ink">{receipt.total_quantity}</span>
+            </div>
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-faint">Total Cost</p>
+              <p className="text-2xl font-bold text-ink">{formatCurrency(total, currencySymbol)}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex justify-between text-sm font-medium">
-          <span>Total quantity: {receipt.total_quantity}</span>
-          <span>Total cost: {formatCurrency(receipt.total_cost, currencySymbol)}</span>
+
+        {receipt.notes && (
+          <div className="px-6 pb-5 text-sm">
+            <p className="text-faint text-xs uppercase tracking-wide mb-1">Notes</p>
+            <p className="text-muted">{receipt.notes}</p>
+          </div>
+        )}
+
+        <div className="px-6 py-5 border-t border-border">
+          <AttachmentSection entityType="receipt" entityId={receipt.id} canEdit={can("receipts.create")} />
         </div>
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="btn-secondary">Close</button>
-        </div>
+      </div>
+
+      <div className="flex justify-end pt-4">
+        <button onClick={onClose} className="btn-secondary">Close</button>
       </div>
     </Modal>
   );

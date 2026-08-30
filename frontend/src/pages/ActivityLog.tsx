@@ -74,7 +74,7 @@ export default function ActivityLog() {
         <button onClick={handleExport} className="btn-secondary" aria-label="Export activity log to CSV">Export</button>
       </div>
 
-      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load activity log.</div>}
+      {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load activity log.</div>}
 
       <div className="flex gap-2 flex-wrap items-center">
         <div className="relative flex-1 max-w-md">

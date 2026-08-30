@@ -3,6 +3,7 @@ import { Upload, FileText, CheckCircle, XCircle, AlertTriangle } from "lucide-re
 import api from "../api/client";
 import Modal from "./Modal";
 import { useToast } from "../context/ToastContext";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   onClose: () => void;
@@ -35,8 +36,8 @@ export default function CustomerImportModal({ onClose, onImported }: Props) {
       setResult(data);
       if (data.created > 0) addToast(`${data.created} customers imported`, "success");
       if (data.created > 0) onImported();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Import failed", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Import failed"), "error");
     }
     setImporting(false);
   };

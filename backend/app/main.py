@@ -16,7 +16,7 @@ from app.config import settings as app_settings
 from app.database import Base, SessionLocal, backfill_stock_lines, engine, run_migrations
 from app.logging_config import setup_logging
 from app.middleware import RequestIDMiddleware
-from app.routers import activity_log, asn, auth, bom, categories, costing, cycle_counts, customers, customer_groups, daraja, dashboard, forecasting, labels, locations, lots, lpns, notes, notifications, orders, planning, price_lists, products, promotions, quality_checks, receipts, reports, sales, sales_channels, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
+from app.routers import activity_log, asn, attachments, auth, bom, categories, costing, cycle_counts, customers, customer_groups, daraja, dashboard, forecasting, labels, locations, lots, lpns, notes, notifications, orders, planning, price_lists, products, promotions, quality_checks, receipts, reports, sales, sales_channels, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
 from app.services.inventory import expire_overdue_lots
 from app.ws_manager import manager
 
@@ -31,12 +31,12 @@ async def lifespan(app: FastAPI):
     run_migrations()
     Base.metadata.create_all(bind=engine)
     backfill_stock_lines()
+    manager.init(asyncio.get_running_loop())
     db = SessionLocal()
     try:
         expire_overdue_lots(db)
     finally:
         db.close()
-    manager.init(asyncio.get_running_loop())
     yield
 
 
@@ -54,6 +54,7 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware)
 
 app.include_router(activity_log.router)
+app.include_router(attachments.router)
 app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(reports.router)
@@ -103,13 +104,31 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query("")):
     try:
         payload = jwt.decode(token, app_settings.secret_key, algorithms=[app_settings.algorithm])
         user_id = payload.get("sub")
+        jti = payload.get("jti")
         if user_id is None:
             await ws.close(code=4001, reason="Invalid token")
             return
     except (JWTError, ValueError, TypeError):
         await ws.close(code=4001, reason="Invalid token")
         return
-    await manager.connect(ws)
+    if jti:
+        from app.database import SessionLocal
+        from app.models.session import UserSession
+        from sqlalchemy import select
+        db = SessionLocal()
+        try:
+            session = db.execute(
+                select(UserSession).where(UserSession.jti == jti)
+            ).scalars().first()
+            if session is None or session.revoked_at is not None:
+                await ws.close(code=4001, reason="Session revoked")
+                return
+            if session.user_id != int(user_id):
+                await ws.close(code=4001, reason="Invalid token")
+                return
+        finally:
+            db.close()
+    await manager.connect(ws, user_id=int(user_id))
     try:
         while True:
             await ws.receive_text()

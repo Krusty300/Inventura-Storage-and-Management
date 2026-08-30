@@ -14,6 +14,7 @@ const deleteMock = api.delete as ReturnType<typeof vi.fn>;
 
 function mockSuppliers(items: Record<string, unknown>[]) {
   getMock.mockImplementation((url: string) => {
+    if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
     if (url === "/suppliers") return Promise.resolve({ data: { items, total: items.length, page: 1, pages: 1 } });
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });

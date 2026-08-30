@@ -16,13 +16,14 @@ function mockExceptions(data: Record<string, unknown> = {}) {
     if (url === "/reports/exceptions") {
       return Promise.resolve({
         data: {
-          summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 0, open_cycle_counts: 0, pending_asns: 0 },
+          summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 0, open_cycle_counts: 0, pending_asns: 0, quality_checks: 0 },
           low_stock: [],
           zero_stock: [],
           quarantined_lots: [],
           open_cycle_counts: [],
           pending_asns: [],
-          ...data,
+          quality_checks: [],
+          ...data
         },
       });
     }
@@ -58,7 +59,24 @@ describe("Exceptions Page", () => {
     mockExceptions();
     renderWithProviders(<Exceptions />);
     expect(await screen.findByText("Exceptions Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("No low stock items.")).toBeInTheDocument();
+    expect(screen.getByText("No pending or failed quality checks.")).toBeInTheDocument();
+  });
+
+  it("renders pending and failed quality checks in the Quality Checks section", async () => {
+    mockExceptions({
+      summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 0, open_cycle_counts: 0, pending_asns: 0, quality_checks: 2 },
+      quality_checks: [
+        { id: 1, qc_number: "QC-001", product_id: 1, product_name: "Widget", location_id: null, location_name: "All locations", result: "fail", lot_number: "LOT-A", checked_at: "2026-01-01T00:00:00" },
+        { id: 2, qc_number: "QC-002", product_id: 2, product_name: "Gadget", location_id: 3, location_name: "Main / Aisle 1", result: "pending", lot_number: "", checked_at: null },
+      ],
+    });
+    renderWithProviders(<Exceptions />);
+    expect(await screen.findByText("QC-001")).toBeInTheDocument();
+    expect(screen.getByText("QC-002")).toBeInTheDocument();
+    expect(screen.getByText("All locations")).toBeInTheDocument();
+    expect(screen.getByText("Main / Aisle 1")).toBeInTheDocument();
+    expect(screen.getByText("fail")).toBeInTheDocument();
+    expect(screen.getByText("pending")).toBeInTheDocument();
   });
 
   it("renders low stock rows from the response", async () => {
@@ -67,6 +85,8 @@ describe("Exceptions Page", () => {
       low_stock: [{ id: 1, name: "Widget", sku: "SKU-001", quantity: 4, reorder_level: 10, category: "Beverages", supplier: "Acme" }],
     });
     renderWithProviders(<Exceptions />);
+    expect(await screen.findByText("Exceptions Dashboard")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show Low Stock" }));
     expect(await screen.findByText("Widget")).toBeInTheDocument();
     expect(screen.getByText("SKU-001")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();

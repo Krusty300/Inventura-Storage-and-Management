@@ -218,6 +218,21 @@ def run_migrations():
                 ("sale_prefix", "VARCHAR(20) DEFAULT 'SALE'"),
                 ("invoice_prefix", "VARCHAR(20) DEFAULT 'INV'"),
                 ("po_prefix", "VARCHAR(20) DEFAULT 'PO'"),
+                ("receipt_prefix", "VARCHAR(20) DEFAULT 'RCP'"),
+                ("asn_prefix", "VARCHAR(20) DEFAULT 'ASN'"),
+                ("qc_prefix", "VARCHAR(20) DEFAULT 'QC'"),
+                ("cc_prefix", "VARCHAR(20) DEFAULT 'CC'"),
+                ("return_prefix", "VARCHAR(20) DEFAULT 'RET'"),
+                ("transfer_prefix", "VARCHAR(20) DEFAULT 'TRF'"),
+                ("unallocated_prefix", "VARCHAR(20) DEFAULT 'UNL'"),
+                ("quarantine_prefix", "VARCHAR(20) DEFAULT 'QAR'"),
+                ("lpn_prefix", "VARCHAR(20) DEFAULT 'LPN'"),
+                ("lpn_move_prefix", "VARCHAR(20) DEFAULT 'MOV'"),
+                ("lpn_load_prefix", "VARCHAR(20) DEFAULT 'LOD'"),
+                ("lpn_unload_prefix", "VARCHAR(20) DEFAULT 'ULD'"),
+                ("stock_in_prefix", "VARCHAR(20) DEFAULT 'SI'"),
+                ("stock_out_prefix", "VARCHAR(20) DEFAULT 'SO'"),
+                ("adjustment_prefix", "VARCHAR(20) DEFAULT 'ADJ'"),
                 ("require_qc_before_ship", "BOOLEAN DEFAULT 0"),
                 ("auto_allocate_stock", "BOOLEAN DEFAULT 0"),
                 ("enforce_fefo", "BOOLEAN DEFAULT 1"),
@@ -306,6 +321,11 @@ def run_migrations():
                 conn.execute(text("ALTER TABLE notes ADD COLUMN image_url VARCHAR(500) DEFAULT ''"))
             if "is_archived" not in notes_cols:
                 conn.execute(text("ALTER TABLE notes ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
+
+        if "note_links" in table_names:
+            nl_cols = {row[1] for row in conn.execute(text("PRAGMA table_info(note_links)"))}
+            if "entity_label" not in nl_cols:
+                conn.execute(text("ALTER TABLE note_links ADD COLUMN entity_label VARCHAR(200) DEFAULT ''"))
 
         if "note_templates" not in table_names:
             conn.execute(text(
@@ -399,6 +419,15 @@ def run_migrations():
                 conn.execute(text("ALTER TABLE sales ADD COLUMN promo_code VARCHAR(50)"))
             if "promo_discount" not in sales_cols:
                 conn.execute(text("ALTER TABLE sales ADD COLUMN promo_discount NUMERIC(10, 2) DEFAULT 0"))
+
+        # Backfill NULL created_at on notifications created before the column
+        # carried a default (older schema had no DEFAULT clause).
+        if "notifications" in table_names:
+            conn.execute(text(
+                "UPDATE notifications SET created_at = COALESCE("
+                "(SELECT MAX(created_at) FROM notifications WHERE created_at IS NOT NULL), CURRENT_TIMESTAMP) "
+                "WHERE created_at IS NULL"
+            ))
 
 
 def get_db():

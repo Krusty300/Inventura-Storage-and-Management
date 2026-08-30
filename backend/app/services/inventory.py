@@ -30,6 +30,7 @@ SCRAP = "scrap"
 DEACTIVATE = "deactivate"
 ACTIVATE = "activate"
 RELEASE = "release"
+CONSUME = "consume"
 
 VALID_MOVEMENT_TYPES = {
     RECEIVE,
@@ -46,10 +47,26 @@ VALID_MOVEMENT_TYPES = {
     DEACTIVATE,
     ACTIVATE,
     RELEASE,
+    CONSUME,
     # Legacy types used by the existing API contract
     "in",
     "out",
     "return",
+}
+
+# Bookkeeping / reconciliation movements that don't represent real physical
+# product flow into or out of the business. Excluded from activity charts and
+# day counters (e.g. stock-movement trends, "movements today") so those metrics
+# reflect actual customer/supplier/manufacturing activity rather than internal
+# adjustments (activate/deactivate, cycle counts, releases, WIP consumption).
+# TRANSFER_OUT is excluded separately because it is only the pair leg of a
+# transfer that transfer_in already represents.
+NON_ACTIVITY_MOVEMENT_TYPES = {
+    DEACTIVATE,
+    ACTIVATE,
+    COUNT,
+    RELEASE,
+    CONSUME,
 }
 
 SERIAL_STATUS_IN_STOCK = "in_stock"
@@ -396,10 +413,12 @@ def expire_overdue_lots(db: Session) -> int:
         lot.status = "expired"
     if not overdue:
         return 0
-    db.commit()
-    broadcast_change("lot", "updated")
     for lot in overdue:
-        notify_lot_expired(db, lot)
+        try:
+            notify_lot_expired(db, lot)
+        except Exception:
+            log.warning("Failed to send expiry notification for lot %s", lot.lot_number, exc_info=True)
+    broadcast_change("lot", "updated")
     db.commit()
     return len(overdue)
 
@@ -458,6 +477,7 @@ def allocate_lots(
         .outerjoin(Lot, StockLine.lot_id == Lot.id)
         .outerjoin(Location, StockLine.location_id == Location.id)
         .order_by(*order)
+        .with_for_update()
     )
     if location_id is not None:
         stmt = stmt.where(StockLine.location_id == location_id)
@@ -506,6 +526,7 @@ def allocate_serials(
         )
         .outerjoin(Lot, SerialNumber.lot_id == Lot.id)
         .order_by(*order)
+        .with_for_update()
     )
     if location_id is not None:
         stmt = stmt.where(SerialNumber.location_id == location_id)
@@ -587,7 +608,7 @@ def post_journal_entry(
                 SERIAL_STATUS_INACTIVE,
                 SERIAL_STATUS_SOLD,
                 SERIAL_STATUS_SCRAPPED,
-            ):
+            ) and movement_type != CONSUME:
                 raise InventoryError(
                     f"Serial '{serial.serial_number}' is {serial.status} and cannot be moved"
                 )
@@ -602,7 +623,7 @@ def post_journal_entry(
                 serial.status = SERIAL_STATUS_IN_STOCK
                 if to_location_id is not None and movement_type == TRANSFER_IN:
                     serial.location_id = to_location_id
-            elif movement_type == ISSUE:
+            elif movement_type in (ISSUE, BACKFLUSH):
                 serial.status = SERIAL_STATUS_RESERVED
                 if to_location_id is not None:
                     serial.location_id = to_location_id
@@ -610,8 +631,15 @@ def post_journal_entry(
                 serial.status = SERIAL_STATUS_SCRAPPED
             elif movement_type == DEACTIVATE:
                 serial.status = SERIAL_STATUS_INACTIVE
+            elif movement_type == CONSUME:
+                serial.status = SERIAL_STATUS_CONSUMED
             else:
-                serial.status = SERIAL_STATUS_QUARANTINED
+                raise InventoryError(
+                    f"Unsupported '{movement_type}' movement out for serialized product "
+                    f"'{product.sku or product.name}' (serial {serial.serial_number}). "
+                    f"Serialized items are moved by sale, ship, transfer, issue, backflush, "
+                    f"scrap, deactivate, or consume only."
+                )
     else:
         if quantity_change > 0:
             if movement_type == TRANSFER_IN:
@@ -1064,7 +1092,7 @@ def release_serial_from_reserved(
         db.query(StockMovement)
         .filter(
             StockMovement.serial_id == serial.id,
-            StockMovement.movement_type == ISSUE,
+            StockMovement.movement_type.in_([ISSUE, BACKFLUSH]),
         )
         .order_by(StockMovement.created_at.desc(), StockMovement.id.desc())
         .first()

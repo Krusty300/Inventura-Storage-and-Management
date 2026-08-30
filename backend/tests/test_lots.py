@@ -95,7 +95,7 @@ def test_quarantined_lot_excluded_from_fefo_allocation(auth_headers):
     db = TestingSessionLocal()
     try:
         outs = db.query(StockMovement).filter(
-            StockMovement.product_id == prod["id"], StockMovement.movement_type == "out"
+            StockMovement.product_id == prod["id"], StockMovement.movement_type == "sale"
         ).all()
         assert outs and all(m.lot_id == late["id"] for m in outs)
     finally:

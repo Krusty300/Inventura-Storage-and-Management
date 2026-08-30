@@ -8,6 +8,7 @@ import Modal from "./Modal";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useToast } from "../context/ToastContext";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   onClose: () => void;
@@ -109,7 +110,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
       queryClient.invalidateQueries({ queryKey: ["serial-numbers"] });
       onSaved();
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || err.message || "Transfer failed", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Transfer failed"), "error"),
   });
 
   const activeLocations = (locations || []).filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path));

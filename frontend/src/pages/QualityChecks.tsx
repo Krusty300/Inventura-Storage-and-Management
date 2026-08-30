@@ -9,6 +9,7 @@ import { statusBadge } from "../utils/statusBadges";
 import type { Lot, PaginatedResponse, QualityCheck } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
+import AttachmentSection from "../components/AttachmentSection";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -21,6 +22,7 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 export default function QualityChecks() {
   const formatDate = useDateFormat();
@@ -54,8 +56,8 @@ export default function QualityChecks() {
       addToast("Quality check deleted", "success");
       refresh();
     },
-    onError: (err: any) => {
-      addToast(err.response?.data?.detail || "Error deleting quality check", "error");
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Error deleting quality check"), "error");
     },
   });
 
@@ -64,6 +66,7 @@ export default function QualityChecks() {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["quality-checks"] });
     queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard", "exceptions"] });
   };
 
   const resultBadge = (r: string) =>
@@ -115,7 +118,7 @@ export default function QualityChecks() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : checks.length === 0 ? (
-              <EmptyState title="No quality checks yet" message="Record a QC result to keep lot quality controlled. Failing a check quarantines its lot." actionLabel={can("quality_checks.create") ? "New Check" : undefined} onAction={can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
+              <EmptyState title="No quality checks yet" message="Record a QC result to keep stock quality controlled. Failing a check quarantines its lot when one is linked and blocks the affected stock until resolved." actionLabel={can("quality_checks.create") ? "New Check" : undefined} onAction={can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
             ) : checks.map((qc) => (
               <tr key={qc.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{qc.qc_number}</td>
@@ -173,7 +176,6 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
   const [productId, setProductId] = useState(qc ? String(qc.product_id) : "");
   const [lotId, setLotId] = useState(qc?.lot_id ? String(qc.lot_id) : "");
   const [locationId, setLocationId] = useState(qc?.location_id ? String(qc.location_id) : "");
-  const [lots, setLots] = useState<Lot[]>([]);
   const [batchNumber, setBatchNumber] = useState(qc?.batch_number || "");
   const [result, setResult] = useState(qc?.result || "pass");
   const [notes, setNotes] = useState(qc?.notes || "");
@@ -182,14 +184,18 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
   const selectedProduct = products.find((p) => p.id === Number(productId));
   const stockLocations = useProductStockLocations(productId ? Number(productId) : null, selectedProduct?.is_serialized ?? false);
 
+  const { data: lots = [] } = useQuery<Lot[]>({
+    queryKey: ["lots", "by-product", productId],
+    queryFn: async () => (await api.get("/lots", { params: { product_id: productId, limit: PAGE_SIZE } })).data.items,
+    enabled: !!productId,
+  });
+
   useEffect(() => {
     if (!productId) {
-      setLots([]);
       setLotId("");
       setLocationId("");
       return;
     }
-    api.get("/lots", { params: { product_id: productId, limit: PAGE_SIZE } }).then(({ data }) => setLots(data.items));
     if (!qc) setLocationId("");
   }, [productId]);
 
@@ -220,8 +226,8 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
         addToast(`Quality check ${data.qc_number} recorded`, "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving quality check", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error saving quality check"), "error");
     }
     setSaving(false);
   };
@@ -280,8 +286,8 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
         {result === "fail" && (
           <p className="text-xs text-orange-600 dark:text-orange-400">
             {lotId
-              ? "Failing this check will quarantine the linked lot."
-              : "Failing without a linked lot will block shipments for this product until the check is updated or deleted."}
+              ? "Failing this check quarantines the linked lot and blocks sales/shipments drawn from the affected scope until the check is updated or deleted."
+              : `Failing this check blocks sales and shipments of this product${locationId ? " from the selected location" : ""} until the check is updated or deleted.`}
           </p>
         )}
         <div className="flex justify-end gap-3 pt-4">
@@ -295,51 +301,62 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
 
 function QualityCheckDetail({ qc, onClose }: { qc: QualityCheck; onClose: () => void }) {
   const formatDateTime = useDateTimeFormat();
+  const { can } = useAuth();
   return (
-    <Modal open onClose={onClose} title={qc.qc_number}>
-      <div className="space-y-4 text-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <p className="text-muted">Product</p>
-            <p className="font-medium">{qc.product_name}</p>
-          </div>
-          <div>
-            <p className="text-muted">Result</p>
-            <p className="font-medium"><span className={`badge ${statusBadge(qc.result)}`}>{qc.result}</span></p>
-          </div>
-          <div>
-            <p className="text-muted">Batch Number</p>
-            <p className="font-medium">{qc.batch_number || "—"}</p>
-          </div>
-          <div>
-            <p className="text-muted">Lot</p>
-            <p className="font-medium">{qc.lot_number || "—"}</p>
-          </div>
-          <div>
-            <p className="text-muted">Location</p>
-            <p className="font-medium">{qc.location_name || "—"}</p>
-          </div>
-          <div>
-            <p className="text-muted">Work Order</p>
-            <p className="font-medium">{qc.wo_number || "—"}</p>
-          </div>
-          <div>
-            <p className="text-muted">Checked By</p>
-            <p className="font-medium">{qc.checker_username}</p>
-          </div>
-          {qc.checked_at && (
+    <Modal open onClose={onClose} title={qc.qc_number} wide>
+      <div className="space-y-5">
+        <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+          <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-muted">Checked At</p>
-              <p className="font-medium">{formatDateTime(qc.checked_at)}</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-faint">Quality Check Report</p>
+              <h3 className="text-2xl font-bold text-ink mt-1 tracking-tight">{qc.qc_number}</h3>
             </div>
-          )}
+            <div className="text-right text-sm">
+              <span className={`badge ${statusBadge(qc.result)}`}>{qc.result}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 px-6 py-5 text-sm">
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Product</p>
+              <p className="font-medium text-ink">{qc.product_name}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Batch Number</p>
+              <p className="font-medium text-ink">{qc.batch_number || "—"}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Lot</p>
+              <p className="font-medium text-ink">{qc.lot_number || "—"}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Location</p>
+              <p className="font-medium text-ink">{qc.location_name || "—"}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Work Order</p>
+              <p className="font-medium text-ink">{qc.wo_number || "—"}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Checked By</p>
+              <p className="font-medium text-ink">{qc.checker_username}</p>
+            </div>
+            {qc.checked_at && (
+              <div>
+                <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Checked At</p>
+                <p className="font-medium text-ink">{formatDateTime(qc.checked_at)}</p>
+              </div>
+            )}
+          </div>
+
           {qc.notes && (
-            <div className="col-span-2">
-              <p className="text-muted">Notes</p>
-              <p className="font-medium">{qc.notes}</p>
+            <div className="px-6 pb-5 text-sm">
+              <p className="text-faint text-xs uppercase tracking-wide mb-1">Notes</p>
+              <p className="text-muted">{qc.notes}</p>
             </div>
           )}
         </div>
+        <AttachmentSection entityType="quality_check" entityId={qc.id} canEdit={can("quality_checks.update")} />
         <div className="flex justify-end pt-2">
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>

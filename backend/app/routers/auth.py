@@ -27,7 +27,7 @@ from app.schemas.user import LoginRequest, ProfileUpdate, SessionOut, Token, Use
 from app.services.auth import create_access_token, get_current_user, hash_password, security, verify_password
 from app.services.password_policy import validate_password
 from app.services import ratelimit
-from app.utils import log_activity
+from app.utils import log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 log = logging.getLogger("app.auth")
@@ -42,15 +42,8 @@ def _client_ip(request: Request) -> str:
 
 
 def _detect_image_ext(data: bytes) -> str | None:
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return ".png"
-    if data.startswith(b"\xff\xd8\xff"):
-        return ".jpg"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return ".gif"
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return ".webp"
-    return None
+    from app.utils import detect_image_ext
+    return detect_image_ext(data)
 
 
 def _create_session(db: Session, user: User, request: Request) -> str:
@@ -126,7 +119,7 @@ def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
         username=req.username,
         email=req.email,
         password_hash=hash_password(req.password),
-        role="admin" if is_first_user else (req.role or "worker"),
+        role="admin" if is_first_user else "worker",
         is_approved=is_first_user,
         last_login_at=datetime.now(timezone.utc) if is_first_user else None,
     )
@@ -148,6 +141,7 @@ def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
     )
     db.commit()
     db.refresh(user)
+    broadcast_change("user", "created")
     from fastapi.responses import JSONResponse
     return JSONResponse(
         status_code=201,
@@ -186,13 +180,17 @@ def update_me(
         if db.query(User).filter(User.email == email, User.id != current_user.id).first():
             raise HTTPException(status_code=400, detail="Email already exists")
         updates["email"] = email
+    ALLOWED_PROFILE_FIELDS = {"username", "email", "avatar_url"}
     for key, val in updates.items():
+        if key not in ALLOWED_PROFILE_FIELDS:
+            raise HTTPException(status_code=400, detail=f"Cannot update field '{key}' via profile")
         setattr(current_user, key, val)
     db.commit()
     db.refresh(current_user)
     log_activity(db, current_user.id, current_user.username, "update", "user", current_user.id,
                  f"Updated own profile ({', '.join(updates.keys())})")
     db.commit()
+    broadcast_change("user", "updated")
     return current_user
 
 
@@ -219,6 +217,13 @@ def upload_avatar(
         matches = detected == ext
     if not matches:
         raise HTTPException(status_code=400, detail=f"File content does not match its extension ({ext})")
+    if current_user.avatar_url:
+        old_path = UPLOAD_DIR / Path(current_user.avatar_url).name
+        try:
+            if old_path.exists():
+                old_path.unlink()
+        except Exception:
+            pass
     UPLOAD_DIR.mkdir(exist_ok=True)
     filename = f"avatar_{current_user.id}_{uuid4().hex}{detected}"
     filepath = UPLOAD_DIR / filename
@@ -226,14 +231,23 @@ def upload_avatar(
         f.write(content)
     current_user.avatar_url = f"/uploads/{filename}"
     db.commit()
+    broadcast_change("user", "updated")
     return {"avatar_url": current_user.avatar_url}
 
 
 @router.delete("/me/avatar", response_model=UserOut)
 def remove_avatar(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.avatar_url:
+        old_path = UPLOAD_DIR / Path(current_user.avatar_url).name
+        try:
+            if old_path.exists():
+                old_path.unlink()
+        except Exception:
+            pass
     current_user.avatar_url = ""
     db.commit()
     db.refresh(current_user)
+    broadcast_change("user", "updated")
     return current_user
 
 

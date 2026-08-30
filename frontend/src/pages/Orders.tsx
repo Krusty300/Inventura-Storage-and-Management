@@ -49,7 +49,7 @@ export default function Orders() {
       addToast("Order deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       addToast(errorMessage(err, "Cannot delete order"), "error");
     },
   });
@@ -63,7 +63,7 @@ export default function Orders() {
       addToast(`Reorder PO ${numbers} created for ${totalProducts} product(s)`, "success");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       addToast(errorMessage(err, "Auto-reorder failed"), "error");
     },
   });
@@ -99,7 +99,7 @@ export default function Orders() {
     try {
       const { data } = await api.get(`/orders/${o.id}/pdf`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       addToast("Failed to generate PDF", "error");
@@ -123,7 +123,7 @@ export default function Orders() {
         </div>
       </div>
 
-      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load orders: {(error as any)?.message}</div>}
+      {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load orders")}</div>}
 
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 max-w-md">

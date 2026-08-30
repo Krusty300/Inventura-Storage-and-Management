@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+import re
+
+from pydantic import BaseModel, field_validator
 
 
 class UserCreate(BaseModel):
@@ -9,6 +11,21 @@ class UserCreate(BaseModel):
     email: str
     password: str
     role: str = "worker"
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, v: str) -> str:
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("Invalid email format")
+        return v.lower()
+
+    @field_validator("role")
+    @classmethod
+    def _validate_role(cls, v: str) -> str:
+        allowed = {"admin", "manager", "worker"}
+        if v not in allowed:
+            raise ValueError(f"Role must be one of: {', '.join(sorted(allowed))}")
+        return v
 
 
 class ProfileUpdate(BaseModel):

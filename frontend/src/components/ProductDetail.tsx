@@ -17,6 +17,9 @@ import MoveUnallocatedModal from "./MoveUnallocatedModal";
 import MoveQuarantinedModal from "./MoveQuarantinedModal";
 import ImageCarousel from "./ImageCarousel";
 import Skeleton from "./Skeleton";
+import AttachmentSection from "./AttachmentSection";
+import { errorMessage } from "../utils/errors";
+import { movementLabel } from "../utils/movementTypes";
 
 interface Props {
   product: Product;
@@ -25,24 +28,7 @@ interface Props {
   onEdit?: () => void;
 }
 
-const MOVEMENT_LABELS: Record<string, string> = {
-  receive: "Received",
-  issue: "Issued to WIP",
-  backflush: "Backflushed",
-  sale: "Sold",
-  sale_return: "Sale return",
-  transfer_in: "Transfer in",
-  transfer_out: "Transfer out",
-  adjustment: "Adjusted",
-  count: "Cycle count",
-  deactivate: "Deactivated",
-  activate: "Activated",
-  in: "Stock in",
-  out: "Stock out",
-  return: "Returned",
-  ship: "Shipped",
-  scrap: "Scrapped",
-};
+const sectionLabel = "text-xs font-semibold uppercase tracking-widest text-faint";
 
 export default function ProductDetail({ product, onClose, onAddVariant, onEdit }: Props) {
   const formatDate = useDateFormat();
@@ -141,7 +127,7 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release lot", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot release lot"), "error"),
   });
 
   const releaseSerial = useMutation({
@@ -157,7 +143,7 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot release serial"), "error"),
   });
 
   const releaseReservedSerial = useMutation({
@@ -173,7 +159,7 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["work-orders"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot release serial"), "error"),
   });
 
   const toggleStatus = useMutation({
@@ -206,88 +192,91 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
       ) : undefined}
     >
       <div className="space-y-4">
-        {(product.images?.length > 0 || product.image_url) && (
-          <ImageCarousel images={product.images || []} imageUrl={product.image_url} alt={product.display_name} />
-        )}
+        <ImageCarousel images={product.images || []} imageUrl={product.image_url} alt={product.display_name} />
 
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-muted">SKU:</span>
-            <p className="font-medium">{product.sku}</p>
+        <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+          <div className="border-b border-border px-6 py-5">
+            <p className={sectionLabel}>Product Details</p>
+            <h3 className="text-xl font-bold text-ink mt-1 tracking-tight">{product.display_name}</h3>
+            <p className="text-sm text-muted mt-0.5">{product.sku}</p>
           </div>
-          <div>
-            <span className="text-muted">Barcode:</span>
-            <p className="font-medium">{product.barcode || "—"}</p>
-          </div>
-          <div>
-            <span className="text-muted">Category:</span>
-            <p className="font-medium">{product.category_name || "—"}</p>
-          </div>
-          <div>
-            <span className="text-muted">Supplier:</span>
-            <p className="font-medium">{product.supplier_name || "—"}</p>
-          </div>
-          <div>
-            <span className="text-muted">Unit Price:</span>
-            <p className="font-medium">{formatCurrency(product.unit_price, currencySymbol)}</p>
-          </div>
-          <div>
-            <span className="text-muted">Cost Price:</span>
-            <p className="font-medium">{formatCurrency(product.cost_price, currencySymbol)}</p>
-          </div>
-          <div>
-            <span className="text-muted">{hasVariants(product) ? "Total Quantity:" : "Quantity:"}</span>
-            <p className={`font-medium ${qty <= product.reorder_level ? "text-red-600 dark:text-red-400" : ""}`}>{qty}</p>
-          </div>
-          <div>
-            <span className="text-muted">Sellable:</span>
-            <p className="font-medium" title={`Available to allocate from ${qty} total on hand`}>{active.sellable_qty || 0}</p>
-          </div>
-          <div>
-            <span className="text-muted">Reorder Level:</span>
-            <p className="font-medium">{product.reorder_level}</p>
-          </div>
-          <div>
-            <span className="text-muted">Location:</span>
-            <p className="font-medium">{product.location || "—"}</p>
-          </div>
-          <div>
-            <span className="text-muted">Batch Number:</span>
-            <p className="font-medium">{product.batch_number || "—"}</p>
-          </div>
-          <div>
-            <span className="text-muted">Expiry Date:</span>
-            <p className="font-medium">{product.expiry_date ? formatDate(product.expiry_date) : "—"}</p>
-          </div>
-          <div>
-            <span className="text-muted">Status:</span>
-            {can("products.update") ? (
-              <button
-                onClick={() => setConfirmStatus(true)}
-                className={`badge cursor-pointer border ${isActive ? "badge-success" : "badge-danger"}`}
-                title={isActive ? "Click to deactivate" : "Click to activate"}
-                aria-label={`Toggle status for ${product.display_name}`}
-              >
-                {isActive ? "Active" : "Inactive"}
-              </button>
-            ) : (
-              <span className={`badge ${isActive ? "badge-success" : "badge-danger"}`}>{isActive ? "Active" : "Inactive"}</span>
+
+          <div className="grid sm:grid-cols-3 gap-x-6 gap-y-3 px-6 py-5 border-b border-dashed border-border text-sm">
+            <div>
+              <p className={sectionLabel}>Barcode</p>
+              <p className="font-medium mt-1">{product.barcode || "—"}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Category</p>
+              <p className="font-medium mt-1">{product.category_name || "—"}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Supplier</p>
+              <p className="font-medium mt-1">{product.supplier_name || "—"}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Unit Price</p>
+              <p className="font-medium mt-1">{formatCurrency(product.unit_price, currencySymbol)}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Cost Price</p>
+              <p className="font-medium mt-1">{formatCurrency(product.cost_price, currencySymbol)}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>{hasVariants(product) ? "Total Quantity:" : "Quantity:"}</p>
+              <p className={`font-medium mt-1 ${qty <= product.reorder_level ? "text-red-600 dark:text-red-400" : ""}`}>{qty}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Sellable:</p>
+              <p className="font-medium mt-1" title={`Available to allocate from ${qty} total on hand`}>{active.sellable_qty || 0}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Reorder Level</p>
+              <p className="font-medium mt-1">{product.reorder_level}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Location</p>
+              <p className="font-medium mt-1">{product.location || "—"}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Batch Number</p>
+              <p className="font-medium mt-1">{product.batch_number || "—"}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Expiry Date</p>
+              <p className="font-medium mt-1">{product.expiry_date ? formatDate(product.expiry_date) : "—"}</p>
+            </div>
+            <div>
+              <p className={sectionLabel}>Status</p>
+              <div className="mt-1">
+                {can("products.update") ? (
+                  <button
+                    onClick={() => setConfirmStatus(true)}
+                    className={`badge cursor-pointer border ${isActive ? "badge-success" : "badge-danger"}`}
+                    title={isActive ? "Click to deactivate" : "Click to activate"}
+                    aria-label={`Toggle status for ${product.display_name}`}
+                  >
+                    {isActive ? "Active" : "Inactive"}
+                  </button>
+                ) : (
+                  <span className={`badge ${isActive ? "badge-success" : "badge-danger"}`}>{isActive ? "Active" : "Inactive"}</span>
+                )}
+              </div>
+            </div>
+            {product.is_serialized && (
+              <div>
+                <p className={sectionLabel}>Tracking</p>
+                <p className="font-medium mt-1"><span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30"><Fingerprint size={12} /> serialized</span></p>
+              </div>
             )}
           </div>
-          {product.is_serialized && (
-            <div>
-              <span className="text-muted">Tracking:</span>
-              <p className="font-medium"><span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30"><Fingerprint size={12} /> serialized</span></p>
-            </div>
-          )}
-        </div>
 
         {(locations.length > 0 || unallocated > 0) && (
-          <div>
-            <span className="text-sm text-muted">
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={sectionLabel}>
               {product.is_serialized ? "In-stock Serial Locations:" : "Stock Locations:"}
-            </span>
-            <div className="flex flex-wrap gap-2 mt-1">
+            </p>
+            <div className="flex flex-wrap gap-2 mt-3">
               {locations.map((l) => (
                 <button
                   key={l.location_id}
@@ -315,9 +304,9 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
         )}
 
         {!product.is_serialized && quarantinedLots.length > 0 && (
-          <div>
-            <span className="text-sm text-muted">Quarantined Lots:</span>
-            <ul className="mt-1 space-y-1">
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={sectionLabel}>Quarantined Lots:</p>
+            <ul className="mt-3 space-y-1">
               {quarantinedLots.map((lot) => (
                 <li key={lot.id} className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 text-sm">
                   <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400 min-w-0">
@@ -349,16 +338,16 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
         )}
 
         {product.is_serialized && quarantinedSerials.length > 0 && (
-          <div>
+          <div className="px-6 py-5 border-b border-dashed border-border">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-muted">Quarantined Serials:</span>
+              <p className={sectionLabel}>Quarantined Serials:</p>
               {can("stock.record") && (
                 <button onClick={() => setMoveQuarantinedSerialized(true)} className="btn-secondary px-2 py-1 text-xs shrink-0" aria-label="Move quarantined serials">
                   Move Serials
                 </button>
               )}
             </div>
-            <ul className="mt-1 space-y-1">
+            <ul className="mt-3 space-y-1">
               {quarantinedSerials.map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-1.5 text-sm">
                   <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400 min-w-0">
@@ -381,9 +370,9 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
         )}
 
         {product.is_serialized && reservedSerials.length > 0 && (
-          <div>
-            <span className="text-sm text-muted">Reserved Serials:</span>
-            <ul className="mt-1 space-y-1">
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={sectionLabel}>Reserved Serials:</p>
+            <ul className="mt-3 space-y-1">
               {reservedSerials.map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-sky-200 dark:border-sky-500/30 bg-sky-50 dark:bg-sky-500/10 px-3 py-1.5 text-sm">
                   <span className="inline-flex items-center gap-1.5 text-sky-700 dark:text-sky-400 min-w-0">
@@ -406,7 +395,7 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
         )}
 
         {!product.is_variant && !product.is_serialized && onAddVariant && (
-          <div>
+          <div className="px-6 py-5 border-b border-dashed border-border">
             <button onClick={() => onAddVariant(product)} className="btn-secondary w-full inline-flex items-center justify-center gap-2">
               <PackagePlus size={16} /> Add Variant
             </button>
@@ -414,16 +403,16 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
         )}
 
         {product.is_variant && (
-          <div>
-            <span className="text-sm text-muted">Variant of:</span>
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={sectionLabel}>Variant of:</p>
             <p className="text-sm font-medium mt-1">{product.variant_of_name || product.name}</p>
           </div>
         )}
 
         {product.is_variant && product.attributes && Object.keys(product.attributes).length > 0 && (
-          <div>
-            <span className="text-sm text-muted">Attributes:</span>
-            <div className="flex flex-wrap gap-2 mt-1">
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={sectionLabel}>Attributes:</p>
+            <div className="flex flex-wrap gap-2 mt-3">
               {Object.entries(product.attributes).map(([k, v]) => (
                 <span key={k} className="badge bg-subtle text-ink border border-border">{k}: {v}</span>
               ))}
@@ -432,27 +421,27 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
         )}
 
         {hasVariants(product) && (
-          <div>
-            <span className="text-sm text-muted">Variants ({product.variants.length}):</span>
-            <div className="mt-2 overflow-x-auto">
-              <table className="w-full text-sm border rounded-lg">
+          <div className="px-6 py-5 border-b border-dashed border-border">
+            <p className={sectionLabel}>Variants ({product.variants.length}):</p>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-sm min-w-max">
                 <thead>
-                  <tr className="bg-app text-left">
-                    <th scope="col" className="px-3 py-2 font-medium text-muted">SKU</th>
-                    <th scope="col" className="px-3 py-2 font-medium text-muted">Attributes</th>
-                    <th scope="col" className="px-3 py-2 font-medium text-muted">Price</th>
-                    <th scope="col" className="px-3 py-2 font-medium text-muted">Qty</th>
-                    <th scope="col" className="px-3 py-2 font-medium text-muted">Status</th>
+                  <tr className="border-b border-border text-left">
+                    <th scope="col" className="px-3 py-2 font-semibold text-faint uppercase tracking-wide text-xs whitespace-nowrap">SKU</th>
+                    <th scope="col" className="px-3 py-2 font-semibold text-faint uppercase tracking-wide text-xs whitespace-nowrap">Attributes</th>
+                    <th scope="col" className="px-3 py-2 font-semibold text-faint uppercase tracking-wide text-xs whitespace-nowrap">Price</th>
+                    <th scope="col" className="px-3 py-2 font-semibold text-faint uppercase tracking-wide text-xs whitespace-nowrap">Qty</th>
+                    <th scope="col" className="px-3 py-2 font-semibold text-faint uppercase tracking-wide text-xs whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {product.variants.map((v) => (
                     <tr key={v.id}>
-                      <td className="px-3 py-2 font-medium">{v.sku}</td>
+                      <td className="px-3 py-2 font-medium whitespace-nowrap">{v.sku}</td>
                       <td className="px-3 py-2 text-muted">{v.variant_label || "—"}</td>
-                      <td className="px-3 py-2">{formatCurrency(v.unit_price, currencySymbol)}</td>
-                      <td className="px-3 py-2"><span className={v.quantity <= v.reorder_level ? "text-red-600 dark:text-red-400 font-medium" : ""}>{v.quantity}</span></td>
-                      <td className="px-3 py-2"><span className={`badge ${v.is_active ? "badge-success" : "badge-danger"}`}>{v.is_active ? "Active" : "Inactive"}</span></td>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatCurrency(v.unit_price, currencySymbol)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap"><span className={v.quantity <= v.reorder_level ? "text-red-600 dark:text-red-400 font-medium" : ""}>{v.quantity}</span></td>
+                      <td className="px-3 py-2 whitespace-nowrap"><span className={`badge ${v.is_active ? "badge-success" : "badge-danger"}`}>{v.is_active ? "Active" : "Inactive"}</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -460,15 +449,20 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
             </div>
           </div>
         )}
+      </div>
 
+      <div className="mt-4">
         <TraceSection product={product} />
+      </div>
 
-        {product.description && (
-          <div>
-            <span className="text-sm text-muted">Description:</span>
-            <p className="text-sm mt-1">{product.description}</p>
-          </div>
-        )}
+      <AttachmentSection entityType="product" entityId={product.id} canEdit={can("products.update")} />
+
+      {product.description && (
+        <div className="mt-4">
+          <span className="text-sm text-muted">Description:</span>
+          <p className="text-sm mt-1">{product.description}</p>
+        </div>
+      )}
       </div>
 
       {showMoveUnallocated && (
@@ -554,7 +548,7 @@ function TraceSection({ product }: { product: Product }) {
   const movementRows = (m: ProductTrace["incoming"][number]) => (
     <tr key={m.id}>
       <td className="px-3 py-2">{formatDate(m.created_at)}</td>
-      <td className="px-3 py-2"><span className="badge badge-info">{MOVEMENT_LABELS[m.movement_type] || m.movement_type}</span></td>
+      <td className="px-3 py-2"><span className="badge badge-info">{movementLabel(m.movement_type)}</span></td>
       <td className={`px-3 py-2 font-medium ${m.quantity_change > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
         {m.quantity_change > 0 ? "+" : ""}{m.quantity_change}
       </td>

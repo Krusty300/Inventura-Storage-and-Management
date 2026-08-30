@@ -24,7 +24,6 @@ function makeLocation(overrides: Partial<Location> = {}): Location {
     location_type: "quarantine",
     is_active: true,
     created_at: "2026-01-01T00:00:00",
-    updated_at: "2026-01-01T00:00:00",
     stock_line_count: 2,
     lpn_count: 0,
     lot_count: 1,

@@ -4,6 +4,7 @@ import api from "../api/client";
 import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
 import { useToast } from "../context/ToastContext";
 import Modal from "./Modal";
+import { errorMessage } from "../utils/errors";
 
 interface Props {
   customer?: Customer | null;
@@ -46,8 +47,8 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
         addToast("Customer created", "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || `Error ${isEdit ? "updating" : "creating"} customer`, "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, `Error ${isEdit ? "updating" : "creating"} customer`), "error");
     }
     setSaving(false);
   };

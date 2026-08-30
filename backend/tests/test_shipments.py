@@ -478,6 +478,29 @@ def test_shipment_blocked_by_failed_qc_without_lot(auth_headers):
     assert client.post(f"/api/shipments/{created2['id']}/pick", headers=auth_headers).status_code == 200
 
 
+def test_shipment_blocked_by_failed_qc_scoped_to_location_only(auth_headers):
+    # a failed QC scoped to one location must block picking from that location
+    # but not the same product at an unaffected location.
+    p = _make_product(auth_headers, "SHP-FAILQC-LOCSCOPE")
+    loc_a = _make_location(auth_headers, "SHP-FAILQC-A")
+    loc_b = _make_location(auth_headers, "SHP-FAILQC-B")
+    assert _receive(auth_headers, p["id"], 5, loc_a["id"], lot_number="SHP-FAILQC-LA").status_code == 201
+    assert _receive(auth_headers, p["id"], 5, loc_b["id"], lot_number="SHP-FAILQC-LB").status_code == 201
+
+    qc = client.post("/api/quality-checks", json={
+        "product_id": p["id"], "location_id": loc_a["id"], "result": "fail",
+    }, headers=auth_headers)
+    assert qc.status_code == 201
+
+    blocked = _create_shipment_with_location(auth_headers, [(p["id"], 2, loc_a["id"])]).json()
+    resp = client.post(f"/api/shipments/{blocked['id']}/pick", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "quality check" in resp.json()["detail"].lower()
+
+    ok = _create_shipment_with_location(auth_headers, [(p["id"], 2, loc_b["id"])]).json()
+    assert client.post(f"/api/shipments/{ok['id']}/pick", headers=auth_headers).status_code == 200
+
+
 def test_shipment_create_sale_invoice(auth_headers):
     p = _make_product(auth_headers, "SHP-INV")
     loc = _make_location(auth_headers, "SHP-INV-LOC")

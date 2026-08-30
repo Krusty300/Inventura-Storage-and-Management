@@ -4,7 +4,7 @@ import csv
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -23,8 +23,9 @@ from app.models.cycle_count import CycleCount
 from app.models.stock_line import StockLine
 from app.models.customer import Customer
 from app.models.settings import Settings
+from app.models.quality_check import QualityCheck
 from app.services.auth import require_permission
-from app.services.inventory import SHIP, TRANSFER_OUT, sellable_qty_by_product, sellable_qty_subquery
+from app.services.inventory import BACKFLUSH, CONSUME, ISSUE, NON_ACTIVITY_MOVEMENT_TYPES, SHIP, TRANSFER_OUT, sellable_qty_by_product, sellable_qty_subquery
 from app.services.pdf_helpers import (
     MARGIN,
     draw_header,
@@ -120,7 +121,7 @@ def stock_movement_trends(days: int = 30, start_date: str | None = None, end_dat
         StockMovement.quantity_change,
     ).filter(
         StockMovement.created_at >= since,
-        StockMovement.movement_type != TRANSFER_OUT,  # count each transfer pair once
+        StockMovement.movement_type.notin_(NON_ACTIVITY_MOVEMENT_TYPES | {TRANSFER_OUT}),  # exclude bookkeeping; count each transfer pair once
     )
     if end:
         q = q.filter(StockMovement.created_at <= end)
@@ -530,18 +531,35 @@ def exception_dashboard(db: Session = Depends(get_db)):
         "created_at": a.created_at,
     } for a in pending_asns]
 
+    quality_checks = db.query(QualityCheck).options(
+        joinedload(QualityCheck.product), joinedload(QualityCheck.location)
+    ).filter(
+        QualityCheck.result.in_(["pending", "fail"])
+    ).order_by(
+        case((QualityCheck.result == "pending", 0), else_=1),
+        QualityCheck.created_at.asc(),
+    ).limit(100).all()
+    quality_check_rows = [{
+        "id": q.id, "qc_number": q.qc_number, "product_id": q.product_id,
+        "product_name": q.product_name, "location_id": q.location_id,
+        "location_name": q.location_name or "All locations", "result": q.result,
+        "lot_number": q.lot_number, "checked_at": q.checked_at,
+    } for q in quality_checks]
+
     return {
         "low_stock": low_stock,
         "zero_stock": zero_stock,
         "quarantined_lots": quarantined_lots,
         "open_cycle_counts": open_cycle_counts,
         "pending_asns": pending_asn_rows,
+        "quality_checks": quality_check_rows,
         "summary": {
             "low_stock": len(low_stock),
             "zero_stock": len(zero_stock),
             "quarantined_lots": len(quarantined_lots),
             "open_cycle_counts": len(open_cycle_counts),
             "pending_asns": len(pending_asn_rows),
+            "quality_checks": len(quality_check_rows),
         },
     }
 
@@ -558,7 +576,7 @@ def _outgoing_qty_by_product(db: Session, product_ids: list[int], days: int = 90
         StockMovement.product_id.in_(product_ids),
         StockMovement.created_at >= since,
         StockMovement.quantity_change < 0,
-        StockMovement.movement_type.in_(["sale", "out", SHIP]),
+        StockMovement.movement_type.in_(["sale", "out", SHIP, BACKFLUSH, ISSUE, CONSUME]),
     ).group_by(StockMovement.product_id).all()
     return {pid: float(qty) for pid, qty in rows}
 

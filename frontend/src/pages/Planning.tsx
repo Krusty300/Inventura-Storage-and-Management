@@ -9,6 +9,7 @@ import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { errorMessage } from "../utils/errors";
 
 export default function Planning() {
   const [productId, setProductId] = useState("");
@@ -142,8 +143,8 @@ function CreateWoButton({ item }: { item: MRPItem }) {
       addToast(`Work order created for ${item.suggested_quantity} × ${item.product_name}`, "success");
       queryClient.invalidateQueries({ queryKey: ["work-orders"] });
       queryClient.invalidateQueries({ queryKey: ["mrp"] });
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error creating work order", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error creating work order"), "error");
     }
     setSaving(false);
   };

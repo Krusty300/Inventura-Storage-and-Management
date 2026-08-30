@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, GripVertical, KeyRound, Loader2, Lock, Minus, Package, Plus, Search, Send, Trash2, Unlock, X } from "lucide-react";
+import { AlertTriangle, GripVertical, KeyRound, Loader2, Lock, Minus, Plus, Search, Send, Trash2, Unlock, X } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Customer, Product, Promotion, QualityCheck, SalesChannel, Settings } from "../types";
@@ -11,6 +11,8 @@ import { errorMessage } from "../utils/errors";
 import type { Sale } from "../types";
 import { isSelectable, selectableProducts } from "../utils/variants";
 import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS, paymentLabel } from "../utils/payments";
+import { getPlaceholder, onImageError } from "../utils/placeholders";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import {
   clearSaleDraft,
   hasSaleDraft,
@@ -83,11 +85,9 @@ function CartLine({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0">
           {product?.image_url ? (
-            <img src={product.image_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" />
+            <img src={product.image_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" onError={onImageError} />
           ) : (
-            <div className="w-10 h-10 rounded bg-subtle flex items-center justify-center shrink-0">
-              <Package size={16} className="text-faint" />
-            </div>
+            <img src={getPlaceholder()} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" />
           )}
           <div className="min-w-0">
             <p className="font-medium text-sm text-ink truncate" title={product?.display_name}>
@@ -142,7 +142,7 @@ function CartLine({
       {blocked && (
         <div className="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-          <span>Pending quality check — can't be sold until resolved.</span>
+          <span>Pending/failed quality check at the selected fulfillment location — choose a different location or resolve the QC before selling.</span>
         </div>
       )}
       {short && available !== undefined && (
@@ -195,6 +195,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [cartWidth, setCartWidth] = useState(() => loadCartWidth() ?? 400);
   const containerRef = useRef<HTMLDivElement>(null);
   const { addToast } = useToast();
+  const formatDateTime = useDateTimeFormat();
 
   const [isLocked, setIsLocked] = useState(() => hasSaleDraft());
   const [isDraftRestored, setIsDraftRestored] = useState(() => hasSaleDraft());
@@ -264,7 +265,10 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
     api.get("/sales-channels/all").then(({ data }) => setChannels(data));
     api.get("/settings").then(({ data }) => setSettings(data));
-    api.get("/quality-checks", { params: { result: "pending", limit: PAGE_SIZE } }).then(({ data }) => setPendingQcs(data.items));
+    Promise.all([
+      api.get("/quality-checks", { params: { result: "pending", limit: PAGE_SIZE } }),
+      api.get("/quality-checks", { params: { result: "fail", limit: PAGE_SIZE } }),
+    ]).then(([pending, failed]) => setPendingQcs([...pending.data.items, ...failed.data.items]));
     api.get("/promotions", { params: { active_only: true, limit: 50 } }).then(({ data }) => setActivePromos(data.items));
   }, []);
 
@@ -290,6 +294,12 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const sellable = useMemo(() => selectable.filter((p) => !p.is_serialized), [selectable]);
 
   const blockedProductIds = useMemo(() => {
+    const set = new Set<number>();
+    for (const qc of pendingQcs) if (qc.product_id && qc.location_id === null) set.add(qc.product_id);
+    return set;
+  }, [pendingQcs]);
+
+  const warnedProductIds = useMemo(() => {
     const set = new Set<number>();
     for (const qc of pendingQcs) if (qc.product_id) set.add(qc.product_id);
     return set;
@@ -362,8 +372,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       setLockUsername("");
       setLockPassword("");
       addToast("Draft restored", "success");
-    } catch (err: any) {
-      setLockError(err.response?.data?.detail || "Invalid credentials");
+    } catch (err: unknown) {
+      setLockError(errorMessage(err, "Invalid credentials"));
     }
     setLockLoading(false);
   };
@@ -385,8 +395,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       setLockUsername("");
       setLockPassword("");
       addToast("Form unlocked", "success");
-    } catch (err: any) {
-      setLockError(err.response?.data?.detail || "Invalid credentials");
+    } catch (err: unknown) {
+      setLockError(errorMessage(err, "Invalid credentials"));
     }
     setLockLoading(false);
   };
@@ -523,7 +533,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       return;
     }
     if (items.some(isBlocked)) {
-      addToast("A line item has a pending quality check and can't be sold yet", "error");
+      addToast("A line item has a pending/failed quality check at its fulfillment location and can't be sold yet", "error");
       return;
     }
     if (discountAmount !== (parseFloat(discount) || 0)) {
@@ -566,7 +576,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           : "Sale completed", "success");
         onSaved();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast(errorMessage(err, "Error processing sale"), "error");
     }
     setSaving(false);
@@ -591,8 +601,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       } else {
         setStkError(data.message || "STK Push failed");
       }
-    } catch (err: any) {
-      setStkError(err.response?.data?.detail || err.message || "STK Push failed");
+    } catch (err: unknown) {
+      setStkError(errorMessage(err, "STK Push failed"));
     }
     setStkBilling(false);
   };
@@ -682,7 +692,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 Your previous draft was restored.
                 {draftSavedAt && (
                   <span className="block mt-1 text-xs text-faint">
-                    Saved {new Date(draftSavedAt).toLocaleString()}
+                    Saved {formatDateTime(draftSavedAt)}
                   </span>
                 )}
               </p>
@@ -785,7 +795,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           <span className="text-xs text-muted hidden sm:inline">Tap a product to add it to the sale</span>
           {isDraftRestored && !isLocked && draftSavedAt && (
             <span className="text-xs text-emerald-600 dark:text-emerald-400 hidden sm:inline">
-              Draft restored from {new Date(draftSavedAt).toLocaleTimeString()}
+              Draft restored from {formatDateTime(draftSavedAt)}
             </span>
           )}
         </div>
@@ -855,6 +865,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                 {visibleProducts.map((p) => {
                   const blocked = blockedProductIds.has(p.id);
+                  const warned = warnedProductIds.has(p.id);
                   return (
                     <button
                       key={p.id}
@@ -862,28 +873,24 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                       disabled={formDisabled}
                       onClick={() => {
                         if (blocked) {
-                          addToast(`'${p.display_name}' has a pending quality check and can't be sold yet`, "error");
+                          addToast(`'${p.display_name}' has a pending/failed quality check and can't be sold yet`, "error");
                           return;
                         }
                         addProduct(p);
                       }}
                       className={`text-left border rounded-xl p-4 bg-surface transition-colors relative ${
-                        blocked
+                        warned
                           ? "border-amber-300 dark:border-amber-500/40 hover:border-amber-400"
                           : "border-border hover:border-indigo-400 hover:shadow-sm"
                       } ${formDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
-                      {blocked && (
-                        <span className="absolute top-2 right-2" title="Pending quality check">
+                      {warned && (
+                        <span className="absolute top-2 right-2" title="Quality check (pending/failed) — pick an unaffected fulfillment location">
                           <AlertTriangle size={14} className="text-amber-500" />
                         </span>
                       )}
                       <div className="h-28 mb-2 rounded-lg overflow-hidden bg-subtle flex items-center justify-center">
-                        {p.image_url ? (
-                           <img src={p.image_url} alt={p.display_name} className="w-full h-full object-cover" loading="lazy" />
-                        ) : (
-                          <Package size={28} className="text-faint" />
-                        )}
+                        <img src={p.image_url || getPlaceholder()} alt={p.display_name} className="w-full h-full object-cover" loading="lazy" onError={onImageError} />
                       </div>
                       <p className="font-semibold text-sm text-ink line-clamp-2">{p.display_name}</p>
                       <p className="text-xs text-faint mt-0.5">{p.sku}</p>

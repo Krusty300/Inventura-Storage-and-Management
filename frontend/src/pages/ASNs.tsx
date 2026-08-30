@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, PackagePlus, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -17,18 +17,14 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
-import { parseLocalDate } from "../utils/date";
+import { daysUntil } from "../utils/date";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
 import { usePageSize } from "../hooks/usePageSize";
-
-function errorMessage(err: any, fallback: string): string {
-  const detail = err?.response?.data?.detail;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) return detail.map((d: any) => d.msg || JSON.stringify(d)).join("; ");
-  return fallback;
-}
+import { errorMessage } from "../utils/errors";
+import { formatCurrency } from "../utils/currency";
+import { useSettings } from "../hooks/useSettings";
 
 function supplierSelectableItems(items: Product[], supplierId: string): Product[] {
   const sid = Number(supplierId);
@@ -86,7 +82,7 @@ export default function ASNs() {
     try {
       const { data } = await api.get(`/asns/${a.id}/pdf`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
       addToast("Failed to generate PDF", "error");
@@ -95,7 +91,7 @@ export default function ASNs() {
 
   const arrivalBadge = (date: string | null) => {
     if (!date) return <span className="text-muted">—</span>;
-    const days = Math.ceil((parseLocalDate(date).getTime() - Date.now()) / 86400000);
+    const days = daysUntil(date);
     if (days < 0) return <span className="badge badge-danger">Overdue {formatDate(date)}</span>;
     if (days <= 3) return <span className="badge badge-warning">Due {formatDate(date)}</span>;
     return <span className="text-muted text-xs">{formatDate(date)}</span>;
@@ -113,8 +109,8 @@ export default function ASNs() {
       </div>
 
       {isError && (
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          Failed to load ASNs: {(error as any)?.message}
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          {errorMessage(error, "Failed to load ASNs")}
         </div>
       )}
 
@@ -270,41 +266,43 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
   const [notes, setNotes] = useState("");
   const [rows, setRows] = useState<AsnFormRowData[]>([{ product_id: "", expected_qty: "1", unit_cost: "0", location: "" }]);
   const [saving, setSaving] = useState(false);
-  const [loadingProducts, setLoadingProducts] = useState(false);
-  const [supplierProducts, setSupplierProducts] = useState<Product[]>([]);
-  const [locations, setLocations] = useState<{ id: number; path: string }[]>([]);
   const { addToast } = useToast();
   const productList = useSelectableProducts();
-  const [suppliers, setSuppliers] = useState<{ id: number; name: string }[]>([]);
+
+  const { data: suppliers = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["suppliers", "picker"],
+    queryFn: async () => (await api.get("/suppliers", { params: { limit: PAGE_SIZE_PICKER } })).data.items,
+  });
+
+  const { data: locations = [] } = useQuery<{ id: number; path: string }[]>({
+    queryKey: ["locations", "lookup"],
+    queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
+
+  const { data: rawSupplierProducts, isLoading: loadingProducts } = useQuery<Product[]>({
+    queryKey: ["supplier-products", supplier_id],
+    queryFn: async () => (await api.get(`/suppliers/${supplier_id}/products`, { params: { limit: 100 } })).data.items,
+    enabled: !!supplier_id,
+  });
+
+  const supplierProducts = useMemo(() => {
+    if (!rawSupplierProducts || !supplier_id) return [];
+    return supplierSelectableItems(rawSupplierProducts, supplier_id);
+  }, [rawSupplierProducts, supplier_id]);
+
+  const toastedSupplierRef = useRef<string | null>(null);
 
   useEffect(() => {
-    api.get("/suppliers", { params: { limit: PAGE_SIZE_PICKER } }).then(({ data }) => setSuppliers(data.items));
-    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
-  }, []);
-
-  useEffect(() => {
-    if (!supplier_id) {
-      setSupplierProducts([]);
-      return;
-    }
-    let cancelled = false;
-    setLoadingProducts(true);
+    if (!supplier_id || !rawSupplierProducts) return;
+    if (toastedSupplierRef.current === supplier_id) return;
+    toastedSupplierRef.current = supplier_id;
     const supplierName = suppliers.find((s) => s.id.toString() === supplier_id)?.name ?? "this supplier";
-    api.get(`/suppliers/${supplier_id}/products`, { params: { limit: 100 } })
-      .then(({ data }) => {
-        if (cancelled) return;
-        const items = supplierSelectableItems(data.items || [], supplier_id);
-        setSupplierProducts(items);
-        if (items.length > 0) {
-          addToast(`${supplierName}: ${items.length} linked product(s) available in the list`, "info");
-        } else {
-          addToast(`${supplierName} has no linked products - add items manually`, "info");
-        }
-      })
-      .catch(() => { if (!cancelled) addToast("Could not load supplier products", "error"); })
-      .finally(() => { if (!cancelled) setLoadingProducts(false); });
-    return () => { cancelled = true; };
-  }, [supplier_id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (supplierProducts.length > 0) {
+      addToast(`${supplierName}: ${supplierProducts.length} linked product(s) available in the list`, "info");
+    } else {
+      addToast(`${supplierName} has no linked products - add items manually`, "info");
+    }
+  }, [supplier_id, rawSupplierProducts]);
 
   const selectableProducts = useMemo(() => {
     if (!supplier_id) return productList;
@@ -368,7 +366,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
       });
       addToast(`ASN ${data.asn_number} created`, "success");
       onSaved();
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast(errorMessage(err, "Error creating ASN"), "error");
     }
     setSaving(false);
@@ -423,51 +421,97 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
 
 function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
   const formatDate = useDateFormat();
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
+  const totalAmount = asn.items.reduce((sum, i) => sum + i.unit_cost * i.expected_qty, 0);
   return (
     <Modal open onClose={onClose} title={`ASN ${asn.asn_number}`} xwide>
-      <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <p className="text-muted">Supplier</p>
-            <p className="font-medium">{asn.supplier_name || "—"}</p>
+      <div className="space-y-5">
+        <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
+          <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-faint">Advance Shipping Notice</p>
+              <h3 className="text-2xl font-bold text-ink mt-1 tracking-tight">{asn.asn_number}</h3>
+              <div className="mt-2"><span className={`badge ${statusBadge(asn.status)}`}>{asn.status.replace("_", " ")}</span></div>
+            </div>
+            <div className="text-right text-sm">
+              <p className="text-muted">Expected Arrival</p>
+              <p className="font-medium text-ink">{asn.expected_arrival ? formatDate(asn.expected_arrival) : "—"}</p>
+              {asn.username && (
+                <p className="text-muted mt-2">Created by <span className="font-medium text-ink">{asn.username}</span></p>
+              )}
+            </div>
           </div>
-          <div>
-            <p className="text-muted">Expected Arrival</p>
-            <p className="font-medium">{asn.expected_arrival ? formatDate(asn.expected_arrival) : "—"}</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-3 px-6 py-5 text-sm border-b border-dashed border-border">
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Supplier</p>
+              <p className="font-medium text-ink">{asn.supplier_name || "—"}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Expected Qty</p>
+              <p className="font-medium text-ink">{asn.total_expected}</p>
+            </div>
+            <div>
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Received Qty</p>
+              <p className="font-medium text-ink">{asn.total_received}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-muted">Status</p>
-            <p className="font-medium"><span className={`badge ${statusBadge(asn.status)}`}>{asn.status.replace("_", " ")}</span></p>
+
+          <div className="px-6 py-5">
+            <div className="overflow-x-auto -mx-2 px-2">
+              <table className="w-full min-w-max text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-faint border-b border-border">
+                    <th className="py-2.5 pr-3 text-left font-medium">Product</th>
+                    <th className="py-2.5 px-3 text-left font-medium">Location</th>
+                    <th className="py-2.5 px-3 text-center font-medium">Expected</th>
+                    <th className="py-2.5 px-3 text-center font-medium">Received</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Unit Cost</th>
+                    <th className="py-2.5 px-3 text-right font-medium">Amount</th>
+                    <th className="py-2.5 pl-3 text-right font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {asn.items.map((item) => (
+                    <tr key={item.id}>
+                      <td className="py-3 pr-3 font-medium text-ink">{item.product_name}</td>
+                      <td className="py-3 px-3 text-muted whitespace-nowrap">{item.location_name || "—"}</td>
+                      <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.expected_qty}</td>
+                      <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.received_qty}</td>
+                      <td className="py-3 px-3 text-right text-muted whitespace-nowrap">{formatCurrency(item.unit_cost, currencySymbol)}</td>
+                      <td className="py-3 px-3 text-right text-ink font-medium whitespace-nowrap">{formatCurrency(item.unit_cost * item.expected_qty, currencySymbol)}</td>
+                      <td className="py-3 pl-3 text-right whitespace-nowrap">
+                        <span className={`badge ${statusBadge(item.status)}`}>{item.status.replace("_", " ")}</span>
+                      </td>
+                    </tr>
+                  ))}
+                  {asn.items.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-muted">No items on this shipment</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-5 border-t-2 border-double border-border pt-4 flex items-start justify-between gap-3">
+              <div className="text-sm text-muted">
+                Received <span className="font-semibold text-ink">{asn.total_received}</span> of {asn.total_expected} expected
+              </div>
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-wide text-faint">Total Value</p>
+                <p className="text-2xl font-bold text-ink">{formatCurrency(totalAmount, currencySymbol)}</p>
+              </div>
+            </div>
           </div>
-        </div>
-        {asn.notes && <p className="text-sm text-muted">{asn.notes}</p>}
-        <div className="border border-border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-app text-left">
-                <th className="px-3 py-2 font-medium text-muted">Product</th>
-                <th className="px-3 py-2 font-medium text-muted">Location</th>
-                <th className="px-3 py-2 font-medium text-muted text-right">Expected</th>
-                <th className="px-3 py-2 font-medium text-muted text-right">Received</th>
-                <th className="px-3 py-2 font-medium text-muted text-right">Unit Cost</th>
-                <th className="px-3 py-2 font-medium text-muted text-right">Amount</th>
-                <th className="px-3 py-2 font-medium text-muted">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {asn.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-3 py-2 font-medium">{item.product_name}</td>
-                  <td className="px-3 py-2 text-muted">{item.location_name || "—"}</td>
-                  <td className="px-3 py-2 text-right">{item.expected_qty}</td>
-                  <td className="px-3 py-2 text-right">{item.received_qty}</td>
-                  <td className="px-3 py-2 text-right">{item.unit_cost.toFixed(2)}</td>
-                  <td className="px-3 py-2 text-right">{(item.unit_cost * item.expected_qty).toFixed(2)}</td>
-                  <td className="px-3 py-2"><span className={`badge ${statusBadge(item.status)}`}>{item.status.replace("_", " ")}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+          {asn.notes && (
+            <div className="px-6 pb-5 text-sm">
+              <p className="text-faint text-xs uppercase tracking-wide mb-1">Notes</p>
+              <p className="text-muted">{asn.notes}</p>
+            </div>
+          )}
         </div>
         <div className="flex justify-end pt-2">
           <button onClick={onClose} className="btn-secondary">Close</button>
@@ -607,13 +651,14 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const productList = useSelectableProducts();
-  const [locations, setLocations] = useState<{ id: number; path: string }[]>([]);
-  const [lpns, setLpns] = useState<{ id: number; lpn_number: string }[]>([]);
-
-  useEffect(() => {
-    api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } }).then(({ data }) => setLocations(data.items));
-    api.get("/lpns", { params: { limit: PAGE_SIZE_PICKER } }).then(({ data }) => setLpns(data.items));
-  }, []);
+  const { data: locations = [] } = useQuery<{ id: number; path: string }[]>({
+    queryKey: ["locations", "lookup"],
+    queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
+  const { data: lpns = [] } = useQuery<{ id: number; lpn_number: string }[]>({
+    queryKey: ["lpns", "picker"],
+    queryFn: async () => (await api.get("/lpns", { params: { limit: PAGE_SIZE_PICKER } })).data.items,
+  });
 
   const setRow = (idx: number, key: keyof AsnRowData, value: string) => {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
@@ -656,7 +701,7 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
       const { data } = await api.post(`/asns/${asn.id}/receive`, { items, notes: notes.trim() });
       addToast(`ASN ${data.asn_number} updated`, "success");
       onSaved();
-    } catch (err: any) {
+    } catch (err: unknown) {
       addToast(errorMessage(err, "Error receiving ASN"), "error");
     }
     setSaving(false);

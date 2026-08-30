@@ -17,6 +17,7 @@ import { useToast } from "../context/ToastContext";
 import { useExportCsv } from "../hooks/useExportCsv";
 
 import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
 
 const STATUS_FILTERS = [
   { value: "", label: "All" },
@@ -100,7 +101,7 @@ export default function SerialNumbers() {
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot release serial"), "error"),
   });
 
   const releaseFromWorkOrderMutation = useMutation({
@@ -111,7 +112,7 @@ export default function SerialNumbers() {
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial from work order", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot release serial from work order"), "error"),
   });
 
   return (
@@ -122,8 +123,8 @@ export default function SerialNumbers() {
       </div>
 
       {isError && (
-        <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
-          Failed to load serial numbers: {(error as any)?.message}
+        <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
+          {errorMessage(error, "Failed to load serial numbers")}
         </div>
       )}
 
@@ -268,7 +269,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot update serial", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot update serial"), "error"),
   });
 
   const { data: movements, isLoading } = useQuery({
@@ -291,7 +292,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
       queryClient.invalidateQueries({ queryKey: ["exceptions"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
     },
-    onError: (err: any) => addToast(err.response?.data?.detail || "Cannot release serial from work order", "error"),
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot release serial from work order"), "error"),
   });
 
   return (

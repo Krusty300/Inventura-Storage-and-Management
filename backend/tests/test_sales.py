@@ -26,7 +26,7 @@ def test_create_sale_decrements_stock_and_logs_movement(auth_headers):
     updated = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
     assert updated["quantity"] == 7
     movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
-    assert any(m["movement_type"] == "out" and m["quantity_change"] == -3 for m in movements)
+    assert any(m["movement_type"] == "sale" and m["quantity_change"] == -3 for m in movements)
 
 
 def test_sale_mobile_money_with_provider(auth_headers):
@@ -145,7 +145,7 @@ def test_sale_discount_over_subtotal_rejected(auth_headers):
 
 def test_sale_requires_at_least_one_item(auth_headers):
     resp = _make_sale(auth_headers, [])
-    assert resp.status_code == 400
+    assert resp.status_code in (400, 422)
 
 
 def test_sale_zero_or_negative_quantity_rejected(auth_headers):
@@ -299,7 +299,7 @@ def test_refund_restores_stock(auth_headers):
     updated = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
     assert updated["quantity"] == 10
     movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
-    assert any(m["movement_type"] == "return" and m["quantity_change"] == 4 for m in movements)
+    assert any(m["movement_type"] == "sale_return" and m["quantity_change"] == 4 for m in movements)
 
 
 def test_refund_records_method_and_provider(auth_headers):
@@ -380,7 +380,7 @@ def test_refund_restores_stock_to_original_location(auth_headers):
         assert inventory.on_hand(db, product_id=prod["id"]) == 10
         returns = db.query(StockMovement).filter(
             StockMovement.product_id == prod["id"],
-            StockMovement.movement_type == "return",
+            StockMovement.movement_type == "sale_return",
         ).all()
         assert returns and all(m.from_location_id == loc_a for m in returns)
         assert db.get(Product, prod["id"]).quantity == 10
@@ -551,7 +551,7 @@ def test_checkout_allocates_soonest_expiry_lots_first(auth_headers):
     try:
         out = db.query(StockMovement).filter(
             StockMovement.product_id == prod["id"],
-            StockMovement.movement_type == "out",
+            StockMovement.movement_type == "sale",
         ).all()
         assert sorted((m.lot_id, m.quantity_change) for m in out) == sorted(
             [(soon_id, -5), (late_id, -2)]
@@ -649,7 +649,7 @@ def test_sale_with_location_consumes_from_that_location_only(auth_headers):
         assert inventory.on_hand(db, product_id=prod["id"]) == 7
         out = db.query(StockMovement).filter(
             StockMovement.product_id == prod["id"],
-            StockMovement.movement_type == "out",
+            StockMovement.movement_type == "sale",
         ).all()
         assert out and all(m.from_location_id == loc_a for m in out)
     finally:

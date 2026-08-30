@@ -3,8 +3,10 @@ import { Save, KeyRound, Bell, Hash, Workflow, DollarSign, Monitor, FileText, Up
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { useSettings as useSettingsQuery } from "../hooks/useSettings";
 import Skeleton from "../components/Skeleton";
 import { CURRENCIES, symbolFor } from "../utils/currencies";
+import { errorMessage } from "../utils/errors";
 
 type Tab = "store" | "notifications" | "documents" | "workflow" | "financial" | "display" | "invoice" | "password";
 
@@ -37,7 +39,7 @@ export default function Settings() {
   const { addToast } = useToast();
   const [tab, setTab] = useState<Tab>("store");
   const [form, setForm] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(true);
+  const formInitRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [pw, setPw] = useState({ current_password: "", new_password: "" });
@@ -45,36 +47,41 @@ export default function Settings() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const canUpdateSettings = can("settings.update");
   const readOnly = !canUpdateSettings;
+  const { data: settingsData, isLoading: loading } = useSettingsQuery();
 
   useEffect(() => {
-    let cancelled = false;
-    api.get("/settings").then(({ data }) => {
-      if (cancelled) return;
-      setForm({
-        store_name: data.store_name, address: data.address, phone: data.phone, email: data.email,
-        currency_symbol: data.currency_symbol, currency_code: data.currency_code || "USD",
-        tax_rate: String(data.tax_rate),
-        default_reorder_level: String(data.default_reorder_level),
-        expiry_warning_days: String(data.expiry_warning_days),
-        low_stock_alerts: data.low_stock_alerts, expiry_alerts: data.expiry_alerts,
-        shipment_prefix: data.shipment_prefix, work_order_prefix: data.work_order_prefix,
-        sale_prefix: data.sale_prefix, invoice_prefix: data.invoice_prefix, po_prefix: data.po_prefix,
-        require_qc_before_ship: data.require_qc_before_ship, auto_allocate_stock: data.auto_allocate_stock,
-        enforce_fefo: data.enforce_fefo,
-        default_costing_method: data.default_costing_method,
-        fiscal_year_start_month: String(data.fiscal_year_start_month),
-        default_items_per_page: String(data.default_items_per_page),
-        date_format: data.date_format,
-        logo_url: data.logo_url || "",
-        tax_id: data.tax_id || "",
-        payment_terms: data.payment_terms || "",
-        bank_details: data.bank_details || "",
-        footer_note: data.footer_note || "",
-      });
-      setLoading(false);
-    }).catch(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    if (!settingsData || formInitRef.current) return;
+    formInitRef.current = true;
+    setForm({
+      store_name: settingsData.store_name, address: settingsData.address, phone: settingsData.phone, email: settingsData.email,
+      currency_symbol: settingsData.currency_symbol, currency_code: settingsData.currency_code || "USD",
+      tax_rate: String(settingsData.tax_rate),
+      default_reorder_level: String(settingsData.default_reorder_level),
+      expiry_warning_days: String(settingsData.expiry_warning_days),
+      low_stock_alerts: settingsData.low_stock_alerts, expiry_alerts: settingsData.expiry_alerts,
+      shipment_prefix: settingsData.shipment_prefix, work_order_prefix: settingsData.work_order_prefix,
+      invoice_prefix: settingsData.invoice_prefix, po_prefix: settingsData.po_prefix,
+      receipt_prefix: settingsData.receipt_prefix, asn_prefix: settingsData.asn_prefix,
+      qc_prefix: settingsData.qc_prefix, cc_prefix: settingsData.cc_prefix,
+      return_prefix: settingsData.return_prefix, transfer_prefix: settingsData.transfer_prefix,
+      unallocated_prefix: settingsData.unallocated_prefix, quarantine_prefix: settingsData.quarantine_prefix,
+      lpn_prefix: settingsData.lpn_prefix, lpn_move_prefix: settingsData.lpn_move_prefix,
+      lpn_load_prefix: settingsData.lpn_load_prefix, lpn_unload_prefix: settingsData.lpn_unload_prefix,
+      stock_in_prefix: settingsData.stock_in_prefix, stock_out_prefix: settingsData.stock_out_prefix,
+      adjustment_prefix: settingsData.adjustment_prefix,
+      require_qc_before_ship: settingsData.require_qc_before_ship, auto_allocate_stock: settingsData.auto_allocate_stock,
+      enforce_fefo: settingsData.enforce_fefo,
+      default_costing_method: settingsData.default_costing_method,
+      fiscal_year_start_month: String(settingsData.fiscal_year_start_month),
+      default_items_per_page: String(settingsData.default_items_per_page),
+      date_format: settingsData.date_format,
+      logo_url: settingsData.logo_url || "",
+      tax_id: settingsData.tax_id || "",
+      payment_terms: settingsData.payment_terms || "",
+      bank_details: settingsData.bank_details || "",
+      footer_note: settingsData.footer_note || "",
+    });
+  }, [settingsData]);
 
   const set = (key: string, val: any) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -92,8 +99,8 @@ export default function Settings() {
         default_items_per_page: parseInt(form.default_items_per_page) || 50,
       });
       addToast("Settings saved", "success");
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to save settings", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to save settings"), "error");
     }
     setSaving(false);
   };
@@ -107,8 +114,8 @@ export default function Settings() {
       setPw({ current_password: "", new_password: "" });
       logout();
       setTimeout(() => completeLogout(), 600);
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to change password", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to change password"), "error");
     }
     setPwSaving(false);
   };
@@ -123,8 +130,8 @@ export default function Settings() {
       const { data } = await api.post("/settings/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
       set("logo_url", data.logo_url);
       addToast("Logo uploaded", "success");
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to upload logo", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to upload logo"), "error");
     }
     setLogoUploading(false);
     if (logoInputRef.current) logoInputRef.current.value = "";
@@ -135,8 +142,8 @@ export default function Settings() {
       await api.delete("/settings/logo");
       set("logo_url", "");
       addToast("Logo removed", "success");
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Failed to remove logo", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to remove logo"), "error");
     }
   };
 
@@ -217,12 +224,44 @@ export default function Settings() {
           <h2 className="text-lg font-semibold">Document Numbering</h2>
           <p className="text-sm text-muted">Configure prefixes for auto-generated document numbers.</p>
           <fieldset disabled={readOnly} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Shipment Prefix" value={form.shipment_prefix} onChange={(v) => set("shipment_prefix", v)} description="e.g. SHP → SHP-0001" />
-              <Field label="Work Order Prefix" value={form.work_order_prefix} onChange={(v) => set("work_order_prefix", v)} description="e.g. WO → WO-0001" />
-              <Field label="Sale Prefix" value={form.sale_prefix} onChange={(v) => set("sale_prefix", v)} description="e.g. SALE → SALE-0001" />
-              <Field label="Invoice Prefix" value={form.invoice_prefix} onChange={(v) => set("invoice_prefix", v)} description="e.g. INV → INV-0001" />
-              <Field label="Purchase Order Prefix" value={form.po_prefix} onChange={(v) => set("po_prefix", v)} description="e.g. PO → PO-0001" />
+            <div>
+              <h3 className="text-sm font-medium text-ink mb-2">Core Documents</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Invoice Prefix" value={form.invoice_prefix} onChange={(v) => set("invoice_prefix", v)} description="e.g. INV → INV-0001" />
+                <Field label="Purchase Order Prefix" value={form.po_prefix} onChange={(v) => set("po_prefix", v)} description="e.g. PO → PO-0001" />
+                <Field label="Shipment Prefix" value={form.shipment_prefix} onChange={(v) => set("shipment_prefix", v)} description="e.g. SHP → SHP-0001" />
+                <Field label="Work Order Prefix" value={form.work_order_prefix} onChange={(v) => set("work_order_prefix", v)} description="e.g. WO → WO-0001" />
+                <Field label="Receipt Prefix" value={form.receipt_prefix} onChange={(v) => set("receipt_prefix", v)} description="e.g. RCP → RCP-0001" />
+                <Field label="ASN Prefix" value={form.asn_prefix} onChange={(v) => set("asn_prefix", v)} description="e.g. ASN → ASN-0001" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-ink mb-2">Warehouse Operations</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="LPN Prefix" value={form.lpn_prefix} onChange={(v) => set("lpn_prefix", v)} description="e.g. LPN → LPN-0001" />
+                <Field label="LPN Move Prefix" value={form.lpn_move_prefix} onChange={(v) => set("lpn_move_prefix", v)} description="e.g. MOV → MOV-0001" />
+                <Field label="LPN Load Prefix" value={form.lpn_load_prefix} onChange={(v) => set("lpn_load_prefix", v)} description="e.g. LOD → LOD-0001" />
+                <Field label="LPN Unload Prefix" value={form.lpn_unload_prefix} onChange={(v) => set("lpn_unload_prefix", v)} description="e.g. ULD → ULD-0001" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-ink mb-2">Stock Movements</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Stock In Prefix" value={form.stock_in_prefix} onChange={(v) => set("stock_in_prefix", v)} description="e.g. SI → SI-0001" />
+                <Field label="Stock Out Prefix" value={form.stock_out_prefix} onChange={(v) => set("stock_out_prefix", v)} description="e.g. SO → SO-0001" />
+                <Field label="Transfer Prefix" value={form.transfer_prefix} onChange={(v) => set("transfer_prefix", v)} description="e.g. TRF → TRF-0001" />
+                <Field label="Return Prefix" value={form.return_prefix} onChange={(v) => set("return_prefix", v)} description="e.g. RET → RET-0001" />
+                <Field label="Adjustment Prefix" value={form.adjustment_prefix} onChange={(v) => set("adjustment_prefix", v)} description="e.g. ADJ → ADJ-0001" />
+                <Field label="Unallocated Move Prefix" value={form.unallocated_prefix} onChange={(v) => set("unallocated_prefix", v)} description="e.g. UNL → UNL-0001" />
+                <Field label="Quarantine Prefix" value={form.quarantine_prefix} onChange={(v) => set("quarantine_prefix", v)} description="e.g. QAR → QAR-0001" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-ink mb-2">Quality</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Quality Check Prefix" value={form.qc_prefix} onChange={(v) => set("qc_prefix", v)} description="e.g. QC → QC-0001" />
+                <Field label="Cycle Count Prefix" value={form.cc_prefix} onChange={(v) => set("cc_prefix", v)} description="e.g. CC → CC-0001" />
+              </div>
             </div>
           </fieldset>
           {!readOnly && <SaveButton loading={saving} />}

@@ -1,11 +1,12 @@
 from math import ceil
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 
 from app.constants import MAX_PAGE_SIZE_PICKER
 from app.database import get_db
-from app.models import LPN, Location, Lot, Product, SerialNumber, StockLine, StockMovement
+from app.models import LPN, Location, Lot, Product, SerialNumber, Settings, StockLine, StockMovement
 from app.schemas.lpn import LPNCreate, LPNLoadIn, LPNOut, LPNUnloadIn, LPNUpdate
 from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
@@ -171,6 +172,14 @@ def create_lpn(data: LPNCreate, db: Session = Depends(get_db), user=Depends(requ
     if data.location_id is not None:
         get_or_404(Location, data.location_id, db)
     lpn_number = (data.lpn_number or "").strip() or next_document_number(db, "lpn", "LPN-")
+    if (data.lpn_number or "").strip():
+        settings = db.query(Settings).first()
+        current_prefix = (settings.lpn_prefix if settings else "LPN") or "LPN"
+        if re.match(rf"^{re.escape(current_prefix.upper())}-\d+$", lpn_number.upper()):
+            raise HTTPException(
+                status_code=400,
+                detail=f"LPN '{lpn_number}' matches the auto-generated format — choose a different naming pattern or leave blank to auto-generate",
+            )
     if db.query(LPN).filter(LPN.lpn_number == lpn_number).first():
         raise HTTPException(status_code=400, detail=f"LPN '{lpn_number}' already exists")
     lpn = LPN(lpn_number=lpn_number, lpn_type=data.lpn_type, location_id=data.location_id)
@@ -212,7 +221,7 @@ def move_lpn(lpn_id: int, to_location_id: int, db: Session = Depends(get_db), us
     for sl in lpn.stock_lines:
         if sl.lot is not None and (sl.lot.status not in ("in_stock", "quarantined") or (sl.lot.status == "quarantined" and not moving_to_quarantine)):
             blocked.append((sl.lot.lot_number, sl.lot.status))
-    for serial in db.query(SerialNumber).filter(SerialNumber.lpn_id == lpn.id).all():
+    for serial in lpn.serial_numbers:
         if serial.lot is not None and (serial.lot.status not in ("in_stock", "quarantined") or (serial.lot.status == "quarantined" and not moving_to_quarantine)):
             blocked.append((serial.lot.lot_number, serial.lot.status))
     if blocked:
@@ -232,7 +241,7 @@ def move_lpn(lpn_id: int, to_location_id: int, db: Session = Depends(get_db), us
                 reference_type="lpn_move", reference=reference,
                 notes=f"Moved LPN '{lpn.lpn_number}' to {target.path}",
             ))
-        for serial in db.query(SerialNumber).filter(SerialNumber.lpn_id == lpn.id).all():
+        for serial in lpn.serial_numbers:
             movements.extend(inventory.transfer_stock(
                 db, product_id=serial.product_id, user_id=user.id, quantity=1,
                 from_location_id=lpn.location_id, to_location_id=to_location_id,

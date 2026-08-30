@@ -6,11 +6,12 @@ from pydantic import BaseModel, field_validator
 
 class StockMovementCreate(BaseModel):
     product_id: int
-    quantity_change: int
     movement_type: str
+    quantity_change: int
     reference: str = ""
     notes: str = ""
     location_id: Optional[int] = None
+    serial_id: Optional[int] = None
 
     @field_validator("movement_type")
     @classmethod

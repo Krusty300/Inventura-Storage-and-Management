@@ -17,12 +17,15 @@ import Skeleton from "../components/Skeleton";
 import ErrorState from "../components/ErrorState";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
+import EntitySearchInput from "../components/EntitySearchInput";
+import { LINKABLE_ENTITIES, getEntityTypeLabel, getEntityTypeIcon } from "../utils/linkableEntities";
 import { useDebounce } from "../hooks/useDebounce";
 import { usePageSize } from "../hooks/usePageSize";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useDateFormat } from "../hooks/useDateFormat";
+import { daysUntil, parseLocalDate } from "../utils/date";
 import { errorMessage } from "../utils/errors";
 
 type NoteForm = {
@@ -36,11 +39,12 @@ type NoteForm = {
   assigned_to_id: number | null;
   tag_ids: number[];
   image_url?: string;
+  links: { entity_type: string; entity_id: number; entity_label: string }[];
 };
 
 type ViewMode = "list" | "card" | "kanban";
 
-const EMPTY_FORM: NoteForm = { title: "", body: "", category: "note", priority: "normal", is_pinned: false, due_date: "", recurrence: "none", assigned_to_id: null, tag_ids: [] };
+const EMPTY_FORM: NoteForm = { title: "", body: "", category: "note", priority: "normal", is_pinned: false, due_date: "", recurrence: "none", assigned_to_id: null, tag_ids: [], links: [] };
 
 const CATEGORY_ICONS: Record<string, typeof StickyNote> = { note: StickyNote, reminder: Bell, todo: ListTodo };
 const PRIORITY_COLORS: Record<string, string> = { low: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400", normal: "bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400", high: "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400", urgent: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 ring-1 ring-red-300 dark:ring-red-500/40" };
@@ -63,14 +67,13 @@ function categoryBadge(c: string) {
 
 function isOverdue(dueDate: string | null, isCompleted: boolean) {
   if (!dueDate || isCompleted) return false;
-  return new Date(dueDate) < new Date();
+  return parseLocalDate(dueDate) < new Date();
 }
 
 function isDueSoon(dueDate: string | null, isCompleted: boolean) {
   if (!dueDate || isCompleted) return false;
-  const d = new Date(dueDate);
-  const now = new Date();
-  return d > now && (d.getTime() - now.getTime()) < 86400000 * 2;
+  const days = daysUntil(dueDate);
+  return days >= 0 && days <= 2;
 }
 
 export default function Notes() {
@@ -98,9 +101,11 @@ export default function Notes() {
   const [draggedNote, setDraggedNote] = useState<Note | null>(null);
   const [editImageFile, setEditImageFile] = useState<File | null>(null);
   const [confirmTagDelete, setConfirmTagDelete] = useState<NoteTag | null>(null);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [showTemplateForm, setShowTemplateForm] = useState(false);
   const [templateEditTarget, setTemplateEditTarget] = useState<NoteTemplate | null>(null);
+  const [linkEntityFilter, setLinkEntityFilter] = useState("product");
   const imagePreviewUrl = useMemo(() => editImageFile ? URL.createObjectURL(editImageFile) : null, [editImageFile]);
   useEffect(() => { return () => { if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl); }; }, [imagePreviewUrl]);
 
@@ -167,7 +172,7 @@ export default function Notes() {
 
   const createMutation = useMutation({
     mutationFn: (payload: NoteForm) => {
-      const body: Record<string, unknown> = { title: payload.title, body: payload.body, category: payload.category, priority: payload.priority, is_pinned: payload.is_pinned, recurrence: payload.recurrence, tag_ids: payload.tag_ids };
+      const body: Record<string, unknown> = { title: payload.title, body: payload.body, category: payload.category, priority: payload.priority, is_pinned: payload.is_pinned, recurrence: payload.recurrence, tag_ids: payload.tag_ids, links: payload.links };
       if (payload.due_date) body.due_date = payload.due_date;
       if (payload.assigned_to_id) body.assigned_to_id = payload.assigned_to_id;
       return api.post("/notes", body);
@@ -291,9 +296,21 @@ export default function Notes() {
     onError: (err) => addToast(errorMessage(err, "Failed to delete template"), "error"),
   });
 
+  const addLinkMutation = useMutation({
+    mutationFn: ({ noteId, entity_type, entity_id, entity_label }: { noteId: number; entity_type: string; entity_id: number; entity_label: string }) => api.post(`/notes/${noteId}/links`, { entity_type, entity_id, entity_label }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); addToast("Link added", "success"); },
+    onError: (err) => addToast(errorMessage(err, "Failed to add link"), "error"),
+  });
+
+  const removeLinkMutation = useMutation({
+    mutationFn: ({ noteId, linkId }: { noteId: number; linkId: number }) => api.delete(`/notes/${noteId}/links/${linkId}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); addToast("Link removed", "success"); },
+    onError: (err) => addToast(errorMessage(err, "Failed to remove link"), "error"),
+  });
+
   const openEdit = useCallback((note: Note) => {
     setEditingNote(note);
-    setForm({ title: note.title, body: note.body, category: note.category, priority: note.priority, is_pinned: note.is_pinned, due_date: note.due_date ? note.due_date.slice(0, 16) : "", recurrence: note.recurrence, assigned_to_id: note.assigned_to_id, tag_ids: note.tags.map((t) => t.id) });
+    setForm({ title: note.title, body: note.body, category: note.category, priority: note.priority, is_pinned: note.is_pinned, due_date: note.due_date ? note.due_date.slice(0, 16) : "", recurrence: note.recurrence, assigned_to_id: note.assigned_to_id, tag_ids: note.tags.map((t) => t.id), links: note.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id, entity_label: l.entity_label })) });
     setEditImageFile(null);
     setShowForm(true);
   }, []);
@@ -310,6 +327,12 @@ export default function Notes() {
   }, []);
 
   useEffect(() => {
+    if (!viewingNote) return;
+    const fresh = notes.find((n) => n.id === viewingNote.id);
+    if (fresh && fresh !== viewingNote) setViewingNote(fresh);
+  }, [notes, viewingNote]);
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       if ((e.ctrlKey || e.metaKey) && e.key === "n") { e.preventDefault(); openCreate(); }
@@ -319,7 +342,7 @@ export default function Notes() {
     return () => window.removeEventListener("keydown", handler);
   }, [openCreate, viewingNote]);
 
-  const handleFormSubmit = () => {
+  const handleFormSubmit = async () => {
     if (!form.title.trim()) { addToast("Title is required", "error"); return; }
     if (editingNote) {
       updateMutation.mutate({ id: editingNote.id, payload: form }, {
@@ -330,7 +353,14 @@ export default function Notes() {
         },
       });
     } else {
-      createMutation.mutate(form);
+      try {
+        const { data } = await createMutation.mutateAsync(form);
+        if (editImageFile && data?.id) {
+          uploadImageMutation.mutate({ noteId: data.id, file: editImageFile });
+        }
+      } catch {
+        // error toast already shown by onError
+      }
     }
   };
 
@@ -375,7 +405,7 @@ export default function Notes() {
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
-      <div key={note.id} className={`flex items-start gap-3 p-4 border-b border-border hover:bg-subtle/60 hover:border-indigo-100 dark:hover:border-indigo-500/20 transition-all ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${note.is_pinned && !note.is_completed ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500" : ""}`}>
+      <div key={note.id} className={`flex items-start gap-3 p-4 border-b border-border hover:bg-subtle/60 hover:border-indigo-100 dark:hover:border-indigo-500/20 transition-[background-color,border-color,opacity] duration-150 ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${note.is_pinned && !note.is_completed ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500" : ""}`}>
         <div className="flex items-center gap-2 mt-0.5">
           <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(note.id)} onChange={() => toggleSelect(note.id)} aria-label={`Select note: ${note.title}`} />
           <button onClick={() => completeMutation.mutate(note.id)} className="shrink-0 text-muted hover:text-emerald-500 transition-colors" aria-label={note.is_completed ? "Mark incomplete" : "Mark complete"}>
@@ -414,7 +444,7 @@ export default function Notes() {
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
-      <div key={note.id} className={`card p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/30 transition-all ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${draggedNote?.id === note.id ? "opacity-50 scale-[0.98]" : ""}`} draggable={viewMode === "kanban"} onDragStart={(e) => handleDragStart(e, note)} onClick={() => openDetail(note)}>
+      <div key={note.id} className={`card p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/30 transition-[box-shadow,transform,opacity] duration-150 ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${draggedNote?.id === note.id ? "opacity-50 scale-[0.98]" : ""}`} draggable={viewMode === "kanban"} onDragStart={(e) => handleDragStart(e, note)} onClick={() => openDetail(note)}>
         {note.image_url && (
           <div className="mb-3 -mx-4 -mt-4 overflow-hidden rounded-t-lg">
             <img src={note.image_url} alt={note.title} className="w-full h-32 object-cover" loading="lazy" />
@@ -468,9 +498,12 @@ export default function Notes() {
                 <span className="text-sm font-semibold text-ink">{col.label}</span>
                 <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-border text-xs font-medium text-muted">{colNotes.length}</span>
               </div>
-              <div className="space-y-3 min-h-[120px] p-2 rounded-lg border-2 border-dashed border-transparent hover:border-border transition-colors">
-                {colNotes.length === 0 && <div className="border-2 border-dashed border-border rounded-lg p-6 text-center text-xs text-faint bg-subtle/30">Drop notes here</div>}
-                {colNotes.map((note) => renderNoteCard(note))}
+              <div className="p-2 rounded-lg border-2 border-dashed border-transparent hover:border-border transition-colors">
+                {colNotes.length === 0 ? (
+                  <div className="border-2 border-dashed border-border rounded-lg p-6 text-center text-xs text-faint bg-subtle/30">Drop notes here</div>
+                ) : (
+                  <div className="space-y-3">{colNotes.map((note) => renderNoteCard(note))}</div>
+                )}
               </div>
             </div>
           );
@@ -658,18 +691,40 @@ export default function Notes() {
             </div>
           )}
 
-          {viewingNote.links.length > 0 && (
-            <div>
+          <div>
               <div className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Linked entities</div>
               <div className="space-y-1">
-                {viewingNote.links.map((l) => (
-                  <div key={l.id} className="text-sm text-muted flex items-center gap-1"><LinkIcon size={12} />{l.entity_type} #{l.entity_id}</div>
-                ))}
+                {viewingNote.links.map((l) => {
+                  const EntityIcon = getEntityTypeIcon(l.entity_type);
+                  return (
+                    <div key={l.id} className="text-sm text-muted flex items-center gap-1.5 group">
+                      <EntityIcon size={12} className="shrink-0" />
+                      <span className="text-ink font-medium">{l.entity_label || getEntityTypeLabel(l.entity_type)}</span>
+                      <span className="text-faint">#{l.entity_id}</span>
+                      {can("notes.update") && (
+                        <button onClick={() => removeLinkMutation.mutate({ noteId: viewingNote.id, linkId: l.id })} className="ml-auto p-0.5 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove link"><XIcon size={12} /></button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+              {can("notes.update") && (
+                <div className="mt-2 space-y-2">
+                  <select className="select text-sm w-40" value={linkEntityFilter} onChange={(e) => setLinkEntityFilter(e.target.value)}>
+                    {LINKABLE_ENTITIES.map((t) => <option key={t.entity_type} value={t.entity_type}>{t.label}</option>)}
+                  </select>
+                  <EntitySearchInput
+                    entityType={linkEntityFilter}
+                    excludeIds={viewingNote.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id }))}
+                    onSelect={(sel) => addLinkMutation.mutate({ noteId: viewingNote.id, ...sel })}
+                    placeholder={`Search ${getEntityTypeLabel(linkEntityFilter).toLowerCase()}s...`}
+                    disabled={addLinkMutation.isPending}
+                  />
+                </div>
+              )}
             </div>
-          )}
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+          <div className="flex flex-wrap justify-end gap-2 pt-4 border-t border-border">
             {!viewingNote.is_completed && <button onClick={() => { completeMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm"><CheckCircle2 size={16} className="mr-1" />Complete</button>}
             {can("notes.update") && <button onClick={() => { archiveMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm">{viewingNote.is_archived ? <><ArchiveRestore size={16} className="mr-1" />Unarchive</> : <><Archive size={16} className="mr-1" />Archive</>}</button>}
             {can("notes.create") && <button onClick={() => { duplicateMutation.mutate(viewingNote.id); }} className="btn-secondary text-sm"><Copy size={16} className="mr-1" />Duplicate</button>}
@@ -781,7 +836,7 @@ export default function Notes() {
             <option value="urgent">Urgent</option>
           </select>
           {can("notes.delete") && (
-            <button onClick={() => { if (confirm(`Delete ${selectedIds.size} note(s)?`)) bulkDeleteMutation.mutate(Array.from(selectedIds)); }} className="text-sm px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-800 font-medium" disabled={bulkDeleteMutation.isPending}>
+            <button onClick={() => setConfirmBulkDelete(true)} className="text-sm px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-800 font-medium" disabled={bulkDeleteMutation.isPending}>
               Delete
             </button>
           )}
@@ -804,7 +859,7 @@ export default function Notes() {
                 <label className="block text-sm font-medium text-muted mb-1">Start from template</label>
                 <select className="select w-full" value="" onChange={(e) => {
                   const t = templates.find((tpl) => tpl.id === Number(e.target.value));
-                  if (t) setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [] });
+                  if (t) setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [], links: [] });
                 }}>
                   <option value="">Choose a template...</option>
                   {templates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.category} / {t.priority})</option>)}
@@ -814,7 +869,7 @@ export default function Notes() {
             {editingNote?.image_url && !editImageFile && (
               <div className="relative group">
                 <img src={editingNote.image_url} alt="Note image" className="w-full h-40 object-cover rounded-lg" />
-                <button onClick={() => { if (editingNote) { updateMutation.mutate({ id: editingNote.id, payload: { ...form, image_url: "" } }); } }} className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove image">
+                <button onClick={async () => { if (editingNote) { await api.put(`/notes/${editingNote.id}`, { image_url: "" }); queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); setEditingNote({ ...editingNote, image_url: "" }); addToast("Image removed", "success"); } }} className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove image">
                   <XIcon size={14} />
                 </button>
               </div>
@@ -893,6 +948,39 @@ export default function Notes() {
                 {tags.length === 0 && <span className="text-xs text-muted">No tags created yet</span>}
               </div>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-muted mb-2">Linked Entities</label>
+              <div className="space-y-2">
+                {form.links.map((link, idx) => {
+                  const EntityIcon = getEntityTypeIcon(link.entity_type);
+                  return (
+                    <div key={idx} className="flex items-center gap-2 text-sm bg-subtle rounded-lg px-3 py-2">
+                      <EntityIcon size={14} className="text-muted shrink-0" />
+                      <span className="text-ink font-medium">{link.entity_label || getEntityTypeLabel(link.entity_type)}</span>
+                      <span className="text-muted">#{link.entity_id}</span>
+                      <button type="button" onClick={() => setForm({ ...form, links: form.links.filter((_, i) => i !== idx) })} className="ml-auto p-0.5 text-muted hover:text-red-500 transition-colors" aria-label="Remove link"><XIcon size={14} /></button>
+                    </div>
+                  );
+                })}
+                <div className="flex gap-2 items-center">
+                  <select className="select text-sm w-40" value={linkEntityFilter} onChange={(e) => setLinkEntityFilter(e.target.value)}>
+                    {LINKABLE_ENTITIES.map((t) => <option key={t.entity_type} value={t.entity_type}>{t.label}</option>)}
+                  </select>
+                  <div className="flex-1">
+                    <EntitySearchInput
+                      entityType={linkEntityFilter}
+                      excludeIds={form.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id }))}
+                      onSelect={(sel) => {
+                        if (!form.links.some((l) => l.entity_type === sel.entity_type && l.entity_id === sel.entity_id)) {
+                          setForm({ ...form, links: [...form.links, sel] });
+                        }
+                      }}
+                      placeholder={`Search ${getEntityTypeLabel(linkEntityFilter).toLowerCase()}s...`}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={() => { setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); }} className="btn-secondary">Cancel</button>
               {editingNote && can("notes.create") && <button onClick={() => { createTemplateMutation.mutate(editingNote); }} className="btn-secondary text-sm" disabled={createTemplateMutation.isPending}>Save Template</button>}
@@ -938,7 +1026,7 @@ export default function Notes() {
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => { setTemplateEditTarget(t); setShowTemplateManager(false); setShowTemplateForm(true); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1">Edit</button>
                     <button onClick={() => {
-                      setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [] });
+                      setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [], links: [] });
                       setEditingNote(null);
                       setShowTemplateManager(false);
                       setShowForm(true);
@@ -970,6 +1058,15 @@ export default function Notes() {
         confirmLabel="Delete"
         onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
         onCancel={() => setConfirmDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        title="Delete Notes"
+        message={`Are you sure you want to delete ${selectedIds.size} note(s)? This action cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={() => { bulkDeleteMutation.mutate(Array.from(selectedIds)); setConfirmBulkDelete(false); }}
+        onCancel={() => setConfirmBulkDelete(false)}
       />
 
       {showTemplateForm && (

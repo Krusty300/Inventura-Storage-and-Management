@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -118,16 +118,27 @@ describe("Orders Page", () => {
     });
     renderWithProviders(<Orders />);
     fireEvent.click(await screen.findByRole("button", { name: "New Order" }));
+    const dialog = screen.getByRole("dialog");
     fireEvent.change(await screen.findByLabelText("Supplier"), { target: { value: "1" } });
-    expect(await screen.findByLabelText("Add Widget to order")).toBeInTheDocument();
-    expect(screen.getByLabelText("Add Gadget to order")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Add Selected Items" }));
-    expect(await screen.findByText("2 product(s) added from supplier")).toBeInTheDocument();
+    const getProductSelect = () =>
+      within(dialog)
+        .getAllByRole("combobox")
+        .find((c) => (c as HTMLSelectElement).getAttribute("aria-label") !== "Supplier") as HTMLSelectElement;
     await vi.waitFor(() => {
-      const selects = screen.getAllByRole("combobox");
-      expect(selects.some((el) => (el as HTMLSelectElement).value === "10")).toBe(true);
-      expect(selects.some((el) => (el as HTMLSelectElement).value === "11")).toBe(true);
+      const values = Array.from(getProductSelect().options).map((o) => o.value);
+      expect(values).toContain("10");
+      expect(values).toContain("11");
     });
+    fireEvent.change(getProductSelect(), { target: { value: "10" } });
+    expect(getProductSelect()).toHaveValue("10");
+    await vi.waitFor(() => expect((screen.getByPlaceholderText("Price") as HTMLInputElement).value).toBe("6"));
+    fireEvent.click(screen.getByRole("button", { name: "Create Order" }));
+    await vi.waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/orders", expect.objectContaining({
+        supplier_id: 1,
+        items: [{ product_id: 10, quantity: 1, unit_price: 6 }],
+      }))
+    );
   });
 
   it("blocks adding the same product twice to an order", async () => {

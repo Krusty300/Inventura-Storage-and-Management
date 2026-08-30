@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Pencil, Trash2, Search, BadgePercent } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -11,22 +11,30 @@ import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import { useSettings } from "../hooks/useSettings";
+import { usePageSize } from "../hooks/usePageSize";
+import { errorMessage } from "../utils/errors";
+import { formatCurrency } from "../utils/currency";
 
 export default function Promotions() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const { pageSize } = usePageSize();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Promotion | null>(null);
   const [deleting, setDeleting] = useState<Promotion | null>(null);
+  const [viewing, setViewing] = useState<Promotion | null>(null);
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const { can } = useAuth();
+  const { data: settings } = useSettings();
+  const currencySymbol = settings?.currency_symbol || "$";
   const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["promotions", debouncedSearch, page],
+    queryKey: ["promotions", debouncedSearch, page, pageSize],
     queryFn: async () => {
-      const params: Record<string, string> = { skip: ((page - 1) * 50).toString(), limit: "50" };
+      const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
       const { data } = await api.get("/promotions", { params });
       return data as PaginatedResponse<Promotion>;
@@ -36,7 +44,7 @@ export default function Promotions() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/promotions/${id}`),
     onSuccess: () => { addToast("Promotion deleted", "success"); queryClient.invalidateQueries({ queryKey: ["promotions"] }); },
-    onError: (err: any) => { addToast(err.response?.data?.detail || "Cannot delete", "error"); },
+    onError: (err: unknown) => { addToast(errorMessage(err, "Cannot delete"), "error"); },
   });
 
   const promotions = data?.items || [];
@@ -50,7 +58,7 @@ export default function Promotions() {
         )}
       </div>
 
-      {isError && <div className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load promotions: {(error as any)?.message}</div>}
+      {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load promotions")}</div>}
 
       <div className="relative max-w-md">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
@@ -79,7 +87,7 @@ export default function Promotions() {
               ) : promotions.length === 0 ? (
                 <EmptyState title="No promotions" message="Create your first promotion to offer discounts." actionLabel="Add Promotion" onAction={() => { setEditing(null); setShowForm(true); }} />
               ) : promotions.map((p) => (
-                <tr key={p.id} className="hover:bg-app">
+                <tr key={p.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(p)}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <BadgePercent size={16} className="text-indigo-500" />
@@ -88,10 +96,10 @@ export default function Promotions() {
                     {p.description && <p className="text-xs text-muted mt-0.5 max-w-[200px] truncate">{p.description}</p>}
                   </td>
                   <td className="px-4 py-3 font-medium">
-                    {p.discount_type === "percentage" ? `${p.value}%` : `$${p.value.toFixed(2)}`}
+                    {p.discount_type === "percentage" ? `${p.value}%` : formatCurrency(p.value, currencySymbol)}
                   </td>
                   <td className="px-4 py-3 text-muted">{p.min_qty || "\u2014"}</td>
-                  <td className="px-4 py-3 text-muted">{p.min_amount > 0 ? `$${p.min_amount.toFixed(2)}` : "\u2014"}</td>
+                  <td className="px-4 py-3 text-muted">{p.min_amount > 0 ? formatCurrency(p.min_amount, currencySymbol) : "\u2014"}</td>
                   <td className="px-4 py-3 text-muted">{p.valid_from || "\u2014"}</td>
                   <td className="px-4 py-3 text-muted">{p.valid_to || "\u2014"}</td>
                   <td className="px-4 py-3 text-muted">{p.max_uses > 0 ? `${p.used_count}/${p.max_uses}` : `${p.used_count}`}</td>
@@ -100,7 +108,7 @@ export default function Promotions() {
                       {p.is_active ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-2">
                       {can("promotions.update") && <button onClick={() => { setEditing(p); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${p.code}`}><Pencil size={16} /></button>}
                       {can("promotions.delete") && <button onClick={() => setDeleting(p)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${p.code}`}><Trash2 size={16} /></button>}
@@ -115,13 +123,14 @@ export default function Promotions() {
 
       {data && data.pages > 1 && <Pagination page={page} totalPages={data.pages} onPageChange={setPage} />}
 
-      {showForm && <PromotionForm promotion={editing} onClose={() => { setShowForm(false); setEditing(null); }} onSaved={() => { setShowForm(false); setEditing(null); queryClient.invalidateQueries({ queryKey: ["promotions"] }); }} />}
+      {showForm && <PromotionForm promotion={editing} currencySymbol={currencySymbol} onClose={() => { setShowForm(false); setEditing(null); }} onSaved={() => { setShowForm(false); setEditing(null); queryClient.invalidateQueries({ queryKey: ["promotions"] }); }} />}
       {deleting && <ConfirmDialog open title="Delete Promotion" message={`Delete "${deleting.code}"? This cannot be undone.`} onConfirm={() => { deleteMutation.mutate(deleting.id); setDeleting(null); }} onCancel={() => setDeleting(null)} />}
+      {viewing && <PromotionDetail promotion={viewing} currencySymbol={currencySymbol} onClose={() => setViewing(null)} onEdit={can("promotions.update") ? () => { setEditing(viewing); setShowForm(true); setViewing(null); } : undefined} />}
     </div>
   );
 }
 
-function PromotionForm({ promotion, onClose, onSaved }: { promotion: Promotion | null; onClose: () => void; onSaved: () => void }) {
+function PromotionForm({ promotion, currencySymbol, onClose, onSaved }: { promotion: Promotion | null; currencySymbol: string; onClose: () => void; onSaved: () => void }) {
   const [code, setCode] = useState(promotion?.code || "");
   const [description, setDescription] = useState(promotion?.description || "");
   const [discountType, setDiscountType] = useState(promotion?.discount_type || "percentage");
@@ -137,6 +146,10 @@ function PromotionForm({ promotion, onClose, onSaved }: { promotion: Promotion |
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (validFrom && validTo && validTo < validFrom) {
+      addToast("Valid To must be after Valid From", "error");
+      return;
+    }
     setSaving(true);
     try {
       const body = {
@@ -159,8 +172,8 @@ function PromotionForm({ promotion, onClose, onSaved }: { promotion: Promotion |
         addToast("Promotion created", "success");
       }
       onSaved();
-    } catch (err: any) {
-      addToast(err.response?.data?.detail || "Error saving promotion", "error");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error saving promotion"), "error");
     }
     setSaving(false);
   };
@@ -186,7 +199,7 @@ function PromotionForm({ promotion, onClose, onSaved }: { promotion: Promotion |
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input type="radio" name="discount_type" value="fixed" checked={discountType === "fixed"} onChange={() => setDiscountType("fixed")} className="border-border-strong" />
-              Fixed Amount ($)
+              Fixed Amount ({currencySymbol})
             </label>
           </div>
         </div>
@@ -194,7 +207,7 @@ function PromotionForm({ promotion, onClose, onSaved }: { promotion: Promotion |
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Value *</label>
-            <input type="number" step="0.01" min="0" className="input" value={value} onChange={(e) => setValue(e.target.value)} required />
+            <input type="number" step="0.01" min="0" max={discountType === "percentage" ? "100" : undefined} className="input" value={value} onChange={(e) => setValue(e.target.value)} required />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Max Uses (0 = unlimited)</label>
@@ -234,6 +247,60 @@ function PromotionForm({ promotion, onClose, onSaved }: { promotion: Promotion |
           <button type="submit" disabled={saving || !code.trim()} className="btn-primary">{saving ? "Saving..." : promotion ? "Update" : "Create"}</button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function PromotionDetail({ promotion, currencySymbol, onClose, onEdit }: { promotion: Promotion; currencySymbol: string; onClose: () => void; onEdit?: () => void }) {
+  return (
+    <Modal open onClose={onClose} title={promotion.code} wide>
+      <div className="space-y-5">
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${promotion.is_active ? "bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400" : "bg-gray-100 text-gray-500 dark:bg-gray-500/10 dark:text-gray-400"}`}>
+            {promotion.is_active ? "Active" : "Inactive"}
+          </span>
+        </div>
+
+        {promotion.description && <p className="text-sm text-muted">{promotion.description}</p>}
+
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-muted">Discount:</span>{" "}
+            <span className="font-medium text-ink">
+              {promotion.discount_type === "percentage" ? `${promotion.value}%` : formatCurrency(promotion.value, currencySymbol)}
+            </span>
+          </div>
+          <div>
+            <span className="text-muted">Type:</span>{" "}
+            <span className="text-ink">{promotion.discount_type === "percentage" ? "Percentage" : "Fixed Amount"}</span>
+          </div>
+          <div>
+            <span className="text-muted">Min Qty:</span>{" "}
+            <span className="text-ink">{promotion.min_qty > 0 ? promotion.min_qty : "\u2014"}</span>
+          </div>
+          <div>
+            <span className="text-muted">Min Amount:</span>{" "}
+            <span className="text-ink">{promotion.min_amount > 0 ? formatCurrency(promotion.min_amount, currencySymbol) : "\u2014"}</span>
+          </div>
+          <div>
+            <span className="text-muted">Valid From:</span>{" "}
+            <span className="text-ink">{promotion.valid_from || "\u2014"}</span>
+          </div>
+          <div>
+            <span className="text-muted">Valid To:</span>{" "}
+            <span className="text-ink">{promotion.valid_to || "\u2014"}</span>
+          </div>
+          <div>
+            <span className="text-muted">Uses:</span>{" "}
+            <span className="text-ink">{promotion.max_uses > 0 ? `${promotion.used_count} / ${promotion.max_uses}` : `${promotion.used_count} (unlimited)`}</span>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2 border-t border-border">
+          <button type="button" onClick={onClose} className="btn-secondary">Close</button>
+          {onEdit && <button type="button" onClick={onEdit} className="btn-primary">Edit</button>}
+        </div>
+      </div>
     </Modal>
   );
 }
