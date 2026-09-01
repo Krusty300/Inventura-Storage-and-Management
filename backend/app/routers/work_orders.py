@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.constants import MAX_PAGE_SIZE
+from app.constants import MAX_PAGE_SIZE, MAX_PAGE_SIZE_LOOKUP
 from app.database import get_db
 from app.models import BOM, BOMItem, Location, Lot, LotLink, Product, SerialNumber, StockMovement, WorkOrder, WorkOrderItem
 from app.models.settings import Settings
@@ -283,6 +283,37 @@ def list_work_orders(
     items = q.order_by(WorkOrder.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [WorkOrderOut.model_validate(w) for w in items], "total": total,
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.get("/kanban")
+def work_order_kanban(
+    search: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    """Full pipeline view for the work-order kanban board.
+
+    Returns **all** work orders (unbounded by ``MAX_PAGE_SIZE``) so the board can
+    render every status column at once, plus per-status counts for the column
+    badges. Callers that need strictly capped, pageable rows should use the
+    plain list endpoint instead.
+    """
+    q = db.query(WorkOrder).options(
+        joinedload(WorkOrder.items), joinedload(WorkOrder.product), joinedload(WorkOrder.creator)
+    )
+    if search:
+        like = f"%{search}%"
+        q = q.join(WorkOrder.product, isouter=True).filter(
+            WorkOrder.wo_number.ilike(like) | Product.name.ilike(like) | Product.sku.ilike(like)
+        )
+    items = q.order_by(WorkOrder.created_at.desc()).limit(MAX_PAGE_SIZE_LOOKUP).all()
+    by_status: dict[str, int] = {}
+    for w in items:
+        by_status[w.status] = by_status.get(w.status, 0) + 1
+    return {
+        "items": [WorkOrderOut.model_validate(w) for w in items],
+        "total": len(items),
+        "by_status": by_status,
+    }
 
 
 @router.get("/{wo_id}", response_model=WorkOrderOut)

@@ -104,16 +104,25 @@ def validate_location_ref(db: Session, location_id: Optional[int]) -> None:
         raise HTTPException(status_code=400, detail=f"Location {location_id} does not exist")
 
 
+def _normalize_path(text: str) -> str:
+    """Collapse runs of whitespace and lower-case a location path/code so
+    matching is robust to inconsistent spacing (e.g. "Zone   A" vs "Zone A")."""
+    return " ".join(text.split()).lower()
+
+
 def resolve_location(db: Session, location_id: Optional[int], location_text: Optional[str]) -> Optional[int]:
     """Resolve the effective location id for a product: prefer an explicit id,
-    otherwise match the free-text location field against a location path."""
+    otherwise match the free-text location field against a location path
+    (case-insensitive, whitespace-normalized). Returns None when nothing matches,
+    so callers can fall back or surface a helpful error."""
     if location_id is not None:
         return location_id
     text = (location_text or "").strip()
     if not text:
         return None
+    norm = _normalize_path(text)
     for loc in db.query(Location).all():
-        if loc.path.lower() == text.lower():
+        if _normalize_path(loc.path) == norm:
             return loc.id
     return None
 
@@ -203,8 +212,8 @@ def list_products(
                 V.parent_id == Product.id, V.is_active == True
             )
             has_variants = exists().where(V.parent_id == Product.id, V.is_active == True)
-            total = case((has_variants, variant_sum), else_=Product.quantity)
-            q = q.order_by(total.asc() if sort_dir == "asc" else total.desc())
+            qty_sort_col = case((has_variants, variant_sum), else_=Product.quantity)
+            q = q.order_by(qty_sort_col.asc() if sort_dir == "asc" else qty_sort_col.desc())
         else:
             col = getattr(Product, sort_by, Product.name)
             q = q.order_by(col.asc() if sort_dir == "asc" else col.desc())
@@ -282,8 +291,19 @@ def barcode_labels(ids: str = "", db: Session = Depends(get_db)):
     q = db.query(Product).filter(Product.is_active == True)
     if ids:
         id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
-        q = q.filter(Product.id.in_(id_list))
+        if id_list:
+            # Selecting a parent product also prints labels for its active variants,
+            # matching the "print all" behavior which already includes variants.
+            selected = db.query(Product).filter(Product.id.in_(id_list)).all()
+            ids_to_print = set(id_list)
+            for p in selected:
+                if p.variants:
+                    ids_to_print.update(v.id for v in p.variants if v.is_active)
+            q = q.filter(Product.id.in_(ids_to_print))
     products = q.order_by(Product.name).all()
+
+    s = db.query(Settings).first()
+    currency = (s.currency_symbol if s else "$") or "$"
 
     MARGIN_X, MARGIN_Y = 0.5 * inch, 0.5 * inch
     COLS, ROWS = 3, 8
@@ -313,7 +333,7 @@ def barcode_labels(ids: str = "", db: Session = Depends(get_db)):
 
         name = (p.display_name[:30] + "\u2026") if len(p.display_name) > 30 else p.display_name
         sku = p.sku or ""
-        price = f"${p.unit_price:.2f}" if p.unit_price else ""
+        price = f"{currency}{p.unit_price:.2f}" if p.unit_price else ""
         line_y = y + row_height - 12
         c.setFont(BOLD, 8)
         c.setFillColor(INK)

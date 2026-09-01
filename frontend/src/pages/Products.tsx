@@ -37,7 +37,7 @@ interface DisplayRow {
 export default function Products() {
   const formatDate = useDateFormat();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [expiryFilter, setExpiryFilter] = useState("");
   const [lowStock, setLowStock] = useState(searchParams.get("low_stock") === "1");
@@ -226,7 +226,10 @@ export default function Products() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Products</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Products</h1>
+          <p className="text-sm text-muted mt-1">Manage the items you stock, sell, and manufacture.</p>
+        </div>
         <div className="flex gap-2">
           <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import products from CSV">
             Import

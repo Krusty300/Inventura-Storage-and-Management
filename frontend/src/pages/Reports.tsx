@@ -42,7 +42,10 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-2xl font-bold text-ink">Reports & Analytics</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Reports & Analytics</h1>
+          <p className="text-sm text-muted mt-1">Sales, inventory, and valuation insights at a glance.</p>
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={() => exportCsv("/reports/export/sales", "sales_report.csv")} className="btn-secondary text-sm py-1.5" aria-label="Export sales CSV">
             Export Sales

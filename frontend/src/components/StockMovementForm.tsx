@@ -84,62 +84,68 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
 
   return (
     <Modal open onClose={onClose} title={isEdit ? "Edit Stock Movement" : "Record Stock Movement"}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Product *</label>
-          {!isEdit && <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />}
-          <select className={!isEdit ? "select mt-2" : "select"} value={productId} onChange={(e) => { setProductId(e.target.value); setLocationId(""); }} required>
-            <option value="">Select product</option>
-            {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Movement Type</label>
-          <select className="select" value={movementType} onChange={(e) => setMovementType(e.target.value)}>
-            <option value="in">Stock In</option>
-            <option value="out">Stock Out</option>
-            <option value="adjustment">Adjustment</option>
-            <option value="return">Return</option>
-          </select>
-        </div>
-        {showLocation && (
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Location *</label>
-            <select className="select" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-              <option value="">Default (product location)</option>
-              {locationOptions.map((l) => {
-                const count = stockCountByLoc.get(l.id);
-                return <option key={l.id} value={l.id}>{l.path}{count !== undefined ? ` (${count})` : ""}</option>;
-              })}
+            <label className="block text-sm font-medium text-ink mb-1">Product *</label>
+            {!isEdit && <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />}
+            <select className={!isEdit ? "select mt-2" : "select"} value={productId} onChange={(e) => { setProductId(e.target.value); setLocationId(""); }} required>
+              <option value="">Select product</option>
+              {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
             </select>
-            <p className="text-xs text-faint mt-1">
-              {movementType === "out"
-                ? "Stock will be removed from this location."
-                : "Stock will be added to this location."}
-            </p>
           </div>
-        )}
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
-          <input
-            type="number"
-            className="input"
-            value={quantityChange}
-            onChange={(e) => setQuantityChange(e.target.value)}
-            min={movementType === "adjustment" ? undefined : "1"}
-            required
-          />
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Movement Type</label>
+            <select className="select" value={movementType} onChange={(e) => setMovementType(e.target.value)}>
+              <option value="in">Stock In</option>
+              <option value="out">Stock Out</option>
+              <option value="adjustment">Adjustment</option>
+              <option value="return">Return</option>
+            </select>
+          </div>
+          {showLocation && (
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Location *</label>
+              <select className="select" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
+                <option value="">Default (product location)</option>
+                {locationOptions.map((l) => {
+                  const count = stockCountByLoc.get(l.id);
+                  return <option key={l.id} value={l.id}>{l.path}{count !== undefined ? ` (${count})` : ""}</option>;
+                })}
+              </select>
+              <p className="text-xs text-faint mt-1">
+                {movementType === "out"
+                  ? "Stock will be removed from this location."
+                  : "Stock will be added to this location."}
+              </p>
+            </div>
+          )}
         </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Reference (e.g. PO#)</label>
-          <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
-          <p className="text-xs text-faint mt-1">Leave blank to auto-generate a reference.</p>
+
+        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
+            <input
+              type="number"
+              className="input"
+              value={quantityChange}
+              onChange={(e) => setQuantityChange(e.target.value)}
+              min={movementType === "adjustment" ? undefined : "1"}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Reference (e.g. PO#)</label>
+            <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
+            <p className="text-xs text-faint mt-1">Leave blank to auto-generate a reference.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
+            <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </div>
-        <div className="flex justify-end gap-3 pt-2">
+
+        <div className="flex justify-end gap-3 pt-2 border-t border-border">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving} className="btn-primary">
             {saving ? "Saving..." : (isEdit ? "Update Movement" : "Record")}

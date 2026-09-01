@@ -25,6 +25,7 @@ from app.models.user import User
 from app.models.work_order import WorkOrder
 from app.schemas.user import LoginRequest, ProfileUpdate, SessionOut, Token, UserCreate, UserOut
 from app.services.auth import create_access_token, get_current_user, hash_password, security, verify_password
+from app.services.auth import purge_expired_sessions
 from app.services.password_policy import validate_password
 from app.services import ratelimit
 from app.utils import log_activity, broadcast_change
@@ -83,6 +84,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user.last_login_at = datetime.now(timezone.utc)
     jti = _create_session(db, user, request)
     db.commit()
+    purge_expired_sessions(db)
+    db.commit()
     db.refresh(user)
     log.info("login ok: user=%s ip=%s", req.username, ip)
     token = create_access_token(
@@ -109,6 +112,9 @@ def verify_credentials(req: LoginRequest, request: Request, db: Session = Depend
 
 @router.post("/register", response_model=Token)
 def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
+    register_limited = ratelimit.register_rate_limited(_client_ip(request))
+    if register_limited:
+        raise HTTPException(status_code=429, detail=register_limited)
     password_error = validate_password(req.password)
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)

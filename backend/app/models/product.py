@@ -43,7 +43,7 @@ class Product(Base):
     lots = relationship("Lot", back_populates="product")
     serial_numbers = relationship("SerialNumber", back_populates="product")
     variant_of = relationship("Product", remote_side=[id], back_populates="variants")
-    variants = relationship("Product", back_populates="variant_of", cascade="all", order_by="Product.id")
+    variants = relationship("Product", back_populates="variant_of", cascade="all", order_by="Product.sku")
     boms = relationship("BOM", back_populates="product")
     images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan", order_by="ProductImage.sort_order")
 

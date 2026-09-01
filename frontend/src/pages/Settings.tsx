@@ -150,6 +150,7 @@ export default function Settings() {
   if (loading) return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-ink">System Settings</h1>
+      <p className="text-sm text-muted -mt-3">Configure your business, currency, and defaults.</p>
       <div className="card p-6 space-y-4">
         <Skeleton variant="rows" rows={6} cols={2} />
       </div>
@@ -159,6 +160,7 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-ink">System Settings</h1>
+      <p className="text-sm text-muted -mt-3">Configure your business, currency, and defaults.</p>
 
       {readOnly && (
         <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2">

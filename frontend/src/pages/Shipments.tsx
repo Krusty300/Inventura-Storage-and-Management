@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useRef, useState } from "react";
-import { Eye, Pencil, Trash2, XCircle, Search, Fingerprint } from "lucide-react";
+import { Eye, Pencil, Trash2, XCircle, Search, Fingerprint, PackagePlus, FolderOpen, PackageOpen, PackageCheck, CheckCircle2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
@@ -73,20 +73,23 @@ export default function Shipments() {
 
   const statCards = stats
     ? [
-        { label: "Open", value: stats.open, color: "text-indigo-600 dark:text-indigo-400" },
-        { label: "Picking", value: stats.counts.picking ?? 0, color: "text-amber-600 dark:text-amber-400" },
-        { label: "Packed", value: stats.counts.packed ?? 0, color: "text-sky-600" },
-        { label: "Shipped", value: stats.counts.shipped ?? 0, color: "text-green-600 dark:text-green-400" },
+        { label: "Open", value: stats.open, icon: <FolderOpen size={18} />, theme: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300" },
+        { label: "Picking", value: stats.counts.picking ?? 0, icon: <PackageOpen size={18} />, theme: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300" },
+        { label: "Packed", value: stats.counts.packed ?? 0, icon: <PackageCheck size={18} />, theme: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300" },
+        { label: "Shipped", value: stats.counts.shipped ?? 0, icon: <CheckCircle2 size={18} />, theme: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300" },
       ]
     : [];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-2xl font-bold text-ink">Shipments</h1>
+      <div className="flex items-end justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Shipments</h1>
+          <p className="text-sm text-muted mt-1">Outbound orders moving through the pick, pack, and ship workflow.</p>
+        </div>
         {can("shipments.create") && (
-          <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-2">
-            New Shipment
+          <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-1">
+            <PackagePlus size={16} /> New Shipment
           </button>
         )}
       </div>
@@ -113,11 +116,14 @@ export default function Shipments() {
       </div>
 
       {statCards.length > 0 && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
           {statCards.map((c) => (
-            <div key={c.label} className="card">
-              <p className="text-sm text-muted">{c.label}</p>
-              <p className={`text-2xl font-bold mt-1 ${c.color}`}>{c.value}</p>
+            <div key={c.label} className="card flex items-center gap-3 py-4 min-w-0">
+              <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${c.theme}`}>{c.icon}</span>
+              <div className="min-w-0">
+                <p className="text-[13px] text-muted truncate">{c.label}</p>
+                <p className="text-xl font-bold text-ink truncate">{c.value}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -132,7 +138,7 @@ export default function Shipments() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-app text-left">
+                <tr className="bg-subtle text-left">
                   <th scope="col" className="px-4 py-3 font-medium text-muted">Shipment</th>
                   <th scope="col" className="px-4 py-3 font-medium text-muted">Customer</th>
                   <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
@@ -483,32 +489,34 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
   return (
     <SlideOver open onClose={onClose} title={current.shipment_number} wide ariaLabel="Shipment details">
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-4 text-sm">
-          <div><p className="text-muted">Status</p><p className="font-medium"><span className={`badge ${statusBadge(current.status)}`}>{current.status.replace("_", " ")}</span></p></div>
-          <div><p className="text-muted">Customer</p><p className="font-medium">{current.customer_name || "—"}</p></div>
-          <div>
-            <p className="text-muted">Carrier</p>
-            <p className="font-medium">
-              {current.carrier ? <span className="badge badge-info">{current.carrier}</span> : <span className="text-muted">—</span>}
-            </p>
+        <div className="rounded-xl border border-border bg-app p-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div><p className="text-xs text-muted">Status</p><p className="font-medium mt-0.5"><span className={`badge ${statusBadge(current.status)}`}>{current.status.replace("_", " ")}</span></p></div>
+            <div><p className="text-xs text-muted">Customer</p><p className="font-medium mt-0.5 truncate">{current.customer_name || "—"}</p></div>
+            <div>
+              <p className="text-xs text-muted">Carrier</p>
+              <p className="font-medium mt-0.5">
+                {current.carrier ? <span className="badge badge-info">{current.carrier}</span> : <span className="text-muted">—</span>}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Tracking</p>
+              <p className="font-medium mt-0.5">
+                {current.tracking_number ? <span className="badge bg-subtle text-ink border border-border font-mono">{current.tracking_number}</span> : <span className="text-muted">—</span>}
+              </p>
+            </div>
+            <div><p className="text-xs text-muted">Invoice</p><p className="font-medium mt-0.5">{current.invoice_number || "—"}</p></div>
+            <div><p className="text-xs text-muted">Payment</p><p className="font-medium mt-0.5">{paymentLabel(current.payment_method, current.payment_provider) || "—"}</p></div>
+            <div><p className="text-xs text-muted">Amount</p><p className="font-medium mt-0.5">{current.total_amount ? formatCurrency(current.total_amount, currencySymbol) : "—"}</p></div>
+            <div><p className="text-xs text-muted">Created By</p><p className="font-medium mt-0.5">{current.username}</p></div>
+            <div><p className="text-xs text-muted">Created</p><p className="font-medium mt-0.5">{formatDate(current.created_at)}</p></div>
           </div>
-          <div>
-            <p className="text-muted">Tracking</p>
-            <p className="font-medium">
-              {current.tracking_number ? <span className="badge bg-subtle text-ink border border-border font-mono">{current.tracking_number}</span> : <span className="text-muted">—</span>}
-            </p>
-          </div>
-          <div><p className="text-muted">Invoice</p><p className="font-medium">{current.invoice_number || "—"}</p></div>
-          <div><p className="text-muted">Payment</p><p className="font-medium">{paymentLabel(current.payment_method, current.payment_provider) || "—"}</p></div>
-          <div><p className="text-muted">Amount</p><p className="font-medium">{current.total_amount ? formatCurrency(current.total_amount, currencySymbol) : "—"}</p></div>
-          <div><p className="text-muted">Created By</p><p className="font-medium">{current.username}</p></div>
-          <div><p className="text-muted">Created</p><p className="font-medium">{formatDate(current.created_at)}</p></div>
         </div>
 
         <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-app text-left">
+              <tr className="bg-subtle text-left">
                 <th className="px-4 py-2 font-medium text-muted">Product</th>
                 <th className="px-4 py-2 font-medium text-muted">Source</th>
                 <th className="px-4 py-2 font-medium text-muted">Ordered</th>

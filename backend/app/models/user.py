@@ -27,3 +27,4 @@ class User(Base):
     orders = relationship("Order", back_populates="user")
     sales = relationship("Sale", back_populates="user")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    attachments = relationship("Attachment", foreign_keys="Attachment.uploaded_by", back_populates="uploader")

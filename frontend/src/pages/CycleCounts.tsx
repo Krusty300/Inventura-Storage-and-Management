@@ -60,11 +60,14 @@ export default function CycleCounts() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Cycle Counts</h1>
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Cycle Counts</h1>
+          <p className="text-sm text-muted mt-1">Verify on-hand stock against the system and reconcile any variances.</p>
+        </div>
         {can("cycle_counts.create") && (
-          <button onClick={() => setShowForm(true)} className="btn-primary">
-            New Count
+          <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-1">
+            <Plus size={16} /> New Count
           </button>
         )}
       </div>
@@ -80,7 +83,7 @@ export default function CycleCounts() {
         <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Cycle counts table">
           <thead>
-            <tr className="bg-app text-left">
+            <tr className="bg-subtle text-left">
               <th scope="col" className="px-4 py-3 font-medium text-muted">Count #</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
@@ -227,31 +230,33 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 
   return (
     <Modal open onClose={onClose} title="New Cycle Count" wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="cc-location">Location</label>
-            <select id="cc-location" className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)} required>
-              <option value="">Select location...</option>
-              {locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-            <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="rounded-xl border border-border bg-app p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1" htmlFor="cc-location">Location</label>
+              <select id="cc-location" className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)} required>
+                <option value="">Select location...</option>
+                {locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Notes</label>
+              <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes" />
+            </div>
           </div>
         </div>
 
-        <div className="border border-border rounded-lg overflow-hidden">
-          <div className="bg-app px-4 py-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-ink">Items to Count</span>
-            <button type="button" onClick={() => setRows([...rows, { product_id: "" }])} className="btn-secondary text-xs py-1 px-2">
-              <Plus size={14} className="inline mr-1" />Add Item
+        <div className="rounded-xl border border-border bg-app overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-subtle">
+            <span className="text-sm font-medium text-ink flex items-center gap-1.5"><ClipboardCheck size={15} className="text-indigo-500" />Items to Count</span>
+            <button type="button" onClick={() => setRows([...rows, { product_id: "" }])} className="btn-secondary text-xs py-1.5 px-2 inline-flex items-center gap-1">
+              <Plus size={14} />Add Item
             </button>
           </div>
           <div className="divide-y divide-border max-h-[40vh] overflow-auto">
             {rows.map((row, idx) => (
-              <div key={idx} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
+              <div key={idx} className="px-4 py-3 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
                 <div className="sm:col-span-7">
                   <label className="block text-xs font-medium text-muted mb-1" htmlFor={`cc-product-${idx}`}>Product</label>
                   <select id={`cc-product-${idx}`} className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
@@ -274,9 +279,9 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
             ))}
           </div>
         </div>
-        <p className="text-xs text-muted">Expected quantity is read from system stock at the selected location. Count the actual on-hand and record only the counted quantity.</p>
+        <p className="text-xs text-muted px-1">Expected quantity is read from system stock at the selected location. Count the actual on-hand and record only the counted quantity.</p>
 
-        <div className="flex justify-end gap-3 pt-4">
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving || !location_id} className="btn-primary">{saving ? "Creating..." : "Create Count"}</button>
         </div>
@@ -292,24 +297,26 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
   return (
     <Modal open onClose={onClose} title={`Cycle Count ${count.cc_number}`} xwide>
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <p className="text-muted">Location</p>
-            <p className="font-medium">{count.location_name || "All locations"}</p>
-          </div>
-          <div>
-            <p className="text-muted">Status</p>
-            <p className="font-medium"><span className={`badge ${statusBadge(count.status)}`}>{count.status.replace("_", " ")}</span></p>
-          </div>
-          <div>
-            <p className="text-muted">Completed</p>
-            <p className="font-medium">{count.completed_at ? formatDate(count.completed_at) : "—"}</p>
+        <div className="rounded-xl border border-border bg-app p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <p className="text-xs text-muted">Location</p>
+              <p className="font-medium mt-0.5 truncate">{count.location_name || "All locations"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Status</p>
+              <p className="font-medium mt-0.5"><span className={`badge ${statusBadge(count.status)}`}>{count.status.replace("_", " ")}</span></p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Completed</p>
+              <p className="font-medium mt-0.5">{count.completed_at ? formatDate(count.completed_at) : "—"}</p>
+            </div>
           </div>
         </div>
         <div className="border border-border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-app text-left">
+              <tr className="bg-subtle text-left">
                 <th className="px-3 py-2 font-medium text-muted">Product</th>
                 <th className="px-3 py-2 font-medium text-muted text-right">Expected</th>
                 <th className="px-3 py-2 font-medium text-muted text-right">Counted</th>
@@ -442,7 +449,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
           <div className="border border-border rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-app text-left">
+                <tr className="bg-subtle text-left">
                   <th className="px-4 py-2 font-medium text-muted">Product</th>
                   <th className="px-4 py-2 font-medium text-muted">Expected</th>
                   <th className="px-4 py-2 font-medium text-muted">Counted</th>
@@ -493,20 +500,21 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
               </p>
             </div>
           )}
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-ink">Counted Quantities</p>
-            <button type="button" onClick={fillFromOnHand} disabled={onHandLoading} className="btn-secondary text-xs py-1 px-2">
-              Set all = on-hand
-            </button>
-          </div>
-          <div className="divide-y divide-border border border-border rounded-lg max-h-[50vh] overflow-auto">
+          <div className="rounded-xl border border-border bg-app overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-subtle">
+              <span className="text-sm font-medium text-ink flex items-center gap-1.5"><ClipboardCheck size={15} className="text-indigo-500" />Counted Quantities</span>
+              <button type="button" onClick={fillFromOnHand} disabled={onHandLoading} className="btn-secondary text-xs py-1.5 px-2">
+                Set all = on-hand
+              </button>
+            </div>
+            <div className="divide-y divide-border max-h-[50vh] overflow-auto">
             {count.items.map((item, idx) => {
               const row = rows[idx];
               const variance = (parseInt(row?.counted_qty) || 0) - item.expected_qty;
               const now = onHandNow[item.product_id];
               const onHandChanged = now != null && now !== item.expected_qty;
               return (
-                <div key={item.id} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-center">
+                <div key={item.id} className="px-4 py-3 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-center">
                   <div className="sm:col-span-5">
                     <p className="text-sm font-medium">{item.product_name}</p>
                   </div>
@@ -538,6 +546,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
                 </div>
               );
             })}
+            </div>
           </div>
           <p className="text-xs text-muted">Variance is posted to inventory as a COUNT adjustment when submitted.</p>
           <div className="flex justify-end gap-3 pt-4">

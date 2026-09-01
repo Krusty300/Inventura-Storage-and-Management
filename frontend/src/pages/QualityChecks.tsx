@@ -75,7 +75,10 @@ export default function QualityChecks() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Quality Checks</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Quality Checks</h1>
+          <p className="text-sm text-muted mt-1">Inspect and approve incoming and outgoing lots.</p>
+        </div>
         {can("quality_checks.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
             New Check

@@ -91,22 +91,22 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
 
         <div>
           <h3 className="font-semibold text-ink mb-2">Statistics</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-app rounded-lg p-4">
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
+            <div className="bg-app rounded-lg p-4 min-w-0">
               <p className="text-muted text-xs">Orders</p>
-              <p className="font-semibold text-xl mt-1">{s?.total_orders ?? supplier.total_orders ?? 0}</p>
+              <p className="font-semibold text-xl mt-1 truncate" title={String(s?.total_orders ?? supplier.total_orders ?? 0)}>{s?.total_orders ?? supplier.total_orders ?? 0}</p>
             </div>
-            <div className="bg-app rounded-lg p-4">
+            <div className="bg-app rounded-lg p-4 min-w-0">
               <p className="text-muted text-xs">Total Spent</p>
-              <p className="font-semibold text-xl mt-1">{formatCurrency(s?.total_spent ?? supplier.total_spent ?? 0, currencySymbol)}</p>
+              <p className="font-semibold text-xl mt-1 truncate" title={formatCurrency(s?.total_spent ?? supplier.total_spent ?? 0, currencySymbol)}>{formatCurrency(s?.total_spent ?? supplier.total_spent ?? 0, currencySymbol)}</p>
             </div>
-            <div className="bg-app rounded-lg p-4">
+            <div className="bg-app rounded-lg p-4 min-w-0">
               <p className="text-muted text-xs">Avg Order</p>
-              <p className="font-semibold text-xl mt-1">{formatCurrency(s?.avg_order_value ?? supplier.avg_order_value ?? 0, currencySymbol)}</p>
+              <p className="font-semibold text-xl mt-1 truncate" title={formatCurrency(s?.avg_order_value ?? supplier.avg_order_value ?? 0, currencySymbol)}>{formatCurrency(s?.avg_order_value ?? supplier.avg_order_value ?? 0, currencySymbol)}</p>
             </div>
-            <div className="bg-app rounded-lg p-4">
+            <div className="bg-app rounded-lg p-4 min-w-0">
               <p className="text-muted text-xs">Products</p>
-              <p className="font-semibold text-xl mt-1">{s?.product_count ?? supplier.product_count ?? 0}</p>
+              <p className="font-semibold text-xl mt-1 truncate" title={String(s?.product_count ?? supplier.product_count ?? 0)}>{s?.product_count ?? supplier.product_count ?? 0}</p>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Eye, Search } from "lucide-react";
+import { Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Eye, Search, Download, ArrowRightLeft, PackagePlus } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, StockMovement } from "../types";
@@ -78,19 +78,22 @@ export default function StockMovements() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Stock Movements</h1>
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Stock Movements</h1>
+          <p className="text-sm text-muted mt-1">Every change to inventory — moves, adjustments, and transfers in one timeline.</p>
+        </div>
         <div className="flex gap-2">
-          <button onClick={handleExport} className="btn-secondary" aria-label="Export movements to CSV">
-            Export
+          <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export movements to CSV">
+            <Download size={16} /> Download CSV
           </button>
           {can("stock.record") && (
             <>
-              <button onClick={() => setShowTransfer(true)} className="btn-secondary">
-                Transfer
+              <button onClick={() => setShowTransfer(true)} className="btn-secondary inline-flex items-center gap-1">
+                <ArrowRightLeft size={16} /> Transfer
               </button>
-              <button onClick={() => setShowForm(true)} className="btn-primary">
-                Record Movement
+              <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-1">
+                <PackagePlus size={16} /> Record Movement
               </button>
             </>
           )}
@@ -105,7 +108,7 @@ export default function StockMovements() {
           <input className="input pl-10" placeholder="Search by product, reference, or notes..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search stock movements" />
         </div>
         <select
-          className="input w-auto"
+          className="select w-44"
           value={movementType}
           onChange={(e) => { setMovementType(e.target.value); setPage(1); }}
           aria-label="Filter by movement type"
@@ -121,7 +124,7 @@ export default function StockMovements() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm" role="grid" aria-label="Stock movements table">
           <thead>
-            <tr className="bg-app text-left">
+            <tr className="bg-subtle text-left">
               <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>

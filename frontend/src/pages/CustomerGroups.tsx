@@ -56,7 +56,10 @@ export default function CustomerGroups() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Customer Groups</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Customer Groups</h1>
+          <p className="text-sm text-muted mt-1">Group customers together to apply shared pricing and discounts.</p>
+        </div>
         {can("customer_groups.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
             Add Group

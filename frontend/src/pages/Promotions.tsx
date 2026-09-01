@@ -52,7 +52,10 @@ export default function Promotions() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Promotions</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Promotions</h1>
+          <p className="text-sm text-muted mt-1">Create discount codes and promotional offers.</p>
+        </div>
         {can("promotions.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">Add Promotion</button>
         )}

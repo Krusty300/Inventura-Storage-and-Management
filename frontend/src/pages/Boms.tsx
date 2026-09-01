@@ -68,7 +68,10 @@ export default function Boms() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Bills of Materials</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Bills of Materials</h1>
+          <p className="text-sm text-muted mt-1">Define how products are built from their component parts.</p>
+        </div>
         {can("bom.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
             New BOM

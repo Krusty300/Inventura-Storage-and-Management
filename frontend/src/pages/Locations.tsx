@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronRight, ChevronDown, MapPin, Pencil, Trash2, Package, Eye, FolderOpen, Folder, FileText, Search } from "lucide-react";
+import { ChevronRight, ChevronDown, MapPin, Pencil, Trash2, Package, Eye, FolderOpen, Folder, FileText, Search, CheckCircle2, CircleOff, Layers, Boxes, Fingerprint, DollarSign, FolderTree } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, LOCATION_TYPES, LOCATION_TYPE_LABELS } from "../utils/constants";
@@ -177,7 +177,7 @@ export default function Locations() {
     return (
       <div key={node.id}>
         <div
-          className="flex items-center gap-2 px-3 py-2 hover:bg-app border-b border-border"
+          className="group flex items-center gap-2 px-3 py-2.5 hover:bg-app border-b border-border"
           style={{ paddingLeft: `${depth * 24 + 12}px` }}
           role="treeitem"
           aria-expanded={hasChildren ? isOpen : undefined}
@@ -192,17 +192,17 @@ export default function Locations() {
             {hasChildren ? (isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />) : <span className="inline-block w-4" />}
           </button>
           <MapPin size={16} className={node.is_active ? "text-indigo-500" : "text-faint"} />
-          <span className="font-medium text-ink">{node.path}</span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full capitalize ${TYPE_BADGE[node.location_type] ?? "badge-neutral"}`}>{LOCATION_TYPE_LABELS[node.location_type]}</span>
-          {!node.is_active && <span className="badge badge-neutral">Inactive</span>}
-          <span className="ml-auto flex items-center gap-3 text-xs text-muted" aria-label={`${node.path} stats`}>
-            <span className="flex items-center gap-1"><Package size={12} />{node.stock_line_count} lines</span>
-            <span>{node.total_quantity} units</span>
-            <span>{formatCurrency(node.stock_value, currencySymbol)}</span>
-            <span>{node.lpn_count} LPNs</span>
-            <span>{node.lot_count} lots</span>
+          <span className="font-medium text-ink truncate">{node.path}</span>
+          <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full capitalize ${TYPE_BADGE[node.location_type] ?? "badge-neutral"}`}>{LOCATION_TYPE_LABELS[node.location_type]}</span>
+          {!node.is_active && <span className="badge badge-neutral shrink-0">Inactive</span>}
+          <span className="ml-auto hidden md:flex items-center gap-3 text-xs text-muted shrink-0" aria-label={`${node.path} stats`}>
+            <span className="flex items-center gap-1 whitespace-nowrap"><Package size={12} />{node.stock_line_count} lines</span>
+            <span className="whitespace-nowrap">{node.total_quantity} units</span>
+            <span className="whitespace-nowrap">{formatCurrency(node.stock_value, currencySymbol)}</span>
+            <span className="whitespace-nowrap">{node.lpn_count} LPNs</span>
+            <span className="whitespace-nowrap">{node.lot_count} lots</span>
           </span>
-          <div className="flex gap-1">
+          <div className="ml-auto md:ml-0 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
             <button onClick={() => printLabel(node.id)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print label ${node.path}`}>
               <FileText size={14} />
             </button>
@@ -227,39 +227,45 @@ export default function Locations() {
   };
 
   const summaryCards = [
-    { label: "Total Locations", value: summary?.total ?? 0 },
-    { label: "Active", value: summary?.active ?? 0 },
-    { label: "Inactive", value: summary?.inactive ?? 0 },
-    { label: "Stock Lines", value: summary?.total_stock_lines ?? 0 },
-    { label: "LPNs", value: summary?.total_lpns ?? 0 },
-    { label: "Lots", value: summary?.total_lots ?? 0 },
-    { label: "Serialized Units", value: summary?.total_serials ?? 0 },
-    { label: "Stock Value", value: formatCurrency(summary?.total_value ?? 0, currencySymbol, 0) },
+    { label: "Total Locations", value: summary?.total ?? 0, icon: <MapPin size={18} />, theme: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300" },
+    { label: "Active", value: summary?.active ?? 0, icon: <CheckCircle2 size={18} />, theme: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300" },
+    { label: "Inactive", value: summary?.inactive ?? 0, icon: <CircleOff size={18} />, theme: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300" },
+    { label: "Stock Lines", value: summary?.total_stock_lines ?? 0, icon: <Layers size={18} />, theme: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300" },
+    { label: "LPNs", value: summary?.total_lpns ?? 0, icon: <Package size={18} />, theme: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300" },
+    { label: "Lots", value: summary?.total_lots ?? 0, icon: <Boxes size={18} />, theme: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300" },
+    { label: "Serialized Units", value: summary?.total_serials ?? 0, icon: <Fingerprint size={18} />, theme: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-300" },
+    { label: "Stock Value", value: formatCurrency(summary?.total_value ?? 0, currencySymbol, 0), icon: <DollarSign size={18} />, theme: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300" },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Locations</h1>
-        <div className="flex gap-2">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink">Locations</h1>
+          <p className="text-sm text-muted mt-1">Organize your warehouse into zones, aisles, shelves, and bins.</p>
+        </div>
+        <div className="flex gap-2 shrink-0">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export locations to CSV">
-            Export
+            Download CSV
           </button>
           {can("locations.create") && (
-            <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
-              Add Location
+            <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary inline-flex items-center gap-1">
+              <Package size={16} /> Add Location
             </button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
         {summaryLoading
           ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} variant="card" rows={1} />)
           : summaryCards.map((card) => (
-            <div key={card.label} className="card">
-              <p className="text-sm text-muted">{card.label}</p>
-              <p className="text-2xl font-bold mt-1">{card.value}</p>
+            <div key={card.label} className="card flex items-center gap-3 py-4 min-w-0 hover:shadow-md hover:-translate-y-px transition-[box-shadow,transform]">
+              <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${card.theme}`}>{card.icon}</span>
+              <div className="min-w-0">
+                <p className="text-[13px] text-muted truncate">{card.label}</p>
+                <p className="text-xl font-bold text-ink truncate">{card.value}</p>
+              </div>
             </div>
           ))}
       </div>
@@ -298,7 +304,11 @@ export default function Locations() {
       ) : (
         <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">
-            <div className="px-4 py-3 bg-app border-b text-sm text-muted">Warehouse tree</div>
+            <div className="flex items-center gap-2 px-4 py-3 bg-app border-b text-sm text-muted">
+              <FolderTree size={16} className="text-indigo-500" />
+              <span className="font-medium text-ink">Warehouse tree</span>
+              <span className="text-xs text-faint">— {visibleTree.length} top-level {visibleTree.length === 1 ? "location" : "locations"}</span>
+            </div>
             <div role="tree" aria-label="Warehouse location tree">
               {visibleTree.map((node) => renderNode(node, 0, isSearching))}
             </div>
@@ -387,44 +397,48 @@ function LocationFormModal({ location, locations, onClose, onSaved }: {
 
   return (
     <Modal open onClose={onClose} title={location ? "Edit Location" : "Add Location"}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Name *</label>
-          <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Aisle A, Bin A-01" required />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Code</label>
-            <input className="input" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. A-01" />
+            <label className="block text-sm font-medium text-ink mb-1">Name *</label>
+            <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Aisle A, Bin A-01" required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Code</label>
+              <input className="input" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. A-01" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Type</label>
+              <select className="select" value={form.location_type} onChange={(e) => setForm({ ...form, location_type: e.target.value as LocationType })}>
+                {LOCATION_TYPES.map((t) => (
+                  <option key={t} value={t}>{LOCATION_TYPE_LABELS[t]}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Type</label>
-            <select className="select" value={form.location_type} onChange={(e) => setForm({ ...form, location_type: e.target.value as LocationType })}>
-              {LOCATION_TYPES.map((t) => (
-                <option key={t} value={t}>{LOCATION_TYPE_LABELS[t]}</option>
-              ))}
+            <label className="block text-sm font-medium text-ink mb-1">Parent</label>
+            <select className="select" value={form.parent_id} onChange={(e) => setForm({ ...form, parent_id: e.target.value })}>
+              <option value="">(Root)</option>
+              {parents.map((p) => <option key={p.id} value={p.id}>{p.path}</option>)}
             </select>
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Parent</label>
-          <select className="select" value={form.parent_id} onChange={(e) => setForm({ ...form, parent_id: e.target.value })}>
-            <option value="">(Root)</option>
-            {parents.map((p) => <option key={p.id} value={p.id}>{p.path}</option>)}
-          </select>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-ink">
+        <div className="px-1 py-2 border-t border-border" />
+        <label className="flex items-center gap-2 text-sm text-ink px-1">
           <input
             type="checkbox"
-            className="rounded border-border-strong"
+            className="rounded border-border-strong accent-indigo-600"
             checked={form.is_active}
             onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
           />
           Active
+          <span className="text-xs text-muted font-normal">Inactive locations are hidden from picker options.</span>
         </label>
-        <div className="flex justify-end gap-3 pt-4">
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : location ? "Update" : "Create"}</button>
+          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : location ? "Update Location" : "Create Location"}</button>
         </div>
       </form>
     </Modal>

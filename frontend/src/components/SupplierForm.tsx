@@ -70,33 +70,40 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
 
   return (
     <Modal open onClose={onClose} title={supplier ? "Edit Supplier" : "Add Supplier"} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {field("Name *", "name")}
-        <div className="grid grid-cols-2 gap-4">
-          {field("Contact Person", "contact_person")}
-          {field("Phone", "phone")}
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+          <div className="text-xs font-medium text-muted uppercase tracking-wider">Basic info</div>
+          {field("Name *", "name")}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {field("Contact Person", "contact_person")}
+            {field("Phone", "phone")}
+          </div>
+          {field("Email", "email")}
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Lead Time (days)</label>
+            <input
+              type="number"
+              min={0}
+              className="input"
+              value={form.lead_time_days}
+              onChange={(e) => setForm({ ...form, lead_time_days: e.target.value })}
+              placeholder="Used for safety stock &amp; reorder planning"
+            />
+          </div>
         </div>
-        {field("Email", "email")}
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Lead Time (days)</label>
-          <input
-            type="number"
-            min={0}
-            className="input"
-            value={form.lead_time_days}
-            onChange={(e) => setForm({ ...form, lead_time_days: e.target.value })}
-            placeholder="Used for safety stock &amp; reorder planning"
-          />
+
+        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Address</label>
+            <textarea className="input" rows={2} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
+            <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Address</label>
-          <textarea className="input" rows={2} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-        </div>
-        <div className="flex justify-end gap-3 pt-2">
+
+        <div className="flex justify-end gap-3 pt-2 border-t border-border">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving} className="btn-primary">
             {saving ? "Saving..." : supplier ? "Update" : "Create"}

@@ -170,7 +170,10 @@ export default function Users() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">User Management</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">User Management</h1>
+          <p className="text-sm text-muted mt-1">Manage user accounts, roles, and permissions.</p>
+        </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export users to CSV">
             <Download size={16} /> Export

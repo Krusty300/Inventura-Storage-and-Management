@@ -1,4 +1,5 @@
 import type { StockLocationSummary } from "../hooks/useProductStockLocations";
+import Skeleton from "./Skeleton";
 
 interface Props {
   locations: StockLocationSummary[];
@@ -9,7 +10,18 @@ interface Props {
 }
 
 export default function StockLocationHints({ locations, isSerialized, selectedPath, onSelect, isLoading }: Props) {
-  if (isLoading || locations.length === 0) return null;
+  if (isLoading) {
+    return (
+      <div className="mt-1.5 space-y-1.5" aria-busy="true" aria-label="Loading stock locations" role="status">
+        <Skeleton variant="text" className="h-3 w-32" />
+        <div className="flex flex-wrap gap-1.5">
+          <Skeleton variant="text" className="h-5 w-16 rounded" />
+          <Skeleton variant="text" className="h-5 w-20 rounded" />
+        </div>
+      </div>
+    );
+  }
+  if (locations.length === 0) return null;
   return (
     <div className="mt-1.5">
       <p className="text-xs text-muted mb-1">

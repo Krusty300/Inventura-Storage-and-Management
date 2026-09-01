@@ -72,12 +72,15 @@ export default function Lots() {
     updateMutation.mutate({ id: lot.id, status: next });
   };
 
-  const printLabel = (id: number) => {
-    api.get(`/labels/lot/${id}`, { responseType: "blob" }).then(({ data }) => {
+  const printLabel = async (id: number) => {
+    try {
+      const { data } = await api.get(`/labels/lot/${id}`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
       window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    });
+    } catch {
+      addToast("Failed to print label", "error");
+    }
   };
 
   const expiryBadge = (expiry: string | null) => {
@@ -91,7 +94,10 @@ export default function Lots() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Lots</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Lots</h1>
+          <p className="text-sm text-muted mt-1">Track batches of stock by lot number, expiry, and status.</p>
+        </div>
         <button onClick={handleExport} className="btn-secondary" aria-label="Export lots to CSV">Export</button>
       </div>
 

@@ -1,8 +1,8 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, PackagePlus, Plus, Printer, Search, Trash2 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Eye, PackagePlus, Pencil, Plus, Printer, Search, Trash2, XCircle } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { ASN, LPN, PaginatedResponse, Product, Supplier } from "../types";
@@ -13,6 +13,7 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import ProgressBar from "../components/ProgressBar";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useDebounce } from "../hooks/useDebounce";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
@@ -54,10 +55,35 @@ export default function ASNs() {
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [viewing, setViewing] = useState<ASN | null>(null);
   const [receiving, setReceiving] = useState<ASN | null>(null);
+  const [cancelling, setCancelling] = useState<ASN | null>(null);
+  const [deleting, setDeleting] = useState<ASN | null>(null);
+  const [editing, setEditing] = useState<ASN | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
+
+  const cancelMutation = useMutation({
+    mutationFn: (id: number) => api.put(`/asns/${id}`, { status: "cancelled" }),
+    onSuccess: () => {
+      addToast("ASN cancelled", "success");
+      queryClient.invalidateQueries({ queryKey: ["asns"] });
+    },
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Error cancelling ASN"), "error");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/asns/${id}`),
+    onSuccess: () => {
+      addToast("ASN deleted", "success");
+      queryClient.invalidateQueries({ queryKey: ["asns"] });
+    },
+    onError: (err: unknown) => {
+      addToast(errorMessage(err, "Error deleting ASN"), "error");
+    },
+  });
 
   const { data: suppliers = [] } = useQuery({
     queryKey: ["suppliers-lookup"],
@@ -99,11 +125,14 @@ export default function ASNs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">ASNs</h1>
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">ASNs</h1>
+          <p className="text-sm text-muted mt-1">Advanced shipping notices — track incoming supplier shipments from order to dock.</p>
+        </div>
         {can("asns.create") && (
-          <button onClick={() => setShowForm(true)} className="btn-primary">
-            <PackagePlus size={16} className="inline mr-1" />New ASN
+          <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-1">
+            <PackagePlus size={16} /> New ASN
           </button>
         )}
       </div>
@@ -122,7 +151,7 @@ export default function ASNs() {
         <select className="select w-40" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
           <option value="">All Statuses</option>
           <option value="pending">Pending</option>
-          <option value="in_transit">In Transit</option>
+          <option value="cancelled">Cancelled</option>
           <option value="received">Received</option>
         </select>
         <select className="select w-48" aria-label="Filter by supplier" value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }}>
@@ -135,7 +164,7 @@ export default function ASNs() {
         <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="ASNs table">
           <thead>
-            <tr className="bg-app text-left">
+            <tr className="bg-subtle text-left">
               <th scope="col" className="px-4 py-3 font-medium text-muted">ASN #</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Expected Arrival</th>
@@ -162,8 +191,23 @@ export default function ASNs() {
                   <div className="flex gap-2">
                     <button onClick={(e) => { e.stopPropagation(); printPdf(a); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${a.asn_number}`}><Printer size={16} /></button>
                     <button onClick={(e) => { e.stopPropagation(); setViewing(a); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${a.asn_number}`}><Eye size={16} /></button>
+                    {can("asns.update") && (
+                      <button onClick={(e) => { e.stopPropagation(); setEditing(a); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${a.asn_number}`} title="Edit ASN">
+                        <Pencil size={16} />
+                      </button>
+                    )}
                     {a.status === "pending" && can("asns.receive") && (
                       <button onClick={(e) => { e.stopPropagation(); setReceiving(a); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 font-medium">Receive</button>
+                    )}
+                    {a.status === "pending" && a.total_received === 0 && can("asns.update") && (
+                      <button onClick={(e) => { e.stopPropagation(); setCancelling(a); }} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${a.asn_number}`} title="Cancel ASN">
+                        <XCircle size={16} />
+                      </button>
+                    )}
+                    {a.status === "pending" && a.total_received === 0 && can("asns.update") && (
+                      <button onClick={(e) => { e.stopPropagation(); setDeleting(a); }} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${a.asn_number}`} title="Delete ASN">
+                        <Trash2 size={16} />
+                      </button>
                     )}
                   </div>
                 </td>
@@ -180,6 +224,18 @@ export default function ASNs() {
         <AsnForm onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); queryClient.invalidateQueries({ queryKey: ["asns"] }); }} />
       )}
 
+      {editing && (
+        <AsnEditModal
+          asn={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            if (viewing?.id === editing.id) setViewing(null);
+            queryClient.invalidateQueries({ queryKey: ["asns"] });
+          }}
+        />
+      )}
+
       {viewing && <AsnDetail asn={viewing} onClose={() => setViewing(null)} />}
 
       {receiving && (
@@ -189,6 +245,26 @@ export default function ASNs() {
           onSaved={() => { setReceiving(null); queryClient.invalidateQueries({ queryKey: ["asns"] }); queryClient.invalidateQueries({ queryKey: ["receipts"] }); queryClient.invalidateQueries({ queryKey: ["products"] }); }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!cancelling}
+        title="Cancel ASN"
+        message={`Are you sure you want to cancel ASN "${cancelling?.asn_number}"? This cannot be undone.`}
+        confirmLabel="Cancel ASN"
+        confirmClass="btn-danger"
+        onConfirm={() => { if (cancelling) cancelMutation.mutate(cancelling.id); setCancelling(null); }}
+        onCancel={() => setCancelling(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete ASN"
+        message={`Are you sure you want to permanently delete ASN "${deleting?.asn_number}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmClass="btn-danger"
+        onConfirm={() => { if (deleting) deleteMutation.mutate(deleting.id); setDeleting(null); }}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   );
 }
@@ -517,6 +593,48 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+function AsnEditModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => void; onSaved: () => void }) {
+  const [expected_arrival, setExpectedArrival] = useState(asn.expected_arrival?.slice(0, 10) ?? "");
+  const [notes, setNotes] = useState(asn.notes);
+  const [saving, setSaving] = useState(false);
+  const { addToast } = useToast();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.put(`/asns/${asn.id}`, {
+        expected_arrival: expected_arrival || null,
+        notes: notes.trim(),
+      });
+      addToast(`ASN ${asn.asn_number} updated`, "success");
+      onSaved();
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Error updating ASN"), "error");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Edit ${asn.asn_number}`}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1">Expected Arrival</label>
+          <input type="date" className="input" aria-label="Expected Arrival" value={expected_arrival} onChange={(e) => setExpectedArrival(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1">Notes</label>
+          <textarea className="input" rows={3} aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+        <div className="flex justify-end gap-3 pt-4">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : "Save Changes"}</button>
+        </div>
+      </form>
     </Modal>
   );
 }

@@ -64,7 +64,10 @@ export default function SalesChannels() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Sales Channels</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Sales Channels</h1>
+          <p className="text-sm text-muted mt-1">Manage the channels you sell through.</p>
+        </div>
         {can("sales.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
             Add Channel

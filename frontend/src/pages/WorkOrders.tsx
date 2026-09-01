@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useState } from "react";
-import { CheckCircle, Eye, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
+import { Columns3, CheckCircle, Eye, List, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
@@ -24,16 +24,30 @@ import { useSettings } from "../hooks/useSettings";
 import { usePageSize } from "../hooks/usePageSize";
 import { errorMessage } from "../utils/errors";
 
+type ViewMode = "list" | "kanban";
+
+const KANBAN_COLUMNS: { key: string; label: string }[] = [
+  { key: "planned", label: "Planned" },
+  { key: "released", label: "Released" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "completed", label: "Completed" },
+  { key: "cancelled", label: "Cancelled" },
+];
+
+const WORKFLOW_ORDER = ["planned", "released", "in_progress", "completed", "cancelled"];
+
 export default function WorkOrders() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [statusFilter, setStatusFilter] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [editing, setEditing] = useState<WorkOrder | null>(null);
   const [viewing, setViewing] = useState<WorkOrder | null>(null);
   const [completing, setCompleting] = useState<WorkOrder | null>(null);
+  const [draggedWo, setDraggedWo] = useState<WorkOrder | null>(null);
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const { addToast } = useToast();
@@ -54,8 +68,21 @@ export default function WorkOrders() {
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["work-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["work-orders-kanban"] });
     queryClient.invalidateQueries({ queryKey: ["products"] });
   };
+
+  const { data: kanbanData, isLoading: kanbanLoading } = useQuery({
+    queryKey: ["work-orders-kanban", debouncedSearch],
+    queryFn: async () => {
+      const { data } = await api.get("/work-orders/kanban", { params: debouncedSearch ? { search: debouncedSearch } : {} });
+      return data as { items: WorkOrder[]; total: number; by_status: Record<string, number> };
+    },
+    enabled: viewMode === "kanban",
+  });
+  const kanbanWos = kanbanData?.items ?? [];
+  const kanbanCounts = kanbanData?.by_status ?? {};
+  const kanbanTotal = kanbanData?.total ?? kanbanWos.length;
 
   const priorityBadge = (p: string) =>
     p === "high" ? "badge-danger" : p === "low" ? "badge-success" : "badge-info";
@@ -81,10 +108,131 @@ export default function WorkOrders() {
     }
   };
 
+  const handleDragStart = (e: React.DragEvent, w: WorkOrder) => {
+    setDraggedWo(w);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", String(w.id));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStatus: string) => {
+    e.preventDefault();
+    const from = draggedWo;
+    setDraggedWo(null);
+    if (!from || from.status === targetStatus) return;
+
+    const canTransition = (fromS: string, toS: string) => {
+      if (toS === "released") return fromS === "planned";
+      if (toS === "in_progress") return fromS === "released";
+      if (toS === "completed") return fromS === "released" || fromS === "in_progress";
+      if (toS === "cancelled") return ["planned", "released", "in_progress"].includes(fromS);
+      return false;
+    };
+
+    if (targetStatus === "completed" && canTransition(from.status, targetStatus)) {
+      setCompleting(from);
+      return;
+    }
+    if (!canTransition(from.status, targetStatus)) {
+      addToast(`Work order ${from.wo_number.replace(/_/g, " ")} cannot move from ${from.status.replace("_", " ")} to ${targetStatus.replace("_", " ")}`, "error");
+      return;
+    }
+    if (targetStatus === "released") {
+      run(() => api.post(`/work-orders/${from.id}/release`), `${from.wo_number} released`);
+    } else if (targetStatus === "in_progress") {
+      run(() => api.post(`/work-orders/${from.id}/start`), `${from.wo_number} started`);
+    } else if (targetStatus === "cancelled") {
+      run(() => api.post(`/work-orders/${from.id}/cancel`), `${from.wo_number} cancelled`);
+    }
+  };
+
+  const renderKanbanBoard = () => {
+    return (
+      <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+        {KANBAN_COLUMNS.map((col) => {
+          const colWos = kanbanWos.filter((w) => w.status === col.key);
+          return (
+            <div key={col.key} className="flex-1 min-w-[280px]" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, col.key)}>
+              <div className="flex items-center gap-2 px-3 py-2.5 mb-3 rounded-lg bg-subtle border border-border">
+                <span className="text-sm font-semibold text-ink">{col.label}</span>
+                <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-border text-xs font-medium text-muted">{kanbanCounts[col.key] ?? colWos.length}</span>
+              </div>
+              <div className="p-2 rounded-lg border-2 border-dashed border-transparent hover:border-border transition-colors min-h-[200px]">
+                {colWos.length === 0 ? (
+                  <div className="border-2 border-dashed border-border rounded-lg p-6 text-center text-xs text-faint bg-subtle/30">Drop work orders here</div>
+                ) : (
+                  <div className="space-y-3">{colWos.map((w) => renderWoCard(w))}</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderWoCard = (w: WorkOrder) => {
+    const columnIndex = WORKFLOW_ORDER.indexOf(w.status);
+    return (
+      <div
+        key={w.id}
+        draggable={can("work_orders.update") || can("work_orders.release")}
+        onDragStart={(e) => handleDragStart(e, w)}
+        onClick={() => setViewing(w)}
+        className={`card p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/30 transition-[box-shadow,transform,opacity] duration-150 ${draggedWo?.id === w.id ? "opacity-50 scale-[0.98]" : ""}`}
+      >
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <span className="font-medium text-ink text-sm truncate">{w.wo_number}</span>
+          <span className={`badge ${priorityBadge(w.priority)}`}>{w.priority}</span>
+        </div>
+        <p className="text-xs text-muted truncate mb-2">{w.product_name}</p>
+        <div className="flex items-center justify-between text-[11px] text-muted pt-2 border-t border-border">
+          <span>Qty {w.quantity}</span>
+          {columnIndex >= 1 && columnIndex <= 2 && (
+            <ProgressBar
+              value={w.total_issued}
+              max={w.total_required}
+              tone={!w.fully_issued && w.status !== "planned" ? "warning" : undefined}
+              label={`Issue progress for ${w.wo_number}`}
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderKanbanSkeleton = () => (
+    <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+      {KANBAN_COLUMNS.map((col) => (
+        <div key={col.key} className="flex-1 min-w-[280px]">
+          <div className="flex items-center gap-2 px-3 py-2.5 mb-3 rounded-lg bg-subtle border border-border">
+            <span className="text-sm font-semibold text-ink">{col.label}</span>
+            <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-border text-xs font-medium text-muted animate-pulse">—</span>
+          </div>
+          <div className="space-y-3 p-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="card p-4 space-y-2">
+                <Skeleton variant="text" className="h-4 w-24" />
+                <Skeleton variant="text" className="h-3 w-32" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Work Orders</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Work Orders</h1>
+          <p className="text-sm text-muted mt-1">Plan and track production through completion.</p>
+        </div>
         {can("work_orders.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
             New Work Order
@@ -105,8 +253,41 @@ export default function WorkOrders() {
           <option value="completed">Completed</option>
           <option value="on_hold">On Hold</option>
         </select>
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-subtle">
+          <button
+            onClick={() => setViewMode("list")}
+            className={`p-1.5 rounded transition-colors ${viewMode === "list" ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
+            title="Table view"
+            aria-label="Table view"
+            aria-pressed={viewMode === "list"}
+          >
+            <List size={16} />
+          </button>
+          <button
+            onClick={() => setViewMode("kanban")}
+            className={`p-1.5 rounded transition-colors ${viewMode === "kanban" ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
+            title="Kanban view"
+            aria-label="Kanban view"
+            aria-pressed={viewMode === "kanban"}
+          >
+            <Columns3 size={16} />
+          </button>
+        </div>
       </div>
 
+      {viewMode === "kanban" ? (
+        kanbanLoading ? (
+          renderKanbanSkeleton()
+        ) : kanbanWos.length === 0 ? (
+          <EmptyState title="No work orders yet" message="Plan a work order to build a product from a BOM or component list." actionLabel="New Work Order" onAction={() => { setEditing(null); setShowForm(true); }} />
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-muted">{kanbanTotal} work {kanbanTotal === 1 ? "order" : "orders"} across the pipeline</p>
+            {renderKanbanBoard()}
+          </div>
+        )
+      ) : (
+      <>
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Work orders table">
@@ -177,6 +358,8 @@ export default function WorkOrders() {
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
+      </>
+      )}
 
       {showForm && (
         <WorkOrderForm
@@ -458,7 +641,22 @@ function CostSection({ woId }: { woId: number }) {
       return data as WorkOrderCost;
     },
   });
-  if (isLoading || !cost) return null;
+  if (isLoading) {
+    return (
+      <div className="space-y-3 border-t border-border pt-3" aria-busy="true" aria-label="Loading manufacturing cost" role="status">
+        <Skeleton variant="text" className="h-4 w-40" />
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-lg bg-app p-3 space-y-2">
+              <Skeleton variant="text" className="h-3 w-20" />
+              <Skeleton variant="text" className="h-4 w-14" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  if (!cost) return null;
   return (
     <div className="space-y-3 border-t border-border pt-3">
       <h4 className="text-sm font-semibold text-ink">Manufacturing Cost</h4>

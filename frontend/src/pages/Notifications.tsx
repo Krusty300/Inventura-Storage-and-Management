@@ -88,7 +88,10 @@ export default function Notifications() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-ink">Notifications</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Notifications</h1>
+          <p className="text-sm text-muted mt-1">Alerts about low stock, expiring lots, and operational events.</p>
+        </div>
         <button
           onClick={() => markAllRead.mutate()}
           className="btn-secondary"

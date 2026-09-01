@@ -81,6 +81,65 @@ describe("ASNs Page", () => {
     expect(screen.getByLabelText("View ASN-0001")).toBeInTheDocument();
   });
 
+  it("shows cancel and delete actions for pending ASNs to admins", async () => {
+    mockASNs([mockASN()]);
+    renderWithProviders(<ASNs />);
+    expect(await screen.findByText("ASN-0001")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cancel ASN-0001")).toBeInTheDocument();
+    expect(screen.getByLabelText("Delete ASN-0001")).toBeInTheDocument();
+  });
+
+  it("cancels an ASN via the confirm dialog", async () => {
+    mockASNs([mockASN()]);
+    const putMock = api.put as ReturnType<typeof vi.fn>;
+    putMock.mockResolvedValue({ data: { ...mockASN(), status: "cancelled" } });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByLabelText("Cancel ASN-0001"));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel ASN" }));
+    await waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/asns/1", { status: "cancelled" });
+    });
+  });
+
+  it("deletes a pending ASN via the confirm dialog", async () => {
+    mockASNs([mockASN()]);
+    const deleteMock = api.delete as ReturnType<typeof vi.fn>;
+    deleteMock.mockResolvedValue({ data: { deleted: 1 } });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByLabelText("Delete ASN-0001"));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => {
+      expect(deleteMock).toHaveBeenCalledWith("/asns/1");
+    });
+  });
+
+  it("edits an ASN's arrival date and notes via the edit form", async () => {
+    mockASNs([mockASN()]);
+    const putMock = api.put as ReturnType<typeof vi.fn>;
+    putMock.mockResolvedValue({ data: { ...mockASN(), notes: "updated note" } });
+    renderWithProviders(<ASNs />);
+    fireEvent.click(await screen.findByLabelText("Edit ASN-0001"));
+    const dialog = await screen.findByRole("dialog", { name: "Edit ASN-0001" });
+    fireEvent.change(within(dialog).getByLabelText("Expected Arrival"), { target: { value: "2026-02-15" } });
+    fireEvent.change(within(dialog).getByLabelText("Notes"), { target: { value: "updated note" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
+    await waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/asns/1", expect.objectContaining({
+        expected_arrival: "2026-02-15",
+        notes: "updated note",
+      }));
+    });
+  });
+
+  it("hides edit action for workers without asns.update", async () => {
+    mockASNs([mockASN()]);
+    renderWithProviders(<ASNs />, { role: "worker" });
+    expect(await screen.findByText("ASN-0001")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Edit ASN-0001")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Cancel ASN-0001")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Delete ASN-0001")).not.toBeInTheDocument();
+  });
+
   it("hides admin actions for workers", async () => {
     mockASNs([mockASN()]);
     renderWithProviders(<ASNs />, { role: "worker" });

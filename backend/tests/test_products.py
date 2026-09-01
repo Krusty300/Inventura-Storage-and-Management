@@ -262,3 +262,56 @@ def test_product_lists_expired_lot_quantity(auth_headers):
 
     detail = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
     assert detail["expired_lot_qty"] == 5
+
+
+def _labels_text(resp):
+    import io as _io
+
+    from pypdf import PdfReader
+    reader = PdfReader(_io.BytesIO(resp.content))
+    return " ".join(page.extract_text() or "" for page in reader.pages)
+
+
+def test_barcode_labels_expands_parent_to_active_variants(auth_headers):
+    parent = client.post("/api/products", json={
+        "location_id": 1, "sku": "LP-PARENT", "name": "Label Parent", "quantity": 0,
+    }, headers=auth_headers).json()
+    for i in range(3):
+        client.post("/api/products", json={
+            "location_id": 1, "sku": f"LP-VAR-{i}", "parent_id": parent["id"],
+            "quantity": 0, "attributes": {"Color": f"C{i}"},
+        }, headers=auth_headers)
+    # Inactive variant must NOT receive a label when the parent is selected.
+    client.post("/api/products", json={
+        "location_id": 1, "sku": "LP-OFF", "parent_id": parent["id"],
+        "quantity": 0, "attributes": {"Color": "Off"}, "is_active": False,
+    }, headers=auth_headers)
+
+    resp = client.get(f"/api/products/barcode-labels?ids={parent['id']}", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/pdf")
+    text = _labels_text(resp)
+    # Selecting a parent also prints labels for its active variants...
+    assert "LP-PARENT" in text
+    for i in range(3):
+        assert f"LP-VAR-{i}" in text
+    # ...but excludes inactive variants.
+    assert "LP-OFF" not in text
+
+
+def test_barcode_labels_print_all_includes_active_variants(auth_headers):
+    parent = client.post("/api/products", json={
+        "location_id": 1, "sku": "AP-PARENT", "name": "All Parent", "quantity": 0,
+    }, headers=auth_headers).json()
+    client.post("/api/products", json={
+        "location_id": 1, "sku": "AP-VAR", "parent_id": parent["id"],
+        "quantity": 0, "attributes": {"Color": "Blue"},
+    }, headers=auth_headers)
+
+    # "Print all" with no ids must include the active variant, not just the parent.
+    resp = client.get("/api/products/barcode-labels", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/pdf")
+    text = _labels_text(resp)
+    assert "AP-PARENT" in text
+    assert "AP-VAR" in text

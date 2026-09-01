@@ -159,7 +159,7 @@ def category_breakdown(db: Session = Depends(get_db)):
             func.coalesce(func.sum(Product.quantity * Product.unit_price), 0),
         )
         .outerjoin(Category.products)
-        .filter(Product.is_active == True)
+        .filter(Product.is_active == True, Product.id.notin_(Product.variant_parent_id_subquery()))
         .group_by(Category.id, Category.name)
         .order_by(Category.name)
         .all()
@@ -780,7 +780,7 @@ def export_products(
 ):
     q = db.query(Product).options(
         joinedload(Product.category), joinedload(Product.supplier)
-    )
+    ).filter(Product.id.notin_(Product.variant_parent_id_subquery()))
     if search:
         like = f"%{search}%"
         q = q.filter(Product.name.ilike(like) | Product.sku.ilike(like))

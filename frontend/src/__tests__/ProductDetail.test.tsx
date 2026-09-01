@@ -316,6 +316,28 @@ describe("ProductDetail", () => {
     expect(screen.queryByRole("button", { name: "Toggle status for Widget" })).not.toBeInTheDocument();
   });
 
+  it("opens the editor when the Edit button is clicked (not swallowed by drag-to-close)", async () => {
+    const product = makeProduct({ id: 13, sku: "SKU-13", name: "Widget" });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$" } });
+      if (url === "/products/13/trace") {
+        return Promise.resolve({ data: { incoming: [], outgoing: [], work_orders: [] } });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    const onEdit = vi.fn();
+    const onClose = vi.fn();
+
+    renderWithProviders(<ProductDetail product={product} onClose={onClose} onEdit={onEdit} />);
+
+    const editBtn = await screen.findByRole("button", { name: "Edit product" });
+    fireEvent.pointerDown(editBtn, { clientX: 100 });
+    fireEvent.pointerUp(editBtn, { clientX: 105 });
+    fireEvent.click(editBtn);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("shows an Expired badge when the product holds units in expired lots", async () => {
     const product = makeProduct({ id: 14, sku: "SKU-14", name: "Expired Widget", expired_lot_qty: 4 });
     getMock.mockImplementation((url: string) => {

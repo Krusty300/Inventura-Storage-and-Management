@@ -145,7 +145,10 @@ export default function Customers() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-ink">Customers</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Customers</h1>
+          <p className="text-sm text-muted mt-1">Manage the people and businesses you sell to.</p>
+        </div>
         <div className="flex gap-2 flex-wrap">
           {can("customers.import") && (
             <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import customers from CSV">

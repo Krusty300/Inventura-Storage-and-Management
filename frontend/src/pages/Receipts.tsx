@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Eye, Printer, Search } from "lucide-react";
+import { Eye, Printer, Search, Download, PackagePlus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Receipt } from "../types";
@@ -67,13 +67,18 @@ export default function Receipts() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Receiving</h1>
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Receiving</h1>
+          <p className="text-sm text-muted mt-1">Record inbound shipments and bring stock into inventory.</p>
+        </div>
         <div className="flex gap-2">
-          <button onClick={handleExport} className="btn-secondary" aria-label="Export receipts to CSV">Export</button>
+          <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export receipts to CSV">
+            <Download size={16} /> Download CSV
+          </button>
           {can("receipts.create") && (
-            <button onClick={() => setShowForm(true)} className="btn-primary">
-              Record Receipt
+            <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-1">
+              <PackagePlus size={16} /> Record Receipt
             </button>
           )}
         </div>
@@ -96,7 +101,7 @@ export default function Receipts() {
         <div className="overflow-x-auto">
         <table className="w-full text-sm" role="grid" aria-label="Receipts table">
           <thead>
-            <tr className="bg-app text-left">
+            <tr className="bg-subtle text-left">
               <th scope="col" className="px-4 py-3 font-medium text-muted">Receipt #</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
               <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>

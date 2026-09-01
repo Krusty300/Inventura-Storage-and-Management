@@ -75,6 +75,9 @@ def test_asn_cancel_and_delete(auth_headers):
         "items": [{"product_id": prod["id"], "expected_qty": 3}],
     }, headers=auth_headers).json()
     assert client.put(f"/api/asns/{asn['id']}", json={"status": "cancelled"}, headers=auth_headers).status_code == 200
+    cancelled = client.get(f"/api/asns/{asn['id']}", headers=auth_headers).json()
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["items"][0]["status"] == "cancelled"
     assert client.post(f"/api/asns/{asn['id']}/receive", json={
         "items": [{"product_id": prod["id"], "received_qty": 1}],
     }, headers=auth_headers).status_code == 400
@@ -84,6 +87,43 @@ def test_asn_cancel_and_delete(auth_headers):
     }, headers=auth_headers).json()
     assert client.delete(f"/api/asns/{asn2['id']}", headers=auth_headers).status_code == 200
     assert client.get(f"/api/asns/{asn2['id']}", headers=auth_headers).status_code == 404
+
+
+def test_asn_notes_editable_after_cancellation(auth_headers):
+    prod = _make_product(auth_headers, sku="ASN-EDIT")
+    asn = client.post("/api/asns", json={
+        "items": [{"product_id": prod["id"], "expected_qty": 3}],
+        "notes": "original",
+    }, headers=auth_headers).json()
+    assert client.put(f"/api/asns/{asn['id']}", json={"status": "cancelled"}, headers=auth_headers).status_code == 200
+
+    updated = client.put(f"/api/asns/{asn['id']}", json={
+        "notes": "changed after cancel",
+        "expected_arrival": "2026-09-01",
+    }, headers=auth_headers)
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["status"] == "cancelled"
+    assert body["notes"] == "changed after cancel"
+    assert str(body["expected_arrival"]) == "2026-09-01"
+
+
+def test_asn_cancel_and_delete_blocked_after_partial_receive(auth_headers):
+    prod = _make_product(auth_headers, sku="ASN-PART-LOCK")
+    asn = client.post("/api/asns", json={
+        "items": [{"product_id": prod["id"], "expected_qty": 5}],
+    }, headers=auth_headers).json()
+    assert client.post(f"/api/asns/{asn['id']}/receive", json={
+        "items": [{"product_id": prod["id"], "received_qty": 2}],
+    }, headers=auth_headers).status_code == 200
+
+    cancel = client.put(f"/api/asns/{asn['id']}", json={"status": "cancelled"}, headers=auth_headers)
+    assert cancel.status_code == 400
+    assert "cannot cancel" in cancel.json()["detail"].lower()
+
+    delete = client.delete(f"/api/asns/{asn['id']}", headers=auth_headers)
+    assert delete.status_code == 400
+    assert "cannot delete" in delete.json()["detail"].lower()
 
 
 def test_asn_receive_into_lpn(auth_headers):
@@ -125,6 +165,55 @@ def test_asn_receive_serialized_into_lpn(auth_headers):
     assert contents["content_count"] == 2
     assert {s["serial_number"] for s in contents["serials"]} == {"S-ASN-LPN-1", "S-ASN-LPN-2"}
     assert all(s["location_name"] == loc["name"] for s in contents["serials"])
+
+
+def test_asn_receive_duplicate_product_lines(auth_headers):
+    prod = _make_product(auth_headers, sku="ASN-DUP")
+    asn = client.post("/api/asns", json={
+        "items": [
+            {"product_id": prod["id"], "expected_qty": 2},
+            {"product_id": prod["id"], "expected_qty": 3},
+        ],
+    }, headers=auth_headers).json()
+    assert asn["total_expected"] == 5
+    assert len(asn["items"]) == 2
+
+    first = client.post(f"/api/asns/{asn['id']}/receive", json={
+        "items": [{"product_id": prod["id"], "received_qty": 2}],
+    }, headers=auth_headers)
+    assert first.status_code == 200
+    assert [i["received_qty"] for i in first.json()["items"]] == [2, 0]
+
+    final = client.post(f"/api/asns/{asn['id']}/receive", json={
+        "items": [{"product_id": prod["id"], "received_qty": 3}],
+    }, headers=auth_headers)
+    assert final.status_code == 200
+    body = final.json()
+    assert body["status"] == "received"
+    assert body["total_received"] == 5
+    assert [i["received_qty"] for i in body["items"]] == [2, 3]
+
+
+def test_asn_create_rejects_inactive_default_location(auth_headers):
+    loc = _make_location(auth_headers, code="ASN-INACT")
+    prod = client.post("/api/products", json={
+        "sku": "ASN-INACT-P", "name": "ASN Inact", "unit_price": 5.0, "quantity": 0,
+        "location_id": loc["id"],
+    }, headers=auth_headers).json()
+
+    deactivated = client.put(f"/api/locations/{loc['id']}", json={"is_active": False}, headers=auth_headers)
+    assert deactivated.status_code == 200
+
+    resp = client.post("/api/asns", json={
+        "items": [{"product_id": prod["id"], "expected_qty": 2}],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "inactive" in resp.json()["detail"]
+
+    explicit = client.post("/api/asns", json={
+        "items": [{"product_id": prod["id"], "expected_qty": 2, "location_id": loc["id"]}],
+    }, headers=auth_headers)
+    assert explicit.status_code == 400
 
 
 def test_asn_receive_into_unknown_lpn_rejected(auth_headers):

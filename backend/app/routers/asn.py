@@ -153,14 +153,19 @@ def create_asn(data: ASNCreate, db: Session = Depends(get_db), user=Depends(requ
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' is inactive")
         if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - ASN items must reference a specific variant")
-        if item.location_id is not None:
-            get_or_404(Location, item.location_id, db)
+        loc_id = item.location_id or product.location_id
+        if loc_id is not None:
+            loc = db.get(Location, loc_id)
+            if loc is None:
+                raise HTTPException(status_code=400, detail=f"Location for '{product.display_name}' no longer exists")
+            if not loc.is_active:
+                raise HTTPException(status_code=400, detail=f"Location '{loc.path}' for '{product.display_name}' is inactive")
         db.add(ASNItem(
             asn_id=asn.id,
             product_id=item.product_id,
             expected_qty=item.expected_qty,
             unit_cost=item.unit_cost,
-            location_id=item.location_id or product.location_id,
+            location_id=loc_id,
         ))
     try:
         db.commit()
@@ -182,6 +187,8 @@ def update_asn(asn_id: int, data: ASNUpdate, db: Session = Depends(get_db), user
         raise HTTPException(status_code=400, detail="Status can only be set to pending or cancelled here (use receive to complete)")
     if updates.get("status") == "cancelled" and asn.status != "pending":
         raise HTTPException(status_code=400, detail="Only pending ASNs can be cancelled")
+    if updates.get("status") == "cancelled" and asn.total_received > 0:
+        raise HTTPException(status_code=400, detail="Cannot cancel an ASN that already has received stock")
     for k, v in updates.items():
         setattr(asn, k, v)
     db.commit()
@@ -197,6 +204,8 @@ def delete_asn(asn_id: int, db: Session = Depends(get_db), user=Depends(require_
     asn = _load_asn(db, asn_id)
     if asn.status != "pending":
         raise HTTPException(status_code=400, detail="Only pending ASNs can be deleted")
+    if asn.total_received > 0:
+        raise HTTPException(status_code=400, detail="Cannot delete an ASN that has received stock")
     db.delete(asn)
     db.commit()
     log_activity(db, user.id, user.username, "delete", "asn", asn_id, f"Deleted ASN '{asn.asn_number}'")
@@ -213,13 +222,17 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
     if asn.status == "cancelled":
         raise HTTPException(status_code=400, detail="Cannot receive a cancelled ASN")
 
-    by_product = {item.product_id: item for item in asn.items}
+    pending_by_product: dict[int, list[ASNItem]] = {}
+    for item in asn.items:
+        if item.received_qty < item.expected_qty:
+            pending_by_product.setdefault(item.product_id, []).append(item)
     movements_by_location: dict[int, list[StockMovement]] = {}
     try:
         for line in data.items:
-            asn_item = by_product.get(line.product_id)
-            if asn_item is None:
+            pending = pending_by_product.get(line.product_id)
+            if not pending:
                 raise HTTPException(status_code=400, detail=f"Product {line.product_id} is not on this ASN")
+            asn_item = pending[0]
             remaining = asn_item.expected_qty - asn_item.received_qty
             if line.received_qty > remaining:
                 raise HTTPException(status_code=400, detail=f"Received quantity {line.received_qty} exceeds remaining expected {remaining} for '{asn_item.product_name}'")
@@ -305,6 +318,8 @@ def receive_asn(asn_id: int, data: ASNReceiveRequest, db: Session = Depends(get_
                 asn_item.unit_cost = line.unit_cost
             if line.location_id is not None:
                 asn_item.location_id = line.location_id
+            if received > 0 and asn_item.received_qty >= asn_item.expected_qty:
+                pending.pop(0)
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))

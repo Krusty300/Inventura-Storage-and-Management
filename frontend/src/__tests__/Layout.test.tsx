@@ -209,8 +209,9 @@ describe("Layout", () => {
     localStorage.setItem("user", JSON.stringify({ id: 1, username: "worker", email: "w@example.com", role: "worker" }));
     renderLayout();
     expect(screen.getByText("Products")).toBeInTheDocument();
-    expect(screen.getByText("Reports")).toBeInTheDocument();
     expect(screen.queryByText("Users")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reports")).not.toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
   });
 
   it("limits nav to a worker's custom permission allowlist", () => {
@@ -220,6 +221,6 @@ describe("Layout", () => {
     expect(screen.queryByText("Reports")).not.toBeInTheDocument();
     expect(screen.queryByText("Orders")).not.toBeInTheDocument();
     expect(screen.queryByText("Users")).not.toBeInTheDocument();
-    expect(screen.getByText("Profile")).toBeInTheDocument();
+    expect(screen.queryByText("Profile")).not.toBeInTheDocument();
   });
 });

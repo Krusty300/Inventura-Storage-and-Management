@@ -148,8 +148,9 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
       >
         <div className="sidebar-scroll flex-1 overflow-y-auto overflow-x-hidden w-full py-2 relative">
           {navGroups.map((group, gi) => {
+            const visibleToRole = !group.roles || group.roles.includes(user?.role ?? "");
             const visibleItems = group.items.filter((item) => can(item.perm));
-            if (visibleItems.length === 0) return null;
+            if (!visibleToRole || visibleItems.length === 0) return null;
             const isGroupActive = group.id === activeGroupId;
             const isGroupCollapsed = showLabels && collapsedGroups.has(group.id);
             return (
@@ -160,7 +161,7 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
                 {showLabels && (
                   <button
                     onClick={() => toggleGroup(group.id)}
-                    className="w-full flex items-center gap-1 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-faint hover:text-muted transition-colors"
+                    className="w-full flex items-center gap-1 px-3 pt-2 pb-1 mt-1 text-[10px] font-semibold uppercase tracking-wider text-faint hover:text-muted transition-colors"
                     aria-expanded={!isGroupCollapsed}
                   >
                     <ChevronRight
@@ -177,7 +178,7 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
                   const slug = item.to === "/" ? "home" : item.to.replace(/\//g, "-");
                   const tooltipId = `nav-tooltip-${slug}`;
                   return (
-                    <div key={item.to} className="relative px-1.5">
+                    <div key={item.to} className="relative px-1.5 my-0.5">
                       <Link
                         to={item.to}
                         onClick={handleNavClick}

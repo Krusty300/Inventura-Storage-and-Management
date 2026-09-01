@@ -187,8 +187,8 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
           {statusBadges}
         </span>
       }
-      actions={onEdit && can("product.update") ? (
-        <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label="Edit product"><Pencil size={14} />Edit</button>
+      actions={onEdit && can("products.update") ? (
+        <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label="Edit product"><Pencil size={14} />Edit Product</button>
       ) : undefined}
     >
       <div className="space-y-4">

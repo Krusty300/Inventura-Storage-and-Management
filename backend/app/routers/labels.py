@@ -65,7 +65,7 @@ def lot_label(lot_id: int, db: Session = Depends(get_db)):
         [
             f"Product: {lot.product_name}",
             f"Expiry: {lot.expiry_date or 'N/A'}",
-            f"On hand: {sum(sl.quantity for sl in lot.stock_lines)}",
+            f"On hand: {lot.on_hand}",
         ],
         barcode_val, f"lot-{lot.lot_number}",
     )

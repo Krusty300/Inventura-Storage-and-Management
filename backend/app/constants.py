@@ -17,6 +17,11 @@ MAX_PAGE_SIZE_PICKER = 500
 # Frontend product pickers request up to this many rows in one go.
 MAX_PAGE_SIZE_PRODUCTS = 1000
 
+# Upper bound on any single stock quantity/movement value. Kept well below the
+# signed 32-bit integer ceiling so quantity columns (Integer) can never overflow
+# while still accommodating any realistic stock level.
+MAX_STOCK_QUANTITY = 1_000_000_000
+
 from enum import Enum
 
 

@@ -209,6 +209,7 @@ export default function Dashboard() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
+        <p className="text-sm text-muted -mt-3">A live overview of stock, sales, and warehouse health.</p>
         {[10, 6, 2, 3].map((count, i) => (
           <div key={i} className="space-y-3">
             <div className="h-4 w-20 bg-subtle-strong rounded animate-pulse" />
@@ -310,7 +311,10 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-ink">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
+          <p className="text-sm text-muted mt-1">A live overview of stock, sales, and warehouse health.</p>
+        </div>
         <div className="flex items-center gap-3">
           <button onClick={exportPdf} className="btn-secondary inline-flex items-center gap-2" aria-label="Export dashboard PDF">
             pdf

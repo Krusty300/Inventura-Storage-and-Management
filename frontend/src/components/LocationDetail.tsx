@@ -179,60 +179,65 @@ export default function LocationDetail({ location, onClose }: Props) {
   return (
     <Modal open onClose={onClose} title={location.path} xwide>
       <div className="space-y-4 text-sm">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <span className="text-muted">Name:</span>
-            <p className="font-medium">{location.name}</p>
+        <div className="rounded-xl border border-border bg-app p-4">
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0">
+              <MapPin size={22} />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-ink truncate">{location.path}</h2>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-xs text-muted capitalize">{location.location_type}</span>
+                <span className="text-xs text-faint">·</span>
+                <span className="text-xs text-muted">{location.code || "no code"}</span>
+                <span className="text-xs text-faint">·</span>
+                {location.is_active ? <span className="badge badge-success">Active</span> : <span className="badge badge-warning">Inactive</span>}
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="text-muted">Code:</span>
-            <p className="font-medium">{location.code || "—"}</p>
-          </div>
-          <div>
-            <span className="text-muted">Type:</span>
-            <p className="font-medium capitalize">{location.location_type}</p>
-          </div>
-          <div>
-            <span className="text-muted">Status:</span>
-            <p className="font-medium">
-              {location.is_active ? (
-                <span className="badge badge-success">Active</span>
-              ) : (
-                <span className="badge badge-warning">Inactive</span>
-              )}
-            </p>
-          </div>
-          <div>
-            <span className="text-muted">Created:</span>
-            <p className="font-medium">{formatDate(location.created_at)}</p>
-          </div>
-          <div>
-            <span className="text-muted">Stock value:</span>
-            <p className="font-medium">{formatCurrency(location.stock_value, currencySymbol)}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 pt-4 border-t border-border">
+            <div>
+              <span className="text-xs text-muted">Name</span>
+              <p className="font-medium mt-0.5 truncate">{location.name}</p>
+            </div>
+            <div>
+              <span className="text-xs text-muted">Code</span>
+              <p className="font-medium mt-0.5 truncate">{location.code || "—"}</p>
+            </div>
+            <div>
+              <span className="text-xs text-muted">Created</span>
+              <p className="font-medium mt-0.5">{formatDate(location.created_at)}</p>
+            </div>
+            <div>
+              <span className="text-xs text-muted">Stock value</span>
+              <p className="font-medium mt-0.5">{formatCurrency(location.stock_value, currencySymbol)}</p>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 px-4 py-2.5 bg-subtle rounded-lg border border-border">
-          <div className="flex items-center gap-1.5 text-xs text-muted">
-            <Package size={14} /> <span className="font-medium text-ink">{totalStockQty}</span> units
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 flex-1 min-w-0 rounded-xl border border-border bg-app px-4 py-3">
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted"><Package size={14} className="text-indigo-500" /> <span className="font-medium text-ink">{totalStockQty}</span> units</span>
+            <span className="w-px h-4 bg-border hidden sm:block" />
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted"><span className="font-medium text-ink">{lpns.length}</span> LPNs</span>
+            {lotCount > 0 && (
+              <>
+                <span className="w-px h-4 bg-border hidden sm:block" />
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted"><span className="font-medium text-ink">{lotCount}</span> lot{lotCount !== 1 ? "s" : ""}</span>
+              </>
+            )}
+            <span className="w-px h-4 bg-border hidden sm:block" />
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+              <span className="font-medium text-ink">{serials.length}</span> serials
+              {reservedSerials.length > 0 && <span className="text-amber-600 dark:text-amber-400">({reservedSerials.length} reserved)</span>}
+            </span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="font-medium text-ink">{lpns.length}</span> LPNs
-          </div>
-          {lotCount > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-muted">
-              <span className="font-medium text-ink">{lotCount}</span> lot{lotCount !== 1 ? "s" : ""}
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="font-medium text-ink">{serials.length}</span> serials{reservedSerials.length > 0 ? <span className="text-amber-600 dark:text-amber-400">({reservedSerials.length} reserved)</span> : null}
-          </div>
-          <div className="ml-auto text-xs text-muted">
+          <div className="inline-flex items-center gap-1.5 text-xs text-muted rounded-xl border border-border bg-app px-4 py-3 shrink-0">
             Value: <span className="font-medium text-ink">{formatCurrency(totalStockValue, currencySymbol)}</span>
           </div>
         </div>
 
-        <div className="flex gap-2 border-b border-border pb-3">
+        <div className="flex gap-1 p-1 bg-subtle rounded-lg border border-border w-fit">
           <TabButton active={tab === "stock"} onClick={() => setTab("stock")}>
             <Package size={14} /> Stock ({stockLines.length + serials.length})
           </TabButton>
@@ -254,7 +259,7 @@ export default function LocationDetail({ location, onClose }: Props) {
               <>
             {stockLines.length > 0 && (
               <div>
-                <p className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Bulk stock ({stockLines.length} lines, {stockLines.reduce((sum, sl) => sum + sl.quantity, 0)} units)</p>
+                <p className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Bulk stock <span className="text-faint normal-case">({stockLines.length} lines, {stockLines.reduce((sum, sl) => sum + sl.quantity, 0)} units)</span></p>
                 <div className="overflow-x-auto max-h-72 overflow-y-auto border border-border rounded-lg">
                   <table className="w-full text-sm" role="grid" aria-label="Stock at location">
                     <thead>
@@ -486,8 +491,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium ${
-        active ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400" : "text-muted hover:bg-app"
+      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+        active ? "bg-white dark:bg-ink/20 shadow-sm text-ink dark:text-white" : "text-muted hover:text-ink hover:bg-app"
       }`}
     >
       {children}

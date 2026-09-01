@@ -43,7 +43,9 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
     const stocked = stockLocations.locations.filter((l) => l.count > 0);
     if (stocked.length === 0) return;
     const top = [...stocked].sort((a, b) => b.count - a.count)[0];
-    setLocationId(String(top.location_id));
+    const id = String(top.location_id);
+    setLocationId(id);
+    setNewQty(String(top.count));
   }, [stockLocations.locations, locationId, locationTouched]);
 
   const locationOptions = [...activeLocations].sort((a, b) => a.path.localeCompare(b.path));
@@ -82,7 +84,13 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
         <div className="space-y-5 px-6 py-5">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Location</label>
-            <select className="select" value={locationId} onChange={(e) => { setLocationTouched(true); setLocationId(e.target.value); }}>
+            <select className="select" value={locationId} onChange={(e) => {
+              setLocationTouched(true);
+              const v = e.target.value;
+              setLocationId(v);
+              const id = v ? parseInt(v) : null;
+              setNewQty((id != null ? (stockCountByLoc.get(id) ?? 0) : product.quantity).toString());
+            }}>
               <option value="">Default (product location)</option>
               {locationOptions.map((l) => {
                 const count = stockCountByLoc.get(l.id);

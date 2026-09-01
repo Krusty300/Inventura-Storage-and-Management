@@ -103,7 +103,10 @@ describe("AdjustStockModal", () => {
     await waitFor(() => expect(screen.getAllByRole("combobox")[0]).toHaveValue("10"));
 
     expect(screen.getByText(/Auto-detected from existing stock/)).toBeInTheDocument();
-    expect(screen.getByText("Will add 12 units")).toBeInTheDocument();
+    // The "New Quantity" is synced to the selected location's on-hand (8), so
+    // there is no accidental delta and the adjust button stays disabled.
+    expect(screen.getByRole("spinbutton")).toHaveValue(8);
+    expect(screen.getByRole("button", { name: "Adjust Stock" })).toBeDisabled();
   });
 
   it("shows the selected location's on-hand as the current quantity", async () => {
@@ -118,6 +121,12 @@ describe("AdjustStockModal", () => {
 
     fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "1" } });
 
-    expect(screen.getByText("Will add 18 units")).toBeInTheDocument();
+    // Selecting a location syncs the new-quantity field to its on-hand count,
+    // so new/current are computed against the same (per-location) scope.
+    expect(screen.getByRole("spinbutton")).toHaveValue(2);
+    expect(screen.getByText("Current Quantity", { exact: false })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "5" } });
+    expect(screen.getByText("Will add 3 units")).toBeInTheDocument();
   });
 });

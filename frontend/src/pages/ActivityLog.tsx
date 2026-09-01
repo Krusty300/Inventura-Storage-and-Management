@@ -70,7 +70,10 @@ export default function ActivityLog() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Activity Log</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Activity Log</h1>
+          <p className="text-sm text-muted mt-1">A chronological trail of every action taken across the warehouse.</p>
+        </div>
         <button onClick={handleExport} className="btn-secondary" aria-label="Export activity log to CSV">Export</button>
       </div>
 

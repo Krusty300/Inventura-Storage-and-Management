@@ -149,6 +149,8 @@ def create_cycle_count(data: CycleCountCreate, db: Session = Depends(get_db), us
         product = get_or_404(Product, item.product_id, db)
         if not product.is_active:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' is inactive")
+        if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - count stock on a specific variant")
         expected_qty = inventory.on_hand(db, product_id=item.product_id, location_id=data.location_id)
         db.add(CycleCountItem(
             cycle_count_id=cc.id,

@@ -28,7 +28,7 @@ export default function DateTimeDisplay() {
         {formatDate(now, settings?.date_format ?? DEFAULT_DATE_FORMAT)}
       </span>
       <span className="h-4 w-px bg-border" aria-hidden="true" />
-      <span className="flex items-center gap-1.5 whitespace-nowrap font-mono tabular-nums" title="Current time">
+      <span className="flex items-center gap-1.5 whitespace-nowrap tabular-nums" title="Current time">
         <Clock size={14} className="text-faint" />
         {hours}:{minutes}:{seconds}
       </span>

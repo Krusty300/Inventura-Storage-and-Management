@@ -63,12 +63,15 @@ export default function LPNs() {
 
   const lpns = data?.items || [];
 
-  const printLabel = (id: number) => {
-    api.get(`/labels/pallet/${id}`, { responseType: "blob" }).then(({ data }) => {
+  const printLabel = async (id: number) => {
+    try {
+      const { data } = await api.get(`/labels/pallet/${id}`, { responseType: "blob" });
       const url = URL.createObjectURL(data);
       window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    });
+    } catch {
+      addToast("Failed to print label", "error");
+    }
   };
 
   const toggleSelect = (id: number) => {
@@ -90,6 +93,7 @@ export default function LPNs() {
         const { data } = await api.get(`/labels/pallet/${id}`, { responseType: "blob" });
         const url = URL.createObjectURL(data);
         window.open(url, "_blank", "noopener,noreferrer");
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
         await new Promise((r) => setTimeout(r, 300));
       } catch { /* skip failed labels */ }
     }
@@ -99,7 +103,10 @@ export default function LPNs() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">LPNs (Pallets & Totes)</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">LPNs (Pallets & Totes)</h1>
+          <p className="text-sm text-muted mt-1">Group stock into pallets and totes for efficient movement and storage.</p>
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export LPNs to CSV">Export</button>
           {selected.size > 0 && (

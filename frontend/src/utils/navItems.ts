@@ -45,6 +45,8 @@ export interface NavGroup {
   id: string;
   label: string;
   items: NavItem[];
+  /** Restrict the whole group to these roles (default: visible to any role). */
+  roles?: string[];
 }
 
 export const navGroups: NavGroup[] = [
@@ -120,6 +122,7 @@ export const navGroups: NavGroup[] = [
   {
     id: "admin",
     label: "Admin",
+    roles: ["admin"],
     items: [
       { to: "/users", icon: UsersIcon, label: "Users", perm: "users.view" },
       { to: "/reports", icon: BarChart3, label: "Reports", perm: "reports.view" },

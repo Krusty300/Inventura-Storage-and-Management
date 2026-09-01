@@ -66,6 +66,8 @@ class ASNItem(Base):
 
     @property
     def status(self) -> str:
+        if self.asn and self.asn.status == "cancelled":
+            return "cancelled"
         if self.received_qty >= self.expected_qty:
             return "received"
         if self.received_qty > 0:

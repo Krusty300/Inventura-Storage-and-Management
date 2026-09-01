@@ -83,7 +83,22 @@ describe("FloatingSidebar", () => {
     renderWithProviders(<FloatingSidebar {...defaultWidthProps} />, { role: "worker" });
     expect(screen.queryByLabelText("Users")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByLabelText("Products")).toBeInTheDocument();
+  });
+
+  it("hides the admin group for non-admin roles", () => {
+    renderWithProviders(<FloatingSidebar {...defaultWidthProps} />, { role: "worker" });
+    expect(screen.queryByLabelText("Settings")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Reports")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Activity")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Notifications")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Products")).toBeInTheDocument();
+  });
+
+  it("shows the admin group for admin role", () => {
+    renderWithProviders(<FloatingSidebar {...defaultWidthProps} />, { role: "admin" });
     expect(screen.getByLabelText("Settings")).toBeInTheDocument();
+    expect(screen.getByLabelText("Users")).toBeInTheDocument();
   });
 
   it("renders expand button and calls onExpand", () => {

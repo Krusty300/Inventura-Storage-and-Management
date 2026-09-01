@@ -14,7 +14,7 @@ import { useTheme, type ThemeMode } from "../context/ThemeContext";
 import NotificationBell from "./NotificationBell";
 import FloatingSidebar from "./FloatingSidebar";
 import DateTimeDisplay from "./DateTimeDisplay";
-import { navItems } from "../utils/navItems";
+import { navItems, navGroups } from "../utils/navItems";
 
 const MIN_SIDEBAR_WIDTH = 208;
 const DEFAULT_SIDEBAR_WIDTH = 256;
@@ -65,7 +65,12 @@ export default function Layout() {
   const { theme, setTheme } = useTheme();
   const isTablet = useMediaQuery(TABLET_MQ);
   const isDesktop = useMediaQuery(DESKTOP_MQ);
-  const visibleNavItems = navItems.filter((item) => can(item.perm));
+  const roleRestrictedTos = new Set(
+    navGroups
+      .filter((g) => g.roles && !g.roles.includes(user?.role ?? ""))
+      .flatMap((g) => g.items.map((it) => it.to)),
+  );
+  const visibleNavItems = navItems.filter((item) => can(item.perm) && !roleRestrictedTos.has(item.to));
 
   const collapsed = isTablet && sidebarCollapsed;
   const overlay = collapsed && !isDesktop;

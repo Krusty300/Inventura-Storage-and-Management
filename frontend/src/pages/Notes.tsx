@@ -4,7 +4,8 @@ import {
   Search, Pin, PinOff, CheckCircle2, Circle, Trash2, Edit3, Clock,
   AlertTriangle, Tag as TagIcon, Link as LinkIcon, StickyNote, ListTodo, Bell,
   LayoutGrid, List, Columns3, X as XIcon, User as UserIcon, Image as ImageIcon,
-  Copy, Archive, ArchiveRestore, BookTemplate, ChevronUp, ChevronDown,
+  Copy, Archive, ArchiveRestore, BookTemplate, ChevronUp, ChevronDown, Eye,
+  Info, FileText,
 } from "lucide-react";
 import Markdown from "react-markdown";
 import api from "../api/client";
@@ -49,10 +50,10 @@ const EMPTY_FORM: NoteForm = { title: "", body: "", category: "note", priority: 
 const CATEGORY_ICONS: Record<string, typeof StickyNote> = { note: StickyNote, reminder: Bell, todo: ListTodo };
 const PRIORITY_COLORS: Record<string, string> = { low: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400", normal: "bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400", high: "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400", urgent: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 ring-1 ring-red-300 dark:ring-red-500/40" };
 const CATEGORY_COLORS: Record<string, string> = { note: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400", reminder: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400", todo: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" };
-const KANBAN_COLUMNS: { key: string; label: string; icon: typeof StickyNote }[] = [
-  { key: "note", label: "Notes", icon: StickyNote },
-  { key: "reminder", label: "Reminders", icon: Bell },
-  { key: "todo", label: "Todos", icon: ListTodo },
+const KANBAN_COLUMNS: { key: string; label: string; icon: typeof StickyNote; dot: string }[] = [
+  { key: "note", label: "Notes", icon: StickyNote, dot: "bg-indigo-400" },
+  { key: "reminder", label: "Reminders", icon: Bell, dot: "bg-amber-400" },
+  { key: "todo", label: "Todos", icon: ListTodo, dot: "bg-emerald-400" },
 ];
 
 function priorityBadge(p: string) {
@@ -168,7 +169,7 @@ export default function Notes() {
   });
   const kanbanNotes = kanbanData ?? (viewMode === "kanban" ? [] : notes);
 
-  const { selectedIds, toggleSelect, clearSelection } = useBulkSelection(notes);
+  const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(notes);
 
   const createMutation = useMutation({
     mutationFn: (payload: NoteForm) => {
@@ -400,44 +401,90 @@ export default function Notes() {
     </div>
   );
 
-  const renderNoteRow = (note: Note) => {
+  const renderNoteTableRow = (note: Note) => {
     const CatIcon = CATEGORY_ICONS[note.category] || StickyNote;
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
-      <div key={note.id} className={`flex items-start gap-3 p-4 border-b border-border hover:bg-subtle/60 hover:border-indigo-100 dark:hover:border-indigo-500/20 transition-[background-color,border-color,opacity] duration-150 ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${note.is_pinned && !note.is_completed ? "border-l-2 border-l-indigo-400 dark:border-l-indigo-500" : ""}`}>
-        <div className="flex items-center gap-2 mt-0.5">
-          <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(note.id)} onChange={() => toggleSelect(note.id)} aria-label={`Select note: ${note.title}`} />
-          <button onClick={() => completeMutation.mutate(note.id)} className="shrink-0 text-muted hover:text-emerald-500 transition-colors" aria-label={note.is_completed ? "Mark incomplete" : "Mark complete"}>
-            {note.is_completed ? <CheckCircle2 size={20} className="text-emerald-500" /> : <Circle size={20} />}
-          </button>
-        </div>
-        {note.image_url && (
-          <img src={note.image_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" />
-        )}
-        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openDetail(note)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(note); } }} aria-label={`View note: ${note.title}`}>
-          <div className="flex items-center gap-2 flex-wrap">
+      <tr key={note.id} className={`hover:bg-app cursor-pointer transition-colors ${note.is_completed ? "opacity-60" : ""}`} onClick={(e) => { const t = e.target as HTMLElement; if (t instanceof HTMLInputElement || t instanceof HTMLButtonElement || t.closest("button") || t.closest("input")) return; openDetail(note); }}>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(note.id)} onChange={() => toggleSelect(note.id)} aria-label={`Select note: ${note.title}`} />
+            <button onClick={(e) => { e.stopPropagation(); completeMutation.mutate(note.id); }} className="shrink-0 text-muted hover:text-emerald-500 transition-colors" aria-label={note.is_completed ? "Mark incomplete" : "Mark complete"} title={note.is_completed ? "Mark incomplete" : "Mark complete"}>
+              {note.is_completed ? <CheckCircle2 size={18} className="text-emerald-500" /> : <Circle size={18} />}
+            </button>
+          </div>
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
             <CatIcon size={14} className="text-muted shrink-0" />
+            {note.image_url && <img src={note.image_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" loading="lazy" />}
             <span className={`font-medium text-ink ${note.is_completed ? "line-through" : ""}`}>{note.title}</span>
-            {categoryBadge(note.category)}
-            {note.priority !== "normal" && priorityBadge(note.priority)}
+            {note.is_pinned && !note.is_completed && <Pin size={13} className="text-indigo-500 shrink-0" aria-label="Pinned" />}
             {overdue && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400"><AlertTriangle size={12} />Overdue</span>}
             {dueSoon && !overdue && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"><Clock size={12} />Due soon</span>}
+            {note.is_completed && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"><CheckCircle2 size={12} />Completed</span>}
           </div>
-          {note.body && <p className="text-sm text-muted mt-1 line-clamp-2">{note.body}</p>}
-          <div className="flex items-center gap-3 mt-2 flex-wrap">
-            {note.due_date && <span className="text-xs text-muted">Due: {formatDate(note.due_date)}</span>}
-            {note.tags.map((t) => (
-              <span key={t.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: t.color + "20", color: t.color }}>{t.name}</span>
-            ))}
-            {note.links.length > 0 && <span className="inline-flex items-center gap-1 text-xs text-muted"><LinkIcon size={12} />{note.links.length} linked</span>}
-            {note.assigned_to_name && <span className="text-xs text-muted">@{note.assigned_to_name}</span>}
+          {note.body && <p className="text-sm text-muted mt-0.5 line-clamp-1">{note.body}</p>}
+          {note.links.length > 0 && <span className="inline-flex items-center gap-1 text-xs text-muted mt-0.5"><LinkIcon size={12} />{note.links.length} linked</span>}
+        </td>
+        <td className="px-4 py-3">{categoryBadge(note.category)}</td>
+        <td className="px-4 py-3">{note.priority !== "normal" ? priorityBadge(note.priority) : <span className="text-muted">—</span>}</td>
+        <td className="px-4 py-3 whitespace-nowrap">{note.due_date ? formatDate(note.due_date) : <span className="text-muted">—</span>}</td>
+        <td className="px-4 py-3">
+          <div className="flex flex-wrap gap-1">
+            {note.tags.length > 0 ? note.tags.map((t) => (
+              <span key={t.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: t.color + "20", color: t.color }}>{t.name}</span>
+            )) : <span className="text-muted">—</span>}
           </div>
-        </div>
-        {renderNoteActions(note)}
-      </div>
+        </td>
+        <td className="px-4 py-3 text-muted whitespace-nowrap">{note.assigned_to_name ? `@${note.assigned_to_name}` : "—"}</td>
+        <td className="px-4 py-3 text-muted whitespace-nowrap">{formatDate(note.created_at)}</td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-1 justify-end">
+            <button onClick={(e) => { e.stopPropagation(); openDetail(note); }} className="p-1.5 text-muted hover:text-indigo-600 dark:text-indigo-400 rounded transition-colors" aria-label={`View note: ${note.title}`} title="View"><Eye size={16} /></button>
+            {renderNoteActions(note)}
+          </div>
+        </td>
+      </tr>
     );
   };
+
+  const renderNoteTable = () => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm" role="grid" aria-label="Notes table">
+        <thead>
+          <tr className="bg-app text-left">
+            <th scope="col" className="px-4 py-3 w-16">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all notes" title="Select all" />
+                <span className="text-muted sr-only">State</span>
+              </div>
+            </th>
+            <th scope="col" className="px-4 py-3 font-medium text-muted">Title</th>
+            <th scope="col" className="px-4 py-3 font-medium text-muted">Category</th>
+            <th scope="col" className="px-4 py-3 font-medium text-muted">Priority</th>
+            <th scope="col" className="px-4 py-3 font-medium text-muted">Due</th>
+            <th scope="col" className="px-4 py-3 font-medium text-muted">Tags</th>
+            <th scope="col" className="px-4 py-3 font-medium text-muted">Assigned</th>
+            <th scope="col" className="px-4 py-3 font-medium text-muted">Created</th>
+            <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {isLoading ? (
+            <Skeleton rows={6} cols={9} />
+          ) : isError ? (
+            <ErrorState title="Failed to load notes" message="Something went wrong while fetching notes." variant="table" onRetry={() => queryClient.invalidateQueries({ queryKey: ["notes"] })} />
+          ) : notes.length === 0 ? (
+            renderEmptyState()
+          ) : (
+            notes.map(renderNoteTableRow)
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 
   const renderNoteCard = (note: Note) => {
     const CatIcon = CATEGORY_ICONS[note.category] || StickyNote;
@@ -493,7 +540,8 @@ export default function Notes() {
           const ColIcon = col.icon;
           return (
             <div key={col.key} className="flex-1 min-w-[280px]" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, col.key)}>
-              <div className="flex items-center gap-2 px-3 py-2.5 mb-3 rounded-lg bg-subtle border border-border">
+              <div className="flex items-center gap-2 px-3 py-2.5 mb-3 rounded-lg bg-subtle border border-border sticky top-0 z-10">
+                <span className={`w-2 h-2 rounded-full ${col.dot} inline-block`} />
                 <ColIcon size={14} className="text-muted" />
                 <span className="text-sm font-semibold text-ink">{col.label}</span>
                 <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-border text-xs font-medium text-muted">{colNotes.length}</span>
@@ -568,11 +616,11 @@ export default function Notes() {
   );
 
   const renderContent = () => {
+    if (viewMode === "list") {
+      return renderNoteTable();
+    }
     if (isLoading) {
-      if (viewMode === "card") {
-        return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-lg" />)}</div>;
-      }
-      return <div className="p-4 space-y-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>;
+      return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-lg" variant="text" />)}</div>;
     }
     if (isError) {
       return <ErrorState title="Failed to load notes" message="Something went wrong while fetching notes." variant="block" onRetry={() => queryClient.invalidateQueries({ queryKey: ["notes"] })} />;
@@ -589,48 +637,24 @@ export default function Notes() {
     if (notes.length === 0) {
       return renderEmptyState();
     }
-    if (viewMode === "card") {
-      return (
-        <div className="p-4">
-          {pinnedNotes.length > 0 && (
-            <div className="mb-4">
-              <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-1"><Pin size={12} />Pinned</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{pinnedNotes.map(renderNoteCard)}</div>
-            </div>
-          )}
-          {unpinnedNotes.length > 0 && (
-            <div className="mb-4">
-              {pinnedNotes.length > 0 && <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Other</div>}
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{unpinnedNotes.map(renderNoteCard)}</div>
-            </div>
-          )}
-          {completedNotes.length > 0 && (
-            <div>
-              <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-1"><CheckCircle2 size={12} />Completed ({completedNotes.length})</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{completedNotes.map(renderNoteCard)}</div>
-            </div>
-          )}
-        </div>
-      );
-    }
     return (
-      <div>
+      <div className="p-4">
         {pinnedNotes.length > 0 && (
-          <div>
-            <div className="px-4 py-2 bg-subtle/50 text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1"><Pin size={12} />Pinned</div>
-            {pinnedNotes.map(renderNoteRow)}
+          <div className="mb-4">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-1"><Pin size={12} />Pinned</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{pinnedNotes.map(renderNoteCard)}</div>
           </div>
         )}
         {unpinnedNotes.length > 0 && (
-          <div>
-            {pinnedNotes.length > 0 && <div className="px-4 py-2 bg-subtle/50 text-xs font-semibold text-muted uppercase tracking-wider">Other</div>}
-            {unpinnedNotes.map(renderNoteRow)}
+          <div className="mb-4">
+            {pinnedNotes.length > 0 && <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">Other</div>}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{unpinnedNotes.map(renderNoteCard)}</div>
           </div>
         )}
         {completedNotes.length > 0 && (
           <div>
-            <div className="px-4 py-2 bg-subtle/50 text-xs font-semibold text-muted uppercase tracking-wider flex items-center gap-1"><CheckCircle2 size={12} />Completed ({completedNotes.length})</div>
-            {completedNotes.map(renderNoteRow)}
+            <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-1"><CheckCircle2 size={12} />Completed ({completedNotes.length})</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{completedNotes.map(renderNoteCard)}</div>
           </div>
         )}
       </div>
@@ -659,24 +683,24 @@ export default function Notes() {
 
           {viewingNote.body && <div className="prose prose-sm dark:prose-invert max-w-none text-ink leading-relaxed"><Markdown>{viewingNote.body}</Markdown></div>}
 
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="space-y-2">
-              <div className="text-xs font-medium text-muted uppercase tracking-wider">Details</div>
-              {viewingNote.due_date && <div><span className="text-muted">Due:</span> <span className="text-ink">{formatDate(viewingNote.due_date)}</span></div>}
-              {viewingNote.recurrence !== "none" && <div><span className="text-muted">Recurs:</span> <span className="text-ink capitalize">{viewingNote.recurrence}</span></div>}
-              <div><span className="text-muted">Created:</span> <span className="text-ink">{formatDate(viewingNote.created_at)}</span></div>
-              <div><span className="text-muted">Updated:</span> <span className="text-ink">{formatDate(viewingNote.updated_at)}</span></div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div className="rounded-xl border border-border bg-app p-4 space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted uppercase tracking-wider"><Info size={13} />Details</div>
+              {viewingNote.due_date && <div className="flex items-center justify-between gap-2"><span className="text-muted">Due</span><span className="text-ink font-medium">{formatDate(viewingNote.due_date)}</span></div>}
+              {viewingNote.recurrence !== "none" && <div className="flex items-center justify-between gap-2"><span className="text-muted">Recurs</span><span className="text-ink font-medium capitalize">{viewingNote.recurrence}</span></div>}
+              <div className="flex items-center justify-between gap-2"><span className="text-muted">Created</span><span className="text-ink font-medium">{formatDate(viewingNote.created_at)}</span></div>
+              <div className="flex items-center justify-between gap-2"><span className="text-muted">Updated</span><span className="text-ink font-medium">{formatDate(viewingNote.updated_at)}</span></div>
             </div>
-            <div className="space-y-2">
-              <div className="text-xs font-medium text-muted uppercase tracking-wider">Assignment</div>
+            <div className="rounded-xl border border-border bg-app p-4 space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted uppercase tracking-wider"><UserIcon size={13} />Assignment</div>
               <div>
-                <label className="text-xs text-muted block mb-1">Assigned to</label>
+                <label className="text-xs text-muted block mb-1.5">Assigned to</label>
                 <select className="select w-full text-sm" value={viewingNote.assigned_to_id ?? ""} onChange={(e) => assignMutation.mutate({ noteId: viewingNote.id, userId: e.target.value ? Number(e.target.value) : null })} aria-label="Assign note to user">
                   <option value="">Unassigned</option>
                   {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
                 </select>
               </div>
-              <div className="text-xs text-muted">By: @{viewingNote.username}</div>
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-border"><span className="text-xs text-muted">Created by</span><span className="text-xs text-ink font-medium">@{viewingNote.username}</span></div>
             </div>
           </div>
 
@@ -738,9 +762,12 @@ export default function Notes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-ink">Notes</h1>
+          <p className="text-sm text-muted mt-1">Notes, reminders, and todos — linked to the rest of your warehouse.</p>
+        </div>
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
             {(["all", "active", "completed", "archived"] as const).map((f) => (
               <button key={f} onClick={() => { setCompletedFilter(f); setPage(1); clearSelection(); }} className={tabClasses(completedFilter === f)}>
@@ -853,10 +880,10 @@ export default function Notes() {
       {data && viewMode !== "kanban" && <Pagination page={page} totalPages={data.pages} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />}
 
       <Modal open={showForm} title={editingNote ? "Edit Note" : "New Note"} onClose={() => { setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); }} wide>
-          <div className="space-y-4">
+          <div className="space-y-5">
             {!editingNote && templates.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-muted mb-1">Start from template</label>
+              <div className="rounded-xl border border-border bg-app p-4">
+                <label className="block text-sm font-medium text-muted mb-1.5">Start from template</label>
                 <select className="select w-full" value="" onChange={(e) => {
                   const t = templates.find((tpl) => tpl.id === Number(e.target.value));
                   if (t) setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [], links: [] });
@@ -880,108 +907,119 @@ export default function Notes() {
                 <button onClick={() => setEditImageFile(null)} className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white" aria-label="Remove image"><XIcon size={14} /></button>
               </div>
             )}
-            <div>
-              <label className="block text-sm font-medium text-muted mb-1">Title *</label>
-              <input className="input w-full" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Note title" autoFocus />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted mb-1">Body</label>
-              <textarea className="input w-full h-28 resize-y" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Add details..." />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted mb-1">Image</label>
-              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setEditImageFile(f); }} />
-              <button onClick={() => fileInputRef.current?.click()} className="btn-secondary text-sm flex items-center gap-1.5" type="button"><ImageIcon size={14} />Choose image</button>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted uppercase tracking-wider"><FileText size={13} />Content</div>
               <div>
-                <label className="block text-sm font-medium text-muted mb-1">Category</label>
-                <select className="select w-full" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  <option value="note">Note</option>
-                  <option value="reminder">Reminder</option>
-                  <option value="todo">Todo</option>
-                </select>
+                <label className="block text-sm font-medium text-ink mb-1">Title *</label>
+                <input className="input w-full" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Note title" autoFocus />
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted mb-1">Priority</label>
-                <select className="select w-full" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
+                <label className="block text-sm font-medium text-ink mb-1">Body</label>
+                <textarea className="input w-full h-28 resize-y" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Add details..." />
+              </div>
+              <div className="flex items-center gap-3">
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setEditImageFile(f); }} />
+                <span className="text-sm font-medium text-ink">Image</span>
+                <button onClick={() => fileInputRef.current?.click()} className="btn-secondary text-sm flex items-center gap-1.5" type="button"><ImageIcon size={14} />{editImageFile || editingNote?.image_url ? "Change image" : "Choose image"}</button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-muted mb-1">Due Date</label>
-                <input type="datetime-local" className="input w-full" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted mb-1">Recurrence</label>
-                <select className="select w-full" value={form.recurrence} onChange={(e) => setForm({ ...form, recurrence: e.target.value })}>
-                  <option value="none">None</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted mb-1">Assign to</label>
-              <select className="select w-full" value={form.assigned_to_id ?? ""} onChange={(e) => setForm({ ...form, assigned_to_id: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">Unassigned</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted mb-2">Tags</label>
-              <div className="flex flex-wrap gap-2">
-                {tags.map((t) => {
-                  const selected = form.tag_ids.includes(t.id);
-                  return (
-                    <button key={t.id} type="button" onClick={() => setForm({ ...form, tag_ids: selected ? form.tag_ids.filter((id) => id !== t.id) : [...form.tag_ids, t.id] })} className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${selected ? "border-current" : "border-border hover:border-current"}`} style={{ color: t.color, backgroundColor: selected ? t.color + "15" : "transparent" }}>
-                      {t.name}
-                    </button>
-                  );
-                })}
-                {tags.length === 0 && <span className="text-xs text-muted">No tags created yet</span>}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted mb-2">Linked Entities</label>
-              <div className="space-y-2">
-                {form.links.map((link, idx) => {
-                  const EntityIcon = getEntityTypeIcon(link.entity_type);
-                  return (
-                    <div key={idx} className="flex items-center gap-2 text-sm bg-subtle rounded-lg px-3 py-2">
-                      <EntityIcon size={14} className="text-muted shrink-0" />
-                      <span className="text-ink font-medium">{link.entity_label || getEntityTypeLabel(link.entity_type)}</span>
-                      <span className="text-muted">#{link.entity_id}</span>
-                      <button type="button" onClick={() => setForm({ ...form, links: form.links.filter((_, i) => i !== idx) })} className="ml-auto p-0.5 text-muted hover:text-red-500 transition-colors" aria-label="Remove link"><XIcon size={14} /></button>
-                    </div>
-                  );
-                })}
-                <div className="flex gap-2 items-center">
-                  <select className="select text-sm w-40" value={linkEntityFilter} onChange={(e) => setLinkEntityFilter(e.target.value)}>
-                    {LINKABLE_ENTITIES.map((t) => <option key={t.entity_type} value={t.entity_type}>{t.label}</option>)}
+
+            <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted uppercase tracking-wider"><Clock size={13} />Details</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Category</label>
+                  <select className="select w-full" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                    <option value="note">Note</option>
+                    <option value="reminder">Reminder</option>
+                    <option value="todo">Todo</option>
                   </select>
-                  <div className="flex-1">
-                    <EntitySearchInput
-                      entityType={linkEntityFilter}
-                      excludeIds={form.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id }))}
-                      onSelect={(sel) => {
-                        if (!form.links.some((l) => l.entity_type === sel.entity_type && l.entity_id === sel.entity_id)) {
-                          setForm({ ...form, links: [...form.links, sel] });
-                        }
-                      }}
-                      placeholder={`Search ${getEntityTypeLabel(linkEntityFilter).toLowerCase()}s...`}
-                    />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Priority</label>
+                  <select className="select w-full" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Due Date</label>
+                  <input type="datetime-local" className="input w-full" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Recurrence</label>
+                  <select className="select w-full" value={form.recurrence} onChange={(e) => setForm({ ...form, recurrence: e.target.value })}>
+                    <option value="none">None</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted uppercase tracking-wider"><UserIcon size={13} />Assignment & organization</div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Assign to</label>
+                <select className="select w-full" value={form.assigned_to_id ?? ""} onChange={(e) => setForm({ ...form, assigned_to_id: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">Unassigned</option>
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-2">Tags</label>
+                <div className="flex flex-wrap gap-2">
+                  {tags.map((t) => {
+                    const selected = form.tag_ids.includes(t.id);
+                    return (
+                      <button key={t.id} type="button" onClick={() => setForm({ ...form, tag_ids: selected ? form.tag_ids.filter((id) => id !== t.id) : [...form.tag_ids, t.id] })} className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${selected ? "border-current" : "border-border hover:border-current"}`} style={{ color: t.color, backgroundColor: selected ? t.color + "15" : "transparent" }}>
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                  {tags.length === 0 && <span className="text-xs text-muted">No tags created yet</span>}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-2">Linked Entities</label>
+                <div className="space-y-2">
+                  {form.links.map((link, idx) => {
+                    const EntityIcon = getEntityTypeIcon(link.entity_type);
+                    return (
+                      <div key={idx} className="flex items-center gap-2 text-sm bg-subtle rounded-lg px-3 py-2">
+                        <EntityIcon size={14} className="text-muted shrink-0" />
+                        <span className="text-ink font-medium">{link.entity_label || getEntityTypeLabel(link.entity_type)}</span>
+                        <span className="text-muted">#{link.entity_id}</span>
+                        <button type="button" onClick={() => setForm({ ...form, links: form.links.filter((_, i) => i !== idx) })} className="ml-auto p-0.5 text-muted hover:text-red-500 transition-colors" aria-label="Remove link"><XIcon size={14} /></button>
+                      </div>
+                    );
+                  })}
+                  <div className="flex gap-2 items-center">
+                    <select className="select text-sm w-40" value={linkEntityFilter} onChange={(e) => setLinkEntityFilter(e.target.value)}>
+                      {LINKABLE_ENTITIES.map((t) => <option key={t.entity_type} value={t.entity_type}>{t.label}</option>)}
+                    </select>
+                    <div className="flex-1">
+                      <EntitySearchInput
+                        entityType={linkEntityFilter}
+                        excludeIds={form.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id }))}
+                        onSelect={(sel) => {
+                          if (!form.links.some((l) => l.entity_type === sel.entity_type && l.entity_id === sel.entity_id)) {
+                            setForm({ ...form, links: [...form.links, sel] });
+                          }
+                        }}
+                        placeholder={`Search ${getEntityTypeLabel(linkEntityFilter).toLowerCase()}s...`}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
               <button onClick={() => { setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); }} className="btn-secondary">Cancel</button>
               {editingNote && can("notes.create") && <button onClick={() => { createTemplateMutation.mutate(editingNote); }} className="btn-secondary text-sm" disabled={createTemplateMutation.isPending}>Save Template</button>}
               <button onClick={handleFormSubmit} className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>{editingNote ? "Save Changes" : "Create Note"}</button>

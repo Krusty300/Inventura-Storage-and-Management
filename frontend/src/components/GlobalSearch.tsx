@@ -5,6 +5,7 @@ import { CornerDownLeft, Search } from "lucide-react";
 import api from "../api/client";
 import type { GlobalSearchResponse, GlobalSearchResult } from "../types";
 import { useDebounce } from "../hooks/useDebounce";
+import Skeleton from "./Skeleton";
 
 const TYPE_LABELS: Record<string, string> = {
   product: "Products",
@@ -137,7 +138,17 @@ export default function GlobalSearch() {
       {showPanel && (
         <div className="absolute left-0 right-0 top-full mt-2 z-50 card p-0 overflow-hidden max-h-[70vh] overflow-y-auto">
           {isFetching && results.length === 0 ? (
-            <p className="text-sm text-muted px-4 py-6 text-center">Searching...</p>
+            <div className="divide-y divide-border" aria-busy="true" aria-label="Searching" role="status">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <div className="min-w-0 space-y-1.5 flex-1">
+                    <Skeleton variant="text" className="h-3.5 w-2/3" />
+                    <Skeleton variant="text" className="h-3 w-1/3" />
+                  </div>
+                  <Skeleton variant="text" className="h-3.5 w-3.5 shrink-0" />
+                </div>
+              ))}
+            </div>
           ) : results.length === 0 ? (
             <p className="text-sm text-muted px-4 py-6 text-center">
               No matches for "{debounced}"

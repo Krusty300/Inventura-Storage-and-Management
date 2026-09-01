@@ -261,7 +261,7 @@ describe("Locations Page", () => {
     renderWithProviders(<Locations />);
     fireEvent.click(await screen.findByRole("button", { name: "Add Location" }));
     fireEvent.change(screen.getByPlaceholderText("e.g. Aisle A, Bin A-01"), { target: { value: "Bin B-02" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: /create location/i }));
     expect(await screen.findByText("Invalid location type 'binn'")).toBeInTheDocument();
   });
 
@@ -272,7 +272,7 @@ describe("Locations Page", () => {
     expect(screen.getByPlaceholderText("e.g. Aisle A, Bin A-01")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("e.g. Aisle A, Bin A-01"), { target: { value: "Bin B-02" } });
     fireEvent.change(screen.getByPlaceholderText("e.g. A-01"), { target: { value: "B-02" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: /create location/i }));
     await vi.waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/locations", expect.objectContaining({ name: "Bin B-02", code: "B-02", is_active: true }))
     );

@@ -109,7 +109,10 @@ export default function Orders() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Orders / Purchase Orders</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Orders / Purchase Orders</h1>
+          <p className="text-sm text-muted mt-1">Place and receive orders with your suppliers.</p>
+        </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export orders to CSV">
             Export

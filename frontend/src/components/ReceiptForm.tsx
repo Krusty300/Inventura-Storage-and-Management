@@ -290,30 +290,32 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
 
   return (
     <Modal open onClose={onClose} title="Record Receipt" wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-            <select className="select" aria-label="Supplier" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">None</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Reference</label>
-            <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. PO-1001" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-            <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="rounded-xl border border-border bg-app p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
+              <select className="select" aria-label="Supplier" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
+                <option value="">None</option>
+                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Reference</label>
+              <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. PO-1001" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Notes</label>
+              <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
           </div>
         </div>
 
-        <div className="border border-border rounded-lg overflow-hidden">
-          <div className="bg-app px-4 py-2 flex items-center justify-between">
+        <div className="rounded-xl border border-border bg-app overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-subtle">
             <span className="text-sm font-medium text-ink">Items</span>
-            <button type="button" onClick={() => setRows([...rows, { ...EMPTY_ROW }])} className="btn-secondary text-xs py-1 px-2">
-              <Plus size={14} className="inline mr-1" />Add Item
+            <button type="button" onClick={() => setRows([...rows, { ...EMPTY_ROW }])} className="btn-secondary text-xs py-1.5 px-2 inline-flex items-center gap-1">
+              <Plus size={14} />Add Item
             </button>
           </div>
           <div className="divide-y divide-border max-h-[50vh] overflow-auto">
@@ -332,7 +334,7 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 pt-4">
+        <div className="flex justify-end gap-3 pt-2 border-t border-border">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : "Record Receipt"}</button>
         </div>

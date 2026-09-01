@@ -167,7 +167,10 @@ export default function Sales() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Sales</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Sales</h1>
+          <p className="text-sm text-muted mt-1">Record and manage customer transactions.</p>
+        </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export sales to CSV">Export</button>
           <button onClick={() => setShowForm(true)} className="btn-primary">New Sale</button>

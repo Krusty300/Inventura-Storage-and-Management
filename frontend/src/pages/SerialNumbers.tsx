@@ -118,7 +118,10 @@ export default function SerialNumbers() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Serial Numbers</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Serial Numbers</h1>
+          <p className="text-sm text-muted mt-1">Track individual units with unique serial numbers.</p>
+        </div>
         <button onClick={handleExport} className="btn-secondary" aria-label="Export serial numbers to CSV">Export</button>
       </div>
 

@@ -3,6 +3,14 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
+from app.constants import MAX_STOCK_QUANTITY
+
+
+def _check_magnitude(v: int) -> int:
+    if abs(v) > MAX_STOCK_QUANTITY:
+        raise ValueError(f"quantity magnitude must not exceed {MAX_STOCK_QUANTITY}")
+    return v
+
 
 class StockMovementCreate(BaseModel):
     product_id: int
@@ -31,6 +39,7 @@ class StockMovementCreate(BaseModel):
             raise ValueError(f"quantity_change must be positive for movement_type='{movement_type}'")
         if movement_type == "adjustment" and v == 0:
             raise ValueError("quantity_change must not be zero for movement_type='adjustment'")
+        _check_magnitude(v)
         return v
 
 
@@ -40,6 +49,14 @@ class StockMovementAdjust(BaseModel):
     reason_code: str
     notes: str = ""
     location_id: Optional[int] = None
+
+    @field_validator("new_quantity")
+    @classmethod
+    def validate_new_quantity(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("new_quantity must not be negative")
+        _check_magnitude(v)
+        return v
 
 
 class StockMovementUpdate(BaseModel):
@@ -59,6 +76,13 @@ class StockMovementUpdate(BaseModel):
         if v.lower() not in allowed:
             raise ValueError(f"movement_type must be one of {allowed}")
         return v.lower()
+
+    @field_validator("quantity_change")
+    @classmethod
+    def validate_quantity_change(cls, v: int | None) -> int | None:
+        if v is not None:
+            _check_magnitude(v)
+        return v
 
 
 class StockMovementOut(BaseModel):
@@ -100,6 +124,7 @@ class StockMovementTransfer(BaseModel):
     def validate_quantity(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("quantity must be positive")
+        _check_magnitude(v)
         return v
 
 
@@ -133,6 +158,7 @@ class StockMovementUnallocatedMove(BaseModel):
     def validate_quantity(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("quantity must be positive")
+        _check_magnitude(v)
         return v
 
     @field_validator("serial_ids")
@@ -160,6 +186,7 @@ class StockMovementQuarantine(BaseModel):
     def validate_quantity(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("quantity must be positive")
+        _check_magnitude(v)
         return v
 
     @field_validator("serial_ids")

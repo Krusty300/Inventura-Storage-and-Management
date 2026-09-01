@@ -162,7 +162,10 @@ export default function Categories() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink">Categories</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-ink">Categories</h1>
+          <p className="text-sm text-muted mt-1">Organize products into categories and subcategories.</p>
+        </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export categories to CSV">
             Export

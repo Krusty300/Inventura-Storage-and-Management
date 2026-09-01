@@ -21,6 +21,7 @@ import { errorMessage } from "../utils/errors";
 import { downloadBlob } from "../utils/download";
 import ConfirmDialog from "./ConfirmDialog";
 import Modal from "./Modal";
+import Skeleton from "./Skeleton";
 
 interface Props {
   entityType: string;
@@ -281,7 +282,19 @@ export default function AttachmentSection({ entityType, entityId, canEdit = true
         )}
 
         {isLoading ? (
-          <p className="text-sm text-muted py-2">Loading attachments...</p>
+          <div className="divide-y divide-border" aria-busy="true" aria-label="Loading attachments">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 py-3">
+                <Skeleton variant="text" className="h-5 w-5 rounded" />
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <Skeleton variant="text" className="h-3.5 w-1/2" />
+                  <Skeleton variant="text" className="h-3 w-2/3" />
+                </div>
+                <Skeleton variant="text" className="h-6 w-16 rounded" />
+                <Skeleton variant="text" className="h-6 w-10 rounded" />
+              </div>
+            ))}
+          </div>
         ) : documents.length === 0 ? (
           <p className="text-sm text-muted py-2">No documents attached yet.</p>
         ) : (
@@ -384,9 +397,17 @@ export default function AttachmentSection({ entityType, entityId, canEdit = true
               <iframe src={previewUrl} title={preview.original_filename} className="w-full h-[70vh] rounded-lg" />
             )}
             {previewKind(preview.content_type) === "text" && (
-              <pre className="whitespace-pre-wrap break-words bg-app rounded-lg p-4 text-xs text-ink max-h-[70vh] overflow-auto">
-                {previewText ?? "Loading..."}
-              </pre>
+              previewText === null ? (
+                <div className="bg-app rounded-lg p-4 space-y-2 max-h-[70vh] overflow-auto" aria-busy="true" aria-label="Loading document preview">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <Skeleton key={i} variant="text" className="h-3.5" />
+                  ))}
+                </div>
+              ) : (
+                <pre className="whitespace-pre-wrap break-words bg-app rounded-lg p-4 text-xs text-ink max-h-[70vh] overflow-auto">
+                  {previewText}
+                </pre>
+              )
             )}
             <div className="mt-4 flex justify-end gap-2">
               <button className="btn-secondary" onClick={() => handleDownload(preview)}>

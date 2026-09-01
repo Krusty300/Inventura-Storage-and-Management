@@ -25,6 +25,11 @@ def _prune(records: list[float]) -> list[float]:
     return [t for t in records if t > cutoff]
 
 
+def _prune_since(records: list[float], window_seconds: float) -> list[float]:
+    cutoff = _now() - window_seconds
+    return [t for t in records if t > cutoff]
+
+
 def _count(key: str) -> int:
     with _lock:
         records = _prune(_failures.get(key, []))
@@ -56,6 +61,27 @@ def lockout_message(username: str, ip: str) -> str | None:
         return "Too many failed login attempts for this account. Try again later."
     if _count(f"ip:{ip}") >= MAX_FAILED_PER_IP:
         return "Too many failed login attempts. Try again later."
+    return None
+
+
+REGISTER_WINDOW_SECONDS = 60 * 60
+MAX_REGISTRATIONS_PER_IP = 5
+
+
+def register_rate_limited(ip: str) -> str | None:
+    """Return an error message if the IP has registered too many accounts, else None.
+
+    Uses a separate in-memory counter so sign-up spam is throttled without
+    interacting with the failed-login lockout state.
+    """
+    key = f"register:{ip}"
+    with _lock:
+        records = _prune_since(_failures.get(key, []), REGISTER_WINDOW_SECONDS)
+        if len(records) >= MAX_REGISTRATIONS_PER_IP:
+            _failures[key] = records
+            return "Too many accounts created from this address. Try again later."
+        records.append(_now())
+        _failures[key] = records
     return None
 
 

@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from sqlalchemy import update
+from sqlalchemy import and_, delete, or_, update
 
 from app.config import settings
 from app.database import get_db
@@ -19,6 +19,33 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 LAST_SEEN_REFRESH_SECONDS = 300
+
+# Max token lifetime is the "remember me" expiry (30 days). Any non-revoked
+# session older than this can no longer carry a valid token.
+SESSION_EXPIRY_DAYS = max(getattr(settings, "remember_token_expire_minutes", 0) / (24 * 60), 1)
+
+
+def purge_expired_sessions(db: Session) -> int:
+    """Remove dead sessions so the user_sessions table does not grow unbounded.
+
+    Deletes every revoked (logged-out) session and any non-revoked session whose
+    token lifetime has clearly elapsed (older than the max token TTL, so it can
+    no longer be valid). Returns the number of rows deleted.
+    """
+    now = datetime.now(timezone.utc)
+    expired_cutoff = now - timedelta(days=SESSION_EXPIRY_DAYS)
+    result = db.execute(
+        delete(UserSession).where(
+            or_(
+                UserSession.revoked_at.isnot(None),
+                and_(
+                    UserSession.revoked_at.is_(None),
+                    UserSession.created_at < expired_cutoff,
+                ),
+            )
+        )
+    )
+    return result.rowcount or 0
 
 
 def hash_password(password: str) -> str:

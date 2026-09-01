@@ -4,7 +4,6 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import asyncio
 import os
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
@@ -18,6 +17,7 @@ from app.logging_config import setup_logging
 from app.middleware import RequestIDMiddleware
 from app.routers import activity_log, asn, attachments, auth, bom, categories, costing, cycle_counts, customers, customer_groups, daraja, dashboard, forecasting, labels, locations, lots, lpns, notes, notifications, orders, planning, price_lists, products, promotions, quality_checks, receipts, reports, sales, sales_channels, search, serial_numbers, settings, shipments, stock, suppliers, users, work_orders
 from app.services.inventory import expire_overdue_lots
+from app.services.auth import purge_expired_sessions
 from app.ws_manager import manager
 
 setup_logging(
@@ -35,6 +35,8 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         expire_overdue_lots(db)
+        purge_expired_sessions(db)
+        db.commit()
     finally:
         db.close()
     yield
