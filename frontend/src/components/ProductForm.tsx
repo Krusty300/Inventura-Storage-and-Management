@@ -7,6 +7,7 @@ import type { Category, Location, Product, ProductImage, Supplier } from "../typ
 import { useToast } from "../context/ToastContext";
 import { useSettings } from "../hooks/useSettings";
 import SlideOver from "./SlideOver";
+import FittedSelect from "./FittedSelect";
 import LocationPicker from "./LocationPicker";
 import { hasVariants } from "../utils/variants";
 import { errorMessage } from "../utils/errors";
@@ -279,17 +280,27 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Category</label>
-                  <select className="select" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
-                    <option value="">None</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <FittedSelect
+                    ariaLabel="Category"
+                    value={form.category_id}
+                    onChange={(v) => setForm({ ...form, category_id: v })}
+                    options={[
+                      { value: "", label: "None" },
+                      ...categories.map((c) => ({ value: String(c.id), label: c.name })),
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-                  <select className="select" value={form.supplier_id} onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}>
-                    <option value="">None</option>
-                    {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
+                  <FittedSelect
+                    ariaLabel="Supplier"
+                    value={form.supplier_id}
+                    onChange={(v) => setForm({ ...form, supplier_id: v })}
+                    options={[
+                      { value: "", label: "None" },
+                      ...suppliers.map((s) => ({ value: String(s.id), label: s.name })),
+                    ]}
+                  />
                 </div>
               </div>
             )}
@@ -344,7 +355,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
             </div>
 
             {!isVariantMode && form.is_serialized && (
-              <p className="text-xs text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-lg px-3 py-2 mt-4">
+              <p className="text-xs text-primary-strong dark:text-primary bg-primary-soft dark:bg-primary/10 border border-primary-soft dark:border-primary/30 rounded-lg px-3 py-2 mt-4">
                 Serialized products track stock per serial number. Quantity must be 0 — stock is added by recording receipts with serial numbers.
               </p>
             )}
@@ -374,23 +385,29 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
               {!isVariantMode && (
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Serialized (tracked per unit)</label>
-                  <select
-                    className="select"
+                  <FittedSelect
                     value={form.is_serialized ? "1" : "0"}
-                    onChange={(e) => setForm({ ...form, is_serialized: e.target.value === "1", quantity: "0" })}
+                    onChange={(v) => setForm({ ...form, is_serialized: v === "1", quantity: "0" })}
                     disabled={isParentWithVariants || isVariantMode}
-                  >
-                    <option value="0">No</option>
-                    <option value="1">Yes</option>
-                  </select>
+                    ariaLabel="Serialized (tracked per unit)"
+                    options={[
+                      { value: "0", label: "No" },
+                      { value: "1", label: "Yes" },
+                    ]}
+                  />
                 </div>
               )}
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Status</label>
-                <select className="select" value={form.is_active ? "1" : "0"} onChange={(e) => setForm({ ...form, is_active: e.target.value === "1" })}>
-                  <option value="1">Active</option>
-                  <option value="0">Inactive</option>
-                </select>
+                <FittedSelect
+                  ariaLabel="Status"
+                  value={form.is_active ? "1" : "0"}
+                  onChange={(val) => setForm({ ...form, is_active: val === "1" })}
+                  options={[
+                    { value: "1", label: "Active" },
+                    { value: "0", label: "Inactive" },
+                  ]}
+                />
               </div>
             </div>
           </div>
@@ -402,10 +419,10 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${dragOver ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10" : "border-border hover:border-indigo-400"}`}
+              className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${dragOver ? "border-primary bg-primary-soft dark:bg-primary/10" : "border-border hover:border-primary"}`}
             >
               <Upload size={20} className="mx-auto text-muted mb-1" />
-              <p className="text-sm text-muted">Drag & drop images here or <span className="text-indigo-600 dark:text-indigo-400 font-medium">browse</span></p>
+              <p className="text-sm text-muted">Drag & drop images here or <span className="text-primary dark:text-primary font-medium">browse</span></p>
               <p className="text-xs text-faint mt-0.5">JPEG, PNG, GIF, WebP — max 10 MB each</p>
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="hidden" onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             </div>

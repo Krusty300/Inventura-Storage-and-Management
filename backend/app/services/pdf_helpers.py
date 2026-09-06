@@ -308,23 +308,46 @@ def draw_item_table(c: canvas.Canvas, x: float, top_y: float, headers: list[str]
 def draw_totals(c: canvas.Canvas, right: float, y: float,
                 rows: list[tuple[str, str]], total_label: str | None = None,
                 total_value: str | None = None) -> float:
-    """Right-aligned summary block with a rule above the highlighted total."""
-    c.setFont(FONT, 10)
+    """Right-aligned summary block with airy spacing and a bold, highlighted total."""
+    block_w = 140
     for label, value in rows:
+        c.setFont(FONT, 10)
         c.setFillColor(MUTED)
-        c.drawRightString(right - 130, y - 4, label)
+        c.drawRightString(right - block_w, y - 4, label)
         c.setFillColor(INK)
         c.drawRightString(right, y - 4, value)
-        y -= 18
+        y -= 19
     if total_label is not None:
-        y -= 4
-        _hrule(c, right - 130, y + 8, 130, weight=0.8)
-        c.setFont(BOLD, 11)
+        y -= 8
+        band_h = 26
+        band_y = y - 16
+        c.setFillColor(STRIPE_BG)
+        c.roundRect(right - block_w - 4, band_y, block_w + 4, band_h, 3, fill=1, stroke=0)
+        c.setStrokeColor(FAINT)
+        c.setLineWidth(0.8)
+        c.line(right - block_w, band_y + band_h - 3, right, band_y + band_h - 3)
+        c.setFont(BOLD, 9.5)
+        c.setFillColor(MUTED)
+        c.drawRightString(right - block_w - 2, y - 5, total_label)
+        c.setFont(BOLD, 13.5)
         c.setFillColor(ACCENT)
-        c.drawRightString(right - 130, y - 4, total_label)
-        c.drawRightString(right, y - 4, total_value)
-        y -= 24
+        c.drawRightString(right, y - 5, total_value)
+        y = band_y
     return y
+
+
+def money(currency_symbol: str, amount: float | int | None) -> str:
+    """Format a monetary amount with thousands separators, e.g. 'KSh1,234,567.89'.
+
+    A leading minus sign is placed before the currency symbol.
+    """
+    try:
+        amt = float(amount or 0)
+    except (TypeError, ValueError):
+        amt = 0.0
+    if amt < 0:
+        return f"-{currency_symbol}{abs(amt):,.2f}"
+    return f"{currency_symbol}{amt:,.2f}"
 
 
 def draw_notes(c: canvas.Canvas, x: float, y: float, text: str):

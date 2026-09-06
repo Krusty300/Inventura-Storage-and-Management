@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import api from "../api/client";
 import type { Supplier, Category } from "../types";
 import { errorMessage } from "../utils/errors";
@@ -60,18 +61,28 @@ export default function BulkEditModal({ ids, onClose, onSaved }: Props) {
         <div className="space-y-5 px-6 py-5">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-            <select className="select" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">— No change —</option>
-              {(suppliers || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="Supplier"
+              value={supplierId}
+              onChange={setSupplierId}
+              options={[
+                { value: "", label: "— No change —" },
+                ...(suppliers || []).map((s) => ({ value: String(s.id), label: s.name })),
+              ]}
+            />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Category</label>
-            <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">— No change —</option>
-              {(categories || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="Category"
+              value={categoryId}
+              onChange={setCategoryId}
+              options={[
+                { value: "", label: "— No change —" },
+                ...(categories || []).map((c) => ({ value: String(c.id), label: c.name })),
+              ]}
+            />
           </div>
 
           <div>

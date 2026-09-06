@@ -52,9 +52,14 @@ export default function Promotions() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Promotions</h1>
-          <p className="text-sm text-muted mt-1">Create discount codes and promotional offers.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <BadgePercent size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Promotions</h1>
+            <p className="text-sm text-muted mt-1">Create discount codes and promotional offers.</p>
+          </div>
         </div>
         {can("promotions.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">Add Promotion</button>
@@ -93,7 +98,7 @@ export default function Promotions() {
                 <tr key={p.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(p)}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <BadgePercent size={16} className="text-indigo-500" />
+                      <BadgePercent size={16} className="text-primary" />
                       <span className="font-medium font-mono">{p.code}</span>
                     </div>
                     {p.description && <p className="text-xs text-muted mt-0.5 max-w-[200px] truncate">{p.description}</p>}
@@ -113,7 +118,7 @@ export default function Promotions() {
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-2">
-                      {can("promotions.update") && <button onClick={() => { setEditing(p); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${p.code}`}><Pencil size={16} /></button>}
+                      {can("promotions.update") && <button onClick={() => { setEditing(p); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${p.code}`}><Pencil size={16} /></button>}
                       {can("promotions.delete") && <button onClick={() => setDeleting(p)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${p.code}`}><Trash2 size={16} /></button>}
                     </div>
                   </td>

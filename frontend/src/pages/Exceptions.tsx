@@ -31,7 +31,7 @@ export default function Exceptions() {
     { key: "low_stock", label: "Low Stock", icon: AlertTriangle, color: "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" },
     { key: "zero_stock", label: "Out of Stock", icon: PackageX, color: "bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400" },
     { key: "quarantined_lots", label: "Quarantined Lots", icon: ShieldAlert, color: "bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400" },
-    { key: "open_cycle_counts", label: "Open Cycle Counts", icon: ClipboardList, color: "bg-indigo-100 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400" },
+    { key: "open_cycle_counts", label: "Open Cycle Counts", icon: ClipboardList, color: "bg-sky-100 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400" },
     { key: "pending_asns", label: "Pending ASNs", icon: Truck, color: "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400" },
   ];
 
@@ -41,8 +41,15 @@ export default function Exceptions() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-ink">Exceptions Dashboard</h1>
-      <p className="text-sm text-muted -mt-3">Quarantined, expired, and blocked stock that needs attention.</p>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+          <ShieldAlert size={22} strokeWidth={2} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink">Exceptions Dashboard</h1>
+          <p className="text-sm text-muted mt-0.5">Quarantined, expired, and blocked stock that needs attention.</p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         {sections.map((s) => {
@@ -52,7 +59,7 @@ export default function Exceptions() {
             <button
               key={s.key}
               onClick={() => setSection(s.key)}
-              className={`card p-4 text-left hover:shadow transition-shadow ${section === s.key ? "ring-2 ring-indigo-400" : ""}`}
+              className={`card p-4 text-left hover:shadow transition-shadow ${section === s.key ? "ring-2 ring-primary" : ""}`}
               aria-label={`Show ${s.label}`}
             >
               <div className="flex items-center justify-between">

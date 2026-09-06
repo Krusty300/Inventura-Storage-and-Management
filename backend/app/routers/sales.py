@@ -21,7 +21,7 @@ from app.models.quality_check import QualityCheck
 from app.models.shipment import Shipment
 from app.models.serial_number import SerialNumber
 from app.models.stock_movement import StockMovement
-from app.schemas.sale import RefundRequest, SaleBulkEdit, SaleCreate, SaleOut
+from app.schemas.sale import RefundRequest, SaleBulkEdit, SaleCreate, SaleOut, SaleUpdate
 from app.services import inventory
 from app.services.auth import require_permission
 from app.services.notify import notify_admins, notify_low_stock
@@ -29,12 +29,13 @@ from app.services.payment_methods import resolve_payment_details, validate_payme
 from app.services.pricing import apply_promotion, resolve_price, validate_promotion, PromoError
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    ACCENT, BODY_CENTER, BODY_RIGHT, FONT, MARGIN, MUTED, PAGE_H,
+    ACCENT, BODY_CENTER, BODY_RIGHT, FONT, MARGIN, MUTED, PAGE_H, money,
     draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals,
     draw_watermark, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change
+from app.services.cache import settings_cache
 
 router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(require_permission("sales.view"))])
 
@@ -44,15 +45,26 @@ def generate_invoice_number(db: Session) -> str:
 
 
 def get_tax_rate(db: Session) -> float:
+    cached = settings_cache.get("tax_rate")
+    if cached is not None:
+        return cached
     s = db.query(Settings).first()
-    return float(s.tax_rate) if s else 0.0
+    rate = float(s.tax_rate) if s else 0.0
+    settings_cache["tax_rate"] = rate
+    return rate
 
 
 def get_currency_defaults(db: Session) -> tuple[str, str]:
+    cached = settings_cache.get("currency_defaults")
+    if cached is not None:
+        return cached
     s = db.query(Settings).first()
     if s and s.currency_code:
-        return s.currency_code, s.currency_symbol or symbol_for(s.currency_code)
-    return "USD", "$"
+        result = (s.currency_code, s.currency_symbol or symbol_for(s.currency_code))
+    else:
+        result = ("USD", "$")
+    settings_cache["currency_defaults"] = result
+    return result
 
 
 def load_sale(db: Session, sale_id: int) -> Sale:
@@ -143,9 +155,13 @@ def _restore_stock_for_sale(db: Session, sale: Sale, *, reason: str, invoice_ove
                     shipment.shipment_number if shipment else "none",
                 )
             continue
+        ref_filter = (
+            (StockMovement.reference_type == "shipment", StockMovement.reference == shipment.shipment_number)
+            if shipment is not None
+            else (StockMovement.reference_type == "sale", StockMovement.reference == sale.invoice_number)
+        )
         originals = db.query(StockMovement).filter(
-            StockMovement.reference_type == "sale",
-            StockMovement.reference == sale.invoice_number,
+            *ref_filter,
             StockMovement.product_id == product.id,
             StockMovement.quantity_change < 0,
         ).order_by(StockMovement.id).all()
@@ -274,7 +290,8 @@ def list_sales(
     db: Session = Depends(get_db),
 ):
     q = db.query(Sale).options(
-        joinedload(Sale.items), joinedload(Sale.customer), joinedload(Sale.user), joinedload(Sale.channel)
+        joinedload(Sale.items).joinedload(SaleItem.product),
+        joinedload(Sale.customer), joinedload(Sale.user), joinedload(Sale.channel),
     )
     if search:
         q = q.filter(Sale.invoice_number.ilike(f"%{search}%"))
@@ -309,6 +326,9 @@ def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depe
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     new_status = updates.get("status")
+    new_payment_status = updates.get("payment_status")
+    if new_payment_status is not None and new_payment_status not in ("pending", "completed", "failed", "cancelled"):
+        raise HTTPException(status_code=400, detail="Invalid payment_status (allowed: pending, completed, failed, cancelled)")
     for s in sales:
         if new_status and s.status not in _VALID_STATUS_TRANSITIONS:
             raise HTTPException(status_code=400, detail=f"Cannot change status of sale '{s.invoice_number}' from '{s.status}'")
@@ -354,6 +374,22 @@ def get_sale(sale_id: int, db: Session = Depends(get_db)):
     return _apply_sale_locations(db, SaleOut.model_validate(load_sale(db, sale_id)))
 
 
+@router.put("/{sale_id}", response_model=SaleOut)
+def update_sale(sale_id: int, data: SaleUpdate, db: Session = Depends(get_db), user=Depends(require_permission("sales.create"))):
+    sale = load_sale(db, sale_id)
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    for k, v in updates.items():
+        setattr(sale, k, v)
+    db.commit()
+    db.refresh(sale)
+    log_activity(db, user.id, user.username, "update", "sale", sale.id,
+                 f"Updated sale {sale.invoice_number}: {', '.join(f'{k}={v}' for k, v in updates.items())}")
+    broadcast_change("sale", "updated")
+    return _apply_sale_locations(db, SaleOut.model_validate(load_sale(db, sale_id)))
+
+
 @router.post("", response_model=SaleOut, status_code=201)
 def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(require_permission("sales.create"))):
     if not data.items:
@@ -366,16 +402,18 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
         channel = db.get(SalesChannel, data.channel_id)
         if channel is None:
             raise HTTPException(status_code=400, detail=f"Sales channel {data.channel_id} not found")
+        if not channel.is_active:
+            raise HTTPException(status_code=400, detail=f"Sales channel '{channel.name}' is inactive")
 
     subtotal = 0
     total_qty = 0
-    resolved_prices: dict[int, float] = {}
+    resolved_prices: dict[tuple[int, int | None], float] = {}
     for item_data in data.items:
         if item_data.unit_price and item_data.unit_price > 0:
             price = item_data.unit_price
         else:
             price = resolve_price(db, item_data.product_id, data.customer_id, item_data.quantity)
-        resolved_prices[item_data.product_id] = price
+        resolved_prices[(item_data.product_id, item_data.location_id)] = price
         subtotal += item_data.quantity * price
         total_qty += item_data.quantity
     discount_amount = float(data.discount_amount or 0)
@@ -411,12 +449,18 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
         key = (item_data.product_id, item_data.location_id)
         qty_needed[key] = qty_needed.get(key, 0) + item_data.quantity
 
-    products = {}
+    product_ids = list({item_data.product_id for item_data in data.items})
+    products = {p.id: p for p in db.query(Product).filter(Product.id.in_(product_ids)).all()}
+    parents_with_variants = {
+        pid for (pid,) in db.query(Product.parent_id)
+        .filter(Product.parent_id.in_(product_ids), Product.is_active == True, Product.parent_id.isnot(None))
+        .distinct().all()
+    }
     for item_data in data.items:
-        product = db.query(Product).filter(Product.id == item_data.product_id).first()
-        if not product or not product.is_active:
+        product = products.get(item_data.product_id)
+        if product is None or not product.is_active:
             raise HTTPException(status_code=404, detail=f"Product {item_data.product_id} not found")
-        if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
+        if not product.is_variant and product.id in parents_with_variants:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - select a specific variant")
         if product.is_serialized:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' is serialized - not supported at checkout")
@@ -469,7 +513,7 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
     try:
         for item_data in data.items:
             product = products[item_data.product_id]
-            db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item_data.quantity, unit_price=resolved_prices[item_data.product_id]))
+            db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item_data.quantity, unit_price=resolved_prices[(item_data.product_id, item_data.location_id)]))
             allocation = inventory.allocate_lots(
                 db, product_id=product.id, quantity=item_data.quantity,
                 location_id=item_data.location_id,
@@ -488,18 +532,21 @@ def create_sale(data: SaleCreate, db: Session = Depends(get_db), user=Depends(re
         db.rollback()
         raise HTTPException(status_code=400, detail="Insufficient stock - stock levels changed while processing the sale")
 
-    db.commit()
     if promo_code:
         from app.models.promotion import Promotion as PromoModel
         promo_obj = db.query(PromoModel).filter(PromoModel.code == promo_code).first()
-        if promo_obj:
-            apply_promotion(db, promo_obj)
-            db.commit()
+        if promo_obj and not apply_promotion(db, promo_obj):
+            db.rollback()
+            raise HTTPException(status_code=400, detail="Promotion has reached its usage limit")
+
+    db.commit()
     sale = load_sale(db, sale.id)
+    s = db.query(Settings).first()
+    currency = (s.currency_symbol if s else "$") or "$"
     log_activity(db, user.id, user.username, "create", "sale", sale.id,
-                 f"Sale '{sale.invoice_number}' for ${float(sale.total_amount):.2f}")
+                 f"Sale '{sale.invoice_number}' for {currency}{float(sale.total_amount):.2f}")
     notify_admins(db, f"New sale {sale.invoice_number}",
-                  f"{sale.customer_name or 'Walk-in'} · ${float(sale.total_amount):.2f}",
+                  f"{sale.customer_name or 'Walk-in'} · {currency}{float(sale.total_amount):.2f}",
                   type="success", link="/sales", exclude_user_id=user.id)
     for item in sale.items:
         if item.product:
@@ -541,10 +588,12 @@ def refund_sale(sale_id: int, data: RefundRequest | None = None, db: Session = D
     sale.payment_status = "completed" if sale.payment_status == "completed" else "cancelled"
     db.commit()
     db.refresh(sale)
+    s = db.query(Settings).first()
+    currency = sale.currency_symbol or (s.currency_symbol if s else "$") or "$"
     log_activity(db, user.id, user.username, "update", "sale", sale.id,
                  f"Refunded sale '{sale.invoice_number}'")
     notify_admins(db, f"Refund {sale.invoice_number}",
-                  f"${float(sale.total_amount):.2f} returned to stock", type="info", link="/sales", exclude_user_id=user.id)
+                  f"{currency}{float(sale.total_amount):.2f} returned to stock", type="info", link="/sales", exclude_user_id=user.id)
     db.commit()
     broadcast_change("sale", "updated")
     broadcast_change("stock_movement", "created")
@@ -575,10 +624,12 @@ def cancel_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
     sale.payment_status = "cancelled"
     db.commit()
     db.refresh(sale)
+    s = db.query(Settings).first()
+    currency = sale.currency_symbol or (s.currency_symbol if s else "$") or "$"
     log_activity(db, user.id, user.username, "update", "sale", sale.id,
                  f"Cancelled sale '{sale.invoice_number}' — stock restored")
     notify_admins(db, f"Sale {sale.invoice_number} cancelled",
-                  f"${float(sale.total_amount):.2f} returned to stock", type="warning", link="/sales", exclude_user_id=user.id)
+                  f"{currency}{float(sale.total_amount):.2f} returned to stock", type="warning", link="/sales", exclude_user_id=user.id)
     db.commit()
     broadcast_change("sale", "updated")
     broadcast_change("stock_movement", "created")
@@ -718,9 +769,9 @@ def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
         rows.append([
             (name[:44] + "\u2026") if len(name) > 44 else name,
             (", ".join(locs)[:22] + "\u2026") if len(", ".join(locs)) > 22 else (", ".join(locs) or "\u2014"),
-            f"{currency}{float(item.unit_price):.2f}",
+            money(currency, item.unit_price),
             str(item.quantity),
-            f"{currency}{float(item.unit_price) * item.quantity:.2f}",
+            money(currency, float(item.unit_price) * item.quantity),
         ])
 
     y = draw_item_table(
@@ -734,14 +785,14 @@ def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
 
     tax_rate = s.tax_rate if s else 0
     totals = [
-        ("Subtotal", f"{currency}{float(sale.subtotal):.2f}"),
+        ("Subtotal", money(currency, sale.subtotal)),
     ]
     if sale.discount_amount:
-        totals.append(("Discount", f"-{currency}{float(sale.discount_amount):.2f}"))
+        totals.append(("Discount", money(currency, -float(sale.discount_amount))))
     if sale.promo_discount:
-        totals.append((f"Promo ({sale.promo_code})", f"-{currency}{float(sale.promo_discount):.2f}"))
-    totals.append((f"Tax ({tax_rate}%)", f"{currency}{float(sale.tax_amount):.2f}"))
-    y = draw_totals(c, BODY_RIGHT, y, totals, "Total", f"{currency}{float(sale.total_amount):.2f}")
+        totals.append((f"Promo ({sale.promo_code})", money(currency, -float(sale.promo_discount))))
+    totals.append((f"Tax ({tax_rate}%)", money(currency, sale.tax_amount)))
+    y = draw_totals(c, BODY_RIGHT, y, totals, "Total", money(currency, sale.total_amount))
 
     if sale.payment_method == "mobile_money" and sale.payment_provider:
         c.setFont(FONT, 9)
@@ -854,9 +905,9 @@ def bulk_sales_pdf(ids: list[int], db: Session = Depends(get_db)):
             rows.append([
                 (name[:44] + "\u2026") if len(name) > 44 else name,
                 (", ".join(locs)[:22] + "\u2026") if len(", ".join(locs)) > 22 else (", ".join(locs) or "\u2014"),
-                f"{currency}{float(item.unit_price):.2f}",
+                money(currency, item.unit_price),
                 str(item.quantity),
-                f"{currency}{float(item.unit_price) * item.quantity:.2f}",
+                money(currency, float(item.unit_price) * item.quantity),
             ])
 
         y = draw_item_table(c, MARGIN, info_y - 12, headers, aligns, col_widths, rows)
@@ -866,14 +917,14 @@ def bulk_sales_pdf(ids: list[int], db: Session = Depends(get_db)):
         total = float(sale.total_amount)
         tax_rate = s.tax_rate if s else 0
         totals = [
-            ("Subtotal", f"{currency}{subtotal:.2f}"),
+            ("Subtotal", money(currency, subtotal)),
         ]
         if sale.discount_amount:
-            totals.append(("Discount", f"-{currency}{float(sale.discount_amount):.2f}"))
+            totals.append(("Discount", money(currency, -float(sale.discount_amount))))
         if sale.promo_discount:
-            totals.append((f"Promo ({sale.promo_code})", f"-{currency}{float(sale.promo_discount):.2f}"))
-        totals.append((f"Tax ({tax_rate}%)", f"{currency}{tax:.2f}"))
-        y = draw_totals(c, BODY_RIGHT, y, totals, "Total", f"{currency}{total:.2f}")
+            totals.append((f"Promo ({sale.promo_code})", money(currency, -float(sale.promo_discount))))
+        totals.append((f"Tax ({tax_rate}%)", money(currency, tax)))
+        y = draw_totals(c, BODY_RIGHT, y, totals, "Total", money(currency, total))
 
         if sale.notes:
             draw_notes(c, MARGIN, y, sale.notes)

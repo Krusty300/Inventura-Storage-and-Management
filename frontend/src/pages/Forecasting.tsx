@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { statusBadge } from "../utils/statusBadges";
-import { Eye } from "lucide-react";
+import { Eye, TrendingUp } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bar,
@@ -17,6 +17,7 @@ import api from "../api/client";
 import type { ForecastingDetail, ForecastingReplenishment } from "../types";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import FittedSelect from "../components/FittedSelect";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast } from "../context/ToastContext";
@@ -83,9 +84,14 @@ export default function Forecasting() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Forecasting &amp; Replenishment</h1>
-          <p className="text-sm text-muted">Weighted moving-average demand forecasts with safety stock and reorder suggestions.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <TrendingUp size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Forecasting &amp; Replenishment</h1>
+            <p className="text-sm text-muted">Weighted moving-average demand forecasts with safety stock and reorder suggestions.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={() => refetch()} className="btn-secondary inline-flex items-center gap-2" aria-label="Refresh forecasts">
@@ -103,15 +109,11 @@ export default function Forecasting() {
       >
         <div className="w-36">
           <label className="block text-sm font-medium text-ink mb-1">Service Level</label>
-          <select className="select" value={serviceLevel} onChange={(e) => setServiceLevel(e.target.value)}>
-            {SERVICE_LEVELS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+          <FittedSelect ariaLabel="Service level" value={serviceLevel} onChange={setServiceLevel} options={SERVICE_LEVELS.map((s) => ({ value: s.value, label: s.label }))} />
         </div>
         <div className="w-36">
           <label className="block text-sm font-medium text-ink mb-1">History (days)</label>
-          <select className="select" value={days} onChange={(e) => setDays(e.target.value)}>
-            {HISTORY_DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
+          <FittedSelect ariaLabel="History days" value={days} onChange={setDays} options={HISTORY_DAYS.map((d) => ({ value: d, label: d }))} />
         </div>
         <div className="w-40">
           <label className="block text-sm font-medium text-ink mb-1">Lead Time (days)</label>
@@ -201,7 +203,7 @@ export default function Forecasting() {
                       <td className="px-4 py-3">
                         <button
                           onClick={() => openDetail(row.product_id)}
-                          className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400"
+                          className="p-1 text-faint hover:text-primary dark:text-primary"
                           aria-label={`View forecast for ${row.product_name}`}
                         >
                           <Eye size={16} />

@@ -18,6 +18,7 @@ from app.models.customer_group import CustomerGroup
 from app.models.price_list import PriceList, PriceListItem
 from app.models.product import Product
 from app.models.promotion import Promotion
+from app.models.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -112,7 +113,9 @@ def validate_promotion(db: Session, code: str, subtotal: float, total_qty: int) 
     if promo.min_qty > 0 and total_qty < promo.min_qty:
         raise PromoError(f"Minimum quantity for this promotion is {promo.min_qty}")
     if promo.min_amount > 0 and subtotal < promo.min_amount:
-        raise PromoError(f"Minimum order amount for this promotion is ${promo.min_amount:.2f}")
+        s = db.query(Settings).first()
+        sym = (s.currency_symbol if s else "$") or "$"
+        raise PromoError(f"Minimum order amount for this promotion is {sym}{promo.min_amount:,.2f}")
 
     if promo.discount_type == "percentage":
         discount = subtotal * float(promo.value) / 100

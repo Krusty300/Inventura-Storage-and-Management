@@ -281,7 +281,7 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
                 <button
                   key={l.location_id}
                   onClick={() => navigate(`/locations?location=${l.location_id}`)}
-                  className="badge bg-subtle text-ink border border-border cursor-pointer hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 inline-flex items-center gap-1"
+                  className="badge bg-subtle text-ink border border-border cursor-pointer hover:border-primary hover:text-primary dark:hover:text-primary inline-flex items-center gap-1"
                   aria-label={`View location ${l.path}`}
                 >
                   <MapPin size={12} />

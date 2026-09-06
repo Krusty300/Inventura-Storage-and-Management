@@ -5,6 +5,7 @@ import type { TopCustomersReport } from "../../types";
 import { formatCurrency } from "../../utils/currency";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import FittedSelect from "../../components/FittedSelect";
 
 export default function CustomersTab({ symbol }: { symbol: string }) {
   const formatDate = useDateFormat();
@@ -33,13 +34,19 @@ export default function CustomersTab({ symbol }: { symbol: string }) {
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-muted" htmlFor="top-days">Period</label>
-          <select id="top-days" className="select w-32" value={topDays} onChange={(e) => setTopDays(e.target.value === "all" ? "all" : Number(e.target.value))}>
-            <option value="all">All time</option>
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="90">Last 90 days</option>
-            <option value="365">Last 365 days</option>
-          </select>
+          <FittedSelect
+            value={String(topDays)}
+            onChange={(v) => setTopDays(v === "all" ? "all" : Number(v))}
+            ariaLabel="Period"
+            maxWidth={160}
+            options={[
+              { value: "all", label: "All time" },
+              { value: "7", label: "Last 7 days" },
+              { value: "30", label: "Last 30 days" },
+              { value: "90", label: "Last 90 days" },
+              { value: "365", label: "Last 365 days" },
+            ]}
+          />
         </div>
       </div>
       <div className="card overflow-hidden p-0">
@@ -67,7 +74,7 @@ export default function CustomersTab({ symbol }: { symbol: string }) {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="w-24 h-2 bg-subtle rounded-full overflow-hidden">
-                        <div className="h-full rounded-full bg-indigo-500" style={{ width: `${maxSpent > 0 ? Math.min((c.total_spent / maxSpent) * 100, 100) : 0}%` }} />
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${maxSpent > 0 ? Math.min((c.total_spent / maxSpent) * 100, 100) : 0}%` }} />
                       </div>
                       <span>{formatCurrency(c.total_spent, symbol)}</span>
                     </div>

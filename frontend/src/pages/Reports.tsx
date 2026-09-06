@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { BarChart3 } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
 import { useExportCsv } from "../hooks/useExportCsv";
 import ReportSkeleton from "../components/ReportSkeleton";
@@ -42,9 +43,14 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Reports & Analytics</h1>
-          <p className="text-sm text-muted mt-1">Sales, inventory, and valuation insights at a glance.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <BarChart3 size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Reports & Analytics</h1>
+            <p className="text-sm text-muted mt-1">Sales, inventory, and valuation insights at a glance.</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => exportCsv("/reports/export/sales", "sales_report.csv")} className="btn-secondary text-sm py-1.5" aria-label="Export sales CSV">

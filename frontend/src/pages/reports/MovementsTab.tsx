@@ -45,7 +45,7 @@ export default function MovementsTab() {
         <span className="text-faint text-sm">to</span>
         <input type="date" className="input text-sm py-1.5" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="End date" />
         {(startDate || endDate) && (
-          <button onClick={() => { setStartDate(""); setEndDate(""); }} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 underline" aria-label="Clear date range">Clear</button>
+          <button onClick={() => { setStartDate(""); setEndDate(""); }} className="text-sm text-primary dark:text-primary hover:text-primary-strong underline" aria-label="Clear date range">Clear</button>
         )}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -55,7 +55,7 @@ export default function UserDetail({ user, onClose }: Props) {
           <div>
             <span className="text-muted">Role:</span>
             <p className="font-medium flex items-center gap-1 mt-1">
-              {user.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : user.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : <ShieldOff size={14} className="text-faint" />}
+              {user.role === "admin" ? <Shield size={14} className="text-primary" /> : user.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : <ShieldOff size={14} className="text-faint" />}
               {user.role}
             </p>
           </div>

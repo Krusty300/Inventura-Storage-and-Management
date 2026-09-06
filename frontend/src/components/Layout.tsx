@@ -133,7 +133,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-app overflow-hidden">
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-primary-solid focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
         Skip to main content
       </a>
       <aside
@@ -168,7 +168,7 @@ export default function Layout() {
                   className="h-7 w-7 rounded-full object-cover border border-border shrink-0" loading="lazy" />
               ) : (
                 <span
-                  className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400
+                  className="h-7 w-7 rounded-full bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary
                     flex items-center justify-center text-xs font-semibold shrink-0"
                 >
                   {user?.username.charAt(0).toUpperCase()}
@@ -186,7 +186,7 @@ export default function Layout() {
           aria-orientation="vertical"
           aria-label="Resize sidebar"
           onPointerDown={startResize}
-          className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/70 active:bg-indigo-500 ${
+          className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-primary/70 active:bg-primary ${
             collapsed ? "hidden" : "hidden md:block"
           }`}
         />
@@ -245,7 +245,7 @@ export default function Layout() {
                   onClick={() => setTheme(mode)}
                   className={`p-1.5 rounded-md transition-colors ${
                     theme === mode
-                      ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm"
+                      ? "bg-surface text-primary dark:text-primary shadow-sm"
                       : "text-faint hover:text-ink"
                   }`}
                 >
@@ -260,7 +260,7 @@ export default function Layout() {
                   className="h-7 w-7 rounded-full object-cover border border-border" loading="lazy" />
               ) : (
                 <span
-                  className="h-7 w-7 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400
+                  className="h-7 w-7 rounded-full bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary
                     flex items-center justify-center text-xs font-semibold"
                 >
                   {user?.username.charAt(0).toUpperCase()}

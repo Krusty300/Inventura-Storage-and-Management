@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Pencil, Trash2, Eye, RefreshCw, Search } from "lucide-react";
+import { Pencil, Trash2, Eye, RefreshCw, Search, Users } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
@@ -8,6 +8,7 @@ import CustomerDetail from "../components/CustomerDetail";
 import CustomerForm from "../components/CustomerForm";
 import CustomerImportModal from "../components/CustomerImportModal";
 import ConfirmDialog from "../components/ConfirmDialog";
+import FittedSelect from "../components/FittedSelect";
 import BulkActionBar from "../components/BulkActionBar";
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 import Skeleton from "../components/Skeleton";
@@ -145,9 +146,14 @@ export default function Customers() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Customers</h1>
-          <p className="text-sm text-muted mt-1">Manage the people and businesses you sell to.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Users size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Customers</h1>
+            <p className="text-sm text-muted mt-1">Manage the people and businesses you sell to.</p>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           {can("customers.import") && (
@@ -164,8 +170,8 @@ export default function Customers() {
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 min-w-0 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input
             className="input pl-10"
@@ -175,29 +181,28 @@ export default function Customers() {
             aria-label="Search customers"
           />
         </div>
-        <select
-          className="select w-full sm:w-44"
+        <FittedSelect
           value={typeFilter}
-          onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
-          aria-label="Filter by type"
-        >
-          <option value="">All Types</option>
-          <option value="frequent">Frequent</option>
-          <option value="walk-in">Walk-in</option>
-        </select>
-        <select
-          className="select w-full sm:w-44"
+          onChange={(v) => { setTypeFilter(v); setPage(1); }}
+          ariaLabel="Filter by type"
+          maxWidth={170}
+          options={[
+            { value: "", label: "All Types" },
+            { value: "frequent", label: "Frequent" },
+            { value: "walk-in", label: "Walk-in" },
+          ]}
+        />
+        <FittedSelect
           value={groupFilter}
-          onChange={(e) => { setGroupFilter(e.target.value); setPage(1); }}
-          aria-label="Filter by group"
-        >
-          <option value="">All Groups</option>
-          {(groups || []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-        </select>
+          onChange={(v) => { setGroupFilter(v); setPage(1); }}
+          ariaLabel="Filter by group"
+          maxWidth={200}
+          options={[{ value: "", label: "All Groups" }, ...(groups || []).map((g) => ({ value: String(g.id), label: g.name }))]}
+        />
         <label className="flex items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
-            className="accent-indigo-600"
+            className="accent-primary"
             checked={includeInactive}
             onChange={(e) => { setIncludeInactive(e.target.checked); setPage(1); }}
           />
@@ -246,11 +251,11 @@ export default function Customers() {
                     </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    {c.phone ? <a href={`tel:${c.phone}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{c.phone}</a> : <span className="text-muted">—</span>}
+                    {c.phone ? <a href={`tel:${c.phone}`} className="hover:text-primary dark:hover:text-primary">{c.phone}</a> : <span className="text-muted">—</span>}
                   </td>
                   <td className="px-4 py-3 hidden lg:table-cell">
                     <div className="truncate max-w-[200px]">
-                      {c.email ? <a href={`mailto:${c.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{c.email}</a> : <span className="text-muted">—</span>}
+                      {c.email ? <a href={`mailto:${c.email}`} className="hover:text-primary dark:hover:text-primary">{c.email}</a> : <span className="text-muted">—</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -271,13 +276,13 @@ export default function Customers() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
-                      <button onClick={() => setViewing(c)} className="p-2 rounded-md text-faint hover:text-indigo-600 dark:text-indigo-400 hover:bg-app" aria-label={`View ${c.name}`}><Eye size={16} /></button>
+                      <button onClick={() => setViewing(c)} className="p-2 rounded-md text-faint hover:text-primary dark:text-primary hover:bg-app" aria-label={`View ${c.name}`}><Eye size={16} /></button>
                       {!c.is_active && can("customers.update") && (
                         <button onClick={() => restoreMutation.mutate(c.id)} className="p-2 rounded-md text-faint hover:text-green-600 dark:text-green-400 hover:bg-app" aria-label={`Restore ${c.name}`}>
                           <RefreshCw size={16} />
                         </button>
                       )}
-                      <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-2 rounded-md text-faint hover:text-indigo-600 dark:text-indigo-400 hover:bg-app" aria-label={`Edit ${c.name}`}>
+                      <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-2 rounded-md text-faint hover:text-primary dark:text-primary hover:bg-app" aria-label={`Edit ${c.name}`}>
                         <Pencil size={16} />
                       </button>
                       <button onClick={() => setDeleting(c)} className="p-2 rounded-md text-faint hover:text-red-600 dark:text-red-400 hover:bg-app" aria-label={`Delete ${c.name}`}>
@@ -309,7 +314,13 @@ export default function Customers() {
         />
       )}
 
-      {viewing && <CustomerDetail customer={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <CustomerDetail
+          customer={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={() => { setEditing(viewing); setShowForm(true); setViewing(null); }}
+        />
+      )}
 
       {showBulkEdit && (
         <EntityBulkEditModal

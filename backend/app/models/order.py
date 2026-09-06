@@ -50,6 +50,10 @@ class OrderItem(Base):
         return self.product.display_name if self.product else ""
 
     @property
+    def product_image(self) -> str:
+        return self.product.image_url if self.product else ""
+
+    @property
     def is_serialized(self) -> bool:
         return self.product.is_serialized if self.product else False
 

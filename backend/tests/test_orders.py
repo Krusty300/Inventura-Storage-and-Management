@@ -498,3 +498,36 @@ def test_receive_serialized_order_into_quarantine_quarantines_serials(auth_heade
     assert len(serials["items"]) == 2
     assert all(s["status"] == "quarantined" for s in serials["items"])
 
+
+def test_order_items_expose_product_image(auth_headers):
+    prod_with = client.post("/api/products", json={
+        "location_id": 1, "sku": "ORD-IMG-W", "name": "Ord Image Prod",
+        "unit_price": 10.0, "cost_price": 5.0, "quantity": 0, "image_url": "/uploads/ord-with.png",
+    }, headers=auth_headers).json()
+    prod_without = client.post("/api/products", json={
+        "location_id": 1, "sku": "ORD-IMG-N", "name": "Ord No Image",
+        "unit_price": 10.0, "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+
+    created = client.post("/api/orders", json={
+        "items": [
+            {"product_id": prod_with["id"], "quantity": 1, "unit_price": 10.0},
+            {"product_id": prod_without["id"], "quantity": 1, "unit_price": 10.0},
+        ],
+    }, headers=auth_headers)
+    assert created.status_code == 201
+    by_product = {i["product_id"]: i for i in created.json()["items"]}
+    assert by_product[prod_with["id"]]["product_image"] == "/uploads/ord-with.png"
+    assert by_product[prod_without["id"]]["product_image"] == ""
+
+    detail = client.get(f"/api/orders/{created.json()['id']}", headers=auth_headers).json()
+    detail_items = {i["product_id"]: i for i in detail["items"]}
+    assert detail_items[prod_with["id"]]["product_image"] == "/uploads/ord-with.png"
+    assert detail_items[prod_without["id"]]["product_image"] == ""
+
+    listing = client.get("/api/orders", headers=auth_headers).json()["items"]
+    row = next(o for o in listing if o["id"] == created.json()["id"])
+    listed = {i["product_id"]: i for i in row["items"]}
+    assert listed[prod_with["id"]]["product_image"] == "/uploads/ord-with.png"
+    assert listed[prod_without["id"]]["product_image"] == ""
+

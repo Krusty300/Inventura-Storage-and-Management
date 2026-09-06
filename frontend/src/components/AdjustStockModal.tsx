@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, Product } from "../types";
@@ -21,6 +22,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
   const [newQty, setNewQty] = useState(product.quantity.toString());
   const [locationId, setLocationId] = useState("");
   const [locationTouched, setLocationTouched] = useState(false);
+  const [newQtyTouched, setNewQtyTouched] = useState(false);
   const [reasonCode, setReasonCode] = useState("recount");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -39,7 +41,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
   const stockCountByLoc = new Map(stockLocations.locations.map((l) => [l.location_id, l.count]));
 
   useEffect(() => {
-    if (locationTouched || locationId !== "") return;
+    if (locationTouched || newQtyTouched || locationId !== "") return;
     const stocked = stockLocations.locations.filter((l) => l.count > 0);
     if (stocked.length === 0) return;
     const top = [...stocked].sort((a, b) => b.count - a.count)[0];
@@ -84,19 +86,23 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
         <div className="space-y-5 px-6 py-5">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Location</label>
-            <select className="select" value={locationId} onChange={(e) => {
-              setLocationTouched(true);
-              const v = e.target.value;
-              setLocationId(v);
-              const id = v ? parseInt(v) : null;
-              setNewQty((id != null ? (stockCountByLoc.get(id) ?? 0) : product.quantity).toString());
-            }}>
-              <option value="">Default (product location)</option>
-              {locationOptions.map((l) => {
-                const count = stockCountByLoc.get(l.id);
-                return <option key={l.id} value={l.id}>{l.path}{count !== undefined ? ` (${count})` : ""}</option>;
-              })}
-            </select>
+            <FittedSelect
+              ariaLabel="Select location"
+              value={locationId}
+              onChange={(v) => {
+                setLocationTouched(true);
+                setLocationId(v);
+                const id = v ? parseInt(v) : null;
+                setNewQty((id != null ? (stockCountByLoc.get(id) ?? 0) : product.quantity).toString());
+              }}
+              options={[
+                { value: "", label: "Default (product location)" },
+                ...locationOptions.map((l) => {
+                  const count = stockCountByLoc.get(l.id);
+                  return { value: String(l.id), label: `${l.path}${count !== undefined ? ` (${count})` : ""}` };
+                }),
+              ]}
+            />
             <p className="text-xs text-faint mt-1">
               {locationId
                 ? `New quantity will be the target stock at this location (current: ${currentQty}).`
@@ -117,7 +123,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
                 min={0}
                 className="input"
                 value={newQty}
-                onChange={(e) => setNewQty(e.target.value)}
+                onChange={(e) => { setNewQty(e.target.value); setNewQtyTouched(true); }}
                 autoFocus
               />
             </div>
@@ -131,11 +137,12 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Reason</label>
-            <select className="select" value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
-              {REASON_CODES.map((rc) => (
-                <option key={rc} value={rc}>{rc.charAt(0).toUpperCase() + rc.slice(1)}</option>
-              ))}
-            </select>
+            <FittedSelect
+              ariaLabel="Reason"
+              value={reasonCode}
+              onChange={setReasonCode}
+              options={REASON_CODES.map((rc) => ({ value: rc, label: rc.charAt(0).toUpperCase() + rc.slice(1) }))}
+            />
           </div>
 
           <div>

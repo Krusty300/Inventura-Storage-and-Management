@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import Skeleton from "./Skeleton";
 import type { Location, QuarantinedLocation, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
@@ -118,12 +119,18 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
           <>
             <div>
               <label className="block text-xs font-medium text-muted mb-1">Source Location</label>
-              <select className="select" aria-label="Source Location" value={sourceLocationId} onChange={(e) => { setSourceLocationId(e.target.value); setSelectedSerials(new Set()); }}>
-                <option value="">Select location...</option>
-                {quarantinedLocations.map((l) => (
-                  <option key={l.location_id} value={l.location_id}>{l.path} ({l.quantity})</option>
-                ))}
-              </select>
+              <FittedSelect
+                ariaLabel="Source Location"
+                value={sourceLocationId}
+                onChange={(v) => { setSourceLocationId(v); setSelectedSerials(new Set()); }}
+                options={[
+                  { value: "", label: "Select location..." },
+                  ...quarantinedLocations.map((l) => ({
+                    value: String(l.location_id),
+                    label: `${l.path} (${l.quantity})`,
+                  })),
+                ]}
+              />
             </div>
 
             {isSerialized ? (
@@ -140,7 +147,7 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
                         <label key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer">
                           <input
                             type="checkbox"
-                            className="accent-indigo-600"
+                            className="accent-primary"
                             checked={selectedSerials.has(s.id)}
                             onChange={() => toggleSerial(s.id)}
                           />
@@ -153,7 +160,7 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
                       <span className="text-muted">{selectedSerials.size} of {serials.length} selected</span>
                       <button
                         type="button"
-                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                        className="text-xs text-primary dark:text-primary hover:underline"
                         onClick={() => setSelectedSerials(selectedSerials.size === serials.length ? new Set() : new Set(serials.map((s) => s.id)))}
                       >
                         {selectedSerials.size === serials.length ? "Clear all" : "Select all"}
@@ -179,12 +186,15 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
 
             <div>
               <label className="block text-xs font-medium text-muted mb-1">Destination Location</label>
-              <select className="select" aria-label="Destination Location" value={toLocationId} onChange={(e) => setToLocationId(e.target.value)}>
-                <option value="">Select location...</option>
-                {activeLocations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.path}</option>
-                ))}
-              </select>
+              <FittedSelect
+                ariaLabel="Destination Location"
+                value={toLocationId}
+                onChange={setToLocationId}
+                options={[
+                  { value: "", label: "Select location..." },
+                  ...activeLocations.map((l) => ({ value: String(l.id), label: l.path })),
+                ]}
+              />
             </div>
 
             <div>

@@ -51,11 +51,11 @@ export default function CsvImportModal({ onClose, onImported }: Props) {
           {!result ? (
             <>
               <div
-                className="border-2 border-dashed border-border-strong rounded-lg p-8 text-center cursor-pointer hover:border-indigo-400"
+                className="border-2 border-dashed border-border-strong rounded-lg p-8 text-center cursor-pointer hover:border-primary"
                 onClick={() => inputRef.current?.click()}
               >
                 {file ? (
-                  <div className="flex items-center justify-center gap-2 text-indigo-600 dark:text-indigo-400">
+                  <div className="flex items-center justify-center gap-2 text-primary dark:text-primary">
                     <FileText size={24} />
                     <span className="font-medium">{file.name}</span>
                   </div>

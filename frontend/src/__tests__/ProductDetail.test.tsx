@@ -480,7 +480,7 @@ describe("ProductDetail", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Move LOT-Q1" }));
 
     expect(await screen.findByText("Move Quarantined Stock: LOT-Q1")).toBeInTheDocument();
-    expect(await screen.findByLabelText("Source Location")).toHaveValue("1");
+    expect(await screen.findByLabelText("Source Location")).toHaveValue("Quarantine Area (3)");
     fireEvent.change(screen.getByLabelText("Quantity"), { target: { value: "3" } });
     await screen.findByRole("option", { name: "Shelf B" });
     fireEvent.change(screen.getByLabelText("Destination Location"), { target: { value: "2" } });

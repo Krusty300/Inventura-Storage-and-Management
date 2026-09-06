@@ -22,7 +22,7 @@ from app.services.auth import require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, FONT, MUTED, draw_banner_header, draw_info_block, draw_item_table,
+    BODY_RIGHT, MARGIN, FONT, MUTED, money, draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
@@ -48,7 +48,7 @@ def list_receipts(
     db: Session = Depends(get_db),
 ):
     q = db.query(Receipt).options(
-        joinedload(Receipt.items), joinedload(Receipt.supplier), joinedload(Receipt.user)
+        joinedload(Receipt.items).joinedload(ReceiptItem.product), joinedload(Receipt.supplier), joinedload(Receipt.user)
     )
     if search:
         like = f"%{search}%"
@@ -111,8 +111,8 @@ def receipt_pdf(receipt_id: int, db: Session = Depends(get_db)):
             item.lot_number or "\u2014",
             item.location_code or item.location_name or "\u2014",
             str(item.quantity),
-            f"{currency}{float(item.unit_cost):.2f}",
-            f"{currency}{float(item.unit_cost) * item.quantity:.2f}",
+            money(currency, item.unit_cost),
+            money(currency, float(item.unit_cost) * item.quantity),
         ])
 
     y = draw_item_table(
@@ -120,7 +120,7 @@ def receipt_pdf(receipt_id: int, db: Session = Depends(get_db)):
         on_page_break=lambda c: draw_banner_header(c, "GOODS RECEIPT", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir),
     )
 
-    y = draw_totals(c, BODY_RIGHT, y, [], "Total Cost", f"{currency}{float(r.total_cost):.2f}")
+    y = draw_totals(c, BODY_RIGHT, y, [], "Total Cost", money(currency, r.total_cost))
 
     if r.notes:
         draw_notes(c, MARGIN, y, r.notes)

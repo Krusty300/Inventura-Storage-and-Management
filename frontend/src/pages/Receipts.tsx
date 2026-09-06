@@ -68,9 +68,14 @@ export default function Receipts() {
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Receiving</h1>
-          <p className="text-sm text-muted mt-1">Record inbound shipments and bring stock into inventory.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <PackagePlus size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Receiving</h1>
+            <p className="text-sm text-muted mt-1">Record inbound shipments and bring stock into inventory.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export receipts to CSV">
@@ -90,8 +95,8 @@ export default function Receipts() {
         </div>
       )}
 
-      <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 gap-2">
+        <div className="relative max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by receipt number or reference..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search receipts" />
         </div>
@@ -126,10 +131,10 @@ export default function Receipts() {
                 <td className="px-4 py-3">{formatCurrency(r.total_cost, currencySymbol)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => printPdf(r)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print receipt ${r.receipt_number}`}>
+                    <button onClick={() => printPdf(r)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Print receipt ${r.receipt_number}`}>
                       <Printer size={16} />
                     </button>
-                    <button onClick={() => setViewing(r)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View receipt ${r.receipt_number}`}>
+                    <button onClick={() => setViewing(r)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View receipt ${r.receipt_number}`}>
                       <Eye size={16} />
                     </button>
                   </div>

@@ -5,7 +5,6 @@ import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials
-from jose import jwt
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -24,10 +23,11 @@ from app.models.stock_movement import StockMovement
 from app.models.user import User
 from app.models.work_order import WorkOrder
 from app.schemas.user import LoginRequest, ProfileUpdate, SessionOut, Token, UserCreate, UserOut
-from app.services.auth import create_access_token, get_current_user, hash_password, security, verify_password
+from app.services.auth import _decode_token, create_access_token, get_current_user, hash_password, security, verify_password
 from app.services.auth import purge_expired_sessions
 from app.services.password_policy import validate_password
 from app.services import ratelimit
+from app.services.httpratelimit import limiter
 from app.utils import log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -60,13 +60,15 @@ def _create_session(db: Session, user: User, request: Request) -> str:
 
 def _current_jti(credentials: HTTPAuthorizationCredentials) -> str | None:
     try:
-        payload = jwt.decode(credentials.credentials, settings.secret_key, algorithms=[settings.algorithm])
+        payload = _decode_token(credentials.credentials)
         return payload.get("jti")
     except Exception:
         return None
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("10/minute")
+@limiter.limit("100/hour")
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     ip = _client_ip(request)
     message = ratelimit.lockout_message(req.username, ip)
@@ -97,6 +99,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/verify")
+@limiter.limit("20/minute")
 def verify_credentials(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     ip = _client_ip(request)
     message = ratelimit.lockout_message(req.username, ip)
@@ -111,6 +114,7 @@ def verify_credentials(req: LoginRequest, request: Request, db: Session = Depend
 
 
 @router.post("/register", response_model=Token)
+@limiter.limit("5/hour")
 def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
     register_limited = ratelimit.register_rate_limited(_client_ip(request))
     if register_limited:

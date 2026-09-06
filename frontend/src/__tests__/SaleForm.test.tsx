@@ -67,7 +67,7 @@ describe("SaleForm", () => {
     expect(await screen.findByRole("option", { name: "Acme Corp" })).toBeInTheDocument();
     const customerSelect = screen.getByLabelText("Customer");
     fireEvent.change(customerSelect, { target: { value: "1" } });
-    expect(customerSelect).toHaveValue("1");
+    expect(customerSelect).toHaveValue("Acme Corp");
   });
 
   it("blocks submission when the cart is empty", async () => {
@@ -302,5 +302,79 @@ describe("SaleForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     expect(await screen.findByText(/exceed the available stock/)).toBeInTheDocument();
     expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the applied promo code and discount when switching carts", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
+    postMock.mockImplementation((url: string) => {
+      if (url === "/promotions/validate") return Promise.resolve({ data: { valid: true, discount_amount: 2 } });
+      return Promise.resolve({ data: {} });
+    });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByLabelText("Promo code"), { target: { value: "SAVE10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(await screen.findByText(/Promo \(SAVE10\)/)).toBeInTheDocument();
+    // moving to a new cart and back must restore the per-cart promo
+    fireEvent.click(screen.getByRole("button", { name: "New cart" }));
+    fireEvent.click(screen.getByRole("tab", { name: /Cart 1/ }));
+    expect(screen.getByLabelText("Promo code")).toHaveValue("SAVE10");
+    expect(screen.getByText(/Promo \(SAVE10\)/)).toBeInTheDocument();
+  });
+
+  it("keeps the payer phone on the STK screen and clears it on dismiss", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
+    postMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
+    fireEvent.change(screen.getByLabelText("Payer phone"), { target: { value: "0722 100 100" } });
+    fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
+    // the STK screen must still show the phone so the push can be sent/retried
+    await screen.findByRole("button", { name: /Send STK Push/ });
+    expect(screen.getByLabelText("STK push phone number")).toHaveValue("0722 100 100");
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+    expect(screen.queryByRole("button", { name: /Send STK Push/ })).not.toBeInTheDocument();
+    expect(await screen.findByText(/Cart is empty/)).toBeInTheDocument();
+  });
+
+  it("persists the latest edits when the form is locked", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    mockCatalog([widget]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    // lock immediately, before the 400ms autosave can run
+    fireEvent.change(screen.getByLabelText("Discount amount"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Lock form" }));
+    const stored = JSON.parse(localStorage.getItem("multiCartV1")!);
+    expect(stored.carts[0].draft.discount).toBe("3");
+    expect(stored.carts[0].draft.items).toHaveLength(1);
+  });
+
+  it("deletes a specific cart when multiple carts exist", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    const hammer = makeProduct({ id: 9, name: "Hammer", sku: "SKU-9", unit_price: 15 });
+    mockCatalog([widget, hammer]);
+    postMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    // cart 1 holds a widget; cart 2 holds a hammer
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.click(screen.getByRole("button", { name: "New cart" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Hammer/ }));
+    // delete the non-active cart (cart 1) via its X button + confirm
+    fireEvent.click(screen.getByRole("button", { name: "Delete Cart 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(screen.queryByRole("tab", { name: /Cart 1/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Cart 2/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete Cart 1/ })).not.toBeInTheDocument();
+    // the active cart's contents are untouched
+    expect(screen.getByLabelText("Quantity for Hammer")).toHaveValue(1);
+    // deleting the last remaining cart resets to a fresh empty cart
+    fireEvent.click(screen.getByRole("button", { name: "Delete Cart 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await screen.findByText(/Cart is empty/);
+    expect(screen.getByRole("tab", { name: /Cart 1/ })).toBeInTheDocument();
   });
 });

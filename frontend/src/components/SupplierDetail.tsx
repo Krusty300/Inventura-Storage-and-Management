@@ -1,5 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
+import { Pencil } from "lucide-react";
 import SlideOver from "./SlideOver";
 import Skeleton from "./Skeleton";
 import AttachmentSection from "./AttachmentSection";
@@ -12,9 +13,10 @@ import { useAuth } from "../context/AuthContext";
 interface Props {
   supplier: Supplier;
   onClose: () => void;
+  onEdit?: () => void;
 }
 
-export default function SupplierDetail({ supplier, onClose }: Props) {
+export default function SupplierDetail({ supplier, onClose, onEdit }: Props) {
   const formatDate = useDateFormat();
   const { can } = useAuth();
   const { data: settings } = useSettings();
@@ -52,7 +54,18 @@ export default function SupplierDetail({ supplier, onClose }: Props) {
   }
 
   return (
-    <SlideOver open onClose={onClose} title={supplier.name} wide ariaLabel={supplier.name}>
+    <SlideOver
+      open
+      onClose={onClose}
+      title={supplier.name}
+      wide
+      ariaLabel={supplier.name}
+      actions={onEdit && can("suppliers.update") ? (
+        <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label="Edit supplier">
+          <Pencil size={14} />Edit Supplier
+        </button>
+      ) : undefined}
+    >
       <div className="space-y-5 text-sm">
         <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
           <div className="border-b border-border px-5 py-4 flex items-start justify-between gap-3">

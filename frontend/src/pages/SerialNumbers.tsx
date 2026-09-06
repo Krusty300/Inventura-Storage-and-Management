@@ -118,9 +118,14 @@ export default function SerialNumbers() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Serial Numbers</h1>
-          <p className="text-sm text-muted mt-1">Track individual units with unique serial numbers.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Fingerprint size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Serial Numbers</h1>
+            <p className="text-sm text-muted mt-1">Track individual units with unique serial numbers.</p>
+          </div>
         </div>
         <button onClick={handleExport} className="btn-secondary" aria-label="Export serial numbers to CSV">Export</button>
       </div>
@@ -131,17 +136,17 @@ export default function SerialNumbers() {
         </div>
       )}
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="space-y-2">
+        <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by serial number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search serial numbers" />
         </div>
-        <div role="group" aria-label="Filter by status" className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
+        <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-1 rounded-lg border border-border bg-subtle p-0.5">
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}
               onClick={() => { setStatus(f.value); setPage(1); }}
-              className={`px-3 py-1 rounded-md text-sm transition-colors ${status === f.value ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
+              className={`px-3 py-1 rounded-md text-sm whitespace-nowrap transition-colors ${status === f.value ? "bg-surface text-primary dark:text-primary shadow-sm" : "text-muted hover:text-ink"}`}
             >
               {f.label}
             </button>
@@ -222,7 +227,7 @@ export default function SerialNumbers() {
                         <ShieldX size={16} />
                       </button>
                     )}
-                    <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${s.serial_number}`}><Eye size={16} /></button>
+                    <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${s.serial_number}`}><Eye size={16} /></button>
                   </div>
                 </td>
               </tr>

@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   AlertTriangle,
+  LayoutDashboard,
   Package,
   Factory,
   PackagePlus,
@@ -44,6 +45,7 @@ import ProgressBar from "../components/ProgressBar";
 import Skeleton from "../components/Skeleton";
 import AttachmentSection from "../components/AttachmentSection";
 import { errorMessage } from "../utils/errors";
+import WidgetPanel from "../components/WidgetPanel";
 
 const TREND_OPTIONS = [7, 30, 90];
 
@@ -60,6 +62,27 @@ async function safeGet<T>(url: string, params?: Record<string, string | number>)
     }
     throw err;
   }
+}
+
+function ListRowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-3" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center justify-between gap-4">
+          <div className="h-4 w-2/5 bg-subtle-strong rounded animate-pulse" />
+          <div className="h-4 w-24 bg-subtle-strong rounded animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ChartBlockSkeleton() {
+  return (
+    <div className="flex items-center justify-center py-16" aria-hidden="true">
+      <div className="w-3/4 h-40 bg-subtle-strong rounded animate-pulse" />
+    </div>
+  );
 }
 
 export default function Dashboard() {
@@ -209,7 +232,7 @@ export default function Dashboard() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
-        <p className="text-sm text-muted -mt-3">A live overview of stock, sales, and warehouse health.</p>
+        <p className="text-sm text-muted mt-0.5">A live overview of stock, sales, and warehouse health.</p>
         {[10, 6, 2, 3].map((count, i) => (
           <div key={i} className="space-y-3">
             <div className="h-4 w-20 bg-subtle-strong rounded animate-pulse" />
@@ -253,20 +276,21 @@ export default function Dashboard() {
     { label: "Quarantined Units", value: stats.quarantined_units ?? 0, link: "/exceptions", minRole: "manager" as const },
     { label: "Serial Numbers in Stock", value: stats.serial_numbers_in_stock ?? 0, link: "/serial-numbers", minRole: "manager" as const },
     { label: "Movements Today", value: stats.total_stock_movements_today, link: "/stock-movements", minRole: "manager" as const },
-    { label: "LPNs", value: lpns?.total ?? 0, link: "/lpns", minRole: "manager" as const },
+    { label: "LPNs", value: lpns?.total ?? 0, link: "/lpns", minRole: "manager" as const, loading: lpnsQuery.isPending },
     { label: "Lots", value: stats.total_lots ?? 0, link: "/lots", minRole: "manager" as const },
-    { label: "Receipts", value: receipts?.total ?? 0, link: "/receiving", minRole: "manager" as const },
+    { label: "Receipts", value: receipts?.total ?? 0, link: "/receiving", minRole: "manager" as const, loading: receiptsQuery.isPending },
   ];
 
   const fulfillmentCards: DashboardCard[] = [
     { label: "Open Shipments", value: stats.open_shipments ?? 0, link: "/shipments" },
-    { label: "Pending Orders", value: pendingOrders, link: "/orders" },
-    { label: "Pending ASNs", value: exceptions?.summary?.pending_asns ?? 0, link: "/asns", minRole: "manager" as const },
-    { label: "Open Cycle Counts", value: exceptions?.summary?.open_cycle_counts ?? 0, link: "/cycle-counts", minRole: "manager" as const },
+    { label: "Pending Orders", value: pendingOrders, link: "/orders", loading: orderQuery.isPending },
+    { label: "Pending ASNs", value: exceptions?.summary?.pending_asns ?? 0, link: "/asns", minRole: "manager" as const, loading: exceptionsQuery.isPending },
+    { label: "Open Cycle Counts", value: exceptions?.summary?.open_cycle_counts ?? 0, link: "/cycle-counts", minRole: "manager" as const, loading: exceptionsQuery.isPending },
     {
       label: "Total Revenue",
       value: formatCurrency(salesStats?.total_revenue || 0, currencySymbol, 0),
       link: "/sales",
+      loading: salesQuery.isPending,
     },
     { label: "Overdue Notes", value: overdueNotesCount, link: "/notes", highlight: overdueNotesCount > 0 },
   ];
@@ -294,6 +318,7 @@ export default function Dashboard() {
     link?: string;
     minRole?: string;
     highlight?: boolean;
+    loading?: boolean;
   }
 
   const statSections = [
@@ -309,15 +334,22 @@ export default function Dashboard() {
   const topProfitProducts = profit?.products?.slice(0, 5) || [];
 
   return (
+    <WidgetPanel>
+    {(visibleWidgets) => (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
-          <p className="text-sm text-muted mt-1">A live overview of stock, sales, and warehouse health.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <LayoutDashboard size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
+            <p className="text-sm text-muted mt-1">A live overview of stock, sales, and warehouse health.</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={exportPdf} className="btn-secondary inline-flex items-center gap-2" aria-label="Export dashboard PDF">
-            pdf
+            Export PDF
           </button>
           <button onClick={() => queryClient.invalidateQueries({ queryKey: ["dashboard"] })} disabled={statsQuery.isFetching} className="btn-secondary" aria-label="Refresh dashboard">
             {statsQuery.isFetching ? "refreshing…" : "refresh"}
@@ -344,9 +376,9 @@ export default function Dashboard() {
               <button
                 key={a.label}
                 onClick={() => navigate(`${a.path}?new=1`)}
-                className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border hover:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-500/20 dark:hover:border-indigo-400/60 transition-colors text-sm font-medium text-ink"
+                className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border hover:border-primary hover:bg-primary-soft dark:hover:bg-primary/20 dark:hover:border-primary/60 transition-colors text-sm font-medium text-ink"
               >
-                <a.icon size={18} className="text-indigo-600 dark:text-indigo-400" />
+                <a.icon size={18} className="text-primary dark:text-primary" />
                 {a.label}
               </button>
             ))}
@@ -358,7 +390,19 @@ export default function Dashboard() {
         <AttachmentSection entityType="dashboard" entityId={0} canEdit={canUser(user, "dashboard.view")} />
       </div>
 
-      {riskSummary && hasMinRole("manager") && (
+      {visibleWidgets.includes("stockout-risk") && hasMinRole("manager") && (riskQuery.isPending ? (
+        <div>
+          <div className="h-4 w-28 bg-subtle-strong rounded animate-pulse mb-3" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="card">
+                <div className="h-4 w-28 bg-subtle-strong rounded animate-pulse" />
+                <div className="h-8 w-14 mt-2 bg-subtle-strong rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : riskSummary && (
         <div>
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-semibold text-muted uppercase tracking-wide">Stockout Risk</h2>
@@ -367,7 +411,7 @@ export default function Dashboard() {
                 <button
                   key={d}
                   onClick={() => setRiskLeadTime(d)}
-                  className={`px-3 py-1 text-xs font-medium ${riskLeadTime === d ? "bg-indigo-600 text-white" : "text-muted hover:bg-app"}`}
+                  className={`px-3 py-1 text-xs font-medium ${riskLeadTime === d ? "bg-primary-solid text-white" : "text-muted hover:bg-app"}`}
                 >
                   {d}d
                 </button>
@@ -395,10 +439,12 @@ export default function Dashboard() {
           </button>
         </div>
         </div>
-      )}
+      ))}
 
       {statSections.map((section) => {
         if (!hasMinRole(section.minRole)) return null;
+        const widgetId = `kpi-${section.title.toLowerCase()}`;
+        if (!visibleWidgets.includes(widgetId)) return null;
         const visibleCards = section.cards.filter((c) => hasMinRole(c.minRole));
         if (visibleCards.length === 0) return null;
         return (
@@ -412,7 +458,13 @@ export default function Dashboard() {
                   className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""} ${card.highlight ? "border-l-4 border-l-red-500" : ""}`}
                 >
                   <p className="text-sm text-muted">{card.label}</p>
-                  <p className={`text-2xl font-bold mt-1 ${card.highlight ? "text-red-600 dark:text-red-400" : ""}`}>{card.value}</p>
+                  <p className={`text-2xl font-bold mt-1 ${card.highlight ? "text-red-600 dark:text-red-400" : ""}`}>
+                    {card.loading ? (
+                      <span className="inline-block h-7 w-16 align-middle bg-subtle-strong rounded animate-pulse" aria-hidden="true" />
+                    ) : (
+                      card.value
+                    )}
+                  </p>
                 </div>
               ))}
             </div>
@@ -421,7 +473,7 @@ export default function Dashboard() {
       })}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("chart-trends") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Stock Movement Trends ({trendDays} days)</h2>
@@ -430,14 +482,16 @@ export default function Dashboard() {
                 <button
                   key={d}
                   onClick={() => setTrendDays(d)}
-                  className={`px-3 py-1 text-xs font-medium ${trendDays === d ? "bg-indigo-600 text-white" : "text-muted hover:bg-app"}`}
+                  className={`px-3 py-1 text-xs font-medium ${trendDays === d ? "bg-primary-solid text-white" : "text-muted hover:bg-app"}`}
                 >
                   {d}d
                 </button>
               ))}
             </div>
           </div>
-          {trendData.length > 0 ? (
+          {trendsQuery.isPending ? (
+            <ChartBlockSkeleton />
+          ) : trendData.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={trendData}>
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v?.slice(5) || ""} />
@@ -454,10 +508,12 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("chart-category-value") && hasMinRole("manager") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Inventory Value by Category</h2>
-          {valuation?.by_category && valuation.by_category.length > 0 ? (
+          {valuationQuery.isPending ? (
+            <ChartBlockSkeleton />
+          ) : valuation?.by_category && valuation.by_category.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={valuation.by_category.slice(0, 8)}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -473,7 +529,7 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-top-products") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Top Products</h2>
@@ -482,14 +538,16 @@ export default function Dashboard() {
                 <button
                   key={d}
                   onClick={() => setTopProductsDays(d)}
-                  className={`px-3 py-1 text-xs font-medium ${topProductsDays === d ? "bg-indigo-600 text-white" : "text-muted hover:bg-app"}`}
+                  className={`px-3 py-1 text-xs font-medium ${topProductsDays === d ? "bg-primary-solid text-white" : "text-muted hover:bg-app"}`}
                 >
                   {d}d
                 </button>
               ))}
             </div>
           </div>
-          {topProducts.length > 0 ? (
+          {topProductsQuery.isPending ? (
+            <ListRowsSkeleton />
+          ) : topProducts.length > 0 ? (
             <div className="space-y-3">
               {topProducts.map((p) => (
                 <div key={p.name} className="flex items-center justify-between text-sm">
@@ -507,10 +565,12 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("chart-profit") && hasMinRole("manager") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Profit Analysis</h2>
-          {profit ? (
+          {profitQuery.isPending ? (
+            <ListRowsSkeleton rows={4} />
+          ) : profit ? (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -544,13 +604,15 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-pending-asns") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Pending ASNs</h2>
-            <button onClick={() => navigate("/asns")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+            <button onClick={() => navigate("/asns")} className="text-sm text-primary dark:text-primary hover:underline">View all</button>
           </div>
-          {exceptions?.pending_asns?.length ? (
+          {exceptionsQuery.isPending ? (
+            <ListRowsSkeleton />
+          ) : exceptions?.pending_asns?.length ? (
             <div className="space-y-3">
               {exceptions.pending_asns.map((a) => (
                 <div key={a.id} className="flex items-center justify-between text-sm">
@@ -573,13 +635,15 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-open-cycle-counts") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Open Cycle Counts</h2>
-            <button onClick={() => navigate("/cycle-counts")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+            <button onClick={() => navigate("/cycle-counts")} className="text-sm text-primary dark:text-primary hover:underline">View all</button>
           </div>
-          {exceptions?.open_cycle_counts?.length ? (
+          {exceptionsQuery.isPending ? (
+            <ListRowsSkeleton />
+          ) : exceptions?.open_cycle_counts?.length ? (
             <div className="space-y-3">
               {exceptions.open_cycle_counts.map((c) => (
                 <div key={c.id} className="flex items-center justify-between text-sm">
@@ -606,6 +670,7 @@ export default function Dashboard() {
         </div>
         )}
 
+        {visibleWidgets.includes("list-recent-movements") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Recent Stock Movements</h2>
           <div className="space-y-3">
@@ -631,11 +696,15 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+        )}
 
+        {visibleWidgets.includes("list-recent-sales") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Recent Sales</h2>
           <div className="space-y-3">
-            {!salesStats || salesStats.recent_sales.length === 0 ? (
+            {salesQuery.isPending ? (
+            <ListRowsSkeleton />
+          ) : !salesStats || salesStats.recent_sales.length === 0 ? (
               <p className="text-muted text-sm">No sales recorded yet</p>
             ) : (
               salesStats.recent_sales.map((s) => (
@@ -650,13 +719,14 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+        )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-low-stock") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Low Stock Alerts</h2>
             {canUser(user, "orders.create") && stats.low_stock_products.length > 0 && (
-              <button onClick={() => setConfirmReorder(true)} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">
+              <button onClick={() => setConfirmReorder(true)} className="text-sm text-primary dark:text-primary hover:underline">
                 Create PO
               </button>
             )}
@@ -686,7 +756,7 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-expiring") && hasMinRole("manager") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Expiring Soon</h2>
           <div className="space-y-3">
@@ -708,13 +778,15 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-receipts") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Recent Receipts</h2>
-            <button onClick={() => navigate("/receiving")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+            <button onClick={() => navigate("/receiving")} className="text-sm text-primary dark:text-primary hover:underline">View all</button>
           </div>
-          {receipts?.items?.length ? (
+          {receiptsQuery.isPending ? (
+            <ListRowsSkeleton />
+          ) : receipts?.items?.length ? (
             <div className="space-y-3">
               {receipts.items.map((r) => (
                 <div key={r.id} className="flex items-center justify-between text-sm">
@@ -735,13 +807,15 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-lpns") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Recent LPNs</h2>
-            <button onClick={() => navigate("/lpns")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+            <button onClick={() => navigate("/lpns")} className="text-sm text-primary dark:text-primary hover:underline">View all</button>
           </div>
-          {lpns?.items?.length ? (
+          {lpnsQuery.isPending ? (
+            <ListRowsSkeleton />
+          ) : lpns?.items?.length ? (
             <div className="space-y-3">
               {lpns.items.map((l) => (
                 <div key={l.id} className="flex items-center justify-between text-sm">
@@ -764,9 +838,12 @@ export default function Dashboard() {
         </div>
         )}
 
+        {visibleWidgets.includes("list-order-status") && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4">Order Status</h2>
-          {orderSummary?.by_status?.length ? (
+          {orderQuery.isPending ? (
+            <ListRowsSkeleton />
+          ) : orderSummary?.by_status?.length ? (
             <div className="space-y-3">
               {orderSummary.by_status.map((s) => (
                 <div key={s.status} className="flex items-center justify-between text-sm">
@@ -784,12 +861,13 @@ export default function Dashboard() {
             <p className="text-muted text-sm py-16 text-center">No orders yet</p>
           )}
         </div>
+        )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-shipments") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Shipments to Process</h2>
-            <button onClick={() => navigate("/shipments")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+            <button onClick={() => navigate("/shipments")} className="text-sm text-primary dark:text-primary hover:underline">View all</button>
           </div>
           {stats.shipments_to_process.length > 0 ? (
             <div className="space-y-3">
@@ -814,11 +892,11 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-work-orders") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Open Work Orders</h2>
-            <button onClick={() => navigate("/work-orders")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+            <button onClick={() => navigate("/work-orders")} className="text-sm text-primary dark:text-primary hover:underline">View all</button>
           </div>
           {stats.work_orders_to_process.length > 0 ? (
             <div className="space-y-3">
@@ -841,11 +919,11 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-qc") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Quality Checks to Process</h2>
-            <button onClick={() => navigate("/quality-checks")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+            <button onClick={() => navigate("/quality-checks")} className="text-sm text-primary dark:text-primary hover:underline">View all</button>
           </div>
           {stats.quality_checks_to_process.length > 0 ? (
             <div className="space-y-3">
@@ -865,11 +943,11 @@ export default function Dashboard() {
         </div>
         )}
 
-        {hasMinRole("manager") && (
+        {visibleWidgets.includes("list-cost") && hasMinRole("manager") && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Manufacturing Cost</h2>
-            <button onClick={() => navigate("/reports")} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">View all</button>
+            <button onClick={() => navigate("/reports")} className="text-sm text-primary dark:text-primary hover:underline">View all</button>
           </div>
           {costReport ? (
             <div className="space-y-4">
@@ -919,5 +997,7 @@ export default function Dashboard() {
         onCancel={() => setConfirmReorder(false)}
       />
     </div>
+    )}
+    </WidgetPanel>
   );
 }

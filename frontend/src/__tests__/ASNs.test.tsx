@@ -188,7 +188,7 @@ describe("ASNs Page", () => {
     expect(await screen.findByText(/1 linked product/)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Gadget (SKU-2)" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Widget (SKU-1)" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Product")).toHaveValue("");
+    expect(screen.getByLabelText("Product")).toHaveValue("Select...");
   });
 
   it("keeps manual rows when the user changed supplier after adding items", async () => {
@@ -216,7 +216,7 @@ describe("ASNs Page", () => {
     fireEvent.change(within(dialog).getByLabelText("Product"), { target: { value: "1" } });
     fireEvent.change(within(dialog).getByLabelText("Supplier"), { target: { value: "1" } });
     await waitFor(() => expect(screen.queryByText("Loading supplier products...")).not.toBeInTheDocument());
-    await waitFor(() => expect(within(dialog).getByLabelText("Product")).toHaveValue("1"));
+    await waitFor(() => expect(within(dialog).getByLabelText("Product")).toHaveValue("Widget (SKU-1)"));
     expect(screen.getByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
     expect(screen.queryByText(/Loaded 1 product/)).not.toBeInTheDocument();
   });
@@ -244,7 +244,7 @@ describe("ASNs Page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Remove item 2" }));
     await waitFor(() => expect(screen.getAllByLabelText("Product")).toHaveLength(1));
-    expect(screen.getByLabelText("Product")).toHaveValue("1");
+    expect(screen.getByLabelText("Product")).toHaveValue("Widget (SKU-1)");
   });
 
   it("lists variant products under the supplier as selectable options", async () => {

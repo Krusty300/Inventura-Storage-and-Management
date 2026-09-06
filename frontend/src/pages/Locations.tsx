@@ -8,6 +8,7 @@ import type { LocationType } from "../utils/constants";
 import type { Location, LocationTree } from "../types";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Modal from "../components/Modal";
+import FittedSelect from "../components/FittedSelect";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
@@ -191,7 +192,7 @@ export default function Locations() {
           >
             {hasChildren ? (isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />) : <span className="inline-block w-4" />}
           </button>
-          <MapPin size={16} className={node.is_active ? "text-indigo-500" : "text-faint"} />
+          <MapPin size={16} className={node.is_active ? "text-primary" : "text-faint"} />
           <span className="font-medium text-ink truncate">{node.path}</span>
           <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full capitalize ${TYPE_BADGE[node.location_type] ?? "badge-neutral"}`}>{LOCATION_TYPE_LABELS[node.location_type]}</span>
           {!node.is_active && <span className="badge badge-neutral shrink-0">Inactive</span>}
@@ -203,14 +204,14 @@ export default function Locations() {
             <span className="whitespace-nowrap">{node.lot_count} lots</span>
           </span>
           <div className="ml-auto md:ml-0 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-            <button onClick={() => printLabel(node.id)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print label ${node.path}`}>
+            <button onClick={() => printLabel(node.id)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Print label ${node.path}`}>
               <FileText size={14} />
             </button>
-            <button onClick={() => openDetail(node)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${node.path}`}>
+            <button onClick={() => openDetail(node)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${node.path}`}>
               <Eye size={14} />
             </button>
             {canEdit && (
-              <button onClick={() => { setEditing(node); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${node.path}`}>
+              <button onClick={() => { setEditing(node); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${node.path}`}>
                 <Pencil size={14} />
               </button>
             )}
@@ -227,7 +228,7 @@ export default function Locations() {
   };
 
   const summaryCards = [
-    { label: "Total Locations", value: summary?.total ?? 0, icon: <MapPin size={18} />, theme: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300" },
+    { label: "Total Locations", value: summary?.total ?? 0, icon: <MapPin size={18} />, theme: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300" },
     { label: "Active", value: summary?.active ?? 0, icon: <CheckCircle2 size={18} />, theme: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300" },
     { label: "Inactive", value: summary?.inactive ?? 0, icon: <CircleOff size={18} />, theme: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300" },
     { label: "Stock Lines", value: summary?.total_stock_lines ?? 0, icon: <Layers size={18} />, theme: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300" },
@@ -240,9 +241,14 @@ export default function Locations() {
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-ink">Locations</h1>
-          <p className="text-sm text-muted mt-1">Organize your warehouse into zones, aisles, shelves, and bins.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <MapPin size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Locations</h1>
+            <p className="text-sm text-muted mt-1">Organize your warehouse into zones, aisles, shelves, and bins.</p>
+          </div>
         </div>
         <div className="flex gap-2 shrink-0">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export locations to CSV">
@@ -305,7 +311,7 @@ export default function Locations() {
         <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">
             <div className="flex items-center gap-2 px-4 py-3 bg-app border-b text-sm text-muted">
-              <FolderTree size={16} className="text-indigo-500" />
+              <FolderTree size={16} className="text-primary" />
               <span className="font-medium text-ink">Warehouse tree</span>
               <span className="text-xs text-faint">— {visibleTree.length} top-level {visibleTree.length === 1 ? "location" : "locations"}</span>
             </div>
@@ -339,7 +345,7 @@ export default function Locations() {
 }
 
 const TYPE_BADGE: Record<LocationType, string> = {
-  zone: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
+  zone: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
   aisle: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
   shelf: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   bin: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
@@ -410,26 +416,28 @@ function LocationFormModal({ location, locations, onClose, onSaved }: {
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Type</label>
-              <select className="select" value={form.location_type} onChange={(e) => setForm({ ...form, location_type: e.target.value as LocationType })}>
-                {LOCATION_TYPES.map((t) => (
-                  <option key={t} value={t}>{LOCATION_TYPE_LABELS[t]}</option>
-                ))}
-              </select>
+              <FittedSelect ariaLabel="Type" value={form.location_type} onChange={(v) => setForm({ ...form, location_type: v as LocationType })} options={LOCATION_TYPES.map((t) => ({ value: t, label: LOCATION_TYPE_LABELS[t] }))} />
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Parent</label>
-            <select className="select" value={form.parent_id} onChange={(e) => setForm({ ...form, parent_id: e.target.value })}>
-              <option value="">(Root)</option>
-              {parents.map((p) => <option key={p.id} value={p.id}>{p.path}</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="Parent location"
+              value={form.parent_id}
+              onChange={(v) => setForm({ ...form, parent_id: v })}
+              disabled={false}
+              options={[
+                { value: "", label: "(Root)" },
+                ...parents.map((p) => ({ value: String(p.id), label: p.path })),
+              ]}
+            />
           </div>
         </div>
         <div className="px-1 py-2 border-t border-border" />
         <label className="flex items-center gap-2 text-sm text-ink px-1">
           <input
             type="checkbox"
-            className="rounded border-border-strong accent-indigo-600"
+            className="rounded border-border-strong accent-primary"
             checked={form.is_active}
             onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
           />

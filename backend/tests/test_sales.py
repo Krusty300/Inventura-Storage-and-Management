@@ -989,3 +989,55 @@ def test_b2c_refund_stores_conversation_id_on_sale(auth_headers):
     detail = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
     assert detail["refund_checkout_request_id"] == data["conversation_id"]
     assert detail["refund_status"] == "pending"
+
+
+def test_sale_items_expose_product_image(auth_headers):
+    prod_with = client.post("/api/products", json={
+        "location_id": 1, "sku": "IMG-WITH", "name": "Image Product", "unit_price": 10.0,
+        "cost_price": 5.0, "quantity": 10, "image_url": "/uploads/img-with.png",
+    }, headers=auth_headers).json()
+    prod_without = client.post("/api/products", json={
+        "location_id": 1, "sku": "IMG-NONE", "name": "No Image Product", "unit_price": 10.0,
+        "cost_price": 5.0, "quantity": 10,
+    }, headers=auth_headers).json()
+
+    created = client.post("/api/sales", json={
+        "items": [
+            {"product_id": prod_with["id"], "quantity": 1, "unit_price": 10.0},
+            {"product_id": prod_without["id"], "quantity": 1, "unit_price": 10.0},
+        ],
+    }, headers=auth_headers)
+    assert created.status_code == 201
+    by_product = {i["product_id"]: i for i in created.json()["items"]}
+    assert by_product[prod_with["id"]]["product_image"] == "/uploads/img-with.png"
+    assert by_product[prod_without["id"]]["product_image"] == ""
+
+    detail = client.get(f"/api/sales/{created.json()['id']}", headers=auth_headers).json()
+    detail_items = {i["product_id"]: i for i in detail["items"]}
+    assert detail_items[prod_with["id"]]["product_image"] == "/uploads/img-with.png"
+    assert detail_items[prod_without["id"]]["product_image"] == ""
+
+    listing = client.get("/api/sales", headers=auth_headers).json()
+    row = next(s for s in listing["items"] if s["id"] == created.json()["id"])
+    listed = {i["product_id"]: i for i in row["items"]}
+    assert listed[prod_with["id"]]["product_image"] == "/uploads/img-with.png"
+    assert listed[prod_without["id"]]["product_image"] == ""
+
+
+def test_sale_update_notes(auth_headers):
+    prod = _make_product(auth_headers, sku="SALE-NOTE")
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 20.00}],
+    }, headers=auth_headers).json()
+    assert sale["notes"] == ""
+
+    resp = client.put(f"/api/sales/{sale['id']}", json={"notes": "Follow up with customer"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["notes"] == "Follow up with customer"
+
+    detail = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
+    assert detail["notes"] == "Follow up with customer"
+
+    resp = client.put(f"/api/sales/{sale['id']}", json={"notes": ""}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["notes"] == ""

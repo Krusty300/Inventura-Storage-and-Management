@@ -33,8 +33,9 @@ describe("StockMovementForm", () => {
     expect(await screen.findByText("Record Stock Movement")).toBeInTheDocument();
     expect(screen.queryByText("Location *")).not.toBeInTheDocument();
 
-    const widgetOption = await screen.findByRole("option", { name: "Widget (W-5)" });
-    fireEvent.change(widgetOption.closest("select")!, { target: { value: "5" } });
+    await screen.findByRole("option", { name: "Widget (W-5)" });
+    const productCombobox1 = screen.getByRole("combobox", { name: "Product" });
+    fireEvent.change(productCombobox1, { target: { value: "5" } });
 
     expect(await screen.findByText("Location *")).toBeInTheDocument();
     expect(await screen.findByRole("option", { name: "Main" })).toBeInTheDocument();
@@ -49,8 +50,9 @@ describe("StockMovementForm", () => {
     renderWithProviders(<StockMovementForm onClose={() => {}} onSaved={() => {}} />);
 
     await screen.findByText("Record Stock Movement");
-    const widgetOption = await screen.findByRole("option", { name: "Widget (W-5)" });
-    fireEvent.change(widgetOption.closest("select")!, { target: { value: "5" } });
+    await screen.findByRole("option", { name: "Widget (W-5)" });
+    const productCombobox2 = screen.getByRole("combobox", { name: "Product" });
+    fireEvent.change(productCombobox2, { target: { value: "5" } });
 
     await screen.findByRole("option", { name: "Shelf A" });
     fireEvent.change(screen.getAllByRole("combobox")[2], { target: { value: "10" } });
@@ -78,8 +80,9 @@ describe("StockMovementForm", () => {
     renderWithProviders(<StockMovementForm onClose={() => {}} onSaved={() => {}} />);
 
     await screen.findByText("Record Stock Movement");
-    const gadgetOption = await screen.findByRole("option", { name: "Gadget (G-7)" });
-    fireEvent.change(gadgetOption.closest("select")!, { target: { value: "7" } });
+    await screen.findByRole("option", { name: "Gadget (G-7)" });
+    const productCombobox3 = screen.getByRole("combobox", { name: "Product" });
+    fireEvent.change(productCombobox3, { target: { value: "7" } });
     fireEvent.change(screen.getAllByRole("combobox")[1], { target: { value: "out" } });
 
     await screen.findByRole("option", { name: "Bin B" });

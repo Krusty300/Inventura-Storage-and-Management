@@ -5,6 +5,8 @@ import api from "../api/client";
 import type { MRPItem, MRPPlan } from "../types";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import ErrorState from "../components/ErrorState";
+import FittedSelect from "../components/FittedSelect";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
@@ -19,7 +21,7 @@ export default function Planning() {
 
   const products = useSelectableProducts();
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["mrp", productId, quantity],
     queryFn: async () => {
       const { data } = await api.get("/planning/mrp", {
@@ -43,21 +45,30 @@ export default function Planning() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">MRP Planning</h1>
-          <p className="text-sm text-muted">Explode the BOM and net demand against stock and open work orders.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Calculator size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">MRP Planning</h1>
+            <p className="text-sm text-muted">Explode the BOM and net demand against stock and open work orders.</p>
+          </div>
         </div>
       </div>
 
       <form onSubmit={handleRun} className="card p-4 flex flex-wrap items-end gap-4">
         <div className="min-w-65 flex-1">
           <label className="block text-sm font-medium text-ink mb-1">Demand Product</label>
-          <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)}>
-            <option value="">Select product...</option>
-            {products.filter((p) => !p.is_variant).sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
-              <option key={p.id} value={p.id}>{productLabel(p)}</option>
-            ))}
-          </select>
+          <FittedSelect
+            ariaLabel="Demand product"
+            value={productId}
+            onChange={setProductId}
+            disabled={false}
+            options={[
+              { value: "", label: "Select product..." },
+              ...products.filter((p) => !p.is_variant).sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: String(p.id), label: productLabel(p) })),
+            ]}
+          />
         </div>
         <div className="w-32">
           <label className="block text-sm font-medium text-ink mb-1">Quantity</label>
@@ -69,6 +80,7 @@ export default function Planning() {
       </form>
 
       {isLoading && <Skeleton variant="rows" rows={8} cols={6} />}
+      {isError && <ErrorState variant="block" title="Failed to run MRP" onRetry={() => refetch()} />}
       {!isLoading && ran && data && data.items.length === 0 && (
         <EmptyState variant="block" title="No plan" message="This product has no active BOM to explode." />
       )}

@@ -111,7 +111,7 @@ export default function CategoryDetail({ category, onClose }: Props) {
                           <span className={`badge ${p.is_active ? "badge-success" : "badge-danger"}`}>{p.is_active ? "Active" : "Inactive"}</span>
                         </td>
                         <td className="px-3 py-2.5">
-                          <button onClick={() => setViewingProduct(p)} className="p-1 rounded text-indigo-600 dark:text-indigo-400 hover:underline" aria-label={`View product ${p.display_name}`}>
+                          <button onClick={() => setViewingProduct(p)} className="p-1 rounded text-primary dark:text-primary hover:underline" aria-label={`View product ${p.display_name}`}>
                             View
                           </button>
                         </td>
@@ -158,7 +158,7 @@ export default function CategoryDetail({ category, onClose }: Props) {
                         <span className={`badge ${s.is_active === false ? "badge-warning" : "badge-success"}`}>{s.is_active === false ? "Deactivated" : "Active"}</span>
                       </td>
                       <td className="px-3 py-2.5">
-                        <button onClick={() => setViewingSupplier(s)} className="p-1 rounded text-indigo-600 dark:text-indigo-400 hover:underline" aria-label={`View supplier ${s.name}`}>
+                        <button onClick={() => setViewingSupplier(s)} className="p-1 rounded text-primary dark:text-primary hover:underline" aria-label={`View supplier ${s.name}`}>
                           View
                         </button>
                       </td>

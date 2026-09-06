@@ -76,5 +76,9 @@ class SaleItem(Base):
         return self.product.display_name if self.product else ""
 
     @property
+    def product_image(self) -> str:
+        return self.product.image_url if self.product else ""
+
+    @property
     def line_total(self) -> float:
         return float(self.unit_price) * self.quantity

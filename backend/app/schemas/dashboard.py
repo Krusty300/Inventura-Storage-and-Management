@@ -1,6 +1,17 @@
 from pydantic import BaseModel
 
 
+class WidgetConfig(BaseModel):
+    id: str
+    visible: bool = True
+    order: int = 0
+    collapsed: bool = False
+
+
+class DashboardWidgetLayout(BaseModel):
+    widgets: list[WidgetConfig] = []
+
+
 class DashboardShipmentRow(BaseModel):
     id: int
     shipment_number: str

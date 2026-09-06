@@ -38,6 +38,10 @@ class RefundRequest(BaseModel):
     refund_provider: Optional[str] = None
 
 
+class SaleUpdate(BaseModel):
+    notes: Optional[str] = None
+
+
 class SaleBulkEdit(BaseModel):
     ids: list[int]
     notes: Optional[str] = None
@@ -51,6 +55,7 @@ class SaleItemOut(BaseModel):
     quantity: int
     unit_price: float
     product_name: str = ""
+    product_image: str = ""
     line_total: float = 0.0
     location: str = ""
     locations: list[str] = []

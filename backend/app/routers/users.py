@@ -224,6 +224,9 @@ def update_user(
 ):
     u = _get_user_or_404(db, user_id, include_inactive=True)
     updates = data.model_dump(exclude_unset=True)
+    if u.role == "admin" and current_user.role != "admin":
+        if "role" in updates or "is_active" in updates:
+            raise HTTPException(status_code=403, detail="Only admins can change an admin's role or status")
     if "permissions" in updates:
         _validate_permissions(updates["permissions"])
         updates["permissions"] = updates["permissions"] or None
@@ -265,6 +268,8 @@ def reset_password(
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)
     u = _get_user_or_404(db, user_id)
+    if u.role == "admin" and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can reset another admin's password")
     u.password_hash = hash_password(data.new_password)
     db.query(UserSession).filter(
         UserSession.user_id == u.id,

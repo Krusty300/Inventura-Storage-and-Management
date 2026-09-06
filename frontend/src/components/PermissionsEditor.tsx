@@ -71,7 +71,7 @@ export default function PermissionsEditor({ user, onClose, onSaved }: Props) {
                   </span>
                   <button
                     type="button"
-                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
+                    className="text-xs text-primary dark:text-primary hover:underline inline-flex items-center gap-1"
                     onClick={() => setGroup(group.permissions, !allChecked)}
                   >
                     {allChecked ? <Square size={12} /> : <CheckSquare size={12} />}
@@ -85,7 +85,7 @@ export default function PermissionsEditor({ user, onClose, onSaved }: Props) {
                         type="checkbox"
                         checked={selected.has(perm)}
                         onChange={() => toggle(perm)}
-                        className="accent-indigo-600"
+                        className="accent-primary"
                         aria-label={perm}
                       />
                       {perm}

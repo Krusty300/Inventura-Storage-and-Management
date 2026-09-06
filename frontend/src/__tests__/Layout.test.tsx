@@ -211,7 +211,7 @@ describe("Layout", () => {
     expect(screen.getByText("Products")).toBeInTheDocument();
     expect(screen.queryByText("Users")).not.toBeInTheDocument();
     expect(screen.queryByText("Reports")).not.toBeInTheDocument();
-    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
   it("limits nav to a worker's custom permission allowlist", () => {
@@ -221,6 +221,5 @@ describe("Layout", () => {
     expect(screen.queryByText("Reports")).not.toBeInTheDocument();
     expect(screen.queryByText("Orders")).not.toBeInTheDocument();
     expect(screen.queryByText("Users")).not.toBeInTheDocument();
-    expect(screen.queryByText("Profile")).not.toBeInTheDocument();
   });
 });

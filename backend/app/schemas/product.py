@@ -81,6 +81,8 @@ class ProductOut(BaseModel):
     barcode: str
     batch_number: str
     expiry_date: Optional[date] = None
+    effective_expiry_date: Optional[date] = None
+    expiry_days_left: Optional[int] = None
     image_url: str
     is_active: bool
     is_serialized: bool = False

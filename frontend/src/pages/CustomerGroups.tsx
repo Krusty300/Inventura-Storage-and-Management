@@ -8,6 +8,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import FittedSelect from "../components/FittedSelect";
 import { useDebounce } from "../hooks/useDebounce";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -56,9 +57,14 @@ export default function CustomerGroups() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Customer Groups</h1>
-          <p className="text-sm text-muted mt-1">Group customers together to apply shared pricing and discounts.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <UsersRound size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Customer Groups</h1>
+            <p className="text-sm text-muted mt-1">Group customers together to apply shared pricing and discounts.</p>
+          </div>
         </div>
         {can("customer_groups.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
@@ -119,7 +125,7 @@ export default function CustomerGroups() {
                         {can("customer_groups.update") && (
                           <button
                             onClick={() => { setEditing(g); setShowForm(true); }}
-                            className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400"
+                            className="p-1 text-faint hover:text-primary dark:text-primary"
                             aria-label={`Edit ${g.name}`}
                           >
                             <Pencil size={16} />
@@ -245,20 +251,13 @@ function CustomerGroupForm({ group, onClose, onSaved }: { group: CustomerGroup |
         </div>
         <div>
           <label htmlFor="cg-price-list" className="block text-sm font-medium text-ink mb-1">Price List</label>
-          <select
-            id="cg-price-list"
-            className="input"
-            value={priceListId ?? ""}
-            onChange={(e) => setPriceListId(e.target.value ? Number(e.target.value) : null)}
-            aria-label="Assign price list"
-          >
-            <option value="">None (no price list)</option>
-            {priceLists.map((pl) => (
-              <option key={pl.id} value={pl.id}>
-                {pl.name}{pl.is_default ? " (default)" : ""}
-              </option>
-            ))}
-          </select>
+          <FittedSelect
+            value={priceListId ? String(priceListId) : ""}
+            onChange={(v) => setPriceListId(v ? Number(v) : null)}
+            ariaLabel="Assign price list"
+            maxWidth={280}
+            options={[{ value: "", label: "None (no price list)" }, ...priceLists.map((pl) => ({ value: String(pl.id), label: `${pl.name}${pl.is_default ? " (default)" : ""}` }))]}
+          />
         </div>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

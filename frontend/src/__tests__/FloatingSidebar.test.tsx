@@ -88,11 +88,17 @@ describe("FloatingSidebar", () => {
 
   it("hides the admin group for non-admin roles", () => {
     renderWithProviders(<FloatingSidebar {...defaultWidthProps} />, { role: "worker" });
-    expect(screen.queryByLabelText("Settings")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Users")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Reports")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Activity")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Notifications")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Products")).toBeInTheDocument();
+  });
+
+  it("shows account nav items (notifications/settings/profile) for non-admin roles", () => {
+    renderWithProviders(<FloatingSidebar {...defaultWidthProps} />, { role: "worker" });
+    expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
+    expect(screen.getByLabelText("Settings")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Profile").length).toBeGreaterThan(0);
   });
 
   it("shows the admin group for admin role", () => {
@@ -254,7 +260,7 @@ describe("FloatingSidebar", () => {
     const headers = document.querySelectorAll("button[aria-expanded]");
     const inventoryHeader = Array.from(headers).find((h) => h.textContent?.trim() === "Inventory");
     expect(inventoryHeader).toBeTruthy();
-    expect(inventoryHeader!.querySelector(".text-indigo-500")).toBeInTheDocument();
+    expect(inventoryHeader!.querySelector(".text-primary")).toBeInTheDocument();
   });
 
   it("does not highlight inactive group header", () => {
@@ -262,7 +268,7 @@ describe("FloatingSidebar", () => {
     const headers = document.querySelectorAll("button[aria-expanded]");
     const salesHeader = Array.from(headers).find((h) => h.textContent?.trim() === "Sales");
     expect(salesHeader).toBeTruthy();
-    expect(salesHeader!.querySelector(".text-indigo-500")).not.toBeInTheDocument();
+    expect(salesHeader!.querySelector(".text-primary")).not.toBeInTheDocument();
   });
 
   it("aria-expanded is false on collapsed group header", () => {

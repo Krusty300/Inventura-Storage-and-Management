@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Boxes, Eye, Layers, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { BOM, PaginatedResponse, ProductCost } from "../types";
@@ -17,6 +17,7 @@ import { useToast } from "../context/ToastContext";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
 import ErrorState from "../components/ErrorState";
+import FittedSelect from "../components/FittedSelect";
 
 import { usePageSize } from "../hooks/usePageSize";
 import { errorMessage } from "../utils/errors";
@@ -65,29 +66,36 @@ export default function Boms() {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["boms"] });
 
+  const openNew = () => { setEditing(null); setShowForm(true); };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Bills of Materials</h1>
-          <p className="text-sm text-muted mt-1">Define how products are built from their component parts.</p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Boxes size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink tracking-tight">Bills of Materials</h1>
+            <p className="text-sm text-muted mt-0.5">Define how products are built from their component parts.</p>
+          </div>
         </div>
         {can("bom.create") && (
-          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
-            New BOM
+          <button onClick={openNew} className="btn-primary shrink-0">
+            <Plus size={16} /> New BOM
           </button>
         )}
       </div>
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by BOM name, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search BOMs" />
         </div>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
-            className="accent-indigo-600"
+            className="accent-primary"
             checked={includeInactive}
             onChange={(e) => { setIncludeInactive(e.target.checked); setPage(1); }}
           />
@@ -115,7 +123,7 @@ export default function Boms() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : boms.length === 0 ? (
-              <EmptyState title="No BOMs yet" message="Create a bill of materials to define how a product is manufactured." actionLabel="New BOM" onAction={() => { setEditing(null); setShowForm(true); }} />
+              <EmptyState title="No BOMs yet" message="Create a bill of materials to define how a product is manufactured." actionLabel="New BOM" onAction={openNew} />
             ) : boms.map((b) => (
               <tr key={b.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(b)}>
                 <td className="px-4 py-3 font-medium">{b.name || b.product_name}</td>
@@ -219,14 +227,20 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
 
   return (
     <Modal open onClose={onClose} title={bom ? "Edit BOM" : "New BOM"} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Output Product</label>
-            <select className="select" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!bom} required>
-              <option value="">Select product...</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="Output product"
+              value={productId}
+              onChange={setProductId}
+              disabled={!!bom}
+              options={[
+                { value: "", label: "Select product..." },
+                ...products.map((p) => ({ value: String(p.id), label: productLabel(p) })),
+              ]}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">BOM Name</label>
@@ -239,29 +253,40 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
           <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
 
-        <div className="border border-border rounded-lg overflow-hidden">
-          <div className="bg-app px-4 py-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-ink">Components</span>
+        <div className="border border-border rounded-xl overflow-hidden bg-app/50">
+          <div className="bg-app px-4 py-2.5 flex items-center justify-between border-b border-border">
+            <span className="text-sm font-medium text-ink flex items-center gap-2">
+              <Layers size={15} className="text-faint" />
+              Components
+              {rows.length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary-soft text-primary-strong dark:text-primary text-xs font-semibold">{rows.length}</span>
+              )}
+            </span>
             <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="btn-secondary text-xs py-1 px-2">
-              <Plus size={14} className="inline mr-1" />Add Component
+              <Plus size={14} className="inline mr-0.5" />Add Component
             </button>
           </div>
-          <div className="divide-y divide-border max-h-[40vh] overflow-auto">
+          <div className="divide-y divide-border max-h-[40vh] overflow-auto bg-surface">
             {rows.map((row, idx) => (
               <div key={idx} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
                 <div className="sm:col-span-8">
                   <label className="block text-xs font-medium text-muted mb-1">Product</label>
-                  <select className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
-                    <option value="">Select...</option>
-                    {products.filter((p) => p.id !== Number(productId)).map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
-                  </select>
+                  <FittedSelect
+                    ariaLabel="Component product"
+                    value={row.product_id}
+                    onChange={(v) => setRow(idx, "product_id", v)}
+                    options={[
+                      { value: "", label: "Select..." },
+                      ...products.filter((p) => p.id !== Number(productId)).map((p) => ({ value: String(p.id), label: productLabel(p) })),
+                    ]}
+                  />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-muted mb-1">Qty</label>
                   <input type="number" min={1} className="input" value={row.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
                 </div>
                 <div className="sm:col-span-2">
-                  <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove component">
+                  <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400 transition-colors" aria-label="Remove component">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -269,14 +294,14 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
             ))}
           </div>
         </div>
-        <p className="text-xs text-muted">Cycle checks are enforced server-side; each component may appear only once.</p>
+        <p className="text-xs text-muted -mt-1">Cycle checks are enforced server-side; each component may appear only once.</p>
 
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" className="rounded" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Active
         </label>
 
-        <div className="flex justify-end gap-3 pt-4">
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving || !productId} className="btn-primary">{saving ? "Saving..." : "Save BOM"}</button>
         </div>
@@ -296,29 +321,59 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
     },
   });
   const rolledUp = cost?.unit_cost;
+  const direct = bom.total_cost;
+  const variance = rolledUp !== undefined ? rolledUp - direct : 0;
   const componentCost = (productId: number) => cost?.items.find((c) => c.product_id === productId)?.component_unit_cost;
   return (
-    <Modal open onClose={onClose} title={bom.name || bom.product_name} wide>
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <p className="text-muted">Output Product</p>
-            <p className="font-medium">{bom.product_name}</p>
-          </div>
-          <div>
-            <p className="text-muted">Rolled-Up Unit Cost {rolledUp !== undefined && rolledUp !== bom.total_cost && (
-              <span className="text-faint font-normal">(direct: {formatCurrency(bom.total_cost, currencySymbol)})</span>
-            )}</p>
-            <p className="font-medium">{rolledUp !== undefined ? formatCurrency(rolledUp, currencySymbol) : formatCurrency(bom.total_cost, currencySymbol)}</p>
-          </div>
-          {bom.description && (
-            <div className="col-span-2">
-              <p className="text-muted">Description</p>
-              <p className="font-medium">{bom.description}</p>
+    <Modal
+      open
+      onClose={onClose}
+      title={
+        <span className="flex items-center gap-2">
+          {bom.name || bom.product_name}
+          <span className={`badge ${bom.is_active ? "badge-success" : "badge-danger"}`}>{bom.is_active ? "Active" : "Inactive"}</span>
+        </span>
+      }
+      wide
+    >
+      <div className="space-y-5">
+        <div className="border border-border rounded-xl px-5 py-4 sm:px-6 sm:py-5">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+            <div className="min-w-0">
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Output Product</p>
+              <p className="font-medium text-ink break-words">{bom.product_name}</p>
             </div>
-          )}
+            <div className="min-w-0">
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Components</p>
+              <p className="font-semibold text-ink tabular-nums">{bom.item_count}</p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Direct Unit Cost</p>
+              <p className="font-semibold text-ink tabular-nums">{formatCurrency(direct, currencySymbol)}</p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Rolled-Up Cost</p>
+              <p className={`font-semibold tabular-nums break-words ${rolledUp !== undefined && variance > 0 ? "text-amber-600 dark:text-amber-400" : "text-ink"}`}>
+                {rolledUp !== undefined ? formatCurrency(rolledUp, currencySymbol) : formatCurrency(direct, currencySymbol)}
+              </p>
+              {rolledUp !== undefined && (
+                <p className="text-[11px] mt-0.5 tabular-nums text-faint">
+                  {variance > 0 ? `+${formatCurrency(variance, currencySymbol)} merged from sub-parts` : variance < 0 ? `${formatCurrency(variance, currencySymbol)} vs direct` : "matches direct cost"}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="border border-border rounded-lg overflow-hidden">
+
+        {bom.description && (
+          <div className="text-sm">
+            <p className="text-muted">Description</p>
+            <p className="font-medium">{bom.description}</p>
+          </div>
+        )}
+
+        <div className="border border-border rounded-xl overflow-hidden">
+          <div className="bg-app px-4 py-2.5 text-sm font-semibold text-ink border-b border-border">Component Breakdown</div>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-app text-left">
@@ -347,7 +402,7 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
             </tbody>
           </table>
         </div>
-        <div className="flex justify-end pt-2">
+        <div className="flex justify-end pt-1">
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>

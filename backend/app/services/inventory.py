@@ -418,8 +418,8 @@ def expire_overdue_lots(db: Session) -> int:
             notify_lot_expired(db, lot)
         except Exception:
             log.warning("Failed to send expiry notification for lot %s", lot.lot_number, exc_info=True)
-    broadcast_change("lot", "updated")
     db.commit()
+    broadcast_change("lot", "updated")
     return len(overdue)
 
 

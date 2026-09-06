@@ -45,6 +45,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setLoading(false);
     setLoggingOut(false);
+
+    if (t) {
+      let cancelled = false;
+      api
+        .get("/auth/me")
+        .then(({ data }) => {
+          if (cancelled) return;
+          if (data && typeof data === "object" && typeof data.username === "string" && data.id != null) {
+            setUser(data);
+            localStorage.setItem("user", JSON.stringify(data));
+          }
+        })
+        .catch(() => {
+          // 401 invalid-token is handled by the global axios interceptor
+          // (clears token + redirects to /login); transient network failures
+          // must not sign the user out.
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
   }, []);
 
   const login = async (username: string, password: string, remember = false) => {

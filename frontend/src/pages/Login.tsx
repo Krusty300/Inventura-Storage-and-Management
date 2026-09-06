@@ -43,7 +43,7 @@ export default function Login() {
       footer={
         <p className="text-sm text-muted mt-6 text-center">
           Don't have an account?{" "}
-          <Link to="/register" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+          <Link to="/register" className="text-primary dark:text-primary hover:underline">
             Register
           </Link>
         </p>
@@ -86,7 +86,7 @@ export default function Login() {
               type="checkbox"
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
-              className="h-4 w-4 rounded border-border-strong text-indigo-600 dark:text-indigo-400 focus:ring-indigo-500"
+              className="h-4 w-4 rounded border-border-strong text-primary dark:text-primary focus:ring-primary"
             />
             Remember me
           </label>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import api from "../api/client";
 import { errorMessage } from "../utils/errors";
 
@@ -70,17 +71,15 @@ export default function EntityBulkEditModal({ ids, entityLabel, endpoint, fields
           <div key={f.name}>
             <label className="block text-sm font-medium text-ink mb-1">{f.label}</label>
             {f.type === "select" ? (
-              <select
-                className="select"
+              <FittedSelect
+                ariaLabel={f.label}
                 value={values[f.name]}
-                onChange={(e) => setValues((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                aria-label={f.label}
-              >
-                <option value="">— No change —</option>
-                {(f.options || []).map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+                onChange={(v) => setValues((prev) => ({ ...prev, [f.name]: v }))}
+                options={[
+                  { value: "", label: "— No change —" },
+                  ...(f.options || []).map((o) => ({ value: o.value, label: o.label })),
+                ]}
+              />
             ) : (
               <input
                 type={f.type === "number" ? "number" : "text"}

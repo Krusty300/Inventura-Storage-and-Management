@@ -25,6 +25,8 @@ from app.models.customer import Customer
 from app.models.settings import Settings
 from app.models.quality_check import QualityCheck
 from app.services.auth import require_permission
+from app.services import expiry as expiry_svc
+from app.services import inventory
 from app.services.inventory import BACKFLUSH, CONSUME, ISSUE, NON_ACTIVITY_MOVEMENT_TYPES, SHIP, TRANSFER_OUT, sellable_qty_by_product, sellable_qty_subquery
 from app.services.pdf_helpers import (
     MARGIN,
@@ -778,6 +780,7 @@ def export_products(
     low_stock: bool = False,
     db: Session = Depends(get_db),
 ):
+    inventory.expire_overdue_lots(db)
     q = db.query(Product).options(
         joinedload(Product.category), joinedload(Product.supplier)
     ).filter(Product.id.notin_(Product.variant_parent_id_subquery()))
@@ -788,10 +791,24 @@ def export_products(
         q = q.filter(Product.category_id == category_id)
     today = date.today()
     if expiry == "expired":
-        q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date < today)
+        # Mirror the products grid exactly: expired-lot stock OR a static expiry
+        # in the past, variant-aware so an exported parent agrees with the page.
+        cond = expiry_svc.expired_condition(Product.id, today)
+        q = q.filter(cond | Product.id.in_(
+            select(Product.parent_id).where(
+                Product.parent_id.isnot(None), Product.is_active == True,  # noqa: E712
+                expiry_svc.expired_condition(Product.id, today),
+            )
+        ))
     elif expiry == "expiring":
-        soon = today + timedelta(days=30)
-        q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date >= today, Product.expiry_date <= soon)
+        soon = today + timedelta(days=expiry_svc.warning_window(db))
+        cond = expiry_svc.expiring_condition(Product.id, today, soon)
+        q = q.filter(cond | Product.id.in_(
+            select(Product.parent_id).where(
+                Product.parent_id.isnot(None), Product.is_active == True,  # noqa: E712
+                expiry_svc.expiring_condition(Product.id, today, soon),
+            )
+        ))
     if low_stock:
         sellable = sellable_qty_subquery()
         q = q.filter(Product.is_active == True, Product.id.notin_(Product.variant_parent_id_subquery()), sellable <= Product.reorder_level)  # noqa: E712

@@ -47,6 +47,8 @@ export interface Product {
   barcode: string;
   batch_number: string;
   expiry_date: string | null;
+  effective_expiry_date: string | null;
+  expiry_days_left?: number | null;
   image_url: string;
   is_active: boolean;
   is_serialized: boolean;
@@ -165,8 +167,16 @@ export interface OrderItem {
   quantity: number;
   unit_price: number;
   product_name: string;
+  product_image: string;
   is_serialized: boolean;
   sku: string;
+}
+
+export interface WidgetConfig {
+  id: string;
+  visible: boolean;
+  order: number;
+  collapsed?: boolean;
 }
 
 export interface DashboardShipmentRow {
@@ -356,6 +366,7 @@ export interface ReceiptItem {
   lot_id: number | null;
   location_id: number | null;
   product_name: string;
+  product_image: string;
   lot_number: string;
   location_name: string;
 }
@@ -478,6 +489,7 @@ export interface SaleItem {
   quantity: number;
   unit_price: number;
   product_name: string;
+  product_image: string;
   line_total: number;
   location: string;
   locations: string[];
@@ -870,6 +882,37 @@ export interface BOM {
   item_count: number;
   total_cost: number;
   items: BOMItem[];
+}
+
+export interface KitItem {
+  id: number;
+  kit_id: number;
+  product_id: number;
+  quantity: number;
+  position: number;
+  product_name: string;
+  unit_cost: number;
+  unit_price: number;
+}
+
+export interface Kit {
+  id: number;
+  product_id: number;
+  name: string;
+  description: string;
+  version: string;
+  discount_type: "fixed" | "percentage";
+  discount_value: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  product_name: string;
+  item_count: number;
+  total_cost: number;
+  retail_value: number;
+  bundle_price: number;
+  savings: number;
+  items: KitItem[];
 }
 
 export interface WorkOrderItem {

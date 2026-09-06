@@ -19,6 +19,7 @@ export default function NotificationBell() {
   const [items, setItems] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const { subscribe } = useRealtime();
@@ -26,6 +27,7 @@ export default function NotificationBell() {
   const formatDateTime = useDateTimeFormat();
 
   const load = useCallback(async (withItems: boolean) => {
+    if (withItems) setLoading(true);
     try {
       const { data: count } = await api.get("/notifications/unread-count");
       setUnread(count);
@@ -35,6 +37,8 @@ export default function NotificationBell() {
       }
     } catch {
       // ignore
+    } finally {
+      if (withItems) setLoading(false);
     }
   }, []);
 
@@ -107,7 +111,7 @@ export default function NotificationBell() {
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative p-2 text-muted hover:text-indigo-600 dark:text-indigo-400 rounded-full"
+        className="relative p-2 text-muted hover:text-primary dark:text-primary rounded-full"
         aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`}
       >
         <Bell size={20} />
@@ -123,7 +127,7 @@ export default function NotificationBell() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-ink">Notifications</h3>
             {unread > 0 && (
-              <button onClick={() => setConfirming(true)} className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+              <button onClick={() => setConfirming(true)} className="flex items-center gap-1 text-xs text-primary dark:text-primary hover:underline">
                 <CheckCheck size={14} /> Mark all read
               </button>
             )}
@@ -147,7 +151,21 @@ export default function NotificationBell() {
               </div>
             </div>
           )}
-          {items.length === 0 ? (
+          {loading ? (
+            <div role="status" aria-label="Loading notifications" className="divide-y divide-border">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-3">
+                  <div className="w-4 h-4 bg-subtle-strong rounded-full animate-pulse mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="h-3.5 w-3/4 bg-subtle-strong rounded animate-pulse" />
+                    <div className="h-3 w-1/2 bg-subtle-strong rounded animate-pulse" />
+                    <div className="h-2.5 w-1/4 bg-subtle-strong rounded animate-pulse" />
+                  </div>
+                  <div className="w-4 h-4 bg-subtle-strong rounded animate-pulse shrink-0" />
+                </div>
+              ))}
+            </div>
+          ) : items.length === 0 ? (
             <p className="px-4 py-8 text-sm text-muted text-center">No notifications</p>
           ) : (
             <>
@@ -180,7 +198,7 @@ export default function NotificationBell() {
                         >
                           <X size={14} />
                         </button>
-                        {!n.is_read && <span className="w-2 h-2 bg-indigo-500 rounded-full" />}
+                        {!n.is_read && <span className="w-2 h-2 bg-primary rounded-full" />}
                       </div>
                     </div>
                   );
@@ -188,7 +206,7 @@ export default function NotificationBell() {
               </div>
               <button
                 onClick={() => { setOpen(false); navigate("/notifications"); }}
-                className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-border text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-app"
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-border text-xs font-medium text-primary dark:text-primary hover:bg-app"
               >
                 View all <ArrowRight size={14} />
               </button>

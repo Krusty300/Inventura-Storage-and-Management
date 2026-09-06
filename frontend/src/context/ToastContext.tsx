@@ -50,7 +50,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={t.id}
             role="alert"
             className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium animate-slide-up ${
-              t.type === "success" ? "bg-green-600" : t.type === "error" ? "bg-red-600" : "bg-indigo-600"
+              t.type === "success" ? "bg-green-600" : t.type === "error" ? "bg-red-600" : "bg-primary-solid"
             }`}
           >
             <span className="flex-1">{t.message}</span>

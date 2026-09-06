@@ -7,6 +7,7 @@ import type { PaginatedResponse, StockMovement } from "../types";
 import StockMovementDetail from "../components/StockMovementDetail";
 import StockMovementForm from "../components/StockMovementForm";
 import TransferModal from "../components/TransferModal";
+import FittedSelect from "../components/FittedSelect";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -79,9 +80,14 @@ export default function StockMovements() {
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Stock Movements</h1>
-          <p className="text-sm text-muted mt-1">Every change to inventory — moves, adjustments, and transfers in one timeline.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <ArrowLeftRight size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Stock Movements</h1>
+            <p className="text-sm text-muted mt-1">Every change to inventory — moves, adjustments, and transfers in one timeline.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export movements to CSV">
@@ -102,22 +108,18 @@ export default function StockMovements() {
 
       {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load movements")}</div>}
 
-      <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by product, reference, or notes..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search stock movements" />
         </div>
-        <select
-          className="select w-44"
+        <FittedSelect
           value={movementType}
-          onChange={(e) => { setMovementType(e.target.value); setPage(1); }}
-          aria-label="Filter by movement type"
-        >
-          <option value="all">All types</option>
-          {MOVEMENT_TYPES.map((t) => (
-            <option key={t} value={t}>{movementLabel(t)}</option>
-          ))}
-        </select>
+          onChange={(v) => { setMovementType(v); setPage(1); }}
+          ariaLabel="Filter by movement type"
+          maxWidth={200}
+          options={[{ value: "all", label: "All types" }, ...MOVEMENT_TYPES.map((t) => ({ value: t, label: movementLabel(t) }))]}
+        />
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -193,11 +195,11 @@ export default function StockMovements() {
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     {can("stock.update") && !isTransfer(m) && m.movement_type !== "ship" && (
-                      <button onClick={() => { setEditing(m); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit movement ${m.id}`}>
+                      <button onClick={() => { setEditing(m); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit movement ${m.id}`}>
                         <Pencil size={16} />
                       </button>
                     )}
-                    <button onClick={() => setViewing(m)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View movement ${m.id}`}><Eye size={16} /></button>
+                    <button onClick={() => setViewing(m)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View movement ${m.id}`}><Eye size={16} /></button>
                     {can("stock.delete") && m.movement_type !== "ship" && (
                       <button onClick={() => setDeleting(m)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete movement ${m.id}`}>
                         <Trash2 size={16} />

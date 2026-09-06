@@ -6,6 +6,7 @@ import type { Location, StockMovement } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { isSelectable, productLabel } from "../utils/variants";
@@ -88,31 +89,50 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
         <div className="rounded-xl border border-border bg-app p-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Product *</label>
-            {!isEdit && <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />}
-            <select className={!isEdit ? "select mt-2" : "select"} value={productId} onChange={(e) => { setProductId(e.target.value); setLocationId(""); }} required>
-              <option value="">Select product</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
-            </select>
+            {!isEdit && (
+              <div className="mb-2">
+                <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />
+              </div>
+            )}
+            <FittedSelect
+              ariaLabel="Product"
+              value={productId}
+              onChange={(v) => { setProductId(v); setLocationId(""); }}
+              options={[
+                { value: "", label: "Select product" },
+                ...products.map((p) => ({ value: String(p.id), label: productLabel(p) })),
+              ]}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Movement Type</label>
-            <select className="select" value={movementType} onChange={(e) => setMovementType(e.target.value)}>
-              <option value="in">Stock In</option>
-              <option value="out">Stock Out</option>
-              <option value="adjustment">Adjustment</option>
-              <option value="return">Return</option>
-            </select>
+            <FittedSelect
+              ariaLabel="Movement Type"
+              value={movementType}
+              onChange={setMovementType}
+              options={[
+                { value: "in", label: "Stock In" },
+                { value: "out", label: "Stock Out" },
+                { value: "adjustment", label: "Adjustment" },
+                { value: "return", label: "Return" },
+              ]}
+            />
           </div>
           {showLocation && (
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Location *</label>
-              <select className="select" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-                <option value="">Default (product location)</option>
-                {locationOptions.map((l) => {
-                  const count = stockCountByLoc.get(l.id);
-                  return <option key={l.id} value={l.id}>{l.path}{count !== undefined ? ` (${count})` : ""}</option>;
-                })}
-              </select>
+              <FittedSelect
+                ariaLabel="Location"
+                value={locationId}
+                onChange={setLocationId}
+                options={[
+                  { value: "", label: "Default (product location)" },
+                  ...locationOptions.map((l) => {
+                    const count = stockCountByLoc.get(l.id);
+                    return { value: String(l.id), label: `${l.path}${count !== undefined ? ` (${count})` : ""}` };
+                  }),
+                ]}
+              />
               <p className="text-xs text-faint mt-1">
                 {movementType === "out"
                   ? "Stock will be removed from this location."

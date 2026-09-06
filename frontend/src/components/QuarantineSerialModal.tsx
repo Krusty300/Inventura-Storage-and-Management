@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import Skeleton from "./Skeleton";
 import type { Location, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
@@ -71,12 +72,15 @@ export default function QuarantineSerialModal({ serial, onClose, onSaved }: Prop
           <>
             <div>
               <label className="block text-xs font-medium text-muted mb-1">Quarantine Location</label>
-              <select className="select" aria-label="Quarantine Location" value={toLocationId} onChange={(e) => setToLocationId(e.target.value)}>
-                <option value="">Select location...</option>
-                {quarantineAreas.map((l) => (
-                  <option key={l.id} value={l.id}>{l.path}</option>
-                ))}
-              </select>
+              <FittedSelect
+                ariaLabel="Quarantine Location"
+                value={toLocationId}
+                onChange={setToLocationId}
+                options={[
+                  { value: "", label: "Select location..." },
+                  ...quarantineAreas.map((l) => ({ value: String(l.id), label: l.path })),
+                ]}
+              />
             </div>
 
             <div>

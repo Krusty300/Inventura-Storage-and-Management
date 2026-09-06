@@ -108,7 +108,7 @@ export default function EntitySearchInput({ entityType, onSelect, excludeIds = [
               type="button"
               onClick={() => select(r)}
               onMouseEnter={() => setActiveIdx(idx)}
-              className={`w-full flex items-center justify-between px-3 py-2 text-left text-sm transition-colors ${idx === activeIdx ? "bg-indigo-50 dark:bg-indigo-500/10" : "hover:bg-app"}`}
+              className={`w-full flex items-center justify-between px-3 py-2 text-left text-sm transition-colors ${idx === activeIdx ? "bg-primary-soft dark:bg-primary/10" : "hover:bg-app"}`}
               role="option"
               aria-selected={idx === activeIdx}
             >

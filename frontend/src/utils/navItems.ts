@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Package,
+  PackagePlus,
   Tags,
   Truck,
   ArrowLeftRight,
@@ -97,6 +98,7 @@ export const navGroups: NavGroup[] = [
     label: "Manufacturing",
     items: [
       { to: "/boms", icon: Factory, label: "BOMs", perm: "bom.view" },
+      { to: "/kits", icon: PackagePlus, label: "Kits", perm: "kit.view" },
       { to: "/work-orders", icon: Workflow, label: "Work Orders", perm: "work_orders.view" },
     ],
   },
@@ -127,6 +129,12 @@ export const navGroups: NavGroup[] = [
       { to: "/users", icon: UsersIcon, label: "Users", perm: "users.view" },
       { to: "/reports", icon: BarChart3, label: "Reports", perm: "reports.view" },
       { to: "/activity-log", icon: History, label: "Activity", perm: "activity.view" },
+    ],
+  },
+  {
+    id: "account",
+    label: "Account",
+    items: [
       { to: "/notifications", icon: Bell, label: "Notifications", perm: "notifications.view" },
       { to: "/settings", icon: SettingsIcon, label: "Settings", perm: "settings.view" },
       { to: "/profile", icon: CircleUser, label: "Profile", perm: "profile.view" },

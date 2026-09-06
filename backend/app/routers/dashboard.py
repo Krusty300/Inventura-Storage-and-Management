@@ -1,10 +1,11 @@
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import case, func
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
+from app.services.httpratelimit import limiter
 from app.models.order import Order
 from app.models.product import Product
 from app.models.stock_movement import StockMovement
@@ -20,16 +21,18 @@ from app.models.lot import Lot
 from app.models.sale import Sale
 from app.models.sales_channel import SalesChannel
 from app.models.promotion import Promotion
-from app.schemas.dashboard import DashboardStats
+from app.schemas.dashboard import DashboardStats, DashboardWidgetLayout, WidgetConfig
 from app.services.auth import get_current_user, require_permission
+from app.services import expiry as expiry_svc
 from app.services import inventory
-from app.services.inventory import NON_ACTIVITY_MOVEMENT_TYPES, TRANSFER_OUT, SERIAL_STATUS_QUARANTINED, sellable_qty_subquery
+from app.services.inventory import NON_ACTIVITY_MOVEMENT_TYPES, TRANSFER_OUT, SERIAL_STATUS_QUARANTINED, sellable_qty_by_product, sellable_qty_subquery
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(require_permission("dashboard.view"))])
 
 
 @router.get("/stats", response_model=DashboardStats)
-def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+@limiter.limit("30/minute")
+def dashboard_stats(request: Request, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     inventory.expire_overdue_lots(db)
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     sellable = sellable_qty_subquery()
@@ -45,11 +48,22 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         Product.is_active == True, sellable <= Product.reorder_level,
         Product.id.notin_(Product.variant_parent_id_subquery()),
     ).scalar() or 0
-    expiring_soon = date.today() + timedelta(days=30)
+    today = date.today()
+    expiring_days = expiry_svc.warning_window(db)
+    expiring_soon = today + timedelta(days=expiring_days)
+    # Same question as the products grid: a parent is expiring when it or any
+    # active variant holds sellable stock (or a static date) inside the window.
+    expiring_cond = (
+        expiry_svc.expiring_condition(Product.id, today, expiring_soon)
+        | Product.id.in_(
+            select(Product.parent_id).where(
+                Product.parent_id.isnot(None), Product.is_active == True,  # noqa: E712
+                expiry_svc.expiring_condition(Product.id, today, expiring_soon),
+            )
+        )
+    )
     expiring_soon_count = db.query(func.count(Product.id)).filter(
-        Product.is_active == True, Product.expiry_date.isnot(None),
-        Product.expiry_date >= date.today(), Product.expiry_date <= expiring_soon,
-        Product.id.notin_(Product.variant_parent_id_subquery()),
+        Product.is_active == True, expiring_cond,
     ).scalar() or 0
     total_value = db.query(func.coalesce(func.sum(sellable * Product.cost_price), 0)).filter(
         Product.is_active == True
@@ -105,15 +119,20 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
     )
     expiring_products = (
         db.query(Product)
-        .filter(
-            Product.is_active == True, Product.expiry_date.isnot(None),
-            Product.expiry_date >= date.today(), Product.expiry_date <= expiring_soon,
-            Product.id.notin_(Product.variant_parent_id_subquery()),
+        .options(
+            joinedload(Product.stock_lines).joinedload(StockLine.lot),
+            joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.lot),
         )
-        .order_by(Product.expiry_date.asc())
-        .limit(10)
+        .filter(Product.is_active == True, expiring_cond)  # noqa: E712
         .all()
     )
+    expiring_lot_dates = expiry_svc.lot_expiry_dates_by_product(db, [p.id for p in expiring_products]) if expiring_products else {}
+    expiring_rows = []
+    for p in expiring_products:
+        eff, days = expiry_svc.effective_expiry(today, p.expiry_date, expiring_lot_dates.get(p.id, []))
+        expiring_rows.append((eff, days, p))
+    expiring_rows.sort(key=lambda x: (x[0] or date.max, x[2].name.lower()))
+    expiring_rows = expiring_rows[:10]
 
     shipments_to_process = (
         db.query(Shipment)
@@ -167,6 +186,8 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         Sale.status == "pending"
     ).scalar() or 0
 
+    sellable_by_product = sellable_qty_by_product(db, [p.id for p in low_stock_products]) if low_stock_products else {}
+
     return DashboardStats(
         total_products=total_products,
         total_categories=total_categories,
@@ -198,7 +219,7 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
                 "name": p.display_name,
                 "sku": p.sku,
                 "quantity": p.quantity,
-                "sellable": inventory.on_hand(db, product_id=p.id, sellable_only=True),
+                "sellable": sellable_by_product.get(p.id, 0),
                 "reorder_level": p.reorder_level,
             }
             for p in low_stock_products
@@ -208,10 +229,11 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
                 "id": p.id,
                 "name": p.display_name,
                 "sku": p.sku,
-                "expiry_date": p.expiry_date.isoformat() if p.expiry_date else "",
+                "expiry_date": eff.isoformat() if eff else "",
+                "expiry_days_left": days,
                 "batch_number": p.batch_number,
             }
-            for p in expiring_products
+            for eff, days, p in expiring_rows
         ],
         shipments_to_process=[
             {
@@ -252,3 +274,50 @@ def dashboard_stats(db: Session = Depends(get_db), _: User = Depends(get_current
         top_channel=top_channel,
         pending_sales_count=pending_sales_count,
     )
+
+
+DEFAULT_WIDGETS: list[WidgetConfig] = [
+    WidgetConfig(id="kpi-inventory", order=0),
+    WidgetConfig(id="kpi-fulfillment", order=1),
+    WidgetConfig(id="kpi-manufacturing", order=2),
+    WidgetConfig(id="kpi-business", order=3),
+    WidgetConfig(id="chart-trends", order=4),
+    WidgetConfig(id="chart-category-value", order=5),
+    WidgetConfig(id="list-top-products", order=6),
+    WidgetConfig(id="chart-profit", order=7),
+    WidgetConfig(id="list-low-stock", order=8),
+    WidgetConfig(id="list-expiring", order=9),
+    WidgetConfig(id="list-recent-movements", order=10),
+    WidgetConfig(id="list-recent-sales", order=11),
+    WidgetConfig(id="list-receipts", order=12),
+    WidgetConfig(id="list-lpns", order=13),
+    WidgetConfig(id="list-order-status", order=14),
+    WidgetConfig(id="list-pending-asns", order=15),
+    WidgetConfig(id="list-open-cycle-counts", order=16),
+    WidgetConfig(id="list-shipments", order=17),
+    WidgetConfig(id="list-work-orders", order=18),
+    WidgetConfig(id="list-qc", order=19),
+    WidgetConfig(id="list-cost", order=20),
+    WidgetConfig(id="stockout-risk", order=21),
+]
+
+
+@router.get("/widgets", response_model=DashboardWidgetLayout)
+def get_dashboard_widgets(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.dashboard_widgets:
+        return DashboardWidgetLayout(widgets=[WidgetConfig(**w) for w in user.dashboard_widgets])
+    return DashboardWidgetLayout(widgets=list(DEFAULT_WIDGETS))
+
+
+@router.put("/widgets", response_model=DashboardWidgetLayout)
+def save_dashboard_widgets(
+    data: DashboardWidgetLayout,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    user.dashboard_widgets = [w.model_dump() for w in data.widgets]
+    db.commit()
+    return DashboardWidgetLayout(widgets=data.widgets)

@@ -19,6 +19,7 @@ import ErrorState from "../components/ErrorState";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
 import EntitySearchInput from "../components/EntitySearchInput";
+import FittedSelect from "../components/FittedSelect";
 import { LINKABLE_ENTITIES, getEntityTypeLabel, getEntityTypeIcon } from "../utils/linkableEntities";
 import { useDebounce } from "../hooks/useDebounce";
 import { usePageSize } from "../hooks/usePageSize";
@@ -49,9 +50,9 @@ const EMPTY_FORM: NoteForm = { title: "", body: "", category: "note", priority: 
 
 const CATEGORY_ICONS: Record<string, typeof StickyNote> = { note: StickyNote, reminder: Bell, todo: ListTodo };
 const PRIORITY_COLORS: Record<string, string> = { low: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400", normal: "bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400", high: "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400", urgent: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 ring-1 ring-red-300 dark:ring-red-500/40" };
-const CATEGORY_COLORS: Record<string, string> = { note: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400", reminder: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400", todo: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" };
+const CATEGORY_COLORS: Record<string, string> = { note: "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400", reminder: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400", todo: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" };
 const KANBAN_COLUMNS: { key: string; label: string; icon: typeof StickyNote; dot: string }[] = [
-  { key: "note", label: "Notes", icon: StickyNote, dot: "bg-indigo-400" },
+  { key: "note", label: "Notes", icon: StickyNote, dot: "bg-sky-400" },
   { key: "reminder", label: "Reminders", icon: Bell, dot: "bg-amber-400" },
   { key: "todo", label: "Todos", icon: ListTodo, dot: "bg-emerald-400" },
 ];
@@ -384,8 +385,8 @@ export default function Notes() {
     setDraggedNote(null);
   };
 
-  const tabClasses = (active: boolean) => `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${active ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400" : "text-muted hover:text-ink hover:bg-subtle"}`;
-  const viewBtnClass = (active: boolean) => `p-1.5 rounded transition-colors ${active ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`;
+  const tabClasses = (active: boolean) => `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${active ? "bg-primary-soft text-primary-strong dark:bg-primary/20 dark:text-primary" : "text-muted hover:text-ink hover:bg-subtle"}`;
+  const viewBtnClass = (active: boolean) => `p-1.5 rounded transition-colors ${active ? "bg-surface text-primary dark:text-primary shadow-sm" : "text-muted hover:text-ink"}`;
 
   const renderNoteActions = (note: Note) => (
     <div className="flex items-center gap-1 shrink-0">
@@ -420,7 +421,7 @@ export default function Notes() {
             <CatIcon size={14} className="text-muted shrink-0" />
             {note.image_url && <img src={note.image_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" loading="lazy" />}
             <span className={`font-medium text-ink ${note.is_completed ? "line-through" : ""}`}>{note.title}</span>
-            {note.is_pinned && !note.is_completed && <Pin size={13} className="text-indigo-500 shrink-0" aria-label="Pinned" />}
+            {note.is_pinned && !note.is_completed && <Pin size={13} className="text-primary shrink-0" aria-label="Pinned" />}
             {overdue && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400"><AlertTriangle size={12} />Overdue</span>}
             {dueSoon && !overdue && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"><Clock size={12} />Due soon</span>}
             {note.is_completed && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"><CheckCircle2 size={12} />Completed</span>}
@@ -442,7 +443,7 @@ export default function Notes() {
         <td className="px-4 py-3 text-muted whitespace-nowrap">{formatDate(note.created_at)}</td>
         <td className="px-4 py-3">
           <div className="flex items-center gap-1 justify-end">
-            <button onClick={(e) => { e.stopPropagation(); openDetail(note); }} className="p-1.5 text-muted hover:text-indigo-600 dark:text-indigo-400 rounded transition-colors" aria-label={`View note: ${note.title}`} title="View"><Eye size={16} /></button>
+            <button onClick={(e) => { e.stopPropagation(); openDetail(note); }} className="p-1.5 text-muted hover:text-primary dark:text-primary rounded transition-colors" aria-label={`View note: ${note.title}`} title="View"><Eye size={16} /></button>
             {renderNoteActions(note)}
           </div>
         </td>
@@ -491,7 +492,7 @@ export default function Notes() {
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
-      <div key={note.id} className={`card p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-500/30 transition-[box-shadow,transform,opacity] duration-150 ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${draggedNote?.id === note.id ? "opacity-50 scale-[0.98]" : ""}`} draggable={viewMode === "kanban"} onDragStart={(e) => handleDragStart(e, note)} onClick={() => openDetail(note)}>
+      <div key={note.id} className={`card p-4 cursor-pointer hover:shadow-md hover:border-primary-soft dark:hover:border-primary/30 transition-[box-shadow,transform,opacity] duration-150 ${note.is_completed ? "opacity-60 border-l-2 border-l-emerald-400 dark:border-l-emerald-500" : ""} ${draggedNote?.id === note.id ? "opacity-50 scale-[0.98]" : ""}`} draggable={viewMode === "kanban"} onDragStart={(e) => handleDragStart(e, note)} onClick={() => openDetail(note)}>
         {note.image_url && (
           <div className="mb-3 -mx-4 -mt-4 overflow-hidden rounded-t-lg">
             <img src={note.image_url} alt={note.title} className="w-full h-32 object-cover" loading="lazy" />
@@ -695,10 +696,12 @@ export default function Notes() {
               <div className="flex items-center gap-1.5 text-xs font-medium text-muted uppercase tracking-wider"><UserIcon size={13} />Assignment</div>
               <div>
                 <label className="text-xs text-muted block mb-1.5">Assigned to</label>
-                <select className="select w-full text-sm" value={viewingNote.assigned_to_id ?? ""} onChange={(e) => assignMutation.mutate({ noteId: viewingNote.id, userId: e.target.value ? Number(e.target.value) : null })} aria-label="Assign note to user">
-                  <option value="">Unassigned</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
-                </select>
+                <FittedSelect
+                  value={viewingNote.assigned_to_id != null ? String(viewingNote.assigned_to_id) : ""}
+                  onChange={(val) => assignMutation.mutate({ noteId: viewingNote.id, userId: val ? Number(val) : null })}
+                  options={[{ value: "", label: "Unassigned" }, ...users.map((u) => ({ value: String(u.id), label: u.username }))]}
+                  ariaLabel="Assign note to user"
+                />
               </div>
               <div className="flex items-center justify-between gap-2 pt-1 border-t border-border"><span className="text-xs text-muted">Created by</span><span className="text-xs text-ink font-medium">@{viewingNote.username}</span></div>
             </div>
@@ -734,9 +737,12 @@ export default function Notes() {
               </div>
               {can("notes.update") && (
                 <div className="mt-2 space-y-2">
-                  <select className="select text-sm w-40" value={linkEntityFilter} onChange={(e) => setLinkEntityFilter(e.target.value)}>
-                    {LINKABLE_ENTITIES.map((t) => <option key={t.entity_type} value={t.entity_type}>{t.label}</option>)}
-                  </select>
+                  <FittedSelect
+                    value={linkEntityFilter}
+                    onChange={setLinkEntityFilter}
+                    options={LINKABLE_ENTITIES.map((t) => ({ value: t.entity_type, label: t.label }))}
+                    maxWidth={180}
+                  />
                   <EntitySearchInput
                     entityType={linkEntityFilter}
                     excludeIds={viewingNote.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id }))}
@@ -763,9 +769,14 @@ export default function Notes() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-ink">Notes</h1>
-          <p className="text-sm text-muted mt-1">Notes, reminders, and todos — linked to the rest of your warehouse.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <StickyNote size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Notes</h1>
+            <p className="text-sm text-muted mt-1">Notes, reminders, and todos — linked to the rest of your warehouse.</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
@@ -794,32 +805,50 @@ export default function Notes() {
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search notes..." aria-label="Search notes" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
-        <select className="select w-40" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} aria-label="Filter by category">
-          <option value="">All categories</option>
-          <option value="note">Notes</option>
-          <option value="reminder">Reminders</option>
-          <option value="todo">Todos</option>
-        </select>
-        <select className="select w-40" value={priority} onChange={(e) => { setPriority(e.target.value); setPage(1); }} aria-label="Filter by priority">
-          <option value="">All priorities</option>
-          <option value="low">Low</option>
-          <option value="normal">Normal</option>
-          <option value="high">High</option>
-          <option value="urgent">Urgent</option>
-        </select>
-        <select className="select w-40" value={tagFilter} onChange={(e) => { setTagFilter(e.target.value); setPage(1); }} aria-label="Filter by tag">
-          <option value="">All tags</option>
-          {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <select className="select w-40" value={assigneeFilter} onChange={(e) => { setAssigneeFilter(e.target.value); setPage(1); }} aria-label="Filter by assignee">
-          <option value="">All assignees</option>
-          {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
-        </select>
+        <FittedSelect
+          value={category}
+          onChange={(val) => { setCategory(val); setPage(1); }}
+          options={[
+            { value: "", label: "All categories" },
+            { value: "note", label: "Notes" },
+            { value: "reminder", label: "Reminders" },
+            { value: "todo", label: "Todos" },
+          ]}
+          ariaLabel="Filter by category"
+          maxWidth={180}
+        />
+        <FittedSelect
+          value={priority}
+          onChange={(val) => { setPriority(val); setPage(1); }}
+          options={[
+            { value: "", label: "All priorities" },
+            { value: "low", label: "Low" },
+            { value: "normal", label: "Normal" },
+            { value: "high", label: "High" },
+            { value: "urgent", label: "Urgent" },
+          ]}
+          ariaLabel="Filter by priority"
+          maxWidth={180}
+        />
+        <FittedSelect
+          value={tagFilter}
+          onChange={(val) => { setTagFilter(val); setPage(1); }}
+          options={[{ value: "", label: "All tags" }, ...tags.map((t) => ({ value: String(t.id), label: t.name }))]}
+          ariaLabel="Filter by tag"
+          maxWidth={180}
+        />
+        <FittedSelect
+          value={assigneeFilter}
+          onChange={(val) => { setAssigneeFilter(val); setPage(1); }}
+          options={[{ value: "", label: "All assignees" }, ...users.map((u) => ({ value: String(u.id), label: u.username }))]}
+          ariaLabel="Filter by assignee"
+          maxWidth={180}
+        />
         <input type="date" className="input w-40" value={dueDateFrom} onChange={(e) => { setDueDateFrom(e.target.value); setPage(1); }} aria-label="Due after" title="Due after" />
         <input type="date" className="input w-40" value={dueDateTo} onChange={(e) => { setDueDateTo(e.target.value); setPage(1); }} aria-label="Due before" title="Due before" />
       </div>
@@ -837,7 +866,7 @@ export default function Notes() {
             <button
               key={s.key}
               onClick={() => { if (sortField === s.key) setSortOrder(sortOrder === "asc" ? "desc" : "asc"); else { setSortField(s.key); setSortOrder(s.key === "due_date" ? "asc" : "desc"); } }}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${sortField === s.key ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400" : "text-muted hover:text-ink hover:bg-subtle"}`}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${sortField === s.key ? "bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary" : "text-muted hover:text-ink hover:bg-subtle"}`}
             >
               {s.label}
               {sortField === s.key && (sortOrder === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
@@ -847,27 +876,33 @@ export default function Notes() {
       )}
 
       {selectedIds.size > 0 && can("notes.update") && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-200 dark:border-indigo-500/30 flex-wrap">
-          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-400">{selectedIds.size} selected</span>
+        <div className="flex items-center gap-3 px-4 py-3 bg-primary-soft dark:bg-primary/10 rounded-lg border border-primary-soft dark:border-primary/30 flex-wrap">
+          <span className="text-sm font-medium text-primary-strong dark:text-primary">{selectedIds.size} selected</span>
           <button onClick={() => bulkArchiveMutation.mutate({ ids: Array.from(selectedIds), archive: completedFilter !== "archived" })} className="btn-primary text-sm px-3 py-1.5" disabled={bulkArchiveMutation.isPending}>
             {completedFilter === "archived" ? "Unarchive" : "Archive"}
           </button>
           <button onClick={() => bulkCompleteMutation.mutate({ ids: Array.from(selectedIds), is_completed: true })} className="btn-secondary text-sm px-3 py-1.5" disabled={bulkCompleteMutation.isPending}>
             Complete
           </button>
-          <select className="select !py-1.5 text-xs w-32" value="" onChange={(e) => { if (e.target.value) { bulkPriorityMutation.mutate({ ids: Array.from(selectedIds), priority: e.target.value }); e.target.value = ""; } }} aria-label="Set priority">
-            <option value="">Set priority...</option>
-            <option value="low">Low</option>
-            <option value="normal">Normal</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </select>
+          <FittedSelect
+            value=""
+            onChange={(val) => { if (val) { bulkPriorityMutation.mutate({ ids: Array.from(selectedIds), priority: val }); } }}
+            options={[
+              { value: "low", label: "Low" },
+              { value: "normal", label: "Normal" },
+              { value: "high", label: "High" },
+              { value: "urgent", label: "Urgent" },
+            ]}
+            placeholder="Set priority..."
+            ariaLabel="Set priority"
+            maxWidth={140}
+          />
           {can("notes.delete") && (
             <button onClick={() => setConfirmBulkDelete(true)} className="text-sm px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-800 font-medium" disabled={bulkDeleteMutation.isPending}>
               Delete
             </button>
           )}
-          <button onClick={clearSelection} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 underline ml-auto">
+          <button onClick={clearSelection} className="text-sm text-primary dark:text-primary hover:text-primary-strong dark:text-primary underline ml-auto">
             Clear
           </button>
         </div>
@@ -884,13 +919,15 @@ export default function Notes() {
             {!editingNote && templates.length > 0 && (
               <div className="rounded-xl border border-border bg-app p-4">
                 <label className="block text-sm font-medium text-muted mb-1.5">Start from template</label>
-                <select className="select w-full" value="" onChange={(e) => {
-                  const t = templates.find((tpl) => tpl.id === Number(e.target.value));
-                  if (t) setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [], links: [] });
-                }}>
-                  <option value="">Choose a template...</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.category} / {t.priority})</option>)}
-                </select>
+                <FittedSelect
+                  value=""
+                  onChange={(val) => {
+                    const t = templates.find((tpl) => tpl.id === Number(val));
+                    if (t) setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [], links: [] });
+                  }}
+                  options={templates.map((t) => ({ value: String(t.id), label: `${t.name} (${t.category} / ${t.priority})` }))}
+                  placeholder="Choose a template..."
+                />
               </div>
             )}
             {editingNote?.image_url && !editImageFile && (
@@ -930,20 +967,28 @@ export default function Notes() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Category</label>
-                  <select className="select w-full" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                    <option value="note">Note</option>
-                    <option value="reminder">Reminder</option>
-                    <option value="todo">Todo</option>
-                  </select>
+                  <FittedSelect
+                    value={form.category}
+                    onChange={(val) => setForm({ ...form, category: val })}
+                    options={[
+                      { value: "note", label: "Note" },
+                      { value: "reminder", label: "Reminder" },
+                      { value: "todo", label: "Todo" },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Priority</label>
-                  <select className="select w-full" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                    <option value="low">Low</option>
-                    <option value="normal">Normal</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
+                  <FittedSelect
+                    value={form.priority}
+                    onChange={(val) => setForm({ ...form, priority: val })}
+                    options={[
+                      { value: "low", label: "Low" },
+                      { value: "normal", label: "Normal" },
+                      { value: "high", label: "High" },
+                      { value: "urgent", label: "Urgent" },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Due Date</label>
@@ -951,12 +996,16 @@ export default function Notes() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Recurrence</label>
-                  <select className="select w-full" value={form.recurrence} onChange={(e) => setForm({ ...form, recurrence: e.target.value })}>
-                    <option value="none">None</option>
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
+                  <FittedSelect
+                    value={form.recurrence}
+                    onChange={(val) => setForm({ ...form, recurrence: val })}
+                    options={[
+                      { value: "none", label: "None" },
+                      { value: "daily", label: "Daily" },
+                      { value: "weekly", label: "Weekly" },
+                      { value: "monthly", label: "Monthly" },
+                    ]}
+                  />
                 </div>
               </div>
             </div>
@@ -965,10 +1014,11 @@ export default function Notes() {
               <div className="flex items-center gap-1.5 text-xs font-medium text-muted uppercase tracking-wider"><UserIcon size={13} />Assignment & organization</div>
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Assign to</label>
-                <select className="select w-full" value={form.assigned_to_id ?? ""} onChange={(e) => setForm({ ...form, assigned_to_id: e.target.value ? Number(e.target.value) : null })}>
-                  <option value="">Unassigned</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
-                </select>
+                <FittedSelect
+                  value={form.assigned_to_id != null ? String(form.assigned_to_id) : ""}
+                  onChange={(val) => setForm({ ...form, assigned_to_id: val ? Number(val) : null })}
+                  options={[{ value: "", label: "Unassigned" }, ...users.map((u) => ({ value: String(u.id), label: u.username }))]}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-ink mb-2">Tags</label>
@@ -998,22 +1048,23 @@ export default function Notes() {
                       </div>
                     );
                   })}
-                  <div className="flex gap-2 items-center">
-                    <select className="select text-sm w-40" value={linkEntityFilter} onChange={(e) => setLinkEntityFilter(e.target.value)}>
-                      {LINKABLE_ENTITIES.map((t) => <option key={t.entity_type} value={t.entity_type}>{t.label}</option>)}
-                    </select>
-                    <div className="flex-1">
-                      <EntitySearchInput
-                        entityType={linkEntityFilter}
-                        excludeIds={form.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id }))}
-                        onSelect={(sel) => {
-                          if (!form.links.some((l) => l.entity_type === sel.entity_type && l.entity_id === sel.entity_id)) {
-                            setForm({ ...form, links: [...form.links, sel] });
-                          }
-                        }}
-                        placeholder={`Search ${getEntityTypeLabel(linkEntityFilter).toLowerCase()}s...`}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <FittedSelect
+                      value={linkEntityFilter}
+                      onChange={setLinkEntityFilter}
+                      options={LINKABLE_ENTITIES.map((t) => ({ value: t.entity_type, label: t.label }))}
+                      maxWidth={180}
+                    />
+                    <EntitySearchInput
+                      entityType={linkEntityFilter}
+                      excludeIds={form.links.map((l) => ({ entity_type: l.entity_type, entity_id: l.entity_id }))}
+                      onSelect={(sel) => {
+                        if (!form.links.some((l) => l.entity_type === sel.entity_type && l.entity_id === sel.entity_id)) {
+                          setForm({ ...form, links: [...form.links, sel] });
+                        }
+                      }}
+                      placeholder={`Search ${getEntityTypeLabel(linkEntityFilter).toLowerCase()}s...`}
+                    />
                   </div>
                 </div>
               </div>
@@ -1062,13 +1113,13 @@ export default function Notes() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => { setTemplateEditTarget(t); setShowTemplateManager(false); setShowTemplateForm(true); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1">Edit</button>
+                    <button onClick={() => { setTemplateEditTarget(t); setShowTemplateManager(false); setShowTemplateForm(true); }} className="text-xs text-primary dark:text-primary hover:underline px-2 py-1">Edit</button>
                     <button onClick={() => {
                       setForm({ title: t.name, body: t.body, category: t.category, priority: t.priority, is_pinned: false, due_date: "", recurrence: t.recurrence, assigned_to_id: null, tag_ids: [], links: [] });
                       setEditingNote(null);
                       setShowTemplateManager(false);
                       setShowForm(true);
-                    }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-2 py-1">Use</button>
+                    }} className="text-xs text-primary dark:text-primary hover:underline px-2 py-1">Use</button>
                     <button onClick={() => deleteTemplateMutation.mutate(t.id)} className="p-1 text-muted hover:text-red-500 transition-colors" aria-label={`Delete template ${t.name}`}><Trash2 size={14} /></button>
                   </div>
                 </div>

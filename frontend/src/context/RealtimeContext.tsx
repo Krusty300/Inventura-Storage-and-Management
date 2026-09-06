@@ -15,33 +15,34 @@ interface RealtimeContextType {
 const RealtimeContext = createContext<RealtimeContextType>({ connected: false, subscribe: () => () => {} });
 
 const entityQueryMap: Record<string, string[]> = {
-  product: ["products"],
-  category: ["categories"],
-  supplier: ["suppliers"],
-  stock_movement: ["stock-movements", "product-movements"],
-  shipment: ["shipments", "shipment"],
-  order: ["orders"],
-  sale: ["sales"],
-  asn: ["asns"],
-  receipt: ["receipts"],
-  user: ["users"],
+  product: ["products", "product", "product-cost", "product-movements", "product-stock-locations", "product-quarantined-lots", "product-quarantined-serials", "product-reserved-serials", "trace", "exceptions", "dashboard", "reports", "forecasting", "mrp", "stock-locations", "global-search", "entity-search"],
+  category: ["categories", "category-products", "category-suppliers", "reports", "dashboard"],
+  supplier: ["suppliers", "suppliers-lookup", "supplier-products", "supplier-stats", "supplier-orders", "reports", "global-search", "entity-search"],
+  stock_movement: ["stock-movements", "product-movements", "stock-locations", "quarantined-locations", "exceptions", "dashboard", "reports", "mrp"],
+  shipment: ["shipments", "shipment", "dashboard", "reports"],
+  order: ["orders", "dashboard", "reports", "forecasting"],
+  sale: ["sales", "dashboard", "reports", "forecasting"],
+  asn: ["asns", "reports"],
+  receipt: ["receipts", "dashboard", "reports"],
+  user: ["users", "auth-sessions", "assignable-users"],
   activity_log: ["activity-logs"],
   notification: ["notifications"],
-  note: ["notes", "notes-kanban", "note-tags", "note-templates"],
-  lot: ["lots", "lot-genealogy", "exceptions", "dashboard"],
-  location: ["locations"],
+  note: ["notes", "notes-kanban", "note-tags", "note-templates", "assignable-users"],
+  lot: ["lots", "lot-genealogy", "lot-movements", "lot-serials", "exceptions", "dashboard"],
+  location: ["locations", "location-detail", "stock-locations", "quarantined-locations", "dashboard"],
   quality_check: ["quality-checks", "exceptions", "dashboard"],
-  bom: ["boms"],
-  customer: ["customers", "customer-stats", "customer-frequent-products", "customer-sales"],
-  customer_group: ["customer-groups"],
-  cycle_count: ["cycle-counts"],
-  lpn: ["lpns", "lpn"],
+  bom: ["boms", "product-cost", "mrp"],
+  customer: ["customers", "customer-stats", "customer-frequent-products", "customer-sales", "reports", "global-search", "entity-search"],
+  customer_group: ["customer-groups", "reports"],
+  cycle_count: ["cycle-counts", "dashboard"],
+  lpn: ["lpns", "lpn", "stock-locations", "quarantined-locations", "dashboard"],
   price_list: ["price-lists"],
   promotion: ["promotions"],
   sales_channel: ["sales-channels"],
-  work_order: ["work-orders"],
-  serial_number: ["serial-numbers"],
+  work_order: ["work-orders", "work-orders-kanban", "work-order-cost", "work-order-genealogy", "mrp"],
+  serial_number: ["serial-numbers", "serial-movements", "product-reserved-serials", "exceptions"],
   settings: ["settings"],
+  kit: ["kits", "mrp", "product-cost"],
 };
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
@@ -50,6 +51,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const listenersRef = useRef<Set<(msg: RealtimeMessage) => void>>(new Set());
   const [connected, setConnected] = useState(false);
   const retryCountRef = useRef(0);
+  const everConnectedRef = useRef(false);
   const MAX_RECONNECT_DELAY = 30_000;
   const MAX_RECONNECT_ATTEMPTS = 15;
 
@@ -73,6 +75,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (everConnectedRef.current) {
+          queryClient.invalidateQueries();
+        }
+        everConnectedRef.current = true;
         setConnected(true);
         retryCountRef.current = 0;
       };
@@ -96,6 +102,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         if (!closed) {
           if (event.code === 4001 || event.code === 4003) {
             localStorage.removeItem("token");
+            localStorage.removeItem("user");
+            window.location.href = "/login";
             return;
           }
           const attempt = retryCountRef.current;
@@ -112,11 +120,19 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       };
     }
 
+    const heartbeatTimer = setInterval(() => {
+      const sockWs = wsRef.current;
+      if (sockWs && sockWs.readyState === WebSocket.OPEN) {
+        sockWs.send("ping");
+      }
+    }, 30_000);
+
     connect();
 
     return () => {
       closed = true;
       clearTimeout(reconnectTimer);
+      clearInterval(heartbeatTimer);
       wsRef.current?.close();
     };
   }, [queryClient]);

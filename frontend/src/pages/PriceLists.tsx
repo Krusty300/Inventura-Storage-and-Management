@@ -73,9 +73,14 @@ export default function PriceLists() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Price Lists</h1>
-          <p className="text-sm text-muted mt-1">Set and manage pricing tiers for your products.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Tag size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Price Lists</h1>
+            <p className="text-sm text-muted mt-1">Set and manage pricing tiers for your products.</p>
+          </div>
         </div>
         {can("price_lists.create") && (
           <button onClick={() => { setEditingId(null); setShowForm(true); }} className="btn-primary">Add Price List</button>
@@ -111,7 +116,7 @@ export default function PriceLists() {
                 <tr key={pl.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(pl)}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <Tag size={16} className="text-indigo-500" />
+                      <Tag size={16} className="text-primary" />
                       <span className="font-medium">{pl.name}</span>
                       {pl.is_default && <Star size={14} className="text-amber-500 fill-amber-500" aria-label="Default" />}
                     </div>
@@ -127,7 +132,7 @@ export default function PriceLists() {
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-2">
-                      {can("price_lists.update") && <button onClick={() => { setEditingId(pl.id); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${pl.name}`}><Pencil size={16} /></button>}
+                      {can("price_lists.update") && <button onClick={() => { setEditingId(pl.id); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${pl.name}`}><Pencil size={16} /></button>}
                       {can("price_lists.delete") && <button onClick={() => setDeleting(pl)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${pl.name}`}><Trash2 size={16} /></button>}
                     </div>
                   </td>
@@ -231,7 +236,7 @@ function PriceListForm({ priceList, onClose, onSaved }: { priceList: PriceList |
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-ink">Price List Items</h3>
-            <button type="button" onClick={addItem} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">+ Add item</button>
+            <button type="button" onClick={addItem} className="text-sm text-primary dark:text-primary hover:underline">+ Add item</button>
           </div>
           {items.length > 0 && (
             <div className="space-y-2">

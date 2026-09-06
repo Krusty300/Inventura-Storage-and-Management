@@ -100,7 +100,7 @@ describe("AdjustStockModal", () => {
     renderWithProviders(<AdjustStockModal product={makeProduct({ id: 5, name: "Widget", sku: "W-5" })} onClose={() => {}} onAdjusted={() => {}} />);
 
     await screen.findByRole("heading", { name: "Adjust Stock" });
-    await waitFor(() => expect(screen.getAllByRole("combobox")[0]).toHaveValue("10"));
+    await waitFor(() => expect(screen.getAllByRole("combobox")[0]).toHaveValue("Shelf A (8)"));
 
     expect(screen.getByText(/Auto-detected from existing stock/)).toBeInTheDocument();
     // The "New Quantity" is synced to the selected location's on-hand (8), so

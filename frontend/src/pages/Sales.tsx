@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Eye, RotateCcw, FileText, XCircle, Trash2, Search } from "lucide-react";
+import { Eye, RotateCcw, FileText, ReceiptText, XCircle, Trash2, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Sale, SalesChannel } from "../types";
@@ -12,6 +12,7 @@ import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityB
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import FittedSelect from "../components/FittedSelect";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
@@ -167,9 +168,14 @@ export default function Sales() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Sales</h1>
-          <p className="text-sm text-muted mt-1">Record and manage customer transactions.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <ReceiptText size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Sales</h1>
+            <p className="text-sm text-muted mt-1">Record and manage customer transactions.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export sales to CSV">Export</button>
@@ -177,42 +183,39 @@ export default function Sales() {
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by invoice number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search sales" />
         </div>
-        <select
-          className="select w-48"
+        <FittedSelect
           value={paymentFilter}
-          onChange={(e) => { setPaymentFilter(e.target.value); setPage(1); }}
-          aria-label="Filter by payment method"
-        >
-          <option value="">All payment methods</option>
-          {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-        </select>
-        <select
-          className="select w-40"
+          onChange={(v) => { setPaymentFilter(v); setPage(1); }}
+          ariaLabel="Filter by payment method"
+          maxWidth={200}
+          options={[{ value: "", label: "All payment methods" }, ...PAYMENT_METHODS.map((m) => ({ value: m.value, label: m.label }))]}
+        />
+        <FittedSelect
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          aria-label="Filter by status"
-        >
-          <option value="">All statuses</option>
-          <option value="completed">Completed</option>
-          <option value="pending">Pending</option>
-          <option value="refunded">Refunded</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+          onChange={(v) => { setStatusFilter(v); setPage(1); }}
+          ariaLabel="Filter by status"
+          maxWidth={160}
+          options={[
+            { value: "", label: "All statuses" },
+            { value: "completed", label: "Completed" },
+            { value: "pending", label: "Pending" },
+            { value: "refunded", label: "Refunded" },
+            { value: "cancelled", label: "Cancelled" },
+          ]}
+        />
         {channels && channels.length > 0 && (
-          <select
-            className="select w-40"
+          <FittedSelect
             value={channelFilter}
-            onChange={(e) => { setChannelFilter(e.target.value); setPage(1); }}
-            aria-label="Filter by channel"
-          >
-            <option value="">All channels</option>
-            {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-          </select>
+            onChange={(v) => { setChannelFilter(v); setPage(1); }}
+            ariaLabel="Filter by channel"
+            maxWidth={180}
+            options={[{ value: "", label: "All channels" }, ...channels.map((ch) => ({ value: String(ch.id), label: ch.name }))]}
+          />
         )}
       </div>
 
@@ -267,10 +270,10 @@ export default function Sales() {
                 <td className="px-4 py-3">{formatCurrency(s.total_amount, s.currency_symbol || currencySymbol)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View invoice ${s.invoice_number}`}>
+                    <button onClick={() => setViewing(s)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View invoice ${s.invoice_number}`}>
                       <Eye size={16} />
                     </button>
-                    <button onClick={() => printPdf(s.id)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Download invoice ${s.invoice_number}`}>
+                    <button onClick={() => printPdf(s.id)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Download invoice ${s.invoice_number}`}>
                       <FileText size={16} />
                     </button>
                     {s.status === "completed" && can("sales.refund") && (
@@ -361,18 +364,13 @@ export default function Sales() {
           <div className="space-y-3 mt-3">
             <div>
               <label className="block text-xs font-medium text-muted mb-1">Refund method</label>
-              <select className="select text-sm w-full" value={refundMethod} onChange={(e) => setRefundMethod(e.target.value)}>
-                <option value="cash">Cash</option>
-                {PAYMENT_METHODS.filter((m) => m.value !== "cash").map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
+              <FittedSelect value={refundMethod} onChange={setRefundMethod} options={[{ value: "cash", label: "Cash" }, ...PAYMENT_METHODS.filter((m) => m.value !== "cash").map((m) => ({ value: m.value, label: m.label }))]} />
             </div>
             {refundMethod === "mobile_money" && (
               <>
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1">Provider</label>
-                  <select className="select text-sm w-full" value={refundProvider} onChange={(e) => setRefundProvider(e.target.value)}>
-                    {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                  </select>
+                  <FittedSelect value={refundProvider} onChange={setRefundProvider} options={MOBILE_MONEY_PROVIDERS.map((p) => ({ value: p.value, label: p.label }))} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1">Customer phone (254XXXXXXXXX)</label>

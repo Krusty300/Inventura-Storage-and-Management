@@ -20,6 +20,7 @@ const PASSWORD_HINT = "At least 8 characters.";
 
 import { usePageSize } from "../hooks/usePageSize";
 import { errorMessage } from "../utils/errors";
+import FittedSelect from "../components/FittedSelect";
 
 export default function Users() {
   const formatDate = useDateFormat();
@@ -125,7 +126,7 @@ export default function Users() {
     sortBy === col ? (sortDir === "asc" ? " ↑" : " ↓") : "";
 
   const sortableHeader = (label: string, col: string) => (
-    <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none hover:text-indigo-600 dark:text-indigo-400" onClick={() => toggleSort(col)} aria-label={`Sort by ${col}`}>
+    <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none hover:text-primary dark:text-primary" onClick={() => toggleSort(col)} aria-label={`Sort by ${col}`}>
       {label}
       {sortIndicator(col)}
     </th>
@@ -170,9 +171,14 @@ export default function Users() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">User Management</h1>
-          <p className="text-sm text-muted mt-1">Manage user accounts, roles, and permissions.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <UserCheck size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">User Management</h1>
+            <p className="text-sm text-muted mt-1">Manage user accounts, roles, and permissions.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export users to CSV">
@@ -186,8 +192,8 @@ export default function Users() {
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by username or email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search users" />
         </div>
@@ -214,7 +220,7 @@ export default function Users() {
             type="checkbox"
             checked={showInactive}
             onChange={(e) => { setShowInactive(e.target.checked); setPage(1); }}
-            className="accent-indigo-600"
+            className="accent-primary"
             aria-label="Show deactivated users"
           />
           Show deactivated
@@ -300,14 +306,19 @@ export default function Users() {
                 <td className="px-4 py-3 text-muted">{u.email}</td>
                 <td className="px-4 py-3">
                   {editingId === u.id ? (
-                    <select className="select text-sm py-1" value={editRole} onChange={(e) => setEditRole(e.target.value)} aria-label={`Edit role for ${u.username}`}>
-                      <option value="worker">worker</option>
-                      <option value="manager">manager</option>
-                      {can("users.assign_admin_role") && <option value="admin">admin</option>}
-                    </select>
+                    <FittedSelect
+                      value={editRole}
+                      onChange={(v) => setEditRole(v)}
+                      options={[
+                        { value: "worker", label: "worker" },
+                        { value: "manager", label: "manager" },
+                        ...(can("users.assign_admin_role") ? [{ value: "admin", label: "admin" }] : []),
+                      ]}
+                      ariaLabel={`Edit role for ${u.username}`}
+                    />
                   ) : (
                     <span className="inline-flex items-center gap-1">
-                      {u.role === "admin" ? <Shield size={14} className="text-indigo-500" /> : u.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : <ShieldOff size={14} className="text-faint" />}
+                      {u.role === "admin" ? <Shield size={14} className="text-primary" /> : u.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : <ShieldOff size={14} className="text-faint" />}
                       <span className={`badge ${u.role === "admin" ? "badge-info" : u.role === "manager" ? "badge-success" : "badge-warning"}`}>{u.role}</span>
                       {u.role !== "admin" && u.permissions && u.permissions.length > 0 && (
                         <span className="badge badge-success" title={`${u.permissions.length} custom permission(s)`}>Custom</span>
@@ -325,21 +336,21 @@ export default function Users() {
                     </div>
                   ) : (
                     <div className="flex gap-2 items-center">
-                      <button onClick={() => setViewing(u)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${u.username}`}><Eye size={16} /></button>
+                      <button onClick={() => setViewing(u)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${u.username}`}><Eye size={16} /></button>
                       {!u.is_active && can("users.update") && (
                         <button onClick={() => setReactivating(u)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Reactivate ${u.username}`}><UserCheck size={16} /></button>
                       )}
                       {u.is_active && can("users.update") && (
-                        <button onClick={() => setResetting(u)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Reset password for ${u.username}`}><KeyRound size={16} /></button>
+                        <button onClick={() => setResetting(u)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Reset password for ${u.username}`}><KeyRound size={16} /></button>
                       )}
                       {u.is_active && can("users.delete") && (!user || u.id !== user.id) && (
                         <button onClick={() => setDeleting(u)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Deactivate ${u.username}`}><Trash2 size={16} /></button>
                       )}
                       {u.is_active && can("users.update") && (!user || u.id !== user.id) && (
-                        <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400">Edit</button>
+                        <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-primary dark:text-primary hover:text-primary-strong dark:text-primary">Edit</button>
                       )}
                       {u.is_active && u.role !== "admin" && can("users.update") && (!user || u.id !== user.id) && (
-                        <button onClick={() => setEditingPermissions(u)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title="Manage permissions" aria-label={`Manage permissions for ${u.username}`}><ShieldCheck size={16} /></button>
+                        <button onClick={() => setEditingPermissions(u)} className="p-1 text-faint hover:text-primary dark:text-primary" title="Manage permissions" aria-label={`Manage permissions for ${u.username}`}><ShieldCheck size={16} /></button>
                       )}
                     </div>
                   )}
@@ -417,11 +428,16 @@ export default function Users() {
             </p>
             <div>
               <label htmlFor="approve-role" className="block text-sm font-medium text-ink mb-1">Role</label>
-              <select id="approve-role" className="select" value={approveRole} onChange={(e) => setApproveRole(e.target.value)}>
-                <option value="worker">Worker</option>
-                <option value="manager">Manager</option>
-                {can("users.assign_admin_role") && <option value="admin">Admin</option>}
-              </select>
+              <FittedSelect
+                value={approveRole}
+                onChange={(v) => setApproveRole(v)}
+                options={[
+                  { value: "worker", label: "Worker" },
+                  { value: "manager", label: "Manager" },
+                  ...(can("users.assign_admin_role") ? [{ value: "admin", label: "Admin" }] : []),
+                ]}
+                ariaLabel="Role"
+              />
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <button onClick={() => setApproving(null)} className="btn-secondary">Cancel</button>
@@ -488,11 +504,16 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         </div>
         <div>
           <label htmlFor="create-role" className="block text-sm font-medium text-ink mb-1">Role</label>
-          <select id="create-role" className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-            <option value="worker">Worker</option>
-            <option value="manager">Manager</option>
-            {can("users.assign_admin_role") && <option value="admin">Admin</option>}
-          </select>
+          <FittedSelect
+            value={form.role}
+            onChange={(v) => setForm({ ...form, role: v })}
+            options={[
+              { value: "worker", label: "Worker" },
+              { value: "manager", label: "Manager" },
+              ...(can("users.assign_admin_role") ? [{ value: "admin", label: "Admin" }] : []),
+            ]}
+            ariaLabel="Role"
+          />
         </div>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

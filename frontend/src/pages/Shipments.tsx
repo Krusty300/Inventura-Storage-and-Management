@@ -12,6 +12,7 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
+import FittedSelect from "../components/FittedSelect";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -73,7 +74,7 @@ export default function Shipments() {
 
   const statCards = stats
     ? [
-        { label: "Open", value: stats.open, icon: <FolderOpen size={18} />, theme: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300" },
+        { label: "Open", value: stats.open, icon: <FolderOpen size={18} />, theme: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300" },
         { label: "Picking", value: stats.counts.picking ?? 0, icon: <PackageOpen size={18} />, theme: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300" },
         { label: "Packed", value: stats.counts.packed ?? 0, icon: <PackageCheck size={18} />, theme: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300" },
         { label: "Shipped", value: stats.counts.shipped ?? 0, icon: <CheckCircle2 size={18} />, theme: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300" },
@@ -83,9 +84,14 @@ export default function Shipments() {
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Shipments</h1>
-          <p className="text-sm text-muted mt-1">Outbound orders moving through the pick, pack, and ship workflow.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <PackageOpen size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Shipments</h1>
+            <p className="text-sm text-muted mt-1">Outbound orders moving through the pick, pack, and ship workflow.</p>
+          </div>
         </div>
         {can("shipments.create") && (
           <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-1">
@@ -100,19 +106,12 @@ export default function Shipments() {
         </div>
       )}
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by shipment number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search shipments" />
         </div>
-        <select className="select w-44" aria-label="Filter by status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
-          <option value="">All statuses</option>
-          <option value="draft">Draft</option>
-          <option value="picking">Picking</option>
-          <option value="packed">Packed</option>
-          <option value="shipped">Shipped</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+        <FittedSelect ariaLabel="Filter by status" value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1); }} options={[{ value: "", label: "All statuses" }, { value: "draft", label: "Draft" }, { value: "picking", label: "Picking" }, { value: "packed", label: "Packed" }, { value: "shipped", label: "Shipped" }, { value: "cancelled", label: "Cancelled" }]} />
       </div>
 
       {statCards.length > 0 && (
@@ -161,11 +160,11 @@ export default function Shipments() {
                     <td className="px-4 py-3 text-muted">{formatDate(s.created_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5">
-                        <button onClick={(e) => { e.stopPropagation(); setViewing(s); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`View ${s.shipment_number}`} aria-label={`View ${s.shipment_number}`}>
+                        <button onClick={(e) => { e.stopPropagation(); setViewing(s); }} className="p-1 text-faint hover:text-primary dark:text-primary" title={`View ${s.shipment_number}`} aria-label={`View ${s.shipment_number}`}>
                           <Eye size={16} />
                         </button>
                         {s.status !== "shipped" && can("shipments.update") && (
-                          <button onClick={(e) => { e.stopPropagation(); setEditing(s); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`Edit ${s.shipment_number}`} aria-label={`Edit ${s.shipment_number}`}>
+                          <button onClick={(e) => { e.stopPropagation(); setEditing(s); }} className="p-1 text-faint hover:text-primary dark:text-primary" title={`Edit ${s.shipment_number}`} aria-label={`Edit ${s.shipment_number}`}>
                             <Pencil size={16} />
                           </button>
                         )}
@@ -279,12 +278,16 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Customer</label>
-            <select className="select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-              <option value="">No customer</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ""}</option>
-              ))}
-            </select>
+            <FittedSelect
+              ariaLabel="Customer"
+              value={customerId}
+              onChange={setCustomerId}
+              disabled={false}
+              options={[
+                { value: "", label: "No customer" },
+                ...customers.map((c) => ({ value: String(c.id), label: `${c.name}${c.phone ? ` · ${c.phone}` : ""}` })),
+              ]}
+            />
           </div>
         </div>
 
@@ -295,7 +298,7 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
                 <ShipmentLineRow key={idx} index={idx} row={row} products={products} onChange={setRow} onRemove={(i) => setRows(rows.filter((_, n) => n !== i))} />
               ))}
             </div>
-            <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1", location_id: "" }])} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400">
+            <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1", location_id: "" }])} className="text-sm text-primary dark:text-primary hover:text-primary-strong dark:text-primary">
               Add line
             </button>
           </>
@@ -335,36 +338,26 @@ function ShipmentLineRow({
   );
 
   return (
-    <div className="grid grid-cols-12 gap-3 items-end">
+    <div className="grid grid-cols-12 gap-3 sm:gap-4 items-end">
       <div className="col-span-12 sm:col-span-5">
-        <label className="block text-sm font-medium text-ink mb-1">Product</label>
-        <select className="select w-full" aria-label="Product" value={row.product_id} onChange={(e) => onChange(index, "product_id", e.target.value)}>
-          <option value="">Select product...</option>
-          {products.sort((a, b) => a.name.localeCompare(b.name)).map((p) => (
-            <option key={p.id} value={p.id}>{productLabel(p)}</option>
-          ))}
-        </select>
+        <label className="block text-sm font-medium text-ink mb-1.5">Product</label>
+        <FittedSelect ariaLabel="Product" value={row.product_id} onChange={(v) => onChange(index, "product_id", v)} options={[{ value: "", label: "Select product..." }, ...products.sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: String(p.id), label: productLabel(p) }))]} />
       </div>
       <div className="col-span-4 sm:col-span-2">
-        <label className="block text-sm font-medium text-ink mb-1">Qty</label>
+        <label className="block text-sm font-medium text-ink mb-1.5">Qty</label>
         <input type="number" min={1} className="input w-full" value={row.quantity} onChange={(e) => onChange(index, "quantity", e.target.value)} />
       </div>
-      <div className="col-span-7 sm:col-span-4">
-        <label className="block text-sm font-medium text-ink mb-1">Source location</label>
-        <select className="select w-full" value={row.location_id} onChange={(e) => onChange(index, "location_id", e.target.value)} aria-label="Source location">
-          <option value="">Any location (auto)</option>
-          {locations.map((l) => (
-            <option key={l.location_id} value={String(l.location_id)}>{l.path} ({l.count})</option>
-          ))}
-        </select>
-        {isLoading && <Skeleton variant="text" className="w-24 h-3 mt-1" />}
+      <div className="col-span-8 sm:col-span-4">
+        <label className="block text-sm font-medium text-ink mb-1.5">Source location</label>
+        <FittedSelect value={row.location_id} onChange={(v) => onChange(index, "location_id", v)} ariaLabel="Source location" options={[{ value: "", label: "Any location (auto)" }, ...locations.map((l) => ({ value: String(l.location_id), label: `${l.path} (${l.count})` }))]} />
+        {isLoading && <Skeleton variant="text" className="w-24 h-3 mt-1.5" />}
         {!isLoading && unallocated > 0 && (
-          <p className="text-xs text-faint mt-1">
+          <p className="text-xs text-faint mt-1.5">
             Plus {unallocated} unallocated unit{unallocated === 1 ? "" : "s"} - pick with "Any location"
           </p>
         )}
       </div>
-      <div className="col-span-1 flex justify-end">
+      <div className="col-span-4 sm:col-span-1 flex justify-end">
         <button type="button" onClick={() => onRemove(index)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove line">
           <XCircle size={16} />
         </button>
@@ -588,16 +581,12 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
           <div className="flex items-end gap-3 justify-end flex-wrap">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Payment Method</label>
-              <select className="select" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} aria-label="Payment method">
-                {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
+              <FittedSelect value={paymentMethod} onChange={setPaymentMethod} ariaLabel="Payment method" options={PAYMENT_METHODS.map((m) => ({ value: m.value, label: m.label }))} />
             </div>
             {paymentMethod === "mobile_money" && (
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Mobile Money Provider</label>
-                <select className="select" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} aria-label="Mobile money provider">
-                  {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
+                <FittedSelect value={paymentProvider} onChange={setPaymentProvider} ariaLabel="Mobile money provider" options={MOBILE_MONEY_PROVIDERS.map((p) => ({ value: p.value, label: p.label }))} />
               </div>
             )}
             {paymentMethod === "mobile_money" && (
@@ -687,7 +676,7 @@ function SerializedPickRow({ item, selected, onSelect }: {
               <label key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer">
                 <input
                   type="checkbox"
-                  className="accent-indigo-600"
+                  className="accent-primary"
                   checked={selected.has(s.id)}
                   onChange={() => toggle(s.id)}
                 />
@@ -700,7 +689,7 @@ function SerializedPickRow({ item, selected, onSelect }: {
             <span className="text-muted">{selected.size} of {remaining} selected</span>
             <button
               type="button"
-              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+              className="text-xs text-primary dark:text-primary hover:underline"
               onClick={() => onSelect(allSelected ? [] : serials.map((s) => s.id))}
             >
               {allSelected ? "Clear all" : "Select all"}

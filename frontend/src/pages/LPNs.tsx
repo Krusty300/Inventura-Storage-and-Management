@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye, FileText, ArrowLeftRight, Search, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Container, Eye, FileText, Search, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
@@ -17,6 +17,7 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useExportCsv } from "../hooks/useExportCsv";
+import FittedSelect from "../components/FittedSelect";
 import { productLabel } from "../utils/variants";
 
 import { usePageSize } from "../hooks/usePageSize";
@@ -102,12 +103,17 @@ export default function LPNs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">LPNs (Pallets & Totes)</h1>
-          <p className="text-sm text-muted mt-1">Group stock into pallets and totes for efficient movement and storage.</p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Container size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink tracking-tight">LPNs (Pallets & Totes)</h1>
+            <p className="text-sm text-muted mt-0.5">Group stock into pallets and totes for efficient movement and storage.</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export LPNs to CSV">Export</button>
           {selected.size > 0 && (
             <button onClick={batchPrint} className="btn-secondary inline-flex items-center gap-1">
@@ -122,8 +128,8 @@ export default function LPNs() {
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 gap-2">
+        <div className="relative max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by LPN number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search LPNs" />
         </div>
@@ -251,18 +257,19 @@ function LpnCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Type</label>
-            <select className="select" value={lpn_type} onChange={(e) => setLpnType(e.target.value)}>
-              <option value="pallet">Pallet</option>
-              <option value="tote">Tote</option>
-              <option value="carton">Carton</option>
-            </select>
+            <FittedSelect ariaLabel="Type" value={lpn_type} onChange={setLpnType} options={[{ value: "pallet", label: "Pallet" }, { value: "tote", label: "Tote" }, { value: "carton", label: "Carton" }]} />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Location</label>
-            <select className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)}>
-              <option value="">None</option>
-              {locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="Location"
+              value={location_id}
+              onChange={setLocationId}
+              options={[
+                { value: "", label: "None" },
+                ...locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => ({ value: String(l.id), label: l.path })),
+              ]}
+            />
           </div>
         </div>
         <div className="flex justify-end gap-3 pt-4">
@@ -275,17 +282,17 @@ function LpnCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 }
 
 function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
+  const formatDate = useDateFormat();
   const { can } = useAuth();
   const queryClient = useQueryClient();
   const [action, setAction] = useState<"load" | "unload" | "activity" | null>(null);
 
-  const { data: live, isLoading: contentsLoading } = useQuery({
+  const { data: live, isPending: detailLoading } = useQuery({
     queryKey: ["lpn", lpn.id, "contents"],
     queryFn: async () => {
       const { data } = await api.get(`/lpns/${lpn.id}/contents`);
       return data as LPN;
     },
-    placeholderData: lpn,
   });
 
   const current = live || lpn;
@@ -302,7 +309,17 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
   };
 
   return (
-    <Modal open onClose={onClose} title={`LPN ${current.lpn_number}`} wide>
+    <Modal
+      open
+      onClose={onClose}
+      title={
+        <span className="flex items-center gap-2">
+          LPN {current.lpn_number}
+          <span className={`badge ${statusBadge(current.status)}`}>{current.status.replace("_", " ")}</span>
+        </span>
+      }
+      wide
+    >
       {action === "activity" ? (
         <LpnActivity lpnId={current.id} onClose={() => setAction(null)} />
       ) : action ? (
@@ -313,84 +330,120 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
           onSaved={refresh}
         />
       ) : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <p className="text-muted">Type</p>
-              <p className="font-medium capitalize">{current.lpn_type}</p>
-            </div>
-            <div>
-              <p className="text-muted">Location</p>
-              <p className="font-medium">{current.location_name || "—"}</p>
-            </div>
-            <div>
-              <p className="text-muted">Status</p>
-              <p className="font-medium capitalize">{current.status}</p>
-            </div>
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {detailLoading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="card p-3 min-w-0">
+                  <div className="h-3 w-16 bg-subtle-strong rounded animate-pulse" />
+                  <div className="h-5 w-24 mt-2.5 bg-subtle-strong rounded animate-pulse" />
+                </div>
+              ))
+            ) : (
+              <>
+                <div className="card p-3 min-w-0">
+                  <p className="text-xs text-muted">Type</p>
+                  <p className="text-sm font-semibold mt-0.5 capitalize">{current.lpn_type}</p>
+                </div>
+                <div className="card p-3 min-w-0">
+                  <p className="text-xs text-muted">Location</p>
+                  <p className="text-sm font-semibold mt-0.5 break-words">{current.location_name || "—"}</p>
+                </div>
+                <div className="card p-3 min-w-0">
+                  <p className="text-xs text-muted">Created</p>
+                  <p className="text-sm font-semibold mt-0.5">{formatDate(current.created_at)}</p>
+                </div>
+                <div className="card p-3 min-w-0">
+                  <p className="text-xs text-muted">Items</p>
+                  <p className="text-lg font-bold mt-0.5 text-ink tabular-nums">{current.content_count ?? contents.length}</p>
+                </div>
+                <div className="card p-3 min-w-0">
+                  <p className="text-xs text-muted">Total Qty</p>
+                  <p className="text-lg font-bold mt-0.5 text-ink tabular-nums">{current.total_quantity ?? 0}</p>
+                </div>
+                <div className="card p-3 min-w-0">
+                  <p className="text-xs text-muted">Contents</p>
+                  <p className="text-lg font-bold mt-0.5 text-ink tabular-nums">{contents.length}</p>
+                </div>
+              </>
+            )}
           </div>
-          {contentsLoading ? (
+
+          {detailLoading ? (
             <Skeleton variant="rows" rows={3} cols={4} />
           ) : !hasContents ? (
-            <p className="text-sm text-muted">This LPN has no contents yet. Use "Load Stock" to add stock from a location, or receive into it via a receipt.</p>
+            <div className="border border-dashed border-border-strong rounded-xl p-6 text-center text-sm text-muted bg-subtle/40">
+              This LPN has no contents yet. Use "Load Stock" to add stock from a location, or receive into it via a receipt.
+            </div>
           ) : (
             <>
               {contents.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-muted mb-2">Products</p>
-                  <div className="border border-border rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-app text-left">
-                          <th className="px-4 py-2 font-medium text-muted">Product</th>
-                          <th className="px-4 py-2 font-medium text-muted">Lot</th>
-                          <th className="px-4 py-2 font-medium text-muted">Qty</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {contents.map((c, i) => (
-                          <tr key={i}>
-                            <td className="px-4 py-2 font-medium">{c.product_name}</td>
-                            <td className="px-4 py-2 text-muted">{c.lot_number || "—"}</td>
-                            <td className="px-4 py-2">{c.quantity}</td>
+                  <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2 flex items-center gap-2">
+                    Products
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-primary-soft text-primary-strong dark:text-primary text-[10px] font-semibold">{contents.length}</span>
+                  </p>
+                  <div className="border border-border rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-app text-left">
+                            <th className="px-4 py-2 font-medium text-muted">Product</th>
+                            <th className="px-4 py-2 font-medium text-muted">Lot</th>
+                            <th className="px-4 py-2 font-medium text-muted">Qty</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {contents.map((c, i) => (
+                            <tr key={i}>
+                              <td className="px-4 py-2 font-medium">{c.product_name}</td>
+                              <td className="px-4 py-2 text-muted">{c.lot_number || "—"}</td>
+                              <td className="px-4 py-2">{c.quantity}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
               {serials.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-muted mb-2">Serialized Items</p>
-                  <div className="border border-border rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-app text-left">
-                          <th className="px-4 py-2 font-medium text-muted">Product</th>
-                          <th className="px-4 py-2 font-medium text-muted">Serial #</th>
-                          <th className="px-4 py-2 font-medium text-muted">Lot</th>
-                          <th className="px-4 py-2 font-medium text-muted">Status</th>
-                          <th className="px-4 py-2 font-medium text-muted">Location</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {serials.map((s) => (
-                          <tr key={s.serial_id}>
-                            <td className="px-4 py-2 font-medium">{s.product_name}</td>
-                            <td className="px-4 py-2">{s.serial_number}</td>
-                            <td className="px-4 py-2 text-muted">{s.lot_number || "—"}</td>
-                            <td className="px-4 py-2">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
-                            <td className="px-4 py-2 text-muted">{s.location_name || "—"}</td>
+                  <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2 flex items-center gap-2">
+                    Serialized Items
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-primary-soft text-primary-strong dark:text-primary text-[10px] font-semibold">{serials.length}</span>
+                  </p>
+                  <div className="border border-border rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-app text-left">
+                            <th className="px-4 py-2 font-medium text-muted">Product</th>
+                            <th className="px-4 py-2 font-medium text-muted">Serial #</th>
+                            <th className="px-4 py-2 font-medium text-muted">Lot</th>
+                            <th className="px-4 py-2 font-medium text-muted">Status</th>
+                            <th className="px-4 py-2 font-medium text-muted">Location</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {serials.map((s) => (
+                            <tr key={s.serial_id}>
+                              <td className="px-4 py-2 font-medium">{s.product_name}</td>
+                              <td className="px-4 py-2 font-mono text-xs">{s.serial_number}</td>
+                              <td className="px-4 py-2 text-muted">{s.lot_number || "—"}</td>
+                              <td className="px-4 py-2">{statusBadge(s.status) ? <span className={`badge ${statusBadge(s.status)}`}>{s.status}</span> : <span className="text-muted capitalize">{s.status}</span>}</td>
+                              <td className="px-4 py-2 text-muted">{s.location_name || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
             </>
           )}
-          <div className="flex flex-wrap gap-3 pt-2">
+          <div className="flex flex-wrap gap-3 pt-1">
             <button onClick={() => setAction("activity")} className="btn-secondary">
               Activity
             </button>
@@ -404,8 +457,7 @@ function LpnDetail({ lpn, onClose }: { lpn: LPN; onClose: () => void }) {
                 </button>
               </>
             )}
-          </div>
-          <div className="flex justify-end pt-2">
+            <div className="flex-1" />
             <button onClick={onClose} className="btn-secondary">Close</button>
           </div>
         </div>
@@ -451,8 +503,8 @@ function LpnActivity({ lpnId, onClose }: { lpnId: number; onClose: () => void })
       ) : movements.length === 0 ? (
         <p className="text-sm text-muted">No movements recorded for this LPN yet.</p>
       ) : (
-        <div className="border border-border rounded-lg overflow-hidden">
-          <div className="max-h-[45vh] overflow-y-auto">
+        <div className="border border-border rounded-xl overflow-hidden">
+          <div className="max-h-[50vh] overflow-y-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-app text-left">
@@ -472,7 +524,7 @@ function LpnActivity({ lpnId, onClose }: { lpnId: number; onClose: () => void })
                     <td className="px-4 py-2">{activityLabel(m)}</td>
                     <td className="px-4 py-2 font-medium">{m.product_name}</td>
                     <td className="px-4 py-2">
-                      <span className={m.quantity_change > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
+                      <span className={m.quantity_change > 0 ? "text-emerald-600 dark:text-emerald-400 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
                         {m.quantity_change > 0 ? `+${m.quantity_change}` : m.quantity_change}
                       </span>
                     </td>
@@ -656,10 +708,15 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
             {isLoad && from_location_id == null ? (
               <div className="input bg-app">Select a source location first</div>
             ) : (
-              <select className="select" value={product_id} onChange={(e) => { setProductId(e.target.value); setLotId(""); setSerialIds([]); }}>
-                <option value="">Select...</option>
-                {loadableProducts.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""}</option>)}
-              </select>
+              <FittedSelect
+                ariaLabel="Product"
+                value={product_id}
+                onChange={(v) => { setProductId(v); setLotId(""); setSerialIds([]); }}
+                options={[
+                  { value: "", label: "Select..." },
+                  ...loadableProducts.map((p) => ({ value: String(p.id), label: `${productLabel(p)}${p.is_serialized ? " (Serialized)" : ""}` })),
+                ]}
+              />
             )}
           </div>
           {isSerialized ? (
@@ -683,10 +740,15 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
             lpn.location_id == null ? (
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Source Location *</label>
-                <select className="select" value={sourceOverride} onChange={(e) => { setSourceOverride(e.target.value); setProductId(""); setLotId(""); setSerialIds([]); }} required>
-                  <option value="">Select...</option>
-                  {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
-                </select>
+                <FittedSelect
+                  ariaLabel="Source location"
+                  value={sourceOverride}
+                  onChange={(v) => { setSourceOverride(v); setProductId(""); setLotId(""); setSerialIds([]); }}
+                  options={[
+                    { value: "", label: "Select..." },
+                    ...activeLocations.map((l) => ({ value: String(l.id), label: l.path })),
+                  ]}
+                />
               </div>
             ) : (
               <div>
@@ -697,27 +759,37 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
           ) : (
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Destination Location *</label>
-              <select className="select" value={to_location_id} onChange={(e) => setToLocationId(e.target.value)} required>
-                <option value="">Select...</option>
-                {activeLocations.map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
-              </select>
+              <FittedSelect
+                ariaLabel="Destination location"
+                value={to_location_id}
+                onChange={setToLocationId}
+                options={[
+                  { value: "", label: "Select..." },
+                  ...activeLocations.map((l) => ({ value: String(l.id), label: l.path })),
+                ]}
+              />
             </div>
           )}
           {!isSerialized && (
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Lot (optional)</label>
-              <select className="select" value={lot_id} onChange={(e) => setLotId(e.target.value)}>
-                <option value="">Any lot</option>
-                {isLoad
-                  ? (loadLocation?.lots || []).map((l) => (
-                      <option key={l.lot_id} value={l.lot_id}>
-                        {l.lot_number} ({l.quantity}){l.lot_status === "quarantined" ? " - quarantined" : ""}
-                      </option>
-                    ))
-                  : lpn.contents.filter((c) => c.product_id === Number(product_id)).map((c, i) => (
-                      <option key={`${c.lot_id ?? "nolot"}-${i}`} value={c.lot_id ?? ""}>{c.lot_number || "No lot"} ({c.quantity})</option>
-                    ))}
-              </select>
+              <FittedSelect
+                ariaLabel="Lot"
+                value={lot_id}
+                onChange={setLotId}
+                options={[
+                  { value: "", label: "Any lot" },
+                  ...(isLoad
+                    ? (loadLocation?.lots || []).map((l) => ({
+                        value: String(l.lot_id),
+                        label: `${l.lot_number} (${l.quantity})${l.lot_status === "quarantined" ? " - quarantined" : ""}`,
+                      }))
+                    : lpn.contents.filter((c) => c.product_id === Number(product_id)).map((c) => ({
+                        value: c.lot_id != null ? String(c.lot_id) : "",
+                        label: `${c.lot_number || "No lot"} (${c.quantity})`,
+                      }))),
+                ]}
+              />
             </div>
           )}
         </div>
@@ -741,7 +813,7 @@ function LpnStockModal({ lpn, mode, onClose, onSaved }: { lpn: LPN; mode: StockM
                       type="button"
                       key={s.key}
                       onClick={() => toggleSerial(s.key)}
-                      className="text-xs font-mono px-2 py-1 rounded border border-border-strong bg-subtle text-ink hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                      className="text-xs font-mono px-2 py-1 rounded border border-border-strong bg-subtle text-ink hover:border-primary hover:text-primary dark:hover:text-primary transition-colors"
                     >
                       {s.serial_number}
                       {s.quarantined && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400">Q</span>}
@@ -796,12 +868,15 @@ function LpnMoveModal({ lpn, onClose, onSaved }: { lpn: LPN; onClose: () => void
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Move to *</label>
-          <select className="select" value={to_location_id} onChange={(e) => setToLocationId(e.target.value)} required>
-            <option value="">Select...</option>
-            {(locations || []).filter((l) => l.is_active && l.id !== lpn.location_id).sort((a, b) => a.path.localeCompare(b.path)).map((l) => (
-              <option key={l.id} value={l.id}>{l.path}</option>
-            ))}
-          </select>
+          <FittedSelect
+            ariaLabel="Move to location"
+            value={to_location_id}
+            onChange={setToLocationId}
+            options={[
+              { value: "", label: "Select..." },
+              ...(locations || []).filter((l) => l.is_active && l.id !== lpn.location_id).sort((a, b) => a.path.localeCompare(b.path)).map((l) => ({ value: String(l.id), label: l.path })),
+            ]}
+          />
         </div>
         <p className="text-xs text-muted">Stock lines, serial numbers, and the LPN location are updated together.</p>
         <div className="flex justify-end gap-3 pt-4">

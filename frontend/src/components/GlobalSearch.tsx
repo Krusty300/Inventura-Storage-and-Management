@@ -167,7 +167,7 @@ export default function GlobalSearch() {
                         key={`${r.type}-${r.id}`}
                         onClick={() => select(r)}
                         onMouseEnter={() => setActive(idx)}
-                        className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors ${idx === active ? "bg-indigo-50 dark:bg-indigo-500/10" : "hover:bg-app"}`}
+                        className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors ${idx === active ? "bg-primary-soft dark:bg-primary/10" : "hover:bg-app"}`}
                       >
                         <span className="min-w-0">
                           <span className="block font-medium text-ink truncate">{r.label}</span>

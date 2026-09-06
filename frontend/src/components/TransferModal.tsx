@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { ArrowLeftRight, AlertTriangle, Fingerprint } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, ArrowDown, AlertTriangle, Fingerprint } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, SerialNumber, StockLocation } from "../types";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useToast } from "../context/ToastContext";
@@ -13,6 +14,17 @@ import { errorMessage } from "../utils/errors";
 interface Props {
   onClose: () => void;
   onSaved: () => void;
+}
+
+function SectionHeading({ step, children }: { step: number; children: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-solid text-white text-xs font-semibold shrink-0">
+        {step}
+      </span>
+      <h3 className="text-sm font-semibold text-ink">{children}</h3>
+    </div>
+  );
 }
 
 export default function TransferModal({ onClose, onSaved }: Props) {
@@ -116,10 +128,14 @@ export default function TransferModal({ onClose, onSaved }: Props) {
   const activeLocations = (locations || []).filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path));
   const fromLocations = stockLocations || [];
   const selectedFrom = fromLocations.find((l) => l.location_id === Number(from_location_id));
+  const toSelected = activeLocations.find((l) => l.id === Number(to_location_id));
   const selectedFromLot = selectedFrom?.lots.find((l) => l.lot_id === Number(lot_id));
   const maxQuantity = lot_id && selectedFrom ? (selectedFromLot?.quantity ?? selectedFrom.quantity) : selectedFrom?.quantity ?? 1;
   const noStock = !!product_id && !isSerialized && !stockLoading && !!stockLocations && stockLocations.length === 0;
   const noSerials = !!product_id && isSerialized && !serialsLoading && serialLocations.length === 0;
+  const serialCount = serialNumbers.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean).length;
+  const transferQty = isSerialized ? serialCount : parseInt(quantity) || 0;
+  const transferComplete = !!product_id && !!from_location_id && !!to_location_id && transferQty > 0;
 
   const handleProductChange = (value: string) => {
     setProductId(value);
@@ -165,86 +181,173 @@ export default function TransferModal({ onClose, onSaved }: Props) {
       addToast("Enter a valid quantity", "error");
       return;
     }
-    if (selectedFrom && qty > selectedFrom.quantity) {
-      addToast(`Only ${selectedFrom.quantity} on hand at ${selectedFrom.path}`, "error");
+    if (selectedFrom && qty > maxQuantity) {
+      addToast(`Only ${maxQuantity} available for the selected lot at ${selectedFrom.path}`, "error");
       return;
     }
     transferMutation.mutate();
   };
 
   return (
-    <Modal open onClose={onClose} title="Transfer Stock Between Locations" wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Product *</label>
-            <select className="select" value={product_id} onChange={(e) => handleProductChange(e.target.value)}>
-              <option value="">Select...</option>
-              {(productList || []).map((p) => <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""}</option>)}
-            </select>
-          </div>
-          {isSerialized ? (
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Serial Numbers *</label>
-              <textarea
-                className="input min-h-16 font-mono text-sm"
-                placeholder="Enter or scan one serial number per line"
-                value={serialNumbers}
-                onChange={(e) => setSerialNumbers(e.target.value)}
+    <Modal open onClose={onClose} title="Transfer Stock Between Locations" xwide>
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* 1. Product & quantity */}
+        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+          <SectionHeading step={1}>Product & Quantity</SectionHeading>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-ink mb-1">Product *</label>
+              <FittedSelect
+                ariaLabel="Product"
+                value={product_id}
+                onChange={handleProductChange}
+                options={(productList || []).map((p) => ({
+                  value: String(p.id),
+                  label: `${productLabel(p)}${p.is_serialized ? " (Serialized)" : ""}`,
+                }))}
+                placeholder="Select a product..."
               />
-              <p className="text-xs text-muted mt-1">Count: {serialNumbers.split(/[\n,]+/).filter((s) => s.trim()).length}</p>
             </div>
-          ) : (
+            {isSerialized ? (
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-ink mb-1">Serial Numbers *</label>
+                <textarea
+                  className="input min-h-16 font-mono text-sm"
+                  placeholder="Enter or scan one serial number per line"
+                  value={serialNumbers}
+                  onChange={(e) => setSerialNumbers(e.target.value)}
+                />
+                <p className="text-xs text-muted mt-1">Count: {serialCount}</p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
+                  <input type="number" min={1} max={maxQuantity} className="input" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                  {selectedFrom && (
+                    <p className="text-xs text-muted mt-1">{selectedFrom.quantity} available at {selectedFrom.path}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">On hand by location</label>
+                  {product_id && !stockLoading && fromLocations.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {fromLocations.map((l) => (
+                        <button
+                          key={l.location_id}
+                          type="button"
+                          onClick={() => { setFromLocationId(String(l.location_id)); setLotId(""); }}
+                          className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                            Number(from_location_id) === l.location_id
+                              ? "border-primary bg-primary-soft dark:bg-primary/10 text-primary-strong dark:text-primary font-medium"
+                              : "border-border-strong bg-subtle text-ink hover:border-primary hover:text-primary dark:hover:text-primary"
+                          }`}
+                        >
+                          {l.path} · {l.quantity}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted">
+                      {stockLoading ? "Checking stock..." : "Select a product to see available stock."}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 2. Route */}
+        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+          <SectionHeading step={2}>Transfer Route</SectionHeading>
+          <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center">
             <div>
-              <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
-              <input type="number" min={1} max={maxQuantity} className="input" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-              {selectedFrom && (
-                <p className="text-xs text-muted mt-1">{selectedFrom.quantity} available at {selectedFrom.path}</p>
+              <label className="block text-sm font-medium text-ink mb-1">From Location *</label>
+              {isSerialized ? (
+                <FittedSelect
+                  ariaLabel="From location"
+                  value={from_location_id}
+                  onChange={setFromLocationId}
+                  disabled={!product_id}
+                  options={serialLocations.map((l) => ({
+                    value: String(l.location_id),
+                    label: `${l.path} (${l.serials.length} serials)`,
+                  }))}
+                  placeholder={
+                    !product_id
+                      ? "Select a product first"
+                      : serialsLoading
+                        ? "Loading serials..."
+                        : noSerials
+                          ? "No serials in stock"
+                          : "Select a location..."
+                  }
+                />
+              ) : (
+                <FittedSelect
+                  ariaLabel="From location"
+                  value={from_location_id}
+                  onChange={(v) => { setFromLocationId(v); setLotId(""); }}
+                  disabled={!product_id}
+                  options={fromLocations.map((l) => ({
+                    value: String(l.location_id),
+                    label: `${l.path} (${l.quantity} on hand)`,
+                  }))}
+                  placeholder={
+                    !product_id
+                      ? "Select a product first"
+                      : stockLoading
+                        ? "Loading locations..."
+                        : noStock
+                          ? "No stock available"
+                          : "Select a location..."
+                  }
+                />
               )}
+            </div>
+
+            <div className="flex items-center justify-center gap-2 self-center text-faint select-none sm:px-1">
+              <span className="text-[10px] font-semibold uppercase tracking-widest">to</span>
+              <ArrowRight size={18} className="hidden sm:block text-primary" />
+              <ArrowDown size={18} className="sm:hidden text-primary" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">To Location *</label>
+              <FittedSelect
+                ariaLabel="To location"
+                value={to_location_id}
+                onChange={setToLocationId}
+                options={activeLocations
+                  .filter((l) => l.id !== Number(from_location_id))
+                  .map((l) => ({ value: String(l.id), label: l.path }))}
+                placeholder="Select a location..."
+              />
+            </div>
+          </div>
+
+          {transferComplete && selectedFrom && toSelected && (
+            <div className="rounded-lg border border-primary-soft dark:border-primary/30 bg-primary-soft dark:bg-primary/10 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
+              <div className="flex items-center gap-2 min-w-0">
+                <ArrowLeftRight size={16} className="text-primary shrink-0" />
+                <span className="truncate font-medium text-ink">
+                  {transferQty} × {selectedProduct ? productLabel(selectedProduct) : "items"}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-muted">
+                <span className="font-medium text-ink">{selectedFrom.path}</span>
+                <ArrowRight size={14} className="text-primary" />
+                <span className="font-medium text-ink">{toSelected.path}</span>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">From Location *</label>
-            {isSerialized ? (
-              <select
-                className="select"
-                value={from_location_id}
-                disabled={!product_id}
-                onChange={(e) => setFromLocationId(e.target.value)}
-              >
-                <option value="">
-                  {!product_id ? "Select a product first" : serialsLoading ? "Loading serials..." : noSerials ? "No serials in stock" : "Select..."}
-                </option>
-                {serialLocations.map((l) => <option key={l.location_id} value={l.location_id}>{l.path} ({l.serials.length} serials)</option>)}
-              </select>
-            ) : (
-              <select
-                className="select"
-                value={from_location_id}
-                disabled={!product_id}
-                onChange={(e) => { setFromLocationId(e.target.value); setLotId(""); }}
-              >
-                <option value="">
-                  {!product_id ? "Select a product first" : stockLoading ? "Loading locations..." : noStock ? "No stock available" : "Select..."}
-                </option>
-                {fromLocations.map((l) => <option key={l.location_id} value={l.location_id}>{l.path} ({l.quantity} on hand)</option>)}
-              </select>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">To Location *</label>
-            <select className="select" value={to_location_id} onChange={(e) => setToLocationId(e.target.value)}>
-              <option value="">Select...</option>
-              {activeLocations.filter((l) => l.id !== Number(from_location_id)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
+        {/* 3. Details */}
+        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
+          <SectionHeading step={3}>Details</SectionHeading>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {isSerialized ? (
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Available at source</label>
@@ -258,7 +361,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
                           type="button"
                           key={s.id}
                           onClick={() => addSerial(s.serial_number)}
-                          className="text-xs font-mono px-2 py-1 rounded border border-border-strong bg-subtle text-ink hover:border-indigo-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                          className="text-xs font-mono px-2 py-1 rounded border border-border-strong bg-subtle text-ink hover:border-primary hover:text-primary dark:hover:text-primary transition-colors"
                         >
                           {s.serial_number}
                         </button>
@@ -267,7 +370,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
                   )
                 ) : (
                   <p className="text-xs text-muted flex items-center gap-1">
-                    <Fingerprint size={14} className="text-indigo-500" />
+                    <Fingerprint size={14} className="text-primary" />
                     Select a source location to see its in-stock serials. Click a serial to add it.
                   </p>
                 )}
@@ -275,21 +378,26 @@ export default function TransferModal({ onClose, onSaved }: Props) {
             ) : (
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Lot (optional)</label>
-                <select
-                  className="select"
+                <FittedSelect
+                  ariaLabel="Lot"
                   value={lot_id}
+                  onChange={setLotId}
                   disabled={!selectedFrom}
-                  onChange={(e) => setLotId(e.target.value)}
-                >
-                  <option value="">Any lot</option>
-                  {(selectedFrom?.lots || []).map((l) => <option key={l.lot_id} value={l.lot_id}>{l.lot_number} ({l.quantity})</option>)}
-                </select>
+                  options={(selectedFrom?.lots || []).map((l) => ({
+                    value: String(l.lot_id),
+                    label: `${l.lot_number} (${l.quantity})`,
+                  }))}
+                  placeholder="Any lot"
+                />
+                {selectedFrom && selectedFrom.lots.length > 0 && (
+                  <p className="text-xs text-muted mt-1">Limit the move to one lot from {selectedFrom.path}.</p>
+                )}
               </div>
             )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-            <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Notes</label>
+              <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
           </div>
         </div>
 
@@ -307,7 +415,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
         )}
 
         <p className="text-xs text-muted flex items-center gap-1">
-          <ArrowLeftRight size={14} className="text-indigo-500" />
+          <ArrowLeftRight size={14} className="text-primary" />
           A single reference is used for both the outbound and inbound movement.
         </p>
 

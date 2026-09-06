@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from tests.conftest import TestingSessionLocal, client
@@ -395,10 +395,10 @@ def test_expired_lot_qty_counts_in_stock_serials_in_expired_lots(auth_headers):
     assert detail["sellable_qty"] == 2
 
 
-def test_expired_filter_matches_expired_lots_not_static_product_expiry(auth_headers):
-    """The products 'expired' filter must agree with the E badge: match on stock
-    held in an expired lot (bulk and serialized), not on a past static
-    Product.expiry_date that may no longer correspond to any actual stock."""
+def test_expired_filter_matches_expired_lots_and_static_product_expiry(auth_headers):
+    """The products 'expired' filter must agree with the red/E badge: match on
+    stock held in an expired lot (bulk and serialized) AND on a past static
+    Product.expiry_date, since the static date also drives the red badge."""
     bulk = client.post("/api/products", json={"location_id": 1,
         "sku": "EXP-FILTER-BULK", "name": "Exp Filter Bulk", "unit_price": 1.0, "quantity": 0,
     }, headers=auth_headers).json()
@@ -428,4 +428,77 @@ def test_expired_filter_matches_expired_lots_not_static_product_expiry(auth_head
     matches = {p["id"]: p for p in body["items"]}
     assert bulk["id"] in matches and matches[bulk["id"]]["expired_lot_qty"] == 3
     assert ser["id"] in matches and matches[ser["id"]]["expired_lot_qty"] == 2
-    assert ghost["id"] not in matches
+    assert ghost["id"] in matches and matches[ghost["id"]]["expired_lot_qty"] == 0
+
+
+def test_expiring_filter_is_lot_aware_and_requires_sellable_stock(auth_headers):
+    """The 'Expiring' option must use the settings window with lot tracking
+    (bulk + serialized) and require sellable stock, mirroring the amber badge."""
+    lot_tracked = client.post("/api/products", json={
+        "location_id": 1, "sku": "EXP-LOTOK", "name": "Exp Lot OK",
+        "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    client.post("/api/receipts", json={"items": [{
+        "product_id": lot_tracked["id"], "quantity": 5, "lot_number": "LOT-SOON",
+        "expiry_date": (date.today() + timedelta(days=10)).isoformat(),
+    }]}, headers=auth_headers)
+
+    static_only = client.post("/api/products", json={
+        "location_id": 1, "sku": "EXP-STATIC", "name": "Exp Static",
+        "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    client.put(f"/api/products/{static_only['id']}", json={
+        "expiry_date": (date.today() + timedelta(days=10)).isoformat(),
+    }, headers=auth_headers)
+
+    sellable_static = client.post("/api/products", json={
+        "location_id": 1, "sku": "EXP-SELL", "name": "Exp Sell",
+        "unit_price": 1.0, "quantity": 5,
+    }, headers=auth_headers).json()
+    client.put(f"/api/products/{sellable_static['id']}", json={
+        "expiry_date": (date.today() + timedelta(days=10)).isoformat(),
+    }, headers=auth_headers)
+
+    ser = _make_serialized(auth_headers, "EXP-SERSOON")
+    _receive(auth_headers, ser["id"], ["EXP-SS-1"], "LOT-SERSOON")
+    lot_s = _lot(auth_headers, ser["id"], "LOT-SERSOON")
+    assert client.put(f"/api/lots/{lot_s['id']}", json={
+        "expiry_date": (date.today() + timedelta(days=7)).isoformat(),
+    }, headers=auth_headers).status_code == 200
+
+    body = client.get("/api/products", params={"expiry": "expiring", "include_variants": 1, "limit": 100}, headers=auth_headers).json()
+    matches = {p["id"]: p for p in body["items"]}
+    assert lot_tracked["id"] in matches
+    assert sellable_static["id"] in matches
+    assert ser["id"] in matches
+    assert static_only["id"] not in matches
+
+    item = matches[lot_tracked["id"]]
+    assert item["effective_expiry_date"] == (date.today() + timedelta(days=10)).isoformat()
+    assert item["expiry_days_left"] == 10
+
+
+def test_expiring_filter_excludes_wip_lot_stock(auth_headers):
+    """Stock held at a WIP location is not sellable, so a lot expiring soon in
+    WIP must not surface under the Expiring filter (mirrors the badge count)."""
+    wip = client.post("/api/locations", json={"name": "WIP Dock", "location_type": "wip"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={
+        "location_id": 1, "sku": "EXP-WIP", "name": "Exp Wip",
+        "unit_price": 1.0, "quantity": 0,
+    }, headers=auth_headers).json()
+    client.post("/api/receipts", json={"items": [{
+        "product_id": prod["id"], "quantity": 4, "location_id": wip["id"],
+        "lot_number": "LOT-WIP-SOON", "expiry_date": (date.today() + timedelta(days=5)).isoformat(),
+    }]}, headers=auth_headers)
+
+    body = client.get("/api/products", params={"expiry": "expiring", "include_variants": 1, "limit": 100}, headers=auth_headers).json()
+    matches = {p["id"] for p in body["items"]}
+    assert prod["id"] not in matches
+
+
+def test_expiry_filter_rejects_unknown_values(auth_headers):
+    """The expiry dropdown only sends '', 'expired', or 'expiring'; anything
+    else must be rejected with a 422 so a stale UI never silently shows an
+    unfiltered grid."""
+    resp = client.get("/api/products", params={"expiry": "bogus"}, headers=auth_headers)
+    assert resp.status_code == 422

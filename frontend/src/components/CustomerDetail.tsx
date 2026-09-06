@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Tag } from "lucide-react";
+import { Users, Tag, Pencil } from "lucide-react";
 import SlideOver from "./SlideOver";
 import Skeleton from "./Skeleton";
 import AttachmentSection from "./AttachmentSection";
@@ -14,9 +14,10 @@ import { useAuth } from "../context/AuthContext";
 interface Props {
   customer: Customer;
   onClose: () => void;
+  onEdit?: () => void;
 }
 
-export default function CustomerDetail({ customer, onClose }: Props) {
+export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
   const formatDate = useDateFormat();
   const { can } = useAuth();
   const { data: settings } = useSettings();
@@ -47,7 +48,18 @@ export default function CustomerDetail({ customer, onClose }: Props) {
   const frequentProducts = frequent || [];
 
   return (
-    <SlideOver open onClose={onClose} title={customer.name} wide ariaLabel={customer.name}>
+    <SlideOver
+      open
+      onClose={onClose}
+      title={customer.name}
+      wide
+      ariaLabel={customer.name}
+      actions={onEdit && can("customers.update") ? (
+        <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label="Edit customer">
+          <Pencil size={14} />Edit Customer
+        </button>
+      ) : undefined}
+    >
       <div className="space-y-5 text-sm">
         <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
           <div className="border-b border-border px-5 py-4 flex flex-wrap items-start justify-between gap-3">
@@ -75,7 +87,7 @@ export default function CustomerDetail({ customer, onClose }: Props) {
               <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Tags</p>
               <div className="flex flex-wrap items-center gap-2 mt-0.5">
                 {customer.group_name && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary-soft text-primary-strong dark:bg-primary/15 dark:text-primary">
                     <Users size={12} />
                     {customer.group_name}
                   </span>

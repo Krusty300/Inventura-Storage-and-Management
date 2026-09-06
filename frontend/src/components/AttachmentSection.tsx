@@ -40,6 +40,8 @@ const ENTITY_PREFIX: Record<string, string> = {
   supplier: "suppliers",
   receipt: "receipts",
   dashboard: "dashboard",
+  asn: "asns",
+  sale: "sales",
 };
 
 // Accepted file extensions, mirrors the backend ALLOWED_EXTENSIONS.
@@ -268,8 +270,8 @@ export default function AttachmentSection({ entityType, entityId, canEdit = true
               onDrop={onDrop}
               className={`border-2 border-dashed rounded-lg px-4 py-6 text-center text-sm transition-colors cursor-pointer select-none ${
                 dragging
-                  ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-                  : "border-border text-muted hover:border-indigo-300 hover:bg-app"
+                  ? "border-primary bg-primary-soft dark:bg-primary/10 text-primary dark:text-primary"
+                  : "border-border text-muted hover:border-primary hover:bg-app"
               }`}
             >
               <div className="flex items-center justify-center gap-2 mb-1">

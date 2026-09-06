@@ -4,6 +4,7 @@ import os
 # Settings (which rejects the placeholder default at construction time).
 os.environ.setdefault("SECRET_KEY", "a" * 64)
 os.environ.setdefault("DARAJA_MOCK", "true")
+os.environ.setdefault("DISABLE_RATE_LIMIT", "1")
 os.environ.pop("DARAJA_CALLBACK_SECRET", None)
 
 import pytest
@@ -37,6 +38,9 @@ def override_get_db():
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    from app.services.cache import reference_cache, settings_cache
+    settings_cache.clear()
+    reference_cache.clear()
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)

@@ -9,6 +9,7 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
+import FittedSelect from "../components/FittedSelect";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { usePageSize } from "../hooks/usePageSize";
@@ -64,9 +65,14 @@ export default function SalesChannels() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Sales Channels</h1>
-          <p className="text-sm text-muted mt-1">Manage the channels you sell through.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Store size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Sales Channels</h1>
+            <p className="text-sm text-muted mt-1">Manage the channels you sell through.</p>
+          </div>
         </div>
         {can("sales.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
@@ -127,7 +133,7 @@ export default function SalesChannels() {
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         {can("sales.create") && (
-                          <button onClick={() => { setEditing(ch); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${ch.name}`}>
+                          <button onClick={() => { setEditing(ch); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${ch.name}`}>
                             <Pencil size={16} />
                           </button>
                         )}
@@ -208,11 +214,13 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: SalesChannel | nu
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="ch-type">Type</label>
-          <select id="ch-type" className="select" value={type} onChange={(e) => setType(e.target.value)}>
-            {CHANNEL_TYPES.map((ct) => (
-              <option key={ct.value} value={ct.value}>{ct.label}</option>
-            ))}
-          </select>
+          <FittedSelect
+            value={type}
+            onChange={setType}
+            ariaLabel="ch-type"
+            maxWidth={180}
+            options={CHANNEL_TYPES.map((ct) => ({ value: ct.value, label: ct.label }))}
+          />
         </div>
         <div className="flex items-center gap-2">
           <input type="checkbox" className="rounded border-border-strong" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} id="ch-active" />

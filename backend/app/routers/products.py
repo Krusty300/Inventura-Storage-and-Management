@@ -11,7 +11,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 from sqlalchemy import String, case, cast, exists, func, select
 from sqlalchemy.orm import Session, joinedload, aliased
 from app.constants import MAX_PAGE_SIZE_PRODUCTS
@@ -28,6 +28,7 @@ from app.models.supplier import Supplier
 from app.models.work_order import WorkOrder, WorkOrderItem
 from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
 from app.schemas.stock_movement import StockMovementOut
+from app.services import expiry as expiry_svc
 from app.services import inventory
 from app.services.auth import require_permission
 from app.services.notify import notify_expiring, notify_low_stock
@@ -40,7 +41,7 @@ from svglib.svglib import svg2rlg
 import barcode as pybarcode
 from barcode.writer import SVGWriter
 
-from app.services.pdf_helpers import FONT, BOLD, INK, MONO, MUTED, FAINT, PAGE_H, PAGE_W, new_canvas, render_pdf
+from app.services.pdf_helpers import FONT, BOLD, INK, MONO, MUTED, FAINT, PAGE_H, PAGE_W, money, new_canvas, render_pdf
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -68,28 +69,21 @@ def _effective_location(product: Product) -> str:
     return product.location or ""
 
 
-def _has_expired_stock(pid_col):
-    """True when the product row ``pid_col`` holds stock in an expired lot.
+def _set_expiry(out: ProductOut, orm: Product, lot_dates: dict[int, list[date]], today: date) -> None:
+    """Fill a ProductOut row's effective expiry from its static date and lots."""
+    eff, days = expiry_svc.effective_expiry(today, orm.expiry_date, lot_dates.get(orm.id, []))
+    out.effective_expiry_date = eff
+    out.expiry_days_left = days
 
-    Bulk units sit on stock lines in an expired lot; serialized units are
-    ``in_stock`` serials whose lot expired (``expire_overdue_lots`` leaves the
-    serial status untouched). Mirrors ``expired_lot_qty_by_product`` so the
-    list filter and the E badge answer the same question.
-    """
-    bulk = exists(
-        select(StockLine.product_id)
-        .join(Lot, StockLine.lot_id == Lot.id)
-        .where(StockLine.product_id == pid_col, Lot.status == "expired", StockLine.quantity > 0)
-    )
-    serial = exists(
-        select(SerialNumber.product_id)
-        .join(Lot, SerialNumber.lot_id == Lot.id)
-        .where(
-            SerialNumber.product_id == pid_col, Lot.status == "expired",
-            SerialNumber.status == inventory.SERIAL_STATUS_IN_STOCK,
-        )
-    )
-    return bulk | serial
+
+def _fold_group_expiry(out: ProductOut, variant_dates: list[date], today: date) -> None:
+    """Aggregate a parent row's expiry over its own date and its active variants."""
+    candidates = list(variant_dates)
+    if out.effective_expiry_date:
+        candidates.append(out.effective_expiry_date)
+    eff = min(candidates)
+    out.effective_expiry_date = eff
+    out.expiry_days_left = (eff - today).days
 
 
 def validate_refs(db: Session, category_id: Optional[int], supplier_id: Optional[int]) -> None:
@@ -133,7 +127,7 @@ def list_products(
     sort_by: str = "name", sort_dir: str = "asc",
     skip: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_PRODUCTS),
     active_only: bool = False,
-    expiry: str = "",
+    expiry: Literal["", "expired", "expiring"] = "",
     low_stock: bool = False,
     include_variants: bool = False,
     db: Session = Depends(get_db),
@@ -143,9 +137,14 @@ def list_products(
     if sort_dir not in ("asc", "desc"):
         raise HTTPException(status_code=400, detail="sort_dir must be 'asc' or 'desc'")
     inventory.expire_overdue_lots(db)
-    options = [joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.default_location), joinedload(Product.stock_lines).joinedload(StockLine.location)]
+    options = [
+        joinedload(Product.category), joinedload(Product.supplier), joinedload(Product.default_location),
+        joinedload(Product.stock_lines).joinedload(StockLine.location),
+        joinedload(Product.stock_lines).joinedload(StockLine.lot),
+    ]
     if include_variants:
         options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location))
+        options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.lot))
     q = db.query(Product).options(*options).filter(Product.parent_id.is_(None))
     if active_only:
         q = q.filter(Product.is_active == True)
@@ -161,25 +160,32 @@ def list_products(
     if category_id:
         q = q.filter(Product.category_id == category_id)
     today = date.today()
-    soon = today + timedelta(days=30)
     if expiry == "expired":
-        # Lot-based to match the E badge: a product is "expired" when it holds
-        # stock in an expired lot, not when its static expiry_date has passed.
+        # Agree with the red/E badges: expired-lot stock (bulk + serialized) OR
+        # a static expiry_date that has passed. Lot-aware and variant-aware so a
+        # serialized product expiring via its lots shows up too.
+        condition = expiry_svc.expired_condition(Product.id, today)
         if include_variants:
-            q = q.filter(
-                _has_expired_stock(Product.id)
-                | Product.variants.any(_has_expired_stock(Product.id))
+            condition = condition | Product.id.in_(
+                select(Product.parent_id).where(
+                    Product.parent_id.isnot(None), Product.is_active == True,  # noqa: E712
+                    expiry_svc.expired_condition(Product.id, today),
+                )
             )
-        else:
-            q = q.filter(_has_expired_stock(Product.id))
+        q = q.filter(condition)
     elif expiry == "expiring":
+        # Settings-driven window, lot-aware (bulk + serialized), requiring
+        # sellable stock -- mirrors the amber badge.
+        soon = today + timedelta(days=expiry_svc.warning_window(db))
+        condition = expiry_svc.expiring_condition(Product.id, today, soon)
         if include_variants:
-            q = q.filter(
-                (Product.expiry_date.isnot(None) & (Product.expiry_date >= today) & (Product.expiry_date <= soon))
-                | Product.variants.any(Product.expiry_date.isnot(None), Product.expiry_date >= today, Product.expiry_date <= soon)
+            condition = condition | Product.id.in_(
+                select(Product.parent_id).where(
+                    Product.parent_id.isnot(None), Product.is_active == True,  # noqa: E712
+                    expiry_svc.expiring_condition(Product.id, today, soon),
+                )
             )
-        else:
-            q = q.filter(Product.expiry_date.isnot(None), Product.expiry_date >= today, Product.expiry_date <= soon)
+        q = q.filter(condition)
     if low_stock:
         # match the dashboard definition: active, sellable stock at or below reorder
         sellable = inventory.sellable_qty_subquery()
@@ -218,23 +224,31 @@ def list_products(
             col = getattr(Product, sort_by, Product.name)
             q = q.order_by(col.asc() if sort_dir == "asc" else col.desc())
     items = q.offset(skip).limit(limit).all()
+    ids: list[int] = []
+    for p in items:
+        ids.append(p.id)
+        if include_variants and p.variants:
+            ids.extend(v.id for v in p.variants)
+    lot_dates = expiry_svc.lot_expiry_dates_by_product(db, ids)
+    quarantined = inventory.quarantined_qty_by_product(db, ids) if ids else {}
+    expired = inventory.expired_lot_qty_by_product(db, ids) if ids else {}
+    sellable = inventory.sellable_qty_by_product(db, ids) if ids else {}
+    reserved = inventory.reserved_qty_by_product(db, ids) if ids else {}
     results = []
     for p in items:
         out = ProductOut.model_validate(p)
         out.location = _effective_location(p)
+        _set_expiry(out, p, lot_dates, today)
         if include_variants and p.variants and out.variants:
+            variant_dates: list[date] = []
             for v_orm, v_out in zip(p.variants, out.variants):
                 v_out.location = _effective_location(v_orm)
+                _set_expiry(v_out, v_orm, lot_dates, today)
+                if v_orm.is_active and v_out.effective_expiry_date:
+                    variant_dates.append(v_out.effective_expiry_date)
+            if variant_dates:
+                _fold_group_expiry(out, variant_dates, today)
         results.append(out)
-    ids = set()
-    for p in items:
-        ids.add(p.id)
-        if include_variants and p.variants:
-            ids.update(v.id for v in p.variants)
-    quarantined = inventory.quarantined_qty_by_product(db, list(ids)) if ids else {}
-    expired = inventory.expired_lot_qty_by_product(db, list(ids)) if ids else {}
-    sellable = inventory.sellable_qty_by_product(db, list(ids)) if ids else {}
-    reserved = inventory.reserved_qty_by_product(db, list(ids)) if ids else {}
     for p in results:
         p.quarantined_qty = quarantined.get(p.id, 0)
         p.expired_lot_qty = expired.get(p.id, 0)
@@ -333,7 +347,7 @@ def barcode_labels(ids: str = "", db: Session = Depends(get_db)):
 
         name = (p.display_name[:30] + "\u2026") if len(p.display_name) > 30 else p.display_name
         sku = p.sku or ""
-        price = f"{currency}{p.unit_price:.2f}" if p.unit_price else ""
+        price = money(currency, p.unit_price) if p.unit_price else ""
         line_y = y + row_height - 12
         c.setFont(BOLD, 8)
         c.setFillColor(INK)
@@ -372,11 +386,15 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         joinedload(Product.category), joinedload(Product.supplier),
         joinedload(Product.default_location),
         joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
+        joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.lot),
         joinedload(Product.stock_lines).joinedload(StockLine.location),
+        joinedload(Product.stock_lines).joinedload(StockLine.lot),
     ])
     out = ProductOut.model_validate(p)
     out.location = _effective_location(p)
     ids = [p.id] + [v.id for v in p.variants]
+    lot_dates = expiry_svc.lot_expiry_dates_by_product(db, ids)
+    today = date.today()
     quarantined = inventory.quarantined_qty_by_product(db, ids)
     expired = inventory.expired_lot_qty_by_product(db, ids)
     sellable = inventory.sellable_qty_by_product(db, ids)
@@ -398,10 +416,16 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         )
         for v_orm, v_out in zip(p.variants, out.variants):
             v_out.location = _effective_location(v_orm)
+            _set_expiry(v_out, v_orm, lot_dates, today)
             v_out.quarantined_qty = quarantined.get(v_orm.id, 0)
             v_out.expired_lot_qty = expired.get(v_orm.id, 0)
             v_out.sellable_qty = sellable.get(v_orm.id, 0)
             v_out.reserved_qty = reserved.get(v_orm.id, 0)
+    _set_expiry(out, p, lot_dates, today)
+    if p.variants and out.variants:
+        variant_expiries = [v_out.effective_expiry_date for v_out in out.variants if v_out.is_active and v_out.effective_expiry_date]
+        if variant_expiries:
+            _fold_group_expiry(out, variant_expiries, today)
     out.quarantined_qty = quarantined.get(p.id, 0)
     out.expired_lot_qty = expired.get(p.id, 0)
     out.sellable_qty = sellable.get(p.id, 0)
@@ -415,20 +439,26 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
         joinedload(Product.category), joinedload(Product.supplier),
         joinedload(Product.default_location),
         joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
+        joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.lot),
         joinedload(Product.stock_lines).joinedload(StockLine.location),
+        joinedload(Product.stock_lines).joinedload(StockLine.lot),
     ).filter(func.lower(Product.barcode) == barcode.lower(), Product.is_active == True).first()
     if not p:
         p = db.query(Product).options(
             joinedload(Product.category), joinedload(Product.supplier),
             joinedload(Product.default_location),
             joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location),
+            joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.lot),
             joinedload(Product.stock_lines).joinedload(StockLine.location),
+            joinedload(Product.stock_lines).joinedload(StockLine.lot),
         ).filter(func.lower(Product.sku) == barcode.lower(), Product.is_active == True).first()
     if not p:
         raise HTTPException(status_code=404, detail="Product not found")
     out = ProductOut.model_validate(p)
     out.location = _effective_location(p)
     ids = [p.id] + [v.id for v in p.variants]
+    lot_dates = expiry_svc.lot_expiry_dates_by_product(db, ids)
+    today = date.today()
     quarantined = inventory.quarantined_qty_by_product(db, ids)
     expired = inventory.expired_lot_qty_by_product(db, ids)
     sellable = inventory.sellable_qty_by_product(db, ids)
@@ -450,10 +480,16 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
         )
         for v_orm, v_out in zip(p.variants, out.variants):
             v_out.location = _effective_location(v_orm)
+            _set_expiry(v_out, v_orm, lot_dates, today)
             v_out.quarantined_qty = quarantined.get(v_orm.id, 0)
             v_out.expired_lot_qty = expired.get(v_orm.id, 0)
             v_out.sellable_qty = sellable.get(v_orm.id, 0)
             v_out.reserved_qty = reserved.get(v_orm.id, 0)
+    _set_expiry(out, p, lot_dates, today)
+    if p.variants and out.variants:
+        variant_expiries = [v_out.effective_expiry_date for v_out in out.variants if v_out.is_active and v_out.effective_expiry_date]
+        if variant_expiries:
+            _fold_group_expiry(out, variant_expiries, today)
     out.quarantined_qty = quarantined.get(p.id, 0)
     out.expired_lot_qty = expired.get(p.id, 0)
     out.sellable_qty = sellable.get(p.id, 0)

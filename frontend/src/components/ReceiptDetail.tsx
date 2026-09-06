@@ -4,6 +4,7 @@ import AttachmentSection from "./AttachmentSection";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
+import { getPlaceholder, onImageError } from "../utils/placeholders";
 import { useAuth } from "../context/AuthContext";
 
 interface Props {
@@ -65,7 +66,18 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
               <tbody className="divide-y divide-border">
                 {receipt.items.map((item) => (
                   <tr key={item.id}>
-                    <td className="py-3 pr-3 font-medium text-ink">{item.product_name}</td>
+                    <td className="py-3 pr-3">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={item.product_image || getPlaceholder()}
+                          alt=""
+                          className="w-10 h-10 rounded object-cover shrink-0 border border-border bg-subtle"
+                          loading="lazy"
+                          onError={onImageError}
+                        />
+                        <span className="font-medium text-ink">{item.product_name}</span>
+                      </div>
+                    </td>
                     <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.quantity}</td>
                     <td className="py-3 px-3 text-right text-muted whitespace-nowrap">{formatCurrency(item.unit_cost, currencySymbol)}</td>
                     <td className="py-3 px-3 text-right text-ink font-medium whitespace-nowrap">{formatCurrency(item.unit_cost * item.quantity, currencySymbol)}</td>

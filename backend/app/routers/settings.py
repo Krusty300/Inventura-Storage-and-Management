@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
-from app.constants import CURRENCIES
+from app.constants import CURRENCIES, currency_symbol as symbol_for
 from app.database import get_db
 from app.models.settings import Settings
 from app.services.auth import require_permission
 from app.utils import broadcast_change
+from app.services.cache import settings_cache
 
 router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_permission("settings.view"))])
 
@@ -147,8 +148,19 @@ def get_public_settings(db: Session = Depends(get_db)):
 @router.put("")
 def update_settings(data: SettingsUpdate, db: Session = Depends(get_db), user=Depends(require_permission("settings.update"))):
     s = get_or_create_settings(db)
-    if data.currency_code is not None and data.currency_code not in CURRENCIES:
+    payload = data.model_dump(exclude_unset=True)
+    if "currency_code" in payload and payload["currency_code"] not in CURRENCIES:
         raise HTTPException(status_code=400, detail=f"currency_code must be one of {', '.join(CURRENCIES)}")
+    # Keep the symbol consistent with the code: always use the canonical symbol
+    # for an updated code when the caller didn't supply one, and fall back to the
+    # canonical symbol for the current code when a supplied symbol is empty.
+    if "currency_code" in payload:
+        code = payload["currency_code"]
+        symbol = payload.get("currency_symbol")
+        payload["currency_symbol"] = (symbol or "").strip() or symbol_for(code)
+    elif "currency_symbol" in payload:
+        symbol = (payload["currency_symbol"] or "").strip()
+        payload["currency_symbol"] = symbol or symbol_for(s.currency_code)
     PREFIX_FIELDS = [
         "shipment_prefix", "work_order_prefix", "invoice_prefix", "po_prefix",
         "receipt_prefix", "asn_prefix", "qc_prefix", "cc_prefix",
@@ -156,7 +168,7 @@ def update_settings(data: SettingsUpdate, db: Session = Depends(get_db), user=De
         "lpn_prefix", "lpn_move_prefix", "lpn_load_prefix", "lpn_unload_prefix",
         "stock_in_prefix", "stock_out_prefix", "adjustment_prefix",
     ]
-    for k, v in data.model_dump(exclude_unset=True).items():
+    for k, v in payload.items():
         if k in PREFIX_FIELDS and isinstance(v, str):
             v = v.strip()
             if not v:
@@ -166,6 +178,7 @@ def update_settings(data: SettingsUpdate, db: Session = Depends(get_db), user=De
         setattr(s, k, v)
     db.commit()
     db.refresh(s)
+    settings_cache.clear()
     broadcast_change("settings", "updated")
     return _serialize(s)
 

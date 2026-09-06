@@ -22,7 +22,7 @@ from app.services.auth import require_permission
 from app.services.notify import notify_admins
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, draw_banner_header, draw_info_block, draw_item_table,
+    BODY_RIGHT, MARGIN, money, draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
@@ -126,6 +126,8 @@ def reorder_low_stock(
 
 def _create_reorder_orders(db: Session, user, groups: dict[int | None, list[dict]], notes_template: str) -> list[Order]:
     orders: list[Order] = []
+    s = db.query(Settings).first()
+    currency = (s.currency_symbol if s else "$") or "$"
     for supplier_id, group in groups.items():
         items = []
         total = 0.0
@@ -152,7 +154,7 @@ def _create_reorder_orders(db: Session, user, groups: dict[int | None, list[dict
         ])
         supplier_tag = f" for {supplier.name}" if supplier else ""
         log_activity(db, user.id, user.username, "create", "order", order.id,
-                     f"Auto-reorder '{o.order_number}'{supplier_tag} for {len(group)} product(s) (${total:.2f})")
+                     f"Auto-reorder '{o.order_number}'{supplier_tag} for {len(group)} product(s) ({currency}{total:,.2f})")
         db.commit()
         orders.append(o)
     return orders
@@ -169,16 +171,21 @@ def _has_active_location(db: Session, product_id: int) -> bool:
 @router.get("")
 def list_orders(
     search: str = Query(""),
+    status: str | None = None,
     supplier_id: int | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     q = db.query(Order).options(
-        joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
+        joinedload(Order.items).joinedload(OrderItem.product), joinedload(Order.supplier), joinedload(Order.user)
     )
     if search:
         q = q.filter(Order.order_number.ilike(f"%{search}%"))
+    if status:
+        if status not in ORDER_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid order status '{status}'")
+        q = q.filter(Order.status == status)
     if supplier_id:
         q = q.filter(Order.supplier_id == supplier_id)
     total = q.count()
@@ -220,7 +227,7 @@ def bulk_edit_orders(data: OrderBulkEdit, db: Session = Depends(get_db), user=De
 @router.get("/{order_id}", response_model=OrderOut)
 def get_order(order_id: int, db: Session = Depends(get_db)):
     return get_or_404(Order, order_id, db, options=[
-        joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
+        joinedload(Order.items).joinedload(OrderItem.product), joinedload(Order.supplier), joinedload(Order.user)
     ])
 
 
@@ -270,9 +277,9 @@ def order_pdf(order_id: int, db: Session = Depends(get_db)):
         rows.append([
             (name[:42] + "\u2026") if len(name) > 42 else name,
             sku,
-            f"{currency}{float(item.unit_price):.2f}",
+            money(currency, item.unit_price),
             str(item.quantity),
-            f"{currency}{float(item.unit_price) * item.quantity:.2f}",
+            money(currency, float(item.unit_price) * item.quantity),
         ])
 
     y = draw_item_table(
@@ -280,7 +287,7 @@ def order_pdf(order_id: int, db: Session = Depends(get_db)):
         on_page_break=lambda c: draw_banner_header(c, "PURCHASE ORDER", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir),
     )
 
-    y = draw_totals(c, BODY_RIGHT, y, [], "Total", f"{currency}{float(o.total_amount):.2f}")
+    y = draw_totals(c, BODY_RIGHT, y, [], "Total", money(currency, o.total_amount))
 
     if o.notes:
         draw_notes(c, MARGIN, y, o.notes)
@@ -300,11 +307,18 @@ def generate_po_number(db: Session) -> str:
 def _validate_order_items(db: Session, items) -> float:
     seen: set[int] = set()
     total = 0.0
+    product_ids = list({item_data.product_id for item_data in items})
+    products = {p.id: p for p in db.query(Product).filter(Product.id.in_(product_ids)).all()}
+    parents_with_variants = {
+        pid for (pid,) in db.query(Product.parent_id)
+        .filter(Product.parent_id.in_(product_ids), Product.is_active == True, Product.parent_id.isnot(None))
+        .distinct().all()
+    }
     for item_data in items:
-        product = db.query(Product).filter(Product.id == item_data.product_id).first()
+        product = products.get(item_data.product_id)
         if not product:
             raise HTTPException(status_code=404, detail=f"Product {item_data.product_id} not found")
-        if not product.is_variant and db.query(Product).filter(Product.parent_id == product.id, Product.is_active == True).first():
+        if not product.is_variant and product.id in parents_with_variants:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - order a specific variant")
         if item_data.product_id in seen:
             raise HTTPException(status_code=400, detail=f"'{product.display_name}' appears more than once in this order - merge the duplicate lines")
@@ -319,6 +333,8 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(
     if data.supplier_id is not None and db.get(Supplier, data.supplier_id) is None:
         raise HTTPException(status_code=400, detail=f"Supplier {data.supplier_id} not found")
     total = _validate_order_items(db, data.items)
+    s = db.query(Settings).first()
+    currency = (s.currency_symbol if s else "$") or "$"
     order = Order(order_number=generate_po_number(db), user_id=user.id, **data.model_dump(exclude={"items"}))
     db.add(order)
     db.flush()
@@ -329,7 +345,7 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(
     o = get_or_404(Order, order.id, db, options=[
         joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
     ])
-    log_activity(db, user.id, user.username, "create", "order", order.id, f"Created order '{order.order_number}' (${total:.2f})")
+    log_activity(db, user.id, user.username, "create", "order", order.id, f"Created order '{o.order_number}' ({currency}{total:,.2f})")
     db.commit()
     broadcast_change("order", "created")
     return o

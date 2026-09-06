@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Search } from "lucide-react";
+import { History, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse } from "../types";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import FittedSelect from "../components/FittedSelect";
 import { useDebounce } from "../hooks/useDebounce";
 import { useExportCsv } from "../hooks/useExportCsv";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
@@ -70,30 +71,27 @@ export default function ActivityLog() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Activity Log</h1>
-          <p className="text-sm text-muted mt-1">A chronological trail of every action taken across the warehouse.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <History size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Activity Log</h1>
+            <p className="text-sm text-muted mt-1">A chronological trail of every action taken across the warehouse.</p>
+          </div>
         </div>
         <button onClick={handleExport} className="btn-secondary" aria-label="Export activity log to CSV">Export</button>
       </div>
 
       {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">Failed to load activity log.</div>}
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by description..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search activity log" />
         </div>
-        <select className="select w-44" value={entityFilter} onChange={(e) => { setEntityFilter(e.target.value); setPage(1); }} aria-label="Filter by entity">
-          <option value="">All Entities</option>
-          {Object.entries(entityLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <select className="select w-44" value={actionFilter} onChange={(e) => { setActionFilter(e.target.value); setPage(1); }} aria-label="Filter by action">
-          <option value="">All Actions</option>
-          <option value="create">Create</option>
-          <option value="update">Update</option>
-          <option value="delete">Delete</option>
-        </select>
+        <FittedSelect ariaLabel="Filter by entity" value={entityFilter} onChange={(v) => { setEntityFilter(v); setPage(1); }} options={[{ value: "", label: "All Entities" }, ...Object.entries(entityLabels).map(([k, v]) => ({ value: k, label: v }))]} />
+        <FittedSelect ariaLabel="Filter by action" value={actionFilter} onChange={(v) => { setActionFilter(v); setPage(1); }} options={[{ value: "", label: "All Actions" }, { value: "create", label: "Create" }, { value: "update", label: "Update" }, { value: "delete", label: "Delete" }]} />
       </div>
 
       <div className="card overflow-hidden p-0">

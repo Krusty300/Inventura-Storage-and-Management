@@ -47,7 +47,7 @@ export default function ImageCarousel({ images, imageUrl, alt, className = "" }:
               <button
                 key={img.id}
                 onClick={() => setCurrent(i)}
-                className={`w-8 h-8 rounded border-2 overflow-hidden ${i === current ? "border-indigo-500" : "border-border opacity-60 hover:opacity-100"}`}
+                className={`w-8 h-8 rounded border-2 overflow-hidden ${i === current ? "border-primary" : "border-border opacity-60 hover:opacity-100"}`}
               >
                 <img src={img.url} alt="" className="w-full h-full object-cover" onError={onImageError} />
               </button>

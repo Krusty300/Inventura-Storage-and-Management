@@ -122,8 +122,8 @@ describe("CycleCounts Page", () => {
     });
     renderWithProviders(<CycleCounts />);
     fireEvent.click(await screen.findByRole("button", { name: "New Count" }));
-    await screen.findByRole("option", { name: "Warehouse A" });
-    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "1" } });
+    fireEvent.click(await screen.findByRole("combobox", { name: "cc-location" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Warehouse A" }));
     expect(await screen.findByRole("option", { name: "Gadget (SKU-2)" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Widget (SKU-1)" })).toBeInTheDocument();
   });
@@ -139,8 +139,8 @@ describe("CycleCounts Page", () => {
     });
     renderWithProviders(<CycleCounts />);
     fireEvent.click(await screen.findByRole("button", { name: "New Count" }));
-    await screen.findByRole("option", { name: "Warehouse A" });
-    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "1" } });
+    fireEvent.click(await screen.findByRole("combobox", { name: "cc-location" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Warehouse A" }));
     expect(await screen.findByRole("option", { name: "Asset (SKU-3) (Serialized)" })).toBeInTheDocument();
   });
 

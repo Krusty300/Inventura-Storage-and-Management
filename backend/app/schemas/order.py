@@ -50,6 +50,7 @@ class OrderItemOut(BaseModel):
     quantity: int
     unit_price: float
     product_name: str = ""
+    product_image: str = ""
     is_serialized: bool = False
     sku: str = ""
 

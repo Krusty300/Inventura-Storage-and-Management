@@ -12,16 +12,18 @@ import type { Sale } from "../types";
 import { isSelectable, selectableProducts } from "../utils/variants";
 import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS, paymentLabel } from "../utils/payments";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
+import FittedSelect from "./FittedSelect";
+import CartSwitcher from "./CartSwitcher";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
+import { loadCartWidth, saveCartWidth } from "../hooks/useSaleDraft";
 import {
-  clearSaleDraft,
-  hasSaleDraft,
-  loadCartWidth,
-  loadSaleDraft,
-  saveCartWidth,
-  useSaleDraftAutoSave,
-  type SaleDraftData,
-} from "../hooks/useSaleDraft";
+  getPersistedSavedAt,
+  hasPersistedCarts,
+  useDebouncedAutosave,
+  useMultiCart,
+  type MultiCartDraft,
+  type MultiCartDraftInput,
+} from "../hooks/useMultiCart";
 
 interface Props {
   onClose: () => void;
@@ -130,12 +132,19 @@ function CartLine({
         <label className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-muted">
           <span className="shrink-0">Fulfill from</span>
           {stockLoading && <Loader2 size={10} className="animate-spin shrink-0" />}
-          <select className="select !py-1 text-xs min-w-0 flex-1" value={item.location_id} onChange={(e) => onChange("location_id", e.target.value)} disabled={!product || disabled} aria-label="Fulfill from location">
-            <option value="">Auto (any location)</option>
-            {stockLocations.map((l) => (
-              <option key={l.location_id} value={l.location_id.toString()}>{l.path} ({l.count})</option>
-            ))}
-          </select>
+          <FittedSelect
+            ariaLabel="Fulfill from location"
+            value={item.location_id}
+            onChange={(v) => onChange("location_id", v)}
+            disabled={!product || disabled}
+            options={[
+              { value: "", label: "Auto (any location)" },
+              ...stockLocations.map((l) => ({
+                value: l.location_id.toString(),
+                label: `${l.path} (${l.count})`,
+              })),
+            ]}
+          />
         </label>
       </div>
 
@@ -197,17 +206,20 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const { addToast } = useToast();
   const formatDateTime = useDateTimeFormat();
 
-  const [isLocked, setIsLocked] = useState(() => hasSaleDraft());
-  const [isDraftRestored, setIsDraftRestored] = useState(() => hasSaleDraft());
+  const [isLocked, setIsLocked] = useState(() => hasPersistedCarts());
+  const [isDraftRestored, setIsDraftRestored] = useState(() => hasPersistedCarts());
   const [lockUsername, setLockUsername] = useState("");
   const [lockPassword, setLockPassword] = useState("");
   const [lockLoading, setLockLoading] = useState(false);
   const [lockError, setLockError] = useState("");
-  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(() =>
+    hasPersistedCarts() ? getPersistedSavedAt() : null,
+  );
+  const [restoreNonce, setRestoreNonce] = useState(0);
   const lockInputRef = useRef<HTMLInputElement>(null);
 
-  const getStateForDraft = useCallback((): Omit<SaleDraftData, "savedAt"> | null => {
-    if (isLocked || isDraftRestored) return null;
+  const getStateForDraft = useCallback((): MultiCartDraftInput | null => {
+    if (isLocked || isDraftRestored || completedSale) return null;
     if (items.length === 0) return null;
     return {
       customerId,
@@ -219,16 +231,93 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       paymentProviderAmount,
       notes,
       discount,
+      promoCode,
+      promoDiscount,
       amountReceived,
       items,
     };
-  }, [customerId, channelId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, isLocked, isDraftRestored]);
+  }, [customerId, channelId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, promoCode, promoDiscount, amountReceived, items, isLocked, isDraftRestored, completedSale]);
 
-  const scheduleSave = useSaleDraftAutoSave(getStateForDraft, !isLocked && !isDraftRestored);
+  const {
+    carts,
+    activeCart,
+    activeCartId,
+    createCart,
+    switchCart,
+    deleteCart,
+    updateCart,
+    clearActiveCart,
+    restoreCarts,
+    discardPersisted,
+  } = useMultiCart(!isLocked && !isDraftRestored);
+
+  const activeCartIdRef = useRef(activeCartId);
+  useEffect(() => {
+    activeCartIdRef.current = activeCartId;
+  }, [activeCartId]);
+
+  const saveDraftToCart = useCallback((draft: MultiCartDraftInput) => {
+    updateCart(activeCartIdRef.current, { ...draft, savedAt: new Date().toISOString() });
+  }, [updateCart]);
+
+  const { scheduleSave, flushSave } = useDebouncedAutosave(
+    getStateForDraft,
+    !isLocked && !isDraftRestored,
+    saveDraftToCart,
+  );
 
   useEffect(() => {
     scheduleSave();
   }, [customerId, channelId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, scheduleSave]);
+
+  const activeDraftRef = useRef<MultiCartDraft | null>(activeCart.draft);
+  useEffect(() => {
+    activeDraftRef.current = activeCart.draft;
+  }, [activeCart.draft]);
+
+  const applyCartDraft = useCallback((draft: MultiCartDraft | null) => {
+    if (!draft) {
+      setCustomerId("");
+      setChannelId("");
+      setPaymentMethod("cash");
+      setPaymentProvider(MOBILE_MONEY_PROVIDERS[0].value);
+      setPaymentPhone("");
+      setPaymentReference("");
+      setPaymentProviderAmount("");
+      setNotes("");
+      setDiscount("");
+      setAmountReceived("");
+      setItems([]);
+      setPromoCode("");
+      setPromoDiscount(0);
+      setPromoError("");
+      setStockShort(new Set());
+      setSuggestionDismissed(false);
+      setSuggestedPromo(null);
+      return;
+    }
+    setCustomerId(draft.customerId);
+    setChannelId(draft.channelId || "");
+    setPaymentMethod(draft.paymentMethod);
+    setPaymentProvider(draft.paymentProvider);
+    setPaymentPhone(draft.paymentPhone);
+    setPaymentReference(draft.paymentReference);
+    setPaymentProviderAmount(draft.paymentProviderAmount);
+    setNotes(draft.notes);
+    setDiscount(draft.discount);
+    setPromoCode(draft.promoCode);
+    setPromoDiscount(draft.promoDiscount);
+    setPromoError("");
+    setSuggestionDismissed(false);
+    setSuggestedPromo(null);
+    setAmountReceived(draft.amountReceived);
+    setStockShort(new Set());
+    setItems(draft.items);
+  }, []);
+
+  useEffect(() => {
+    applyCartDraft(activeDraftRef.current);
+  }, [activeCartId, restoreNonce, applyCartDraft]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -343,21 +432,6 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     });
   }, []);
 
-  const applyDraft = useCallback((draft: SaleDraftData) => {
-    setCustomerId(draft.customerId);
-    setChannelId(draft.channelId || "");
-    setPaymentMethod(draft.paymentMethod);
-    setPaymentProvider(draft.paymentProvider);
-    setPaymentPhone(draft.paymentPhone);
-    setPaymentReference(draft.paymentReference);
-    setPaymentProviderAmount(draft.paymentProviderAmount);
-    setNotes(draft.notes);
-    setDiscount(draft.discount);
-    setAmountReceived(draft.amountReceived);
-    setItems(draft.items);
-    setDraftSavedAt(draft.savedAt);
-  }, []);
-
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lockUsername.trim() || !lockPassword) return;
@@ -365,8 +439,9 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     setLockError("");
     try {
       await api.post("/auth/verify", { username: lockUsername.trim(), password: lockPassword });
-      const draft = loadSaleDraft();
-      if (draft) applyDraft(draft);
+      setDraftSavedAt(getPersistedSavedAt());
+      restoreCarts();
+      setRestoreNonce((n) => n + 1);
       setIsLocked(false);
       setIsDraftRestored(false);
       setLockUsername("");
@@ -379,6 +454,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   };
 
   const handleLock = () => {
+    flushSave();
     setIsLocked(true);
     setIsDraftRestored(false);
     setLockError("");
@@ -402,25 +478,35 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   };
 
   const handleDiscardDraft = () => {
-    clearSaleDraft();
-    setCustomerId("");
-    setChannelId("");
-    setPaymentMethod("cash");
-    setPaymentProvider(MOBILE_MONEY_PROVIDERS[0].value);
-    setPaymentPhone("");
-    setPaymentReference("");
-    setPaymentProviderAmount("");
-    setNotes("");
-    setItems([]);
-    setDiscount("");
-    setAmountReceived("");
-    setStockShort(new Set());
+    discardPersisted();
+    applyCartDraft(null);
     setIsLocked(false);
     setIsDraftRestored(false);
     setDraftSavedAt(null);
-    setSuggestionDismissed(false);
-    setSuggestedPromo(null);
     addToast("Draft discarded", "success");
+  };
+
+  const cartSummaries = useMemo(
+    () => carts.map((c) => ({ id: c.id, name: c.name, count: c.draft?.items.length ?? 0 })),
+    [carts],
+  );
+
+  const handleCreateCart = () => {
+    if (isLocked) return;
+    flushSave();
+    createCart();
+  };
+
+  const handleSwitchCart = (id: string) => {
+    if (isLocked || id === activeCartId) return;
+    flushSave();
+    switchCart(id);
+  };
+
+  const handleDeleteCart = (id: string) => {
+    if (isLocked) return;
+    flushSave();
+    deleteCart(id);
   };
 
   const addProduct = (p: Product) => {
@@ -488,8 +574,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const change = cashReceived - total;
   const cashShort = paymentMethod === "cash" && amountReceived.trim() !== "" && cashReceived < total;
 
-  const validatePromo = async () => {
-    const code = promoCode.trim().toUpperCase();
+  const validatePromo = async (codeOverride?: string) => {
+    const code = (codeOverride ?? promoCode).trim().toUpperCase();
     if (!code) { setPromoDiscount(0); setPromoError(""); return; }
     setPromoValidating(true);
     try {
@@ -566,11 +652,12 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           location_id: i.location_id ? parseInt(i.location_id) : null,
         })),
       }) as { data: Sale };
-      clearSaleDraft();
+      clearActiveCart();
       if (paymentMethod === "mobile_money") {
         setCompletedSale(sale);
         addToast("Sale created — collect payment via STK Push", "success");
       } else {
+        applyCartDraft(null);
         addToast(paymentMethod === "cash" && cashReceived >= total
           ? `Sale completed — change due ${formatCurrency(Math.max(change, 0), currency)}`
           : "Sale completed", "success");
@@ -607,6 +694,13 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     setStkBilling(false);
   };
 
+  const handleDismissStk = () => {
+    applyCartDraft(null);
+    setCompletedSale(null);
+    setStkSent(false);
+    setStkError("");
+  };
+
   const formDisabled = isLocked;
 
   if (completedSale) {
@@ -639,6 +733,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     value={paymentPhone}
                     onChange={(e) => setPaymentPhone(e.target.value)}
                     autoFocus
+                    aria-label="STK push phone number"
                   />
                 </div>
                 {stkError && (
@@ -663,11 +758,11 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           </div>
 
           <div className="flex gap-3">
-            <button onClick={() => { setCompletedSale(null); setStkSent(false); setStkError(""); }} className="btn-secondary flex-1">
+            <button onClick={handleDismissStk} className="btn-secondary flex-1">
               {stkSent ? "Done" : "Skip for now"}
             </button>
             {stkSent && (
-              <button onClick={() => { setCompletedSale(null); setStkSent(false); setStkError(""); onSaved(); }} className="btn-primary flex-1">
+              <button onClick={() => { handleDismissStk(); onSaved(); }} className="btn-primary flex-1">
                 New Sale
               </button>
             )}
@@ -683,8 +778,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       {isLocked && isDraftRestored && (
         <div className="absolute inset-0 z-[60] bg-app/80 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="card p-8 max-w-sm w-full space-y-6 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-500/10 mx-auto">
-              <Lock size={28} className="text-indigo-600 dark:text-indigo-400" />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mx-auto">
+              <Lock size={28} className="text-primary dark:text-primary" />
             </div>
             <div className="space-y-2">
               <h3 className="text-lg font-bold text-ink">Draft Locked</h3>
@@ -741,8 +836,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         <div className="absolute inset-0 z-[60] flex">
           <div className="w-full h-full flex flex-col items-center justify-center p-6">
             <div className="card p-8 max-w-sm w-full space-y-6 text-center">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-500/10 mx-auto">
-                <Lock size={28} className="text-indigo-600 dark:text-indigo-400" />
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mx-auto">
+                <Lock size={28} className="text-primary dark:text-primary" />
               </div>
               <div className="space-y-2">
                 <h3 className="text-lg font-bold text-ink">Form Locked</h3>
@@ -812,7 +907,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           <button
             type="button"
             onClick={isLocked ? () => { setLockUsername(""); setLockPassword(""); setLockError(""); } : handleLock}
-            className={`p-2 rounded-lg border transition-colors ${isLocked ? "border-amber-300 dark:border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10" : "border-border text-muted hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300"}`}
+            className={`p-2 rounded-lg border transition-colors ${isLocked ? "border-amber-300 dark:border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10" : "border-border text-muted hover:text-primary dark:hover:text-primary hover:border-primary"}`}
             aria-label={isLocked ? "Unlock form" : "Lock form"}
             title={isLocked ? "Form is locked" : "Lock form"}
           >
@@ -847,7 +942,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   onClick={() => setCategory(c)}
                   disabled={formDisabled}
                   className={`px-3 py-1.5 text-xs font-medium rounded-full border whitespace-nowrap transition-colors ${
-                    category === c ? "bg-indigo-600 text-white border-indigo-600" : "bg-surface border-border text-muted hover:border-indigo-300"
+                    category === c ? "bg-primary-solid text-white border-primary-solid" : "bg-surface border-border text-muted hover:border-primary"
                   }`}
                 >
                   {c}
@@ -881,7 +976,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                       className={`text-left border rounded-xl p-4 bg-surface transition-colors relative ${
                         warned
                           ? "border-amber-300 dark:border-amber-500/40 hover:border-amber-400"
-                          : "border-border hover:border-indigo-400 hover:shadow-sm"
+                          : "border-border hover:border-primary hover:shadow-sm"
                       } ${formDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {warned && (
@@ -894,7 +989,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                       </div>
                       <p className="font-semibold text-sm text-ink line-clamp-2">{p.display_name}</p>
                       <p className="text-xs text-faint mt-0.5">{p.sku}</p>
-                      <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-2">{formatCurrency(p.unit_price, currency)}</p>
+                      <p className="text-sm font-bold text-primary dark:text-primary mt-2">{formatCurrency(p.unit_price, currency)}</p>
                     </button>
                   );
                 })}
@@ -908,7 +1003,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
             role="separator"
             aria-orientation="vertical"
             onPointerDown={startResize}
-            className="hidden lg:flex w-3.5 shrink-0 items-center justify-center cursor-col-resize bg-surface border-x border-border text-faint hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+            className="hidden lg:flex w-3.5 shrink-0 items-center justify-center cursor-col-resize bg-surface border-x border-border text-faint hover:text-primary hover:bg-primary-soft dark:hover:bg-primary-strong/40 transition-colors"
             style={{ touchAction: "none" }}
             title="Drag to resize"
           >
@@ -921,15 +1016,31 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           style={{ width: isWide ? `${cartWidth}px` : undefined }}
           aria-label="Sale cart"
         >
+          <div className="px-5 py-3 border-b border-border">
+            <CartSwitcher
+              carts={cartSummaries}
+              activeId={activeCartId}
+              disabled={formDisabled}
+              onCreate={handleCreateCart}
+              onSwitch={handleSwitchCart}
+              onDelete={handleDeleteCart}
+            />
+          </div>
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-5 py-4 border-b border-border space-y-3">
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Customer</label>
-                  <select className="select text-sm" value={customerId} onChange={(e) => setCustomerId(e.target.value)} disabled={formDisabled} aria-label="Customer">
-                    <option value="">Walk-in</option>
-                    {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <FittedSelect
+                    ariaLabel="Customer"
+                    value={customerId}
+                    onChange={setCustomerId}
+                    disabled={formDisabled}
+                    options={[
+                      { value: "", label: "Walk-in" },
+                      ...customers.map((c) => ({ value: String(c.id), label: c.name })),
+                    ]}
+                  />
                   {customerId && (() => {
                     const c = customers.find((x) => String(x.id) === customerId);
                     if (!c?.group_name) return null;
@@ -943,25 +1054,39 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Channel</label>
-                  <select className="select text-sm" value={channelId} onChange={(e) => setChannelId(e.target.value)} disabled={formDisabled} aria-label="Sales channel">
-                    <option value="">Counter</option>
-                    {channels.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-                  </select>
+                  <FittedSelect
+                    ariaLabel="Sales channel"
+                    value={channelId}
+                    onChange={setChannelId}
+                    disabled={formDisabled}
+                    options={[
+                      { value: "", label: "Counter" },
+                      ...channels.map((ch) => ({ value: String(ch.id), label: ch.name })),
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Payment</label>
-                  <select className="select text-sm" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} disabled={formDisabled} aria-label="Payment method">
-                    {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </select>
+                  <FittedSelect
+                    ariaLabel="Payment method"
+                    value={paymentMethod}
+                    onChange={setPaymentMethod}
+                    options={PAYMENT_METHODS}
+                    disabled={formDisabled}
+                  />
                 </div>
               </div>
               {paymentMethod === "mobile_money" && (
                 <>
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1.5">Mobile Money Provider</label>
-                    <select className="select text-sm" value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} disabled={formDisabled} aria-label="Mobile money provider">
-                      {MOBILE_MONEY_PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                    </select>
+                    <FittedSelect
+                      ariaLabel="Mobile money provider"
+                      value={paymentProvider}
+                      onChange={setPaymentProvider}
+                      options={MOBILE_MONEY_PROVIDERS}
+                      disabled={formDisabled}
+                    />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1.5">Payer Phone</label>
@@ -1033,11 +1158,11 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     placeholder="Code"
                     value={promoCode}
                     onChange={(e) => { setPromoCode(e.target.value); if (!e.target.value.trim()) { setPromoDiscount(0); setPromoError(""); } }}
-                    onBlur={validatePromo}
+                    onBlur={() => validatePromo()}
                     disabled={formDisabled}
                     aria-label="Promo code"
                   />
-                  <button type="button" onClick={validatePromo} disabled={formDisabled || promoValidating || !promoCode.trim()} className="btn-secondary text-xs px-2 py-1.5 disabled:opacity-40">
+                  <button type="button" onClick={() => validatePromo()} disabled={formDisabled || promoValidating || !promoCode.trim()} className="btn-secondary text-xs px-2 py-1.5 disabled:opacity-40">
                     {promoValidating ? "..." : "Apply"}
                   </button>
                 </div>
@@ -1065,7 +1190,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                       type="button"
                       onClick={() => {
                         setPromoCode(suggestedPromo.promo.code);
-                        validatePromo();
+                        validatePromo(suggestedPromo.promo.code);
                       }}
                       disabled={formDisabled}
                       className="text-xs font-medium bg-emerald-600 text-white px-2.5 py-1 rounded-md hover:bg-emerald-700 disabled:opacity-40"

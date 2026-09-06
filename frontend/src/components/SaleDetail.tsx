@@ -1,4 +1,4 @@
-import { Send, RefreshCw, XCircle, Trash2, ExternalLink, Download, Eye, X } from "lucide-react";
+import { Send, RefreshCw, XCircle, Trash2, ExternalLink, Download, Eye, X, Pencil } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -6,8 +6,10 @@ import type { Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { paymentLabel } from "../utils/payments";
 import { statusBadge } from "../utils/statusBadges";
+import { getPlaceholder, onImageError } from "../utils/placeholders";
 import { useSettings } from "../hooks/useSettings";
 import Modal from "./Modal";
+import AttachmentSection from "./AttachmentSection";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
@@ -30,6 +32,9 @@ export default function SaleDetail({ sale, onClose }: Props) {
   const [stkPending, setStkBilling] = useState(false);
   const [b2cPending, setB2cPending] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"cancel" | "delete" | null>(null);
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(sale.notes);
+  const [currentNote, setCurrentNote] = useState(sale.notes);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -90,6 +95,18 @@ export default function SaleDetail({ sale, onClose }: Props) {
       addToast("Refund marked complete", "success");
     },
     onError: (err: unknown) => addToast(errorMessage(err, "Failed to update refund"), "error"),
+  });
+
+  const saveNote = useMutation({
+    mutationFn: (notes: string) => api.put(`/sales/${sale.id}`, { notes }),
+    onSuccess: (_data, notes) => {
+      setEditingNote(false);
+      setCurrentNote(notes);
+      setNoteDraft(notes);
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      addToast("Sale note saved", "success");
+    },
+    onError: (err: unknown) => addToast(errorMessage(err, "Failed to save note"), "error"),
   });
 
   const stkPush = useMutation({
@@ -239,7 +256,18 @@ export default function SaleDetail({ sale, onClose }: Props) {
                 <tbody className="divide-y divide-border">
                   {sale.items.map((item) => (
                     <tr key={item.id}>
-                      <td className="py-3 pr-3 font-medium text-ink">{item.product_name}</td>
+                      <td className="py-3 pr-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={item.product_image || getPlaceholder()}
+                            alt=""
+                            className="w-10 h-10 rounded object-cover shrink-0 border border-border bg-subtle"
+                            loading="lazy"
+                            onError={onImageError}
+                          />
+                          <span className="font-medium text-ink">{item.product_name}</span>
+                        </div>
+                      </td>
                       <td className="py-3 px-3 text-muted whitespace-nowrap">{item.location || (item.locations ?? []).join(", ") || "\u2014"}</td>
                       <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.quantity}</td>
                       <td className="py-3 px-3 text-right text-muted whitespace-nowrap">{formatCurrency(item.unit_price, saleSymbol)}</td>
@@ -255,39 +283,87 @@ export default function SaleDetail({ sale, onClose }: Props) {
               </table>
             </div>
 
-            <div className="mt-5 border-t-2 border-double border-border pt-4 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
-              <div className="space-y-2 text-sm">
-                {sale.payment_status && sale.status !== "cancelled" && sale.payment_status !== sale.status && (
-                  <p className="text-muted">Payment: <span className={`badge ${paymentStatusBadge}`}>{sale.payment_status}</span></p>
-                )}
-                <p className="text-muted">Method: <span className="font-medium text-ink">{paymentLabel(sale.payment_method, sale.payment_provider)}</span></p>
-                {sale.payment_phone && <p className="text-muted">Payer phone: <span className="font-medium text-ink">{sale.payment_phone}</span></p>}
-                {sale.payment_reference && <p className="text-muted">Reference: <span className="font-medium text-ink font-mono">{sale.payment_reference}</span></p>}
-                {sale.payment_provider_amount != null && (
-                  <p className="text-muted">Provider Amount: <span className="font-medium text-ink">{formatCurrency(sale.payment_provider_amount, saleSymbol)}</span></p>
-                )}
-              </div>
-              <div className="text-right">
-                <div className="max-w-[240px] ml-auto space-y-1.5">
-                  <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>{formatCurrency(sale.subtotal, saleSymbol)}</span></div>
-                  {sale.discount_amount > 0 && <div className="flex justify-between"><span className="text-muted">Discount</span><span className="text-red-600 dark:text-red-400">-{formatCurrency(sale.discount_amount, saleSymbol)}</span></div>}
-                  {sale.promo_discount > 0 && <div className="flex justify-between"><span className="text-muted">Promo ({sale.promo_code})</span><span className="text-red-600 dark:text-red-400">-{formatCurrency(sale.promo_discount, saleSymbol)}</span></div>}
-                  <div className="flex justify-between"><span className="text-muted">Tax</span><span>{formatCurrency(sale.tax_amount, saleSymbol)}</span></div>
-                  <div className="flex justify-between items-baseline pt-2 border-t border-dashed border-border">
-                    <span className="font-semibold text-ink">Total</span>
-                    <span className="text-xl font-bold text-ink">{formatCurrency(sale.total_amount, saleSymbol)}</span>
+            <div className="mt-6 pt-5 border-t-2 border-double border-border flex flex-col gap-5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                  {sale.payment_status && sale.status !== "cancelled" && sale.payment_status !== sale.status && (
+                    <p className="text-muted">Payment: <span className={`badge ${paymentStatusBadge}`}>{sale.payment_status}</span></p>
+                  )}
+                  <p className="text-muted">Method: <span className="font-medium text-ink">{paymentLabel(sale.payment_method, sale.payment_provider)}</span></p>
+                  {sale.payment_phone && <p className="text-muted">Payer phone: <span className="font-medium text-ink">{sale.payment_phone}</span></p>}
+                  {sale.payment_reference && <p className="text-muted">Reference: <span className="font-medium text-ink font-mono">{sale.payment_reference}</span></p>}
+                  {sale.payment_provider_amount != null && (
+                    <p className="text-muted">Provider Amount: <span className="font-medium text-ink">{formatCurrency(sale.payment_provider_amount, saleSymbol)}</span></p>
+                  )}
+                </div>
+
+                <div className="w-full sm:w-72">
+                  <div className="rounded-xl border border-border bg-subtle/40 dark:bg-app p-4 space-y-2.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted">Subtotal</span>
+                      <span className="font-medium text-ink">{formatCurrency(sale.subtotal, saleSymbol)}</span>
+                    </div>
+                    {sale.discount_amount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted">Discount</span>
+                        <span className="font-medium text-red-600 dark:text-red-400">−{formatCurrency(sale.discount_amount, saleSymbol)}</span>
+                      </div>
+                    )}
+                    {sale.promo_discount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted">Promo {sale.promo_code ? `(${sale.promo_code})` : ""}</span>
+                        <span className="font-medium text-red-600 dark:text-red-400">−{formatCurrency(sale.promo_discount, saleSymbol)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted">Tax</span>
+                      <span className="font-medium text-ink">{formatCurrency(sale.tax_amount, saleSymbol)}</span>
+                    </div>
+                    <div className="pt-2.5 mt-1 border-t border-dashed border-border flex items-baseline justify-between">
+                      <span className="font-semibold text-ink">Total</span>
+                      <span className="text-2xl font-bold text-ink tracking-tight">{formatCurrency(sale.total_amount, saleSymbol)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {sale.notes && (
-            <div className="px-6 pb-5 text-sm">
-              <p className="text-faint text-xs uppercase tracking-wide mb-1">Notes</p>
-              <p className="text-muted">{sale.notes}</p>
+          <div className="px-6 pb-5 text-sm">
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <p className="text-faint text-xs uppercase tracking-wide">Notes</p>
+              {can("sales.create") && !editingNote && (
+                <button onClick={() => { setNoteDraft(currentNote); setEditingNote(true); }} className="btn-secondary text-xs px-2 py-1 inline-flex items-center gap-1">
+                  <Pencil size={12} />{currentNote ? "Edit Notes" : "Add note"}
+                </button>
+              )}
             </div>
-          )}
+            {editingNote ? (
+              <div className="space-y-2">
+                <textarea
+                  className="input text-sm w-full"
+                  rows={3}
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  placeholder="Add a note for this sale..."
+                />
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setEditingNote(false)} disabled={saveNote.isPending} className="btn-secondary text-xs">
+                    Cancel
+                  </button>
+                  <button onClick={() => saveNote.mutate(noteDraft)} disabled={saveNote.isPending} className="btn-primary text-xs">
+                    {saveNote.isPending ? "Saving..." : "Save note"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted whitespace-pre-wrap">{currentNote || "No notes on this sale."}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="px-6 py-5 border-t border-border bg-white dark:bg-app">
+          <AttachmentSection entityType="sale" entityId={sale.id} canEdit={can("sales.create")} />
         </div>
 
         {isMpesa && (sale.status === "completed" || sale.status === "pending") && !sale.refund_status && (

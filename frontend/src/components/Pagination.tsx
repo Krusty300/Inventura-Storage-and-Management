@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import FittedSelect from "./FittedSelect";
 
 interface Props {
   page: number;
@@ -32,14 +33,13 @@ export default function Pagination({ page, totalPages, onPageChange, pageSize, o
       {onPageSizeChange && (
         <label className="flex items-center gap-2 text-sm text-muted mr-4">
           Per page
-          <select
-            className="select py-1"
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            aria-label="Page size"
-          >
-            {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
+          <FittedSelect
+            value={String(pageSize)}
+            onChange={(v) => onPageSizeChange(Number(v))}
+            ariaLabel="Page size"
+            maxWidth={80}
+            options={PAGE_SIZES.map((n) => ({ value: String(n), label: String(n) }))}
+          />
         </label>
       )}
       {totalPages > 1 && (

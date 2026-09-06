@@ -83,17 +83,22 @@ describe("LPNs Page", () => {
   });
 
   it("shows both products and serialized items in the detail view", async () => {
-    mockLPNs([mockLPN({
+    const lpn = mockLPN({
       contents: [{ product_id: 1, product_name: "Widget", lot_id: null, lot_number: "", quantity: 7 }],
       serials: [
         { serial_id: 1, product_id: 2, product_name: "Serial Gadget", serial_number: "SN-001", lot_number: "", status: "in_stock", location_name: "Aisle A" },
         { serial_id: 2, product_id: 2, product_name: "Serial Gadget", serial_number: "SN-002", lot_number: "LOT-X", status: "in_stock", location_name: "Aisle A" },
       ],
-    })]);
+    });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/lpns") return Promise.resolve({ data: { items: [lpn], total: 1, page: 1, pages: 1 } });
+      if (url === "/lpns/1/contents") return Promise.resolve({ data: lpn });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
     renderWithProviders(<LPNs />);
     fireEvent.click(await screen.findByLabelText("View LPN-0001"));
 
-    expect(screen.getByText("Products")).toBeInTheDocument();
+    expect(await screen.findByText("Products")).toBeInTheDocument();
     expect(screen.getByText("Widget")).toBeInTheDocument();
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText("Serialized Items")).toBeInTheDocument();
@@ -159,11 +164,9 @@ describe("LPNs Page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Load Stock" }));
 
     await screen.findByRole("option", { name: "Widget (W)" });
-    const productSelect = screen.getAllByRole("combobox").find((c) =>
-      c.querySelector('option[value="1"]')
-    )!;
+    const productSelect = screen.getByRole("combobox", { name: "Product" });
     fireEvent.change(productSelect, { target: { value: "1" } });
-    expect(productSelect).toHaveValue("1");
+    expect(productSelect).toHaveValue("Widget (W)");
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "3" } });
     fireEvent.click(screen.getByRole("button", { name: "Load Stock" }));
 
@@ -206,9 +209,7 @@ describe("LPNs Page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Load Stock" }));
 
     await screen.findByRole("option", { name: "Serial Gadget (SG) (Serialized)" });
-    const productSelect = screen.getAllByRole("combobox").find((c) =>
-      c.querySelector('option[value="1"]')
-    )!;
+    const productSelect = screen.getByRole("combobox", { name: "Product" });
     fireEvent.change(productSelect, { target: { value: "1" } });
 
     expect(await screen.findByText("SN-Q1")).toBeInTheDocument();

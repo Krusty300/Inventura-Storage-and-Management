@@ -53,6 +53,7 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     barcode: "",
     batch_number: "",
     expiry_date: null,
+    effective_expiry_date: null,
     image_url: "",
     is_active: true,
     is_serialized: false,

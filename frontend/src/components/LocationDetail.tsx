@@ -181,7 +181,7 @@ export default function LocationDetail({ location, onClose }: Props) {
       <div className="space-y-4 text-sm">
         <div className="rounded-xl border border-border bg-app p-4">
           <div className="flex items-center gap-3">
-            <span className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300 flex items-center justify-center shrink-0">
+            <span className="w-11 h-11 rounded-xl bg-primary-soft text-primary dark:bg-primary/15 dark:text-primary flex items-center justify-center shrink-0">
               <MapPin size={22} />
             </span>
             <div className="min-w-0">
@@ -217,7 +217,7 @@ export default function LocationDetail({ location, onClose }: Props) {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 flex-1 min-w-0 rounded-xl border border-border bg-app px-4 py-3">
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted"><Package size={14} className="text-indigo-500" /> <span className="font-medium text-ink">{totalStockQty}</span> units</span>
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted"><Package size={14} className="text-primary" /> <span className="font-medium text-ink">{totalStockQty}</span> units</span>
             <span className="w-px h-4 bg-border hidden sm:block" />
             <span className="inline-flex items-center gap-1.5 text-xs text-muted"><span className="font-medium text-ink">{lpns.length}</span> LPNs</span>
             {lotCount > 0 && (

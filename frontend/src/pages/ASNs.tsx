@@ -1,12 +1,13 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, PackagePlus, Pencil, Plus, Printer, Search, Trash2, XCircle } from "lucide-react";
+import { Eye, PackagePlus, Pencil, Plus, Printer, Search, Trash2, Truck, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { ASN, LPN, PaginatedResponse, Product, Supplier } from "../types";
 import Modal from "../components/Modal";
+import AttachmentSection from "../components/AttachmentSection";
 import LocationPicker from "../components/LocationPicker";
 import StockLocationHints from "../components/StockLocationHints";
 import Pagination from "../components/Pagination";
@@ -26,6 +27,7 @@ import { usePageSize } from "../hooks/usePageSize";
 import { errorMessage } from "../utils/errors";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
+import FittedSelect from "../components/FittedSelect";
 
 function supplierSelectableItems(items: Product[], supplierId: string): Product[] {
   const sid = Number(supplierId);
@@ -126,9 +128,14 @@ export default function ASNs() {
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">ASNs</h1>
-          <p className="text-sm text-muted mt-1">Advanced shipping notices — track incoming supplier shipments from order to dock.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Truck size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">ASNs</h1>
+            <p className="text-sm text-muted mt-1">Advanced shipping notices — track incoming supplier shipments from order to dock.</p>
+          </div>
         </div>
         {can("asns.create") && (
           <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-1">
@@ -143,21 +150,28 @@ export default function ASNs() {
         </div>
       )}
 
-      <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by ASN number, supplier..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search ASNs" />
         </div>
-        <select className="select w-40" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-          <option value="">All Statuses</option>
-          <option value="pending">Pending</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="received">Received</option>
-        </select>
-        <select className="select w-48" aria-label="Filter by supplier" value={supplierFilter} onChange={(e) => { setSupplierFilter(e.target.value); setPage(1); }}>
-          <option value="">All Suppliers</option>
-          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        <FittedSelect
+          ariaLabel="Filter by status"
+          value={status}
+          onChange={(v) => { setStatus(v); setPage(1); }}
+          options={[
+            { value: "", label: "All Statuses" },
+            { value: "pending", label: "Pending" },
+            { value: "cancelled", label: "Cancelled" },
+            { value: "received", label: "Received" },
+          ]}
+        />
+        <FittedSelect
+          ariaLabel="Filter by supplier"
+          value={supplierFilter}
+          onChange={(v) => { setSupplierFilter(v); setPage(1); }}
+          options={[{ value: "", label: "All Suppliers" }, ...suppliers.map((s) => ({ value: String(s.id), label: s.name }))]}
+        />
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -189,15 +203,15 @@ export default function ASNs() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={(e) => { e.stopPropagation(); printPdf(a); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${a.asn_number}`}><Printer size={16} /></button>
-                    <button onClick={(e) => { e.stopPropagation(); setViewing(a); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${a.asn_number}`}><Eye size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); printPdf(a); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Print ${a.asn_number}`}><Printer size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setViewing(a); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${a.asn_number}`}><Eye size={16} /></button>
                     {can("asns.update") && (
-                      <button onClick={(e) => { e.stopPropagation(); setEditing(a); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${a.asn_number}`} title="Edit ASN">
+                      <button onClick={(e) => { e.stopPropagation(); setEditing(a); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${a.asn_number}`} title="Edit ASN">
                         <Pencil size={16} />
                       </button>
                     )}
                     {a.status === "pending" && can("asns.receive") && (
-                      <button onClick={(e) => { e.stopPropagation(); setReceiving(a); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 font-medium">Receive</button>
+                      <button onClick={(e) => { e.stopPropagation(); setReceiving(a); }} className="text-xs text-primary dark:text-primary hover:text-primary-strong dark:text-primary font-medium">Receive</button>
                     )}
                     {a.status === "pending" && a.total_received === 0 && can("asns.update") && (
                       <button onClick={(e) => { e.stopPropagation(); setCancelling(a); }} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Cancel ${a.asn_number}`} title="Cancel ASN">
@@ -300,10 +314,15 @@ function AsnFormRow({ row, idx, productList, onChange, onRemove }: {
     <div className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
       <div className="sm:col-span-4">
         <label className="block text-xs font-medium text-muted mb-1">Product</label>
-        <select className="select" aria-label="Product" value={row.product_id} onChange={(e) => onChange(idx, "product_id", e.target.value)}>
-          <option value="">Select...</option>
-          {productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
-        </select>
+        <FittedSelect
+          ariaLabel="Product"
+          value={row.product_id}
+          onChange={(v) => onChange(idx, "product_id", v)}
+          options={[
+            { value: "", label: "Select..." },
+            ...productList.map((p) => ({ value: String(p.id), label: productLabel(p) })),
+          ]}
+        />
       </div>
       <div className="sm:col-span-2">
         <label className="block text-xs font-medium text-muted mb-1">Expected Qty</label>
@@ -454,10 +473,15 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-            <select className="select" aria-label="Supplier" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">None</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="Supplier"
+              value={supplier_id}
+              onChange={setSupplierId}
+              options={[
+                { value: "", label: "None" },
+                ...suppliers.map((s) => ({ value: String(s.id), label: s.name })),
+              ]}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Expected Arrival</label>
@@ -498,6 +522,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
 function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
   const formatDate = useDateFormat();
   const { data: settings } = useSettings();
+  const { can } = useAuth();
   const currencySymbol = settings?.currency_symbol || "$";
   const totalAmount = asn.items.reduce((sum, i) => sum + i.unit_cost * i.expected_qty, 0);
   return (
@@ -588,6 +613,9 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
               <p className="text-muted">{asn.notes}</p>
             </div>
           )}
+        </div>
+        <div className="px-6 py-5 border-t border-border bg-white dark:bg-app">
+          <AttachmentSection entityType="asn" entityId={asn.id} canEdit={can("asns.create")} />
         </div>
         <div className="flex justify-end pt-2">
           <button onClick={onClose} className="btn-secondary">Close</button>

@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, PackagePlus, Search, Fingerprint } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, Package, PackagePlus, Search, Fingerprint } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Category, PaginatedResponse, Product, StockMovement } from "../types";
@@ -13,6 +13,7 @@ import CsvImportModal from "../components/CsvImportModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Modal from "../components/Modal";
 import BarcodeScanner from "../components/BarcodeScanner";
+import FittedSelect from "../components/FittedSelect";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import Pagination from "../components/Pagination";
@@ -38,8 +39,8 @@ export default function Products() {
   const formatDate = useDateFormat();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [expiryFilter, setExpiryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") ?? "");
+  const [expiryFilter, setExpiryFilter] = useState(() => searchParams.get("expiry") ?? "");
   const [lowStock, setLowStock] = useState(searchParams.get("low_stock") === "1");
   const [sortKey, setSortKey] = useState<string>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -73,7 +74,26 @@ export default function Products() {
       if (prev !== nextLowStock) setPage(1);
       return nextLowStock;
     });
+    const nextCategory = searchParams.get("category") ?? "";
+    setCategoryFilter((prev) => {
+      if (prev !== nextCategory) setPage(1);
+      return nextCategory;
+    });
+    const nextExpiry = searchParams.get("expiry") ?? "";
+    setExpiryFilter((prev) => {
+      if (prev !== nextExpiry) setPage(1);
+      return nextExpiry;
+    });
   }, [searchParams]);
+
+  const updateSearchParam = (key: string, value: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    }, { replace: true });
+  };
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -176,12 +196,16 @@ export default function Products() {
 
   const sortIndicator = (key: string) => sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "";
 
-  const expiryBadge = (p: Product) => {
-    if (!p.expiry_date) return <span className="text-faint">—</span>;
-    const days = daysUntil(p.expiry_date);
+  const expiryWindow = settings?.expiry_warning_days ?? 30;
+
+  const expiryBadge = (p: Product, sellable: number) => {
+    const days = typeof p.expiry_days_left === "number" ? p.expiry_days_left : (p.expiry_date ? daysUntil(p.expiry_date) : null);
+    const displayDate = p.effective_expiry_date || p.expiry_date;
+    if (days === null) return <span className="text-faint">—</span>;
     if (days < 0) return <span className="badge badge-danger">Expired</span>;
-    if (days <= 30) return <span className="badge badge-warning">Expires {formatDate(p.expiry_date)}</span>;
-    return <span className="text-muted text-xs">{formatDate(p.expiry_date)}</span>;
+    if (days <= expiryWindow && sellable > 0 && displayDate) return <span className="badge badge-warning">Expires {formatDate(displayDate)}</span>;
+    if (displayDate) return <span className="text-muted text-xs">{formatDate(displayDate)}</span>;
+    return <span className="text-muted text-xs">—</span>;
   };
 
   const allSelected = parents.length > 0 && parents.every((p) => selectedIds.has(p.id));
@@ -226,9 +250,14 @@ export default function Products() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Products</h1>
-          <p className="text-sm text-muted mt-1">Manage the items you stock, sell, and manufacture.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Package size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Products</h1>
+            <p className="text-sm text-muted mt-1">Manage the items you stock, sell, and manufacture.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import products from CSV">
@@ -246,8 +275,8 @@ export default function Products() {
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input
             className="input pl-10"
@@ -259,28 +288,36 @@ export default function Products() {
         </div>
 
         <BarcodeScanner onProductFound={(p) => { setSearch(p.sku); setPage(1); }} />
-        <select
-          className="select w-48"
+        <FittedSelect
           value={categoryFilter}
-          onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
-          aria-label="Filter by category"
-        >
-          <option value="">All Categories</option>
-          {(categories || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <select
-          className="select w-48"
+          onChange={(v) => { setCategoryFilter(v); setPage(1); updateSearchParam("category", v); }}
+          ariaLabel="Filter by category"
+          maxWidth={220}
+          options={[{ value: "", label: "All Categories" }, ...(categories || []).map((c) => ({ value: String(c.id), label: c.name }))]}
+        />
+        <FittedSelect
           value={expiryFilter}
-          onChange={(e) => { setExpiryFilter(e.target.value); setPage(1); }}
-          aria-label="Filter by expiry"
-        >
-          <option value="">All Expiry</option>
-          <option value="expiring">Expiring Soon (30 days)</option>
-          <option value="expired">Expired</option>
-        </select>
+          onChange={(v) => { setExpiryFilter(v); setPage(1); updateSearchParam("expiry", v); }}
+          ariaLabel="Filter by expiry"
+          maxWidth={220}
+          options={[
+            { value: "", label: "All Expiry" },
+            { value: "expiring", label: `Expiring Soon (${expiryWindow} days)` },
+            { value: "expired", label: "Expired" },
+          ]}
+        />
+        {expiryFilter && (
+          <button
+            onClick={() => { setExpiryFilter(""); setPage(1); updateSearchParam("expiry", ""); }}
+            className="badge badge-warning cursor-pointer border border-amber-300"
+            aria-label="Clear expiry filter"
+          >
+            {expiryFilter === "expired" ? "Expired ✕" : `Expiring Soon (${expiryWindow} days) ✕`}
+          </button>
+        )}
         {lowStock && (
           <button
-            onClick={() => { setLowStock(false); setSearchParams({}); setPage(1); }}
+            onClick={() => { setLowStock(false); setPage(1); updateSearchParam("low_stock", ""); }}
             className="badge badge-warning cursor-pointer border border-amber-300"
             aria-label="Clear low stock filter"
           >
@@ -290,12 +327,12 @@ export default function Products() {
       </div>
 
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-200 dark:border-indigo-500/30">
-          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-400">{selectedIds.size} selected</span>
+        <div className="flex items-center gap-3 px-4 py-3 bg-primary-soft dark:bg-primary/10 rounded-lg border border-primary-soft dark:border-primary/30">
+          <span className="text-sm font-medium text-primary-strong dark:text-primary">{selectedIds.size} selected</span>
           <button onClick={() => setShowBulkEdit(true)} className="btn-primary text-sm px-3 py-1.5">
             Bulk Edit
           </button>
-          <button onClick={() => setSelectedIds(new Set())} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:text-indigo-400 underline">Clear</button>
+          <button onClick={() => setSelectedIds(new Set())} className="text-sm text-primary dark:text-primary hover:text-primary-strong dark:text-primary underline">Clear</button>
         </div>
       )}
 
@@ -357,7 +394,7 @@ export default function Products() {
                         {isGroup && (
                           <button
                             onClick={() => setCollapsed((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}
-                            className="p-0.5 text-faint hover:text-indigo-600 dark:text-indigo-400"
+                            className="p-0.5 text-faint hover:text-primary dark:text-primary"
                             aria-label={isCollapsed ? "Expand variants" : "Collapse variants"}
                           >
                             {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
@@ -369,7 +406,7 @@ export default function Products() {
                           <span className="font-medium">{p.name}</span>
                         )}
                         {isGroup && (
-                          <span className="badge bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">{p.variants.filter((v) => v.is_active).length} variants</span>
+                          <span className="badge bg-primary-soft dark:bg-primary/10 text-primary-strong dark:text-primary border border-primary-soft dark:border-primary/30">{p.variants.filter((v) => v.is_active).length} variants</span>
                         )}
                         {p.is_serialized && (
                           <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/30">
@@ -415,7 +452,7 @@ export default function Products() {
                     </td>
                     <td className="px-4 py-3 text-muted">{p.location}</td>
                     <td className="px-4 py-3 text-muted">{p.batch_number || "—"}</td>
-                    <td className="px-4 py-3">{expiryBadge(p)}</td>
+                    <td className="px-4 py-3">{expiryBadge(p, sellable)}</td>
                     <td className="px-4 py-3">
                       {can("products.update") ? (
                         <button
@@ -433,24 +470,24 @@ export default function Products() {
                     <td className="px-4 py-3">
                       <div className="flex gap-2 items-center">
                         {!p.is_variant && !p.is_serialized && (
-                          <button onClick={() => { setVariantParent(p); setEditing(null); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" title={`Add variant to ${p.name}`} aria-label={`Add variant to ${p.name}`}>
+                          <button onClick={() => { setVariantParent(p); setEditing(null); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" title={`Add variant to ${p.name}`} aria-label={`Add variant to ${p.name}`}>
                             <PackagePlus size={16} />
                           </button>
                         )}
-                        <button onClick={() => setViewing(p)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${p.display_name}`}>
+                        <button onClick={() => setViewing(p)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${p.display_name}`}>
                           <Eye size={16} />
                         </button>
                         {!isGroup && !p.is_serialized && (
-                          <button onClick={() => setAdjusting(p)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Adjust stock for ${p.display_name}`}>
+                          <button onClick={() => setAdjusting(p)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Adjust stock for ${p.display_name}`}>
                             <ClipboardList size={16} />
                           </button>
                         )}
                         {!isGroup && (
-                          <button onClick={() => setMovementProduct(p)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View movement history for ${p.display_name}`}>
+                          <button onClick={() => setMovementProduct(p)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View movement history for ${p.display_name}`}>
                             <History size={16} />
                           </button>
                         )}
-                        <button onClick={() => { setEditing(p); setVariantParent(null); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${p.display_name}`}>
+                        <button onClick={() => { setEditing(p); setVariantParent(null); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${p.display_name}`}>
                           <Pencil size={16} />
                         </button>
                         <button onClick={() => setDeleting(p)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${p.display_name}`}>

@@ -1,5 +1,8 @@
+import logging
+import weakref
 from datetime import date, datetime, timezone
 
+from sqlalchemy import event
 from sqlalchemy.orm import Session
 
 from app.models.notification import Notification
@@ -7,6 +10,35 @@ from app.models.product import Product
 from app.models.settings import Settings
 from app.models.user import User
 from app.utils import broadcast_change_user
+
+logger = logging.getLogger(__name__)
+
+# Notifications are broadcast only after the owning transaction commits, so
+# clients that refetch on the event never observe uncommitted rows.
+_pending: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+
+def _defer_broadcast(db: Session, user_id: int, entity: str, action: str) -> None:
+    _pending.setdefault(db, []).append((user_id, entity, action))
+
+
+def _flush_committed(db: Session) -> None:
+    items = _pending.pop(db, None)
+    if not items:
+        return
+    for user_id, entity, action in items:
+        try:
+            broadcast_change_user(user_id, entity, action)
+        except Exception:
+            logger.warning("Failed to broadcast %s %s after commit", entity, action, exc_info=True)
+
+
+def _drop_pending(db: Session) -> None:
+    _pending.pop(db, None)
+
+
+event.listen(Session, "after_commit", _flush_committed)
+event.listen(Session, "after_rollback", _drop_pending)
 
 
 def _get_settings(db: Session) -> Settings:
@@ -27,7 +59,7 @@ def create_notification(db: Session, user_id: int, title: str, message: str = ""
         created_at=datetime.now(timezone.utc),
     )
     db.add(n)
-    broadcast_change_user(user_id, "notification", "created")
+    _defer_broadcast(db, user_id, "notification", "created")
     return n
 
 

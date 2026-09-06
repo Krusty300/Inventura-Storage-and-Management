@@ -78,8 +78,11 @@ function openReceiptForm() {
 }
 
 async function selectProduct(id: string, label: string) {
-  const option = await screen.findByRole("option", { name: label });
-  fireEvent.change(option.closest("select")!, { target: { value: id } });
+  await screen.findByRole("option", { name: label });
+  const combobox = screen.getAllByRole("combobox").find(
+    (el) => el.getAttribute("aria-label") === "Product"
+  )!;
+  fireEvent.change(combobox, { target: { value: id } });
 }
 
 describe("Receipts Page", () => {
@@ -155,7 +158,7 @@ describe("Receipts Page", () => {
     openReceiptForm();
     expect(await screen.findByRole("option", { name: "Fresh Farms" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Supplier"), { target: { value: "5" } });
-    await waitFor(() => expect(screen.getByLabelText("Product")).toHaveValue("20"));
+    await waitFor(() => expect(screen.getByLabelText("Product")).toHaveValue("Milk (M-1)"));
     expect(screen.getByLabelText("Unit cost")).toHaveValue(2.5);
     expect(screen.queryByRole("option", { name: "Eggs (E-1)" })).not.toBeInTheDocument();
   });

@@ -35,8 +35,8 @@ export default function StockLocationHints({ locations, isSerialized, selectedPa
             onClick={() => onSelect(l.path)}
             className={`text-xs px-2 py-0.5 rounded border transition-colors ${
               selectedPath === l.path
-                ? "border-indigo-400 text-indigo-600 bg-indigo-50 dark:text-indigo-400 dark:bg-indigo-500/10"
-                : "border-border-strong bg-subtle text-muted hover:text-indigo-600 dark:hover:text-indigo-400"
+                ? "border-primary text-primary bg-primary-soft dark:text-primary dark:bg-primary/10"
+                : "border-border-strong bg-subtle text-muted hover:text-primary dark:hover:text-primary"
             }`}
           >
             {l.path} ({l.count})

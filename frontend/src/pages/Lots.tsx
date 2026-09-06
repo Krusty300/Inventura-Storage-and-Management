@@ -11,6 +11,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import FittedSelect from "../components/FittedSelect";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -94,9 +95,14 @@ export default function Lots() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Lots</h1>
-          <p className="text-sm text-muted mt-1">Track batches of stock by lot number, expiry, and status.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <FlaskConical size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Lots</h1>
+            <p className="text-sm text-muted mt-1">Track batches of stock by lot number, expiry, and status.</p>
+          </div>
         </div>
         <button onClick={handleExport} className="btn-secondary" aria-label="Export lots to CSV">Export</button>
       </div>
@@ -107,19 +113,12 @@ export default function Lots() {
         </div>
       )}
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by lot number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search lots" />
         </div>
-        <select className="select" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
-          <option value="quarantined">Quarantined</option>
-          <option value="depleted">Depleted</option>
-          <option value="sold">Sold</option>
-        </select>
+        <FittedSelect ariaLabel="Filter by status" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={[{ value: "", label: "All Statuses" }, { value: "active", label: "Active" }, { value: "expired", label: "Expired" }, { value: "quarantined", label: "Quarantined" }, { value: "depleted", label: "Depleted" }, { value: "sold", label: "Sold" }]} />
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -159,8 +158,8 @@ export default function Lots() {
                 <td className="px-4 py-3 whitespace-nowrap"><span className={`badge ${statusBadge(l.status)}`}>{l.status.replace("_", " ")}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => printLabel(l.id)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print label ${l.lot_number}`}><FileText size={16} /></button>
-                    <button onClick={() => setViewing(l)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${l.lot_number}`}><Eye size={16} /></button>
+                    <button onClick={() => printLabel(l.id)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Print label ${l.lot_number}`}><FileText size={16} /></button>
+                    <button onClick={() => setViewing(l)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${l.lot_number}`}><Eye size={16} /></button>
                     {can("lots.update") && l.status === "in_stock" && (
                       <button onClick={() => changeStatus(l, "quarantined")} className="p-1 text-faint hover:text-amber-600 dark:text-amber-400" title="Quarantine" aria-label={`Quarantine ${l.lot_number}`}><ShieldX size={16} /></button>
                     )}

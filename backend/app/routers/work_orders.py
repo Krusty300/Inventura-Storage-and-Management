@@ -16,7 +16,7 @@ from app.services import inventory
 from app.services.auth import require_permission
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, draw_banner_header, draw_info_block, draw_item_table,
+    BODY_RIGHT, MARGIN, money, draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change
@@ -365,8 +365,8 @@ def work_order_pdf(wo_id: int, db: Session = Depends(get_db)):
             str(item.quantity_required),
             str(item.quantity_issued),
             str(remaining),
-            f"{currency}{cost:.2f}",
-            f"{currency}{cost * item.quantity_required:.2f}",
+            money(currency, cost),
+            money(currency, cost * item.quantity_required),
         ])
 
     y = draw_item_table(
@@ -378,7 +378,7 @@ def work_order_pdf(wo_id: int, db: Session = Depends(get_db)):
     y = draw_totals(c, BODY_RIGHT, y, [
         ("Total Required", f"{wo.total_required} unit(s)"),
         ("Total Issued", f"{wo.total_issued} unit(s)"),
-    ], "Total Cost", f"{currency}{total_cost:.2f}")
+    ], "Total Cost", money(currency, total_cost))
 
     if wo.notes:
         draw_notes(c, MARGIN, y, wo.notes)

@@ -7,6 +7,7 @@ import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { CycleCount, Location, PaginatedResponse } from "../types";
 import Modal from "../components/Modal";
+import FittedSelect from "../components/FittedSelect";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -61,9 +62,14 @@ export default function CycleCounts() {
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Cycle Counts</h1>
-          <p className="text-sm text-muted mt-1">Verify on-hand stock against the system and reconcile any variances.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <ClipboardCheck size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Cycle Counts</h1>
+            <p className="text-sm text-muted mt-1">Verify on-hand stock against the system and reconcile any variances.</p>
+          </div>
         </div>
         {can("cycle_counts.create") && (
           <button onClick={() => setShowForm(true)} className="btn-primary inline-flex items-center gap-1">
@@ -72,8 +78,8 @@ export default function CycleCounts() {
         )}
       </div>
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 gap-2 items-center">
+        <div className="relative max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by count number, location, or notes..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search cycle counts" />
         </div>
@@ -114,10 +120,10 @@ export default function CycleCounts() {
                 <td className="px-4 py-3 text-muted">{formatDate(c.created_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => printPdf(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print ${c.cc_number}`}><Printer size={16} /></button>
-                    <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${c.cc_number}`}><Eye size={16} /></button>
+                    <button onClick={() => printPdf(c)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Print ${c.cc_number}`}><Printer size={16} /></button>
+                    <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${c.cc_number}`}><Eye size={16} /></button>
                     {c.status !== "completed" && c.status !== "cancelled" && can("cycle_counts.count") && (
-                      <button onClick={() => setCounting(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Count ${c.cc_number}`}><ClipboardCheck size={16} /></button>
+                      <button onClick={() => setCounting(c)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Count ${c.cc_number}`}><ClipboardCheck size={16} /></button>
                     )}
                   </div>
                 </td>
@@ -160,7 +166,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   });
 
   const { data: locationDetail } = useQuery({
-    queryKey: ["location-detail", location_id],
+    queryKey: ["locations", "detail", location_id],
     queryFn: async () => (await api.get(`/locations/${location_id}/detail`)).data,
     enabled: !!location_id,
   });
@@ -235,10 +241,14 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-ink mb-1" htmlFor="cc-location">Location</label>
-              <select id="cc-location" className="select" value={location_id} onChange={(e) => setLocationId(e.target.value)} required>
-                <option value="">Select location...</option>
-                {locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => <option key={l.id} value={l.id}>{l.path}</option>)}
-              </select>
+              <FittedSelect
+                value={location_id}
+                onChange={setLocationId}
+                ariaLabel="cc-location"
+                placeholder="Select location..."
+                maxWidth={260}
+                options={locations.filter((l) => l.is_active).sort((a, b) => a.path.localeCompare(b.path)).map((l) => ({ value: String(l.id), label: l.path }))}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Notes</label>
@@ -249,7 +259,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
 
         <div className="rounded-xl border border-border bg-app overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-subtle">
-            <span className="text-sm font-medium text-ink flex items-center gap-1.5"><ClipboardCheck size={15} className="text-indigo-500" />Items to Count</span>
+            <span className="text-sm font-medium text-ink flex items-center gap-1.5"><ClipboardCheck size={15} className="text-primary" />Items to Count</span>
             <button type="button" onClick={() => setRows([...rows, { product_id: "" }])} className="btn-secondary text-xs py-1.5 px-2 inline-flex items-center gap-1">
               <Plus size={14} />Add Item
             </button>
@@ -259,12 +269,16 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
               <div key={idx} className="px-4 py-3 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
                 <div className="sm:col-span-7">
                   <label className="block text-xs font-medium text-muted mb-1" htmlFor={`cc-product-${idx}`}>Product</label>
-                  <select id={`cc-product-${idx}`} className="select" value={row.product_id} onChange={(e) => setRow(idx, "product_id", e.target.value)}>
-                    <option value="">Select...</option>
-                    {location_id
-                      ? locationProducts.map((p) => <option key={p.product_id} value={p.product_id}>{p.label}</option>)
-                      : productList.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}</option>)}
-                  </select>
+                  <FittedSelect
+                    value={row.product_id}
+                    onChange={(v) => setRow(idx, "product_id", v)}
+                    ariaLabel={`cc-product-${idx}`}
+                    placeholder="Select..."
+                    maxWidth={300}
+                    options={location_id
+                      ? locationProducts.map((p) => ({ value: String(p.product_id), label: p.label }))
+                      : productList.map((p) => ({ value: String(p.id), label: productLabel(p) }))}
+                  />
                 </div>
                 <div className="sm:col-span-3">
                   <label className="block text-xs font-medium text-muted mb-1">Expected (system)</label>
@@ -368,7 +382,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
   const { addToast } = useToast();
 
   const { data: locationDetail, isLoading: onHandLoading } = useQuery({
-    queryKey: ["location-detail", count.location_id],
+    queryKey: ["locations", "detail", count.location_id],
     queryFn: async () => (await api.get(`/locations/${count.location_id}/detail`)).data,
     enabled: count.location_id != null,
   });
@@ -502,7 +516,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
           )}
           <div className="rounded-xl border border-border bg-app overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-subtle">
-              <span className="text-sm font-medium text-ink flex items-center gap-1.5"><ClipboardCheck size={15} className="text-indigo-500" />Counted Quantities</span>
+              <span className="text-sm font-medium text-ink flex items-center gap-1.5"><ClipboardCheck size={15} className="text-primary" />Counted Quantities</span>
               <button type="button" onClick={fillFromOnHand} disabled={onHandLoading} className="btn-secondary text-xs py-1.5 px-2">
                 Set all = on-hand
               </button>

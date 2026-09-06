@@ -15,10 +15,10 @@ export default function AuthLayout({ title, subtitle, children, footer }: Props)
 
   return (
     <div className="min-h-screen flex bg-app">
-      <div className="hidden lg:flex lg:w-[40%] relative flex-col justify-between overflow-hidden bg-gradient-to-br from-[#7c3aed] via-[#6d28d9] to-[#4c1d95] p-12 text-white">
+      <div className="hidden lg:flex lg:w-[40%] relative flex-col justify-between overflow-hidden bg-gradient-to-br from-brand-from via-brand-via to-brand-to p-12 text-white">
         <div className="absolute -top-24 -right-24 h-96 w-96 rounded-full bg-surface/10 blur-3xl" />
         <div className="absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-black/20 blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#863bff]/30 blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-glow blur-3xl" />
         <div className="relative flex items-center gap-3">
           <img src="/favicon.svg" alt={`${storeName} logo`} className="h-10 w-10" loading="eager" />
           <span className="text-xl font-bold">{storeName}</span>

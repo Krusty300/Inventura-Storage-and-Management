@@ -207,7 +207,7 @@ describe("Shipments", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Product Shipping" }));
 
     fireEvent.change(await screen.findByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
-    expect(screen.getByRole("combobox", { name: "Mobile money provider" })).toHaveValue("m-pesa");
+    expect(screen.getByRole("combobox", { name: "Mobile money provider" })).toHaveValue("M-Pesa");
     fireEvent.change(screen.getByLabelText("Payer phone"), { target: { value: "0722 123 456" } });
     fireEvent.change(screen.getByLabelText("Payment reference"), { target: { value: "SHP-REF-42" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Invoice" }));
@@ -256,10 +256,12 @@ describe("Shipments", () => {
     });
     renderWithProviders(<Shipments />);
     fireEvent.click(await screen.findByRole("button", { name: "New Shipment" }));
-    const widgetOption = await screen.findByRole("option", { name: "Widget (SKU-1)" });
-    fireEvent.change(widgetOption.closest("select")!, { target: { value: "1" } });
+    const productCombobox = await screen.findByRole("combobox", { name: "Product" });
+    fireEvent.click(productCombobox);
+    fireEvent.click(await screen.findByRole("option", { name: "Widget (SKU-1)" }));
     await screen.findByRole("option", { name: "A (3)" }, { timeout: 5000 });
-    fireEvent.change(screen.getByLabelText("Source location"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Source location" }));
+    fireEvent.click(await screen.findByRole("option", { name: "A (3)" }));
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Shipment" }));
     await waitFor(() =>

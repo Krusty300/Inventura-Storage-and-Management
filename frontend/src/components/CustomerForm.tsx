@@ -4,6 +4,7 @@ import api from "../api/client";
 import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
 import { useToast } from "../context/ToastContext";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import { errorMessage } from "../utils/errors";
 
 interface Props {
@@ -78,17 +79,27 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Customer Type</label>
-              <select className="select" value={customerType} onChange={(e) => setCustomerType(e.target.value)}>
-                <option value="frequent">Frequent</option>
-                <option value="walk-in">Walk-in</option>
-              </select>
+              <FittedSelect
+                ariaLabel="Customer Type"
+                value={customerType}
+                onChange={setCustomerType}
+                options={[
+                  { value: "frequent", label: "Frequent" },
+                  { value: "walk-in", label: "Walk-in" },
+                ]}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Customer Group</label>
-              <select className="select" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-                <option value="">No Group</option>
-                {(groups || []).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-              </select>
+              <FittedSelect
+                ariaLabel="Customer Group"
+                value={groupId}
+                onChange={setGroupId}
+                options={[
+                  { value: "", label: "No Group" },
+                  ...(groups || []).map((g) => ({ value: String(g.id), label: g.name })),
+                ]}
+              />
             </div>
           </div>
         </div>

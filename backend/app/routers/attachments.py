@@ -61,6 +61,7 @@ MIME_BY_EXT = {
 # access can add/access it quickly.
 SUPPORTED_ENTITIES = {
     "product", "order", "quality_check", "customer", "supplier", "receipt", "dashboard",
+    "asn", "sale",
 }
 ENTITY_VIEW_PERMISSION = {
     "product": "products.view",
@@ -70,6 +71,8 @@ ENTITY_VIEW_PERMISSION = {
     "supplier": "suppliers.view",
     "receipt": "receipts.view",
     "dashboard": "dashboard.view",
+    "asn": "asns.view",
+    "sale": "sales.view",
 }
 ENTITY_UPLOAD_PERMISSION = {
     "product": "products.update",
@@ -79,6 +82,8 @@ ENTITY_UPLOAD_PERMISSION = {
     "supplier": "suppliers.update",
     "receipt": "receipts.create",
     "dashboard": "dashboard.view",
+    "asn": "asns.create",
+    "sale": "sales.create",
 }
 
 

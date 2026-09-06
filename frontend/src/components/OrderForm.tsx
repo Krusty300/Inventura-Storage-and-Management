@@ -7,6 +7,7 @@ import type { Order, Product, Supplier, Location } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import { isSelectable, selectableProducts, productLabel } from "../utils/variants";
 import { formatCurrency } from "../utils/currency";
 import { errorMessage } from "../utils/errors";
@@ -138,10 +139,15 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
         <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-          <select className="select" aria-label="Supplier" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-            <option value="">Select supplier</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <FittedSelect
+            ariaLabel="Supplier"
+            value={supplierId}
+            onChange={setSupplierId}
+            options={[
+              { value: "", label: "Select supplier" },
+              ...suppliers.map((s) => ({ value: String(s.id), label: s.name })),
+            ]}
+          />
         </div>
 
         {supplierId && supplierOrderable.length === 0 && !supplierProducts.length && (
@@ -162,17 +168,18 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
             {items.map((item, idx) => (
               <div key={idx} className="flex gap-2 items-end">
                 <div className="flex-1 min-w-0">
-                  <select
-                    className="select text-sm"
+                  <FittedSelect
+                    ariaLabel="Product"
                     value={item.product_id}
-                    onChange={(e) => updateItem(idx, "product_id", e.target.value)}
-                    required
-                  >
-                    <option value="">Select product</option>
-                    {dropdownOptions.map((p) => (
-                      <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""} ({formatCurrency(p.cost_price, currencySymbol)})</option>
-                    ))}
-                  </select>
+                    onChange={(v) => updateItem(idx, "product_id", v)}
+                    options={[
+                      { value: "", label: "Select product" },
+                      ...dropdownOptions.map((p) => ({
+                        value: String(p.id),
+                        label: `${productLabel(p)}${p.is_serialized ? " (Serialized)" : ""} (${formatCurrency(p.cost_price, currencySymbol)})`,
+                      })),
+                    ]}
+                  />
                 </div>
                 <div className="w-16 sm:w-20">
                   <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity}

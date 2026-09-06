@@ -123,14 +123,15 @@ describe("Orders Page", () => {
     const getProductSelect = () =>
       within(dialog)
         .getAllByRole("combobox")
-        .find((c) => (c as HTMLSelectElement).getAttribute("aria-label") !== "Supplier") as HTMLSelectElement;
+        .find((c) => c.getAttribute("aria-label") !== "Supplier")!;
     await vi.waitFor(() => {
-      const values = Array.from(getProductSelect().options).map((o) => o.value);
-      expect(values).toContain("10");
-      expect(values).toContain("11");
+      const allOptions = screen.getAllByRole("option");
+      const labels = allOptions.map((o) => o.textContent || "");
+      expect(labels.some((l) => l.includes("Widget"))).toBe(true);
+      expect(labels.some((l) => l.includes("Gadget"))).toBe(true);
     });
     fireEvent.change(getProductSelect(), { target: { value: "10" } });
-    expect(getProductSelect()).toHaveValue("10");
+    expect(getProductSelect()).toHaveValue("Widget (SUP-1) (€6.00)");
     await vi.waitFor(() => expect((screen.getByPlaceholderText("Price") as HTMLInputElement).value).toBe("6"));
     fireEvent.click(screen.getByRole("button", { name: "Create Order" }));
     await vi.waitFor(() =>

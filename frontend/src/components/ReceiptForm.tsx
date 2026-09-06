@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import Modal from "./Modal";
+import FittedSelect from "./FittedSelect";
 import Skeleton from "./Skeleton";
 import LocationPicker from "./LocationPicker";
 import StockLocationHints from "./StockLocationHints";
@@ -106,12 +107,15 @@ function ReceiptItemRow({ row, idx, productList, rowProducts, locations, onChang
       <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
         <div className="sm:col-span-5">
           <label className="block text-xs font-medium text-muted mb-1">Product</label>
-          <select className="select" aria-label="Product" value={row.product_id} onChange={(e) => handleProductChange(e.target.value)}>
-            <option value="">Select...</option>
-            {rowProducts.map((p) => (
-              <option key={p.id} value={p.id}>{productLabel(p)}</option>
-            ))}
-          </select>
+          <FittedSelect
+            ariaLabel="Product"
+            value={row.product_id}
+            onChange={handleProductChange}
+            options={[
+              { value: "", label: "Select..." },
+              ...rowProducts.map((p) => ({ value: String(p.id), label: productLabel(p) })),
+            ]}
+          />
         </div>
         <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-muted mb-1">Qty</label>
@@ -295,10 +299,15 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
-              <select className="select" aria-label="Supplier" value={supplier_id} onChange={(e) => setSupplierId(e.target.value)}>
-                <option value="">None</option>
-                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
+              <FittedSelect
+                ariaLabel="Supplier"
+                value={supplier_id}
+                onChange={setSupplierId}
+                options={[
+                  { value: "", label: "None" },
+                  ...suppliers.map((s) => ({ value: String(s.id), label: s.name })),
+                ]}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Reference</label>

@@ -266,25 +266,25 @@ def _search_sales_channels(db: Session, like: str, limit: int):
 
 
 PROVIDERS = [
-    _search_products,
-    _search_lots,
-    _search_serials,
-    _search_lpns,
-    _search_locations,
-    _search_categories,
-    _search_customers,
-    _search_suppliers,
-    _search_users,
-    _search_receipts,
-    _search_asns,
-    _search_orders,
-    _search_sales,
-    _search_shipments,
-    _search_work_orders,
-    _search_cycle_counts,
-    _search_quality_checks,
-    _search_boms,
-    _search_sales_channels,
+    (_search_products, "products.view"),
+    (_search_lots, "lots.view"),
+    (_search_serials, "serial_numbers.view"),
+    (_search_lpns, "lpns.view"),
+    (_search_locations, "locations.view"),
+    (_search_categories, "categories.view"),
+    (_search_customers, "customers.view"),
+    (_search_suppliers, "suppliers.view"),
+    (_search_users, "users.view"),
+    (_search_receipts, "receipts.view"),
+    (_search_asns, "asns.view"),
+    (_search_orders, "orders.view"),
+    (_search_sales, "sales.view"),
+    (_search_shipments, "shipments.view"),
+    (_search_work_orders, "work_orders.view"),
+    (_search_cycle_counts, "cycle_counts.view"),
+    (_search_quality_checks, "quality_checks.view"),
+    (_search_boms, "bom.view"),
+    (_search_sales_channels, "sales.view"),
 ]
 
 
@@ -292,13 +292,18 @@ PROVIDERS = [
 def global_search(
     q: str = Query("", max_length=100),
     per_type: int = Query(5, ge=1, le=20),
+    user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from app.services.permissions import has_permission
+
     query = q.strip()
     if not query:
         return {"query": q, "total": 0, "results": []}
     like = f"%{query}%"
     results = []
-    for provider in PROVIDERS:
+    for provider, perm in PROVIDERS:
+        if not has_permission(user.role, perm):
+            continue
         results.extend(provider(db, like, per_type))
     return {"query": query, "total": len(results), "results": results}

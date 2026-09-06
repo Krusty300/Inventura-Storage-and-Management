@@ -54,6 +54,10 @@ class ReceiptItem(Base):
         return self.product.display_name if self.product else ""
 
     @property
+    def product_image(self) -> str:
+        return self.product.image_url if self.product else ""
+
+    @property
     def lot_number(self) -> str:
         return self.lot.lot_number if self.lot else ""
 

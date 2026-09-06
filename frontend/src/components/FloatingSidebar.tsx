@@ -168,7 +168,7 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
                       size={12}
                       className={`shrink-0 transition-transform duration-150 ${isGroupCollapsed ? "" : "rotate-90"}`}
                     />
-                    <span className={`truncate ${isGroupActive ? "text-indigo-500 dark:text-indigo-400" : ""}`}>
+                    <span className={`truncate ${isGroupActive ? "text-primary dark:text-primary" : ""}`}>
                       {group.label}
                     </span>
                   </button>
@@ -194,12 +194,12 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
                           showLabels ? "px-2.5 h-9" : "justify-center w-9 h-9"
                         } ${
                           isActive
-                            ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400"
+                            ? "bg-primary-soft text-primary dark:bg-primary/15 dark:text-primary"
                             : "text-muted hover:text-ink hover:bg-subtle"
                         }`}
                       >
                         {isActive && (
-                          <span className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-5 rounded-full bg-indigo-500" />
+                          <span className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-5 rounded-full bg-primary" />
                         )}
                         <item.icon size={20} className="shrink-0" />
                         {showLabels && (
@@ -246,7 +246,7 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
                   loading="lazy"
                 />
               ) : (
-                <span className="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 flex items-center justify-center text-xs font-semibold">
+                <span className="h-8 w-8 rounded-full bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary flex items-center justify-center text-xs font-semibold">
                   {user?.username?.charAt(0).toUpperCase()}
                 </span>
               )}
@@ -270,7 +270,7 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
           onPointerDown={startResize}
           className="absolute top-0 right-0 h-full w-3 cursor-col-resize z-10 flex items-center justify-center group/resize"
         >
-          <div className="w-0.5 h-8 rounded-full bg-transparent group-hover/resize:bg-indigo-400/50 group-active/resize:bg-indigo-500 transition-colors" />
+          <div className="w-0.5 h-8 rounded-full bg-transparent group-hover/resize:bg-primary/50 group-active/resize:bg-primary transition-colors" />
         </div>
       </nav>
     </>

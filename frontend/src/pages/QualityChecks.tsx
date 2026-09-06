@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useEffect, useState } from "react";
-import { Eye, Pencil, Trash2, Search } from "lucide-react";
+import { Eye, Pencil, Trash2, Search, ShieldCheck } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE } from "../utils/constants";
@@ -15,6 +15,7 @@ import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import { useDebounce } from "../hooks/useDebounce";
+import FittedSelect from "../components/FittedSelect";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { productLabel } from "../utils/variants";
@@ -75,9 +76,14 @@ export default function QualityChecks() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Quality Checks</h1>
-          <p className="text-sm text-muted mt-1">Inspect and approve incoming and outgoing lots.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <ShieldCheck size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Quality Checks</h1>
+            <p className="text-sm text-muted mt-1">Inspect and approve incoming and outgoing lots.</p>
+          </div>
         </div>
         {can("quality_checks.create") && (
           <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
@@ -86,17 +92,12 @@ export default function QualityChecks() {
         )}
       </div>
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by QC number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search quality checks" />
         </div>
-        <select className="select w-44" value={result} onChange={(e) => { setResult(e.target.value); setPage(1); }} aria-label="Filter by result">
-          <option value="">All results</option>
-          <option value="pending">Pending</option>
-          <option value="pass">Pass</option>
-          <option value="fail">Fail</option>
-        </select>
+        <FittedSelect value={result} onChange={(v) => { setResult(v); setPage(1); }} ariaLabel="Filter by result" options={[{ value: "", label: "All results" }, { value: "pending", label: "Pending" }, { value: "pass", label: "Pass" }, { value: "fail", label: "Fail" }]} />
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -134,9 +135,9 @@ export default function QualityChecks() {
                 <td className="px-4 py-3 text-muted">{qc.checked_at ? formatDate(qc.checked_at) : formatDate(qc.created_at)}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(qc)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${qc.qc_number}`}><Eye size={16} /></button>
+                    <button onClick={() => setViewing(qc)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${qc.qc_number}`}><Eye size={16} /></button>
                     {can("quality_checks.update") && (
-                      <button onClick={() => { setEditing(qc); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${qc.qc_number}`}><Pencil size={16} /></button>
+                      <button onClick={() => { setEditing(qc); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${qc.qc_number}`}><Pencil size={16} /></button>
                     )}
                     {can("quality_checks.delete") && (
                       <button onClick={() => setDeleting(qc)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${qc.qc_number}`}><Trash2 size={16} /></button>
@@ -182,6 +183,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
   const [batchNumber, setBatchNumber] = useState(qc?.batch_number || "");
   const [result, setResult] = useState(qc?.result || "pass");
   const [notes, setNotes] = useState(qc?.notes || "");
+  const [workOrderId, setWorkOrderId] = useState(qc?.work_order_id ? String(qc.work_order_id) : "");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const selectedProduct = products.find((p) => p.id === Number(productId));
@@ -191,6 +193,15 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
     queryKey: ["lots", "by-product", productId],
     queryFn: async () => (await api.get("/lots", { params: { product_id: productId, limit: PAGE_SIZE } })).data.items,
     enabled: !!productId,
+  });
+
+  const { data: workOrders = [] } = useQuery<{ id: number; wo_number: string; status: string }[]>({
+    queryKey: ["work-orders", "qc", productId],
+    queryFn: async () => {
+      const { data } = await api.get("/work-orders", { params: { product_id: productId, limit: 100 } });
+      return (data?.items || []).filter((w: { status: string }) => w.status !== "cancelled");
+    },
+    enabled: !!productId && !qc,
   });
 
   useEffect(() => {
@@ -221,6 +232,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
       };
       if (lotId) payload.lot_id = Number(lotId);
       if (locationId) payload.location_id = Number(locationId);
+      if (workOrderId) payload.work_order_id = Number(workOrderId);
       if (qc) {
         await api.put(`/quality-checks/${qc.id}`, { result, notes: notes.trim() });
         addToast(`Quality check ${qc.qc_number} updated`, "success");
@@ -241,26 +253,47 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Product</label>
-            <select className="select" aria-label="QC product" value={productId} onChange={(e) => setProductId(e.target.value)} disabled={!!qc} required>
-              <option value="">Select product...</option>
-              {products.map((p) => <option key={p.id} value={p.id}>{productLabel(p)}{p.is_serialized ? " (Serialized)" : ""}</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="QC product"
+              value={productId}
+              onChange={setProductId}
+              disabled={!!qc}
+              placeholder="Select product..."
+              options={[
+                { value: "", label: "Select product..." },
+                ...products.map((p) => ({ value: String(p.id), label: `${productLabel(p)}${p.is_serialized ? " (Serialized)" : ""}` })),
+              ]}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Lot (optional)</label>
-            <select className="select" aria-label="QC lot" value={lotId} onChange={(e) => setLotId(e.target.value)} disabled={!!qc}>
-              <option value="">No lot / all lots</option>
-              {visibleLots.map((l) => <option key={l.id} value={l.id}>{l.lot_number} ({(selectedProduct?.is_serialized ? l.serial_count : l.on_hand)} on hand){l.status !== "in_stock" ? ` [${l.status}]` : ""}</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="QC lot"
+              value={lotId}
+              onChange={setLotId}
+              disabled={!!qc}
+              placeholder="No lot / all lots"
+              options={[
+                { value: "", label: "No lot / all lots" },
+                ...visibleLots.map((l) => ({ value: String(l.id), label: `${l.lot_number} (${(selectedProduct?.is_serialized ? l.serial_count : l.on_hand)} on hand)${l.status !== "in_stock" ? ` [${l.status}]` : ""}` })),
+              ]}
+            />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Location (optional)</label>
-            <select className="select" aria-label="QC location" value={locationId} onChange={(e) => { setLocationId(e.target.value); setLotId(""); }} disabled={!!qc}>
-              <option value="">All locations</option>
-              {stockLocations.locations.map((l) => <option key={l.location_id} value={l.location_id}>{l.path} ({l.count} on hand)</option>)}
-            </select>
+            <FittedSelect
+              ariaLabel="QC location"
+              value={locationId}
+              onChange={(v) => { setLocationId(v); setLotId(""); }}
+              disabled={!!qc}
+              placeholder="All locations"
+              options={[
+                { value: "", label: "All locations" },
+                ...stockLocations.locations.map((l) => ({ value: String(l.location_id), label: `${l.path} (${l.count} on hand)` })),
+              ]}
+            />
             <p className="text-xs text-faint mt-1">
               {stockLocations.locations.length === 0
                 ? "No stock locations found for this product."
@@ -272,14 +305,26 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
             <input className="input" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} disabled={!!qc} placeholder="e.g. B-2026-01" />
           </div>
         </div>
+        {!qc && workOrders.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Work Order (optional)</label>
+            <FittedSelect
+              ariaLabel="Work order"
+              value={workOrderId}
+              onChange={setWorkOrderId}
+              options={workOrders.map((w) => ({
+                value: String(w.id),
+                label: `${w.wo_number} (${w.status.replace(/_/g, " ")})`,
+              }))}
+              placeholder="No work order"
+            />
+            <p className="text-xs text-faint mt-1">Link this QC to a work order that produced the lot being inspected.</p>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Result</label>
-            <select className="select" aria-label="QC result" value={result} onChange={(e) => setResult(e.target.value)}>
-              <option value="pending">Pending</option>
-              <option value="pass">Pass</option>
-              <option value="fail">Fail</option>
-            </select>
+            <FittedSelect ariaLabel="QC result" value={result} onChange={setResult} options={[{ value: "pending", label: "Pending" }, { value: "pass", label: "Pass" }, { value: "fail", label: "Fail" }]} />
           </div>
         </div>
         <div>

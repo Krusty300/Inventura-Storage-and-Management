@@ -18,7 +18,7 @@ from app.services.auth import require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, draw_banner_header, draw_info_block, draw_item_table,
+    BODY_RIGHT, MARGIN, money, draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
@@ -108,8 +108,8 @@ def asn_pdf(asn_id: int, db: Session = Depends(get_db)):
             item.location_name or "\u2014",
             str(item.expected_qty),
             str(item.received_qty),
-            f"{currency}{float(item.unit_cost):.2f}",
-            f"{currency}{float(item.unit_cost) * item.expected_qty:.2f}",
+            money(currency, item.unit_cost),
+            money(currency, float(item.unit_cost) * item.expected_qty),
         ])
 
     y = draw_item_table(
@@ -121,7 +121,7 @@ def asn_pdf(asn_id: int, db: Session = Depends(get_db)):
     y = draw_totals(c, BODY_RIGHT, y, [
         ("Total Expected", f"{a.total_expected} unit(s)"),
         ("Total Received", f"{a.total_received} unit(s)"),
-    ], "Total Value", f"{currency}{total_value:.2f}")
+    ], "Total Value", money(currency, total_value))
 
     if a.notes:
         draw_notes(c, MARGIN, y, a.notes)

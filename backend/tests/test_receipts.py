@@ -195,3 +195,34 @@ def test_receipt_pdf_generated(auth_headers):
 
 def test_receipt_pdf_not_found(auth_headers):
     assert client.get("/api/receipts/99999/pdf", headers=auth_headers).status_code == 404
+
+
+def test_receipt_items_expose_product_image(auth_headers):
+    prod_with = client.post("/api/products", json={
+        "location_id": 1, "sku": "RCP-IMG-W", "name": "Rcpt Image Prod", "unit_price": 10.0,
+        "cost_price": 5.0, "quantity": 0, "image_url": "/uploads/rcpt-with.png",
+    }, headers=auth_headers).json()
+    prod_without = client.post("/api/products", json={
+        "location_id": 1, "sku": "RCP-IMG-N", "name": "Rcpt No Image", "unit_price": 10.0,
+        "cost_price": 5.0, "quantity": 0,
+    }, headers=auth_headers).json()
+
+    created = _post_receipt(auth_headers, [
+        {"product_id": prod_with["id"], "quantity": 1, "unit_cost": 5.0},
+        {"product_id": prod_without["id"], "quantity": 1, "unit_cost": 5.0},
+    ])
+    assert created.status_code == 201
+    by_product = {i["product_id"]: i for i in created.json()["items"]}
+    assert by_product[prod_with["id"]]["product_image"] == "/uploads/rcpt-with.png"
+    assert by_product[prod_without["id"]]["product_image"] == ""
+
+    detail = client.get(f"/api/receipts/{created.json()['id']}", headers=auth_headers).json()
+    detail_items = {i["product_id"]: i for i in detail["items"]}
+    assert detail_items[prod_with["id"]]["product_image"] == "/uploads/rcpt-with.png"
+    assert detail_items[prod_without["id"]]["product_image"] == ""
+
+    listing = client.get("/api/receipts", headers=auth_headers).json()["items"]
+    row = next(r for r in listing if r["id"] == created.json()["id"])
+    listed = {i["product_id"]: i for i in row["items"]}
+    assert listed[prod_with["id"]]["product_image"] == "/uploads/rcpt-with.png"
+    assert listed[prod_without["id"]]["product_image"] == ""

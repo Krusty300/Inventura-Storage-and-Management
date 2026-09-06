@@ -42,6 +42,7 @@ class ReceiptItemOut(BaseModel):
     lot_id: Optional[int] = None
     location_id: Optional[int] = None
     product_name: str = ""
+    product_image: str = ""
     lot_number: str = ""
     location_name: str = ""
 

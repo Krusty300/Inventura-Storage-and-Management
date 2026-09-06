@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Save, KeyRound, Bell, Hash, Workflow, DollarSign, Monitor, FileText, Upload, X, Image as ImageIcon } from "lucide-react";
+import { Save, KeyRound, Bell, Hash, Workflow, DollarSign, Monitor, FileText, Upload, X, Settings as SettingsIcon, Image as ImageIcon } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -7,6 +7,7 @@ import { useSettings as useSettingsQuery } from "../hooks/useSettings";
 import Skeleton from "../components/Skeleton";
 import { CURRENCIES, symbolFor } from "../utils/currencies";
 import { errorMessage } from "../utils/errors";
+import FittedSelect from "../components/FittedSelect";
 
 type Tab = "store" | "notifications" | "documents" | "workflow" | "financial" | "display" | "invoice" | "password";
 
@@ -26,7 +27,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-        active ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30" : "text-muted hover:bg-subtle hover:text-ink"
+        active ? "bg-primary-soft dark:bg-primary/10 text-primary-strong dark:text-primary border border-primary-soft dark:border-primary/30" : "text-muted hover:bg-subtle hover:text-ink"
       }`}
     >
       {children}
@@ -149,8 +150,15 @@ export default function Settings() {
 
   if (loading) return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-ink">System Settings</h1>
-      <p className="text-sm text-muted -mt-3">Configure your business, currency, and defaults.</p>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+          <SettingsIcon size={22} strokeWidth={2} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink">System Settings</h1>
+          <p className="text-sm text-muted mt-0.5">Configure your business, currency, and defaults.</p>
+        </div>
+      </div>
       <div className="card p-6 space-y-4">
         <Skeleton variant="rows" rows={6} cols={2} />
       </div>
@@ -159,8 +167,15 @@ export default function Settings() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-ink">System Settings</h1>
-      <p className="text-sm text-muted -mt-3">Configure your business, currency, and defaults.</p>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+          <SettingsIcon size={22} strokeWidth={2} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink">System Settings</h1>
+          <p className="text-sm text-muted mt-0.5">Configure your business, currency, and defaults.</p>
+        </div>
+      </div>
 
       {readOnly && (
         <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2">
@@ -184,13 +199,15 @@ export default function Settings() {
               <Field label="Store Name" value={form.store_name} onChange={(v) => set("store_name", v)} />
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Currency</label>
-                <select className="select" value={form.currency_code} onChange={(e) => {
-                  const code = e.target.value;
-                  set("currency_code", code);
-                  set("currency_symbol", symbolFor(code));
-                }}>
-                  {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.symbol} — {c.name} ({c.code})</option>)}
-                </select>
+                <FittedSelect
+                  value={form.currency_code}
+                  onChange={(code) => {
+                    set("currency_code", code);
+                    set("currency_symbol", symbolFor(code));
+                  }}
+                  options={CURRENCIES.map((c) => ({ value: c.code, label: `${c.symbol} — ${c.name} (${c.code})` }))}
+                  ariaLabel="Currency"
+                />
               </div>
             </div>
             <div>
@@ -295,19 +312,28 @@ export default function Settings() {
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Default Costing Method</label>
-              <select className="select" value={form.default_costing_method} onChange={(e) => set("default_costing_method", e.target.value)}>
-                <option value="weighted_average">Weighted Average</option>
-                <option value="fifo">FIFO (First In, First Out)</option>
-                <option value="standard">Standard Cost</option>
-              </select>
+              <FittedSelect
+                value={form.default_costing_method}
+                onChange={(v) => set("default_costing_method", v)}
+                options={[
+                  { value: "weighted_average", label: "Weighted Average" },
+                  { value: "fifo", label: "FIFO (First In, First Out)" },
+                  { value: "standard", label: "Standard Cost" },
+                ]}
+                ariaLabel="Default Costing Method"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Fiscal Year Start Month</label>
-              <select className="select" value={form.fiscal_year_start_month} onChange={(e) => set("fiscal_year_start_month", e.target.value)}>
-                {Array.from({ length: 12 }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>{new Date(2000, i).toLocaleString("default", { month: "long" })}</option>
-                ))}
-              </select>
+              <FittedSelect
+                value={form.fiscal_year_start_month}
+                onChange={(v) => set("fiscal_year_start_month", v)}
+                options={Array.from({ length: 12 }, (_, i) => ({
+                  value: String(i + 1),
+                  label: new Date(2000, i).toLocaleString("default", { month: "long" }),
+                }))}
+                ariaLabel="Fiscal Year Start Month"
+              />
             </div>
           </fieldset>
           {!readOnly && <SaveButton loading={saving} />}
@@ -322,12 +348,17 @@ export default function Settings() {
               <Field label="Default Items Per Page" value={form.default_items_per_page} onChange={(v) => set("default_items_per_page", v)} type="number" />
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Date Format</label>
-                <select className="select" value={form.date_format} onChange={(e) => set("date_format", e.target.value)}>
-                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                  <option value="DD.MM.YYYY">DD.MM.YYYY</option>
-                </select>
+                <FittedSelect
+                  value={form.date_format}
+                  onChange={(v) => set("date_format", v)}
+                  options={[
+                    { value: "YYYY-MM-DD", label: "YYYY-MM-DD" },
+                    { value: "MM/DD/YYYY", label: "MM/DD/YYYY" },
+                    { value: "DD/MM/YYYY", label: "DD/MM/YYYY" },
+                    { value: "DD.MM.YYYY", label: "DD.MM.YYYY" },
+                  ]}
+                  ariaLabel="Date Format"
+                />
               </div>
             </div>
           </fieldset>
@@ -362,7 +393,7 @@ export default function Settings() {
               ) : (
                 <div
                   onClick={() => !readOnly && logoInputRef.current?.click()}
-                  className={`w-40 h-20 rounded-lg border-2 border-dashed border-border bg-app flex flex-col items-center justify-center gap-1 text-faint ${readOnly ? "" : "hover:border-indigo-400 hover:text-indigo-500 cursor-pointer transition-colors"}`}
+                  className={`w-40 h-20 rounded-lg border-2 border-dashed border-border bg-app flex flex-col items-center justify-center gap-1 text-faint ${readOnly ? "" : "hover:border-primary hover:text-primary cursor-pointer transition-colors"}`}
                 >
                   {logoUploading ? (
                     <span className="text-xs">Uploading...</span>
@@ -443,7 +474,7 @@ function Toggle({ label, checked, onChange, description }: {
       </div>
       <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-          checked ? "bg-indigo-600" : "bg-subtle-strong"
+          checked ? "bg-primary-solid" : "bg-subtle-strong"
         }`}>
         <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-surface shadow ring-0 transition-transform ${
           checked ? "translate-x-5" : "translate-x-0"

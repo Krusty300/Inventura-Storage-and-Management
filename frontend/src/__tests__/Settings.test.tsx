@@ -75,9 +75,9 @@ describe("Settings Page", () => {
     renderWithProviders(<Settings />);
     await screen.findByDisplayValue("My Store");
     await waitFor(() => {
-      const selects = document.querySelectorAll("select");
-      const currencySelect = Array.from(selects).find((s) => s.value === "KES");
-      expect(currencySelect).toBeDefined();
+      const combobox = screen.getAllByRole("combobox").find((c) => c.getAttribute("aria-label") === "Currency");
+      expect(combobox).toBeDefined();
+      expect(combobox).toHaveValue("KSh — Kenyan Shilling (KES)");
     });
   });
 
@@ -87,13 +87,11 @@ describe("Settings Page", () => {
     renderWithProviders(<Settings />);
     await screen.findByDisplayValue("My Store");
     await waitFor(() => {
-      const selects = document.querySelectorAll("select");
-      const currencySelect = Array.from(selects).find((s) => s.value === "KES");
-      expect(currencySelect).toBeDefined();
+      const combobox = screen.getAllByRole("combobox").find((c) => c.getAttribute("aria-label") === "Currency");
+      expect(combobox).toBeDefined();
     });
-    const selects = document.querySelectorAll("select");
-    const currencySelect = Array.from(selects).find((s) => s.value === "KES")!;
-    fireEvent.change(currencySelect, { target: { value: "USD" } });
+    const combobox = screen.getAllByRole("combobox").find((c) => c.getAttribute("aria-label") === "Currency")!;
+    fireEvent.change(combobox, { target: { value: "USD" } });
     fireEvent.click(await screen.findByRole("button", { name: "Save Settings" }));
     await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/settings", expect.objectContaining({
       currency_code: "USD",

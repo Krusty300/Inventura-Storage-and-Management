@@ -89,7 +89,20 @@ def create_category(data: CategoryCreate, db: Session = Depends(get_db), user=De
 @router.put("/{category_id}", response_model=CategoryOut)
 def update_category(category_id: int, data: CategoryUpdate, db: Session = Depends(get_db), user=Depends(require_permission("categories.update"))):
     cat = get_or_404(Category, category_id, db)
-    for k, v in data.model_dump(exclude_unset=True).items():
+    updates = data.model_dump(exclude_unset=True)
+    if "parent_id" in updates:
+        new_parent = updates["parent_id"]
+        if new_parent == category_id:
+            raise HTTPException(status_code=400, detail="A category cannot be its own parent")
+        if new_parent is not None and not db.query(Category.id).filter(Category.id == new_parent).first():
+            raise HTTPException(status_code=404, detail="Parent category not found")
+        cur = new_parent
+        while cur is not None:
+            if cur == category_id:
+                raise HTTPException(status_code=400, detail="Parent chain would create a cycle")
+            row = db.query(Category.parent_id).filter(Category.id == cur).first()
+            cur = row[0] if row else None
+    for k, v in updates.items():
         setattr(cat, k, v)
     db.commit()
     db.refresh(cat)

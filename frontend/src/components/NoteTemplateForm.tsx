@@ -5,6 +5,7 @@ import type { NoteTemplate } from "../types";
 import SlideOver from "./SlideOver";
 import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
+import FittedSelect from "./FittedSelect";
 
 interface Props {
   template?: NoteTemplate | null;
@@ -58,30 +59,45 @@ export default function NoteTemplateForm({ template, onClose, onSaved }: Props) 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-muted mb-1">Category</label>
-            <select className="select w-full" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-              <option value="note">Note</option>
-              <option value="reminder">Reminder</option>
-              <option value="todo">Todo</option>
-            </select>
+            <FittedSelect
+              value={form.category}
+              onChange={(v) => setForm({ ...form, category: v })}
+              options={[
+                { value: "note", label: "Note" },
+                { value: "reminder", label: "Reminder" },
+                { value: "todo", label: "Todo" },
+              ]}
+              ariaLabel="Category"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-muted mb-1">Priority</label>
-            <select className="select w-full" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-              <option value="low">Low</option>
-              <option value="normal">Normal</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </select>
+            <FittedSelect
+              value={form.priority}
+              onChange={(v) => setForm({ ...form, priority: v })}
+              options={[
+                { value: "low", label: "Low" },
+                { value: "normal", label: "Normal" },
+                { value: "high", label: "High" },
+                { value: "urgent", label: "Urgent" },
+              ]}
+              ariaLabel="Priority"
+            />
           </div>
         </div>
         <div>
           <label className="block text-sm font-medium text-muted mb-1">Recurrence</label>
-          <select className="select w-full" value={form.recurrence} onChange={(e) => setForm({ ...form, recurrence: e.target.value })}>
-            <option value="none">None</option>
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
+          <FittedSelect
+            value={form.recurrence}
+            onChange={(v) => setForm({ ...form, recurrence: v })}
+            options={[
+              { value: "none", label: "None" },
+              { value: "daily", label: "Daily" },
+              { value: "weekly", label: "Weekly" },
+              { value: "monthly", label: "Monthly" },
+            ]}
+            ariaLabel="Recurrence"
+          />
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

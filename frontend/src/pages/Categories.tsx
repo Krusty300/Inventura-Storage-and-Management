@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pencil, Trash2, Eye, ChevronDown, ChevronRight, FolderOpen, Folder, Search } from "lucide-react";
+import { Pencil, Trash2, Eye, ChevronDown, ChevronRight, FolderOpen, Folder, FolderTree, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_PRODUCTS } from "../utils/constants";
@@ -114,8 +114,8 @@ export default function Categories() {
           <span className="font-medium text-ink">{node.name}</span>
           <span className="text-sm text-muted truncate">{node.description}</span>
           <div className="ml-auto flex gap-2">
-            <button onClick={() => setViewing(node)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${node.name}`}><Eye size={16} /></button>
-            <button onClick={() => { setEditing(node); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${node.name}`}><Pencil size={16} /></button>
+            <button onClick={() => setViewing(node)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${node.name}`}><Eye size={16} /></button>
+            <button onClick={() => { setEditing(node); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${node.name}`}><Pencil size={16} /></button>
             <button onClick={() => setDeleting(node)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${node.name}`}><Trash2 size={16} /></button>
           </div>
         </div>
@@ -162,9 +162,14 @@ export default function Categories() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Categories</h1>
-          <p className="text-sm text-muted mt-1">Organize products into categories and subcategories.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <FolderTree size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Categories</h1>
+            <p className="text-sm text-muted mt-1">Organize products into categories and subcategories.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export categories to CSV">
@@ -178,21 +183,21 @@ export default function Categories() {
 
       {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load categories")}</div>}
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by name..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search categories" />
         </div>
         <div role="group" aria-label="View mode" className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
           <button
             onClick={() => setView("table")}
-            className={`px-3 py-1 rounded-md text-sm transition-colors ${view === "table" ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
+            className={`px-3 py-1 rounded-md text-sm transition-colors ${view === "table" ? "bg-surface text-primary dark:text-primary shadow-sm" : "text-muted hover:text-ink"}`}
           >
             Table
           </button>
           <button
             onClick={() => setView("tree")}
-            className={`px-3 py-1 rounded-md text-sm transition-colors ${view === "tree" ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"}`}
+            className={`px-3 py-1 rounded-md text-sm transition-colors ${view === "tree" ? "bg-surface text-primary dark:text-primary shadow-sm" : "text-muted hover:text-ink"}`}
           >
             Tree
           </button>
@@ -241,8 +246,8 @@ export default function Categories() {
                 <td className="px-4 py-3 text-muted">{c.description}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View ${c.name}`}><Eye size={16} /></button>
-                    <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit ${c.name}`}><Pencil size={16} /></button>
+                    <button onClick={() => setViewing(c)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${c.name}`}><Eye size={16} /></button>
+                    <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${c.name}`}><Pencil size={16} /></button>
                     <button onClick={() => setDeleting(c)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${c.name}`}><Trash2 size={16} /></button>
                   </div>
                 </td>

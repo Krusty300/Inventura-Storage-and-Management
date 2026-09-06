@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Trash2, Eye, RefreshCw, Search } from "lucide-react";
+import { Pencil, Trash2, Eye, RefreshCw, Search, Building2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Supplier } from "../types";
@@ -116,9 +116,14 @@ export default function Suppliers() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Suppliers</h1>
-          <p className="text-sm text-muted mt-1">Manage the companies you buy from.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Building2 size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Suppliers</h1>
+            <p className="text-sm text-muted mt-1">Manage the companies you buy from.</p>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           {can("suppliers.import") && (
@@ -137,15 +142,15 @@ export default function Suppliers() {
 
       {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load suppliers")}</div>}
 
-      <div className="flex gap-2 flex-wrap items-center">
-        <div className="relative flex-1 min-w-0 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2 items-center">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by name, contact, or email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search suppliers" />
         </div>
         <label className="flex items-center gap-2 text-sm text-muted">
           <input
             type="checkbox"
-            className="accent-indigo-600"
+            className="accent-primary"
             checked={includeInactive}
             onChange={(e) => { setIncludeInactive(e.target.checked); setPage(1); }}
           />
@@ -180,7 +185,7 @@ export default function Suppliers() {
               ) : suppliers.length === 0 ? (
                 <EmptyState title="No suppliers" message="Add your first supplier to start managing purchases." actionLabel="Add Supplier" onAction={() => { setEditing(null); setShowForm(true); }} />
               ) : suppliers.map((s) => (
-                <tr key={s.id} className="hover:bg-app">
+                <tr key={s.id} className="hover:bg-app cursor-pointer" onClick={(e) => { const t = e.target as HTMLElement; if (t.closest("button") || t.closest("input") || t.closest("a")) return; setViewing(s); }}>
                   <td className="px-4 py-3">
                     <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(s.id)} onChange={() => toggleSelect(s.id)} aria-label={`Select ${s.name}`} />
                   </td>
@@ -195,11 +200,11 @@ export default function Suppliers() {
                   </td>
                   <td className="px-4 py-3 hidden lg:table-cell">
                     <div className="truncate max-w-[200px]">
-                      {s.email ? <a href={`mailto:${s.email}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{s.email}</a> : <span className="text-muted">—</span>}
+                      {s.email ? <a href={`mailto:${s.email}`} className="hover:text-primary dark:hover:text-primary">{s.email}</a> : <span className="text-muted">—</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3 hidden lg:table-cell whitespace-nowrap">
-                    {s.phone ? <a href={`tel:${s.phone}`} className="hover:text-indigo-600 dark:hover:text-indigo-400">{s.phone}</a> : <span className="text-muted">—</span>}
+                    {s.phone ? <a href={`tel:${s.phone}`} className="hover:text-primary dark:hover:text-primary">{s.phone}</a> : <span className="text-muted">—</span>}
                   </td>
                   <td className="px-4 py-3 text-muted text-right">{(s.product_count ?? 0).toLocaleString()}</td>
                   <td className={`px-4 py-3 text-right hidden md:table-cell ${(s.total_orders ?? 0) === 0 ? "text-amber-600 dark:text-amber-400" : "text-muted"}`}>{(s.total_orders ?? 0).toLocaleString()}</td>
@@ -209,13 +214,13 @@ export default function Suppliers() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
-                      <button onClick={() => setViewing(s)} className="p-2 rounded-md text-faint hover:text-indigo-600 dark:text-indigo-400 hover:bg-app" aria-label={`View ${s.name}`}><Eye size={16} /></button>
+                      <button onClick={() => setViewing(s)} className="p-2 rounded-md text-faint hover:text-primary dark:text-primary hover:bg-app" aria-label={`View ${s.name}`}><Eye size={16} /></button>
                       {!s.is_active && can("suppliers.update") && (
                         <button onClick={() => restoreMutation.mutate(s.id)} className="p-2 rounded-md text-faint hover:text-green-600 dark:text-green-400 hover:bg-app" aria-label={`Restore ${s.name}`}>
                           <RefreshCw size={16} />
                         </button>
                       )}
-                      <button onClick={() => { setEditing(s); setShowForm(true); }} className="p-2 rounded-md text-faint hover:text-indigo-600 dark:text-indigo-400 hover:bg-app" aria-label={`Edit ${s.name}`}><Pencil size={16} /></button>
+                      <button onClick={() => { setEditing(s); setShowForm(true); }} className="p-2 rounded-md text-faint hover:text-primary dark:text-primary hover:bg-app" aria-label={`Edit ${s.name}`}><Pencil size={16} /></button>
                       <button onClick={() => setDeleting(s)} className="p-2 rounded-md text-faint hover:text-red-600 dark:text-red-400 hover:bg-app" aria-label={`Delete ${s.name}`}><Trash2 size={16} /></button>
                     </div>
                   </td>
@@ -243,7 +248,13 @@ export default function Suppliers() {
         />
       )}
 
-      {viewing && <SupplierDetail supplier={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <SupplierDetail
+          supplier={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={() => { setEditing(viewing); setShowForm(true); setViewing(null); }}
+        />
+      )}
 
       {showBulkEdit && (
         <EntityBulkEditModal

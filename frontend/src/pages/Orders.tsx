@@ -1,12 +1,13 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Pencil, Eye, Trash2, Printer, Search, Fingerprint } from "lucide-react";
+import { Pencil, Eye, Trash2, Printer, Search, ShoppingCart, Fingerprint } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Order, PaginatedResponse } from "../types";
 import OrderForm from "../components/OrderForm";
 import OrderDetail from "../components/OrderDetail";
 import ConfirmDialog from "../components/ConfirmDialog";
+import FittedSelect from "../components/FittedSelect";
 import BulkActionBar from "../components/BulkActionBar";
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 import Pagination from "../components/Pagination";
@@ -27,6 +28,7 @@ import { usePageSize } from "../hooks/usePageSize";
 export default function Orders() {
   const formatDate = useDateFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
+  const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
@@ -69,10 +71,11 @@ export default function Orders() {
   });
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["orders", debouncedSearch, page, pageSize],
+    queryKey: ["orders", debouncedSearch, statusFilter, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
       if (debouncedSearch) params.search = debouncedSearch;
+      if (statusFilter) params.status = statusFilter;
       const { data } = await api.get("/orders", { params });
       return data as PaginatedResponse<Order>;
     },
@@ -109,9 +112,14 @@ export default function Orders() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Orders / Purchase Orders</h1>
-          <p className="text-sm text-muted mt-1">Place and receive orders with your suppliers.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <ShoppingCart size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Orders / Purchase Orders</h1>
+            <p className="text-sm text-muted mt-1">Place and receive orders with your suppliers.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export orders to CSV">
@@ -128,11 +136,23 @@ export default function Orders() {
 
       {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load orders")}</div>}
 
-      <div className="flex gap-2 flex-wrap">
-        <div className="relative flex-1 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by order number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search orders" />
         </div>
+        <FittedSelect
+          value={statusFilter}
+          onChange={(v) => { setStatusFilter(v); setPage(1); }}
+          ariaLabel="Filter by status"
+          maxWidth={150}
+          options={[
+            { value: "", label: "All statuses" },
+            { value: "pending", label: "Pending" },
+            { value: "received", label: "Received" },
+            { value: "cancelled", label: "Cancelled" },
+          ]}
+        />
       </div>
 
       <BulkActionBar count={selectedIds.size} canEdit={can("orders.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
@@ -183,14 +203,14 @@ export default function Orders() {
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     {o.status === "pending" && (
-                      <button onClick={() => setEditing(o)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Edit order ${o.order_number}`}>
+                      <button onClick={() => setEditing(o)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit order ${o.order_number}`}>
                         <Pencil size={16} />
                       </button>
                     )}
-                    <button onClick={() => setViewing(o)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`View order ${o.order_number}`}>
+                    <button onClick={() => setViewing(o)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View order ${o.order_number}`}>
                       <Eye size={16} />
                     </button>
-                    <button onClick={() => printPdf(o)} className="p-1 text-faint hover:text-indigo-600 dark:text-indigo-400" aria-label={`Print order ${o.order_number}`}>
+                    <button onClick={() => printPdf(o)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Print order ${o.order_number}`}>
                       <Printer size={16} />
                     </button>
                     {o.status !== "received" && (

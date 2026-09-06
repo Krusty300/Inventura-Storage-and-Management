@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, CheckCheck, Info, PackageCheck, X } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, Info, PackageCheck, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Notification, PaginatedResponse } from "../types";
@@ -21,7 +21,7 @@ const typeIcon: Record<string, typeof Info> = {
 const typeBadge: Record<string, string> = {
   warning: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border-amber-200 dark:border-amber-500/30",
   success: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30",
-  info: "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30",
+  info: "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400 border-sky-200 dark:border-sky-500/30",
 };
 
 type Tab = "all" | "unread" | "warning" | "success";
@@ -88,9 +88,14 @@ export default function Notifications() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-ink">Notifications</h1>
-          <p className="text-sm text-muted mt-1">Alerts about low stock, expiring lots, and operational events.</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+            <Bell size={22} strokeWidth={2} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-ink">Notifications</h1>
+            <p className="text-sm text-muted mt-1">Alerts about low stock, expiring lots, and operational events.</p>
+          </div>
         </div>
         <button
           onClick={() => markAllRead.mutate()}
@@ -115,7 +120,7 @@ export default function Notifications() {
             key={key}
             onClick={() => { setTab(key); setPage(1); }}
             className={`px-3 py-1 rounded-md text-sm transition-colors ${
-              tab === key ? "bg-surface text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-muted hover:text-ink"
+              tab === key ? "bg-surface text-primary dark:text-primary shadow-sm" : "text-muted hover:text-ink"
             }`}
           >
             {label}
@@ -162,7 +167,7 @@ export default function Notifications() {
                     {!n.is_read && (
                       <button
                         onClick={() => markRead.mutate(n)}
-                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                        className="text-xs text-primary dark:text-primary hover:underline"
                       >
                         Mark read
                       </button>

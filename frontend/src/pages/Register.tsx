@@ -74,7 +74,7 @@ export default function Register() {
       footer={
         <p className="text-sm text-muted mt-6 text-center">
           Already have an account?{" "}
-          <Link to="/login" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+          <Link to="/login" className="text-primary dark:text-primary hover:underline">
             Sign in
           </Link>
         </p>

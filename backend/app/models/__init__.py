@@ -2,6 +2,7 @@ from app.models.asn import ASN, ASNItem
 from app.models.attachment import Attachment
 from app.models.note import Note, NoteLink, NoteTag, NoteTagLink
 from app.models.bom import BOM, BOMItem
+from app.models.kit import Kit, KitItem
 from app.models.category import Category
 from app.models.customer import Customer
 from app.models.customer_group import CustomerGroup
@@ -41,6 +42,8 @@ __all__ = [
     "NoteTagLink",
     "BOM",
     "BOMItem",
+    "Kit",
+    "KitItem",
     "Category",
     "Customer",
     "CustomerGroup",

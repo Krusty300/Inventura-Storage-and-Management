@@ -29,11 +29,14 @@ api.interceptors.response.use(
     }
 
     const config: AxiosRequestConfig & { _retryCount?: number } = err.config ?? {};
+    const method = (config.method ?? "get").toUpperCase();
+    const isIdempotent = ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"].includes(method);
     const isRetryable =
-      !err.response ||
-      (err.response.status >= 500 && err.response.status < 600) ||
-      err.code === "ECONNABORTED" ||
-      err.code === "ERR_NETWORK";
+      isIdempotent &&
+      (!err.response ||
+        (err.response.status >= 500 && err.response.status < 600) ||
+        err.code === "ECONNABORTED" ||
+        err.code === "ERR_NETWORK");
 
     if (isRetryable && config._retryCount == null) {
       config._retryCount = 0;

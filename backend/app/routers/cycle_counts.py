@@ -16,7 +16,7 @@ from app.services.auth import require_permission
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, draw_banner_header, draw_info_block, draw_item_table,
+    BODY_RIGHT, MARGIN, money, draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change
@@ -105,8 +105,8 @@ def cycle_count_pdf(cc_id: int, db: Session = Depends(get_db)):
             str(item.expected_qty),
             str(item.counted_qty) if item.counted_qty is not None else "\u2014",
             f"{item.variance:+d}",
-            f"{currency}{cost:.2f}",
-            f"{currency}{cost * item.variance:+.2f}",
+            money(currency, cost),
+            money(currency, cost * item.variance),
             item.status,
         ])
 
@@ -119,7 +119,7 @@ def cycle_count_pdf(cc_id: int, db: Session = Depends(get_db)):
     y = draw_totals(c, BODY_RIGHT, y, [
         ("Total Expected", f"{cc.total_expected} unit(s)"),
         ("Total Variance", f"{cc.total_variance:+d}"),
-    ], "Variance Cost", f"{currency}{total_var_cost:+.2f}")
+    ], "Variance Cost", money(currency, total_var_cost))
 
     if cc.notes:
         draw_notes(c, MARGIN, y, cc.notes)
@@ -210,6 +210,7 @@ def submit_cycle_count(cc_id: int, data: CycleCountSubmit, db: Session = Depends
             item.counted_qty = line.counted_qty
             item.variance = new_variance
             item.status = "ok" if new_variance == 0 else "mismatch"
+            item.current_on_hand = on_hand_at_submit.get(item.product_id)
             if delta == 0:
                 continue
             if product.is_serialized:
@@ -253,8 +254,6 @@ def submit_cycle_count(cc_id: int, data: CycleCountSubmit, db: Session = Depends
     log_activity(db, user.id, user.username, "complete", "cycle_count", cc.id,
                  f"Completed cycle count '{cc.cc_number}' (variance {cc.total_variance:+d})")
     db.commit()
-    for item in cc.items:
-        item.current_on_hand = on_hand_at_submit.get(item.product_id)
     broadcast_change("cycle_count", "updated")
     broadcast_change("stock_movement", "created")
     broadcast_change("product", "updated")

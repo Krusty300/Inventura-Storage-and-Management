@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { StockoutRisk } from "../../types";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import FittedSelect from "../../components/FittedSelect";
 
 export default function StockoutTab() {
   const [leadTime, setLeadTime] = useState(7);
@@ -27,9 +28,13 @@ export default function StockoutTab() {
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm text-muted" htmlFor="lead-time">Lead time (days)</label>
-          <select id="lead-time" className="select w-24" value={leadTime} onChange={(e) => setLeadTime(Number(e.target.value))}>
-            {[3, 5, 7, 10, 14, 21, 30].map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
+          <FittedSelect
+            value={String(leadTime)}
+            onChange={(v) => setLeadTime(Number(v))}
+            ariaLabel="Lead time"
+            maxWidth={110}
+            options={[3, 5, 7, 10, 14, 21, 30].map((n) => ({ value: String(n), label: String(n) }))}
+          />
         </div>
       </div>
       <div className="card overflow-hidden p-0">

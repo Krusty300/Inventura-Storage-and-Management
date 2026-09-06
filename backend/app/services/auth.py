@@ -20,18 +20,11 @@ security = HTTPBearer()
 
 LAST_SEEN_REFRESH_SECONDS = 300
 
-# Max token lifetime is the "remember me" expiry (30 days). Any non-revoked
-# session older than this can no longer carry a valid token.
 SESSION_EXPIRY_DAYS = max(getattr(settings, "remember_token_expire_minutes", 0) / (24 * 60), 1)
 
 
 def purge_expired_sessions(db: Session) -> int:
-    """Remove dead sessions so the user_sessions table does not grow unbounded.
-
-    Deletes every revoked (logged-out) session and any non-revoked session whose
-    token lifetime has clearly elapsed (older than the max token TTL, so it can
-    no longer be valid). Returns the number of rows deleted.
-    """
+    """Remove dead sessions so the user_sessions table does not grow unbounded."""
     now = datetime.now(timezone.utc)
     expired_cutoff = now - timedelta(days=SESSION_EXPIRY_DAYS)
     result = db.execute(
@@ -57,10 +50,27 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(data: dict, expires_minutes: int | None = None, jti: str | None = None) -> str:
+    """Sign a new token with the current (latest) secret key."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes or settings.access_token_expire_minutes)
     to_encode.update({"exp": expire, "jti": jti or uuid4().hex})
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+
+
+def _decode_token(token: str) -> dict:
+    """Try decoding with the current key first, then fall back to previous keys.
+
+    Returns the decoded payload on success. Raises ``HTTPException(401)`` if no
+    key can verify the token.
+    """
+    last_err: Exception | None = None
+    for key in settings.all_valid_keys:
+        try:
+            return jwt.decode(token, key, algorithms=[settings.algorithm])
+        except (JWTError, ValueError, TypeError) as exc:
+            last_err = exc
+            continue
+    raise HTTPException(status_code=401, detail="Invalid token") from last_err
 
 
 def get_current_user(
@@ -68,15 +78,13 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     token = credentials.credentials
-    try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id_str = payload.get("sub")
-        if user_id_str is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        user_id = int(user_id_str)
-        jti = payload.get("jti")
-    except (JWTError, ValueError, TypeError):
+    payload = _decode_token(token)
+    user_id_str = payload.get("sub")
+    if user_id_str is None:
         raise HTTPException(status_code=401, detail="Invalid token")
+    user_id = int(user_id_str)
+    jti = payload.get("jti")
+
     session = None
     if jti:
         session = db.query(UserSession).filter(UserSession.jti == jti).first()

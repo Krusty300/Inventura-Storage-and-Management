@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Clock, Shield, Save, History, Camera, Trash2,
-  Monitor, Download, LogOut,
+  Monitor, Download, LogOut, UserCircle,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -39,7 +39,7 @@ function deviceLabel(ua: string): string {
 }
 
 const ROLE_BADGE: Record<string, string> = {
-  admin: "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30",
+  admin: "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400 border-sky-200 dark:border-sky-500/30",
   manager: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 border-amber-200 dark:border-amber-500/30",
   worker: "bg-gray-100 text-gray-600 dark:bg-gray-500/10 dark:text-gray-400 border-gray-200 dark:border-gray-500/30",
 };
@@ -192,8 +192,15 @@ export default function Profile() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-ink">Profile</h1>
-      <p className="text-sm text-muted -mt-3">Manage your account details, password, and preferences.</p>
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
+          <UserCircle size={22} strokeWidth={2} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-ink">Profile</h1>
+          <p className="text-sm text-muted mt-0.5">Manage your account details, password, and preferences.</p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-6 lg:col-span-2">
@@ -207,7 +214,7 @@ export default function Profile() {
                   className="h-20 w-20 rounded-full object-cover border border-border" loading="lazy" />
               ) : (
                 <div
-                  className="h-20 w-20 rounded-full bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400
+                  className="h-20 w-20 rounded-full bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary
                     flex items-center justify-center text-2xl font-semibold border border-border"
                 >
                   {user.username.charAt(0).toUpperCase()}
@@ -327,7 +334,7 @@ export default function Profile() {
                         <Monitor size={15} className="text-faint shrink-0" />
                         <span className="font-medium truncate">{deviceLabel(s.user_agent)}</span>
                         {s.is_current && (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-primary-soft dark:bg-primary/10 text-primary-strong dark:text-primary border border-primary-soft dark:border-primary/30">
                             This device
                           </span>
                         )}
