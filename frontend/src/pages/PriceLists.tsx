@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
-import { Pencil, Trash2, Search, Tag, Star } from "lucide-react";
+import { useState, useEffect, type ReactNode } from "react";
+import { Pencil, Trash2, Search, Tag, Star, BadgePercent, CalendarRange, Layers, Package } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, PriceList } from "../types";
 import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -14,6 +15,7 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../hooks/useSettings";
 import { usePageSize } from "../hooks/usePageSize";
+import { useDateFormat } from "../hooks/useDateFormat";
 import { errorMessage } from "../utils/errors";
 import { formatCurrency } from "../utils/currency";
 
@@ -208,65 +210,112 @@ function PriceListForm({ priceList, onClose, onSaved }: { priceList: PriceList |
   const usedProductIds = items.filter((i) => i.product_id !== null).map((i) => i.product_id as number);
 
   return (
-    <Modal open onClose={onClose} title={priceList ? "Edit Price List" : "Add Price List"} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Name *</label>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Description</label>
-          <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Valid From</label>
-            <input type="date" className="input" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+    <SlideOver
+      open
+      onClose={onClose}
+      wide
+      ariaLabel={priceList ? "Edit Price List" : "Add Price List"}
+      title={priceList ? "Edit Price List" : "Add Price List"}
+      actions={
+        <button type="submit" form="price-list-form" disabled={saving || !name.trim()} className="btn-primary">
+          {saving ? "Saving..." : priceList ? "Update" : "Create"}
+        </button>
+      }
+    >
+      <form id="price-list-form" onSubmit={handleSubmit} className="space-y-5">
+        <section className="border border-border rounded-xl overflow-hidden">
+          <header className="px-5 py-3 bg-app border-b border-border flex items-center gap-2">
+            <Tag size={16} className="text-primary shrink-0" />
+            <h3 className="text-sm font-semibold text-ink">Details</h3>
+          </header>
+          <div className="p-5 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Name *</label>
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Wholesale 2026" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Description</label>
+              <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional note about this price list" />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Valid To</label>
-            <input type="date" className="input" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
-          </div>
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="rounded border-border-strong" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
-          Set as default price list
-        </label>
+        </section>
 
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-ink">Price List Items</h3>
-            <button type="button" onClick={addItem} className="text-sm text-primary dark:text-primary hover:underline">+ Add item</button>
+        <section className="border border-border rounded-xl overflow-hidden">
+          <header className="px-5 py-3 bg-app border-b border-border flex items-center gap-2">
+            <CalendarRange size={16} className="text-primary shrink-0" />
+            <h3 className="text-sm font-semibold text-ink">Validity</h3>
+          </header>
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Valid From</label>
+                <input type="date" className="input" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Valid To</label>
+                <input type="date" className="input" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input type="checkbox" className="rounded border-border-strong" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
+              Set as default price list
+            </label>
           </div>
-          {items.length > 0 && (
-            <div className="space-y-2">
+        </section>
+
+        <section className="border border-border rounded-xl overflow-hidden">
+          <header className="px-5 py-3 bg-app border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Layers size={16} className="text-primary shrink-0" />
+              <h3 className="text-sm font-semibold text-ink">Pricing Items</h3>
+              <span className="text-xs text-muted">({items.length})</span>
+            </div>
+            <button type="button" onClick={addItem} className="btn-secondary text-xs px-2.5 py-1">+ Add item</button>
+          </header>
+          {items.length > 0 ? (
+            <div className="p-5 space-y-2">
               {items.map((item, idx) => (
-                <div key={idx} className="grid grid-cols-[1fr_120px_80px_32px] gap-2 items-center">
+                <div key={idx} className="grid grid-cols-[1fr_120px_80px_36px] gap-2 items-center">
                   <ProductPicker
                     value={item.product_id}
                     onChange={(id) => updateItem(idx, "product_id", id)}
                     excludeIds={usedProductIds.filter((_, i) => i !== idx)}
                     placeholder="Select product..."
                   />
-                  <input className="input text-sm" placeholder="Price" type="number" step="0.01" min="0" value={item.price} onChange={(e) => updateItem(idx, "price", e.target.value)} />
-                  <input className="input text-sm" placeholder="Min Qty" type="number" min="1" value={item.min_qty} onChange={(e) => updateItem(idx, "min_qty", e.target.value)} />
-                  <button type="button" onClick={() => removeItem(idx)} className="p-1 text-faint hover:text-red-600" aria-label="Remove item">&times;</button>
+                  <div>
+                    <span className="sr-only">Price {idx + 1}</span>
+                    <input className="input text-sm" placeholder="Price" type="number" step="0.01" min="0" value={item.price} onChange={(e) => updateItem(idx, "price", e.target.value)} />
+                  </div>
+                  <div>
+                    <span className="sr-only">Min quantity {idx + 1}</span>
+                    <input className="input text-sm" placeholder="Min" type="number" min="1" value={item.min_qty} onChange={(e) => updateItem(idx, "min_qty", e.target.value)} />
+                  </div>
+                  <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-faint hover:text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-500/10" aria-label="Remove item" title="Remove">
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               ))}
             </div>
+          ) : (
+            <div className="p-5 text-center text-sm text-muted border-t-0">No items yet. Add a product to start pricing.</div>
           )}
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !name.trim()} className="btn-primary">{saving ? "Saving..." : priceList ? "Update" : "Create"}</button>
-        </div>
+        </section>
       </form>
-    </Modal>
+    </SlideOver>
+  );
+}
+
+function DetailStat({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg bg-app p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-faint">{label}</p>
+      <p className="text-sm font-semibold text-ink mt-0.5 truncate" title={typeof children === "string" ? children : undefined}>{children}</p>
+    </div>
   );
 }
 
 function PriceListDetail({ priceList, currencySymbol, onClose, onEdit }: { priceList: PriceList; currencySymbol: string; onClose: () => void; onEdit?: (pl: PriceList) => void }) {
+  const formatDate = useDateFormat();
   const { data: fresh, isLoading } = useQuery({
     queryKey: ["price-lists", priceList.id],
     queryFn: async () => {
@@ -278,48 +327,96 @@ function PriceListDetail({ priceList, currencySymbol, onClose, onEdit }: { price
 
   const pl = fresh ?? priceList;
   const items = pl.items ?? [];
+  const tierCount = items.filter((i) => i.min_qty > 1).length;
+  const validity = [pl.valid_from, pl.valid_to].filter(Boolean).join(" → ") || "—";
 
   return (
-    <Modal open onClose={onClose} title={pl.name} wide>
+    <SlideOver open onClose={onClose} title={pl.name} wide ariaLabel={pl.name}>
       <div className="space-y-5">
-        <div className="flex items-center gap-3 flex-wrap">
-          {pl.is_default && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">Default</span>}
-          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${pl.is_active ? "bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400" : "bg-gray-100 text-gray-500 dark:bg-gray-500/10 dark:text-gray-400"}`}>
-            {pl.is_active ? "Active" : "Inactive"}
-          </span>
-          <span className="text-sm text-muted">{pl.item_count} item{pl.item_count === 1 ? "" : "s"}</span>
-        </div>
+        <div className="border border-border rounded-xl overflow-hidden bg-white dark:bg-app">
+          <div className="border-b border-border px-6 py-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:bg-primary/15 dark:text-primary flex items-center justify-center shrink-0">
+                  <BadgePercent size={22} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-faint">Price List</p>
+                  <h3 className="text-xl font-bold text-ink mt-0.5 truncate">{pl.name}</h3>
+                  {pl.description && <p className="text-sm text-muted mt-1">{pl.description}</p>}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <span className={`badge ${pl.is_active ? "badge-success" : "badge-neutral"}`}>
+                  {pl.is_active ? "Active" : "Inactive"}
+                </span>
+                {pl.is_default && (
+                  <span className="badge badge-warning inline-flex items-center gap-1">
+                    <Star size={12} className="fill-amber-500 text-amber-500" />Default
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div><span className="text-muted">Description:</span> <span className="text-ink">{pl.description || "\u2014"}</span></div>
-          <div><span className="text-muted">Valid From:</span> <span className="text-ink">{pl.valid_from || "\u2014"}</span></div>
-          <div><span className="text-muted">Valid To:</span> <span className="text-ink">{pl.valid_to || "\u2014"}</span></div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-5">
+            <DetailStat label="Items">{pl.item_count}</DetailStat>
+            <DetailStat label="Quantity tiers">{tierCount > 0 ? tierCount : "—"}</DetailStat>
+            <DetailStat label="Validity">
+              <span className="inline-flex items-center gap-1">
+                <CalendarRange size={14} className="text-faint shrink-0" />
+                <span className="truncate">{validity}</span>
+              </span>
+            </DetailStat>
+            <DetailStat label="Updated">{pl.updated_at ? formatDate(pl.updated_at) : "—"}</DetailStat>
+          </div>
         </div>
 
         <div>
-          <h4 className="text-sm font-medium text-ink mb-2">Products</h4>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-ink inline-flex items-center gap-2">
+              <Package size={16} className="text-primary shrink-0" />
+              Products <span className="text-xs font-normal text-muted">({items.length})</span>
+            </h4>
+            {tierCount > 0 && (
+              <span className="badge badge-info inline-flex items-center gap-1">
+                <Layers size={12} />{tierCount} tier{tierCount !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+
           {isLoading ? (
             <Skeleton rows={3} cols={4} />
           ) : items.length === 0 ? (
-            <div className="text-center py-8 text-sm text-muted border-2 border-dashed border-border rounded-lg">No items in this price list yet.</div>
+            <div className="text-center py-10 text-sm text-muted border-2 border-dashed border-border rounded-xl">
+              <Package size={24} className="mx-auto mb-2 text-faint" />
+              No products in this price list yet.
+            </div>
           ) : (
-            <div className="card overflow-hidden p-0">
+            <div className="border border-border rounded-xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-app text-left">
+                    <th className="px-4 py-2.5 font-medium text-muted">#</th>
                     <th className="px-4 py-2.5 font-medium text-muted">Product</th>
-                    <th className="px-4 py-2.5 font-medium text-muted">SKU</th>
                     <th className="px-4 py-2.5 font-medium text-muted text-right">Price</th>
                     <th className="px-4 py-2.5 font-medium text-muted text-right">Min Qty</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {items.map((item) => (
+                  {items.map((item, idx) => (
                     <tr key={item.id} className="hover:bg-app">
-                      <td className="px-4 py-2.5 font-medium text-ink">{item.product_name || `Product #${item.product_id}`}</td>
-                      <td className="px-4 py-2.5 text-muted font-mono text-xs">{item.product_sku || "\u2014"}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-ink">{formatCurrency(item.price, currencySymbol)}</td>
-                      <td className="px-4 py-2.5 text-right text-muted">{item.min_qty}</td>
+                      <td className="px-4 py-2.5 text-faint">{idx + 1}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="font-medium text-ink truncate max-w-[24rem]">{item.product_name || `Product #${item.product_id}`}</div>
+                        {item.product_sku && <div className="text-xs font-mono text-muted mt-0.5">{item.product_sku}</div>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-bold text-ink whitespace-nowrap">{formatCurrency(item.price, currencySymbol)}</td>
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center min-w-[2.5rem] rounded-full px-2.5 py-1 text-xs font-semibold text-ink bg-subtle border border-border">
+                          {item.min_qty}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -328,11 +425,14 @@ function PriceListDetail({ priceList, currencySymbol, onClose, onEdit }: { price
           )}
         </div>
 
-        <div className="flex justify-end gap-3 pt-2 border-t border-border">
-          <button type="button" onClick={onClose} className="btn-secondary">Close</button>
-          {onEdit && <button type="button" onClick={() => onEdit(pl)} className="btn-primary">Edit</button>}
-        </div>
+        {onEdit && (
+          <div className="flex justify-end pt-2 border-t border-border">
+            <button type="button" onClick={() => onEdit(pl)} className="btn-primary inline-flex items-center gap-2">
+              <Pencil size={16} /> Edit Price List
+            </button>
+          </div>
+        )}
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

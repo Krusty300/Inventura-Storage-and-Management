@@ -7,6 +7,7 @@ import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { ASN, LPN, PaginatedResponse, Product, Supplier } from "../types";
 import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import AttachmentSection from "../components/AttachmentSection";
 import LocationPicker from "../components/LocationPicker";
 import StockLocationHints from "../components/StockLocationHints";
@@ -526,7 +527,7 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
   const currencySymbol = settings?.currency_symbol || "$";
   const totalAmount = asn.items.reduce((sum, i) => sum + i.unit_cost * i.expected_qty, 0);
   return (
-    <Modal open onClose={onClose} title={`ASN ${asn.asn_number}`} xwide>
+    <SlideOver open onClose={onClose} title={`ASN ${asn.asn_number}`} wide>
       <div className="space-y-5">
         <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
           <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
@@ -617,11 +618,8 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
         <div className="px-6 py-5 border-t border-border bg-white dark:bg-app">
           <AttachmentSection entityType="asn" entityId={asn.id} canEdit={can("asns.create")} />
         </div>
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="btn-secondary">Close</button>
-        </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
+import ScrollArea from "./ScrollArea";
 
 interface Props {
   open: boolean;
@@ -84,17 +85,19 @@ export default function Modal({ open, onClose, title, children, wide, xwide, ari
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`bg-surface rounded-xl shadow-xl w-full max-h-[90vh] overflow-auto m-4 outline-none ${xwide ? "max-w-3xl" : wide ? "max-w-2xl" : "max-w-lg"}`}
+        className={`bg-surface rounded-xl shadow-xl w-full max-h-[90vh] m-4 outline-none flex flex-col overflow-hidden ${xwide ? "max-w-3xl" : wide ? "max-w-2xl" : "max-w-lg"}`}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        <div className="flex items-center justify-between p-6 border-b">
+        <div className="flex items-center justify-between p-6 border-b shrink-0">
           <h2 className="text-lg font-bold">{title}</h2>
           <button onClick={onClose} className="text-faint hover:text-muted" aria-label="Close dialog">
             <X size={20} />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <ScrollArea className="flex-1 min-h-0" viewportClassName="h-full p-6 sa-viewport-contain">
+          {children}
+        </ScrollArea>
       </div>
     </div>
   );

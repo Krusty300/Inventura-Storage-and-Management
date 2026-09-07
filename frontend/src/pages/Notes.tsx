@@ -5,7 +5,7 @@ import {
   AlertTriangle, Tag as TagIcon, Link as LinkIcon, StickyNote, ListTodo, Bell,
   LayoutGrid, List, Columns3, X as XIcon, User as UserIcon, Image as ImageIcon,
   Copy, Archive, ArchiveRestore, BookTemplate, ChevronUp, ChevronDown, Eye,
-  Info, FileText,
+  Info, FileText, CalendarDays, ExternalLink, Download,
 } from "lucide-react";
 import Markdown from "react-markdown";
 import api from "../api/client";
@@ -13,6 +13,8 @@ import type { Note, NoteTag, NoteTemplate, User, PaginatedResponse } from "../ty
 import Modal from "../components/Modal";
 import SlideOver from "../components/SlideOver";
 import NoteTemplateForm from "../components/NoteTemplateForm";
+import TaskCalendar from "../components/TaskCalendar";
+import ScrollArea from "../components/ScrollArea";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import ErrorState from "../components/ErrorState";
@@ -21,6 +23,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import EntitySearchInput from "../components/EntitySearchInput";
 import FittedSelect from "../components/FittedSelect";
 import { LINKABLE_ENTITIES, getEntityTypeLabel, getEntityTypeIcon } from "../utils/linkableEntities";
+import { buildCalendarEvents, buildIcsEvents, downloadIcs, googleCalUrl, outlookCalUrl, safeFilename } from "../utils/calendar";
 import { useDebounce } from "../hooks/useDebounce";
 import { usePageSize } from "../hooks/usePageSize";
 import { useBulkSelection } from "../hooks/useBulkSelection";
@@ -44,7 +47,7 @@ type NoteForm = {
   links: { entity_type: string; entity_id: number; entity_label: string }[];
 };
 
-type ViewMode = "list" | "card" | "kanban";
+type ViewMode = "list" | "card" | "kanban" | "calendar";
 
 const EMPTY_FORM: NoteForm = { title: "", body: "", category: "note", priority: "normal", is_pinned: false, due_date: "", recurrence: "none", assigned_to_id: null, tag_ids: [], links: [] };
 
@@ -92,6 +95,7 @@ export default function Notes() {
   const [dueDateTo, setDueDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [calCursor, setCalCursor] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [showForm, setShowForm] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [viewingNote, setViewingNote] = useState<Note | null>(null);
@@ -170,6 +174,26 @@ export default function Notes() {
   });
   const kanbanNotes = kanbanData ?? (viewMode === "kanban" ? [] : notes);
 
+  const { data: calendarNotes = [], isLoading: calendarLoading } = useQuery({
+    queryKey: ["notes-calendar", calCursor.getFullYear(), calCursor.getMonth()],
+    queryFn: async () => {
+      const start = new Date(calCursor.getFullYear(), calCursor.getMonth(), 1);
+      start.setDate(start.getDate() - 30);
+      const end = new Date(calCursor.getFullYear(), calCursor.getMonth() + 1, 1);
+      end.setDate(end.getDate() + 31);
+      const { data } = await api.get("/notes", {
+        params: {
+          skip: 0, limit: 500,
+          is_completed: false, is_archived: false,
+          due_after: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}T00:00:00`,
+          due_before: `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}T23:59:59`,
+        },
+      });
+      return (data.items || []) as Note[];
+    },
+    enabled: viewMode === "calendar",
+  });
+
   const { selectedIds, allSelected, toggleSelect, toggleSelectAll, clearSelection } = useBulkSelection(notes);
 
   const createMutation = useMutation({
@@ -198,7 +222,7 @@ export default function Notes() {
       if ("image_url" in payload) body.image_url = payload.image_url;
       return api.put(`/notes/${id}`, body);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); addToast("Note updated", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); queryClient.invalidateQueries({ queryKey: ["notes-calendar"] }); setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); addToast("Note updated", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to update note"), "error"),
   });
 
@@ -385,6 +409,35 @@ export default function Notes() {
     setDraggedNote(null);
   };
 
+  const handleCalendarReschedule = (note: Note, dueDate: string) => {
+    updateMutation.mutate({ id: note.id, payload: { due_date: dueDate } }, {
+      onSuccess: () => addToast("Due date updated", "success"),
+    });
+  };
+
+  const handleCalendarExport = () => {
+    const start = new Date(calCursor.getFullYear(), calCursor.getMonth(), 1);
+    start.setDate(1 - start.getDay());
+    const end = new Date(start);
+    end.setDate(start.getDate() + 41);
+    const visible = buildCalendarEvents(calendarNotes, start, end);
+    const exporting = visible
+      .map((ev) => ev.note)
+      .filter((n, idx, arr) => arr.findIndex((x) => x.id === n.id) === idx);
+    if (exporting.length === 0) {
+      addToast("No dated tasks this month to export", "error");
+      return;
+    }
+    downloadIcs(`tasks-${calCursor.getFullYear()}-${String(calCursor.getMonth() + 1).padStart(2, "0")}.ics`, buildIcsEvents(exporting));
+    addToast(`${exporting.length} task${exporting.length === 1 ? "" : "s"} exported`, "success");
+  };
+
+  const handleExportOne = (note: Note) => {
+    if (!note.due_date) return;
+    downloadIcs(`${safeFilename(note.title)}.ics`, buildIcsEvents([note]));
+    addToast("Event exported", "success");
+  };
+
   const tabClasses = (active: boolean) => `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${active ? "bg-primary-soft text-primary-strong dark:bg-primary/20 dark:text-primary" : "text-muted hover:text-ink hover:bg-subtle"}`;
   const viewBtnClass = (active: boolean) => `p-1.5 rounded transition-colors ${active ? "bg-surface text-primary dark:text-primary shadow-sm" : "text-muted hover:text-ink"}`;
 
@@ -535,7 +588,7 @@ export default function Notes() {
   const renderKanbanBoard = () => {
     const allActive = kanbanNotes;
     return (
-      <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+      <ScrollArea direction="horizontal" viewportClassName="flex gap-4 pb-4 min-h-[400px] sa-viewport-contain">
         {KANBAN_COLUMNS.map((col) => {
           const colNotes = allActive.filter((n) => n.category === col.key);
           const ColIcon = col.icon;
@@ -557,7 +610,38 @@ export default function Notes() {
             </div>
           );
         })}
-      </div>
+      </ScrollArea>
+    );
+  };
+
+  const renderCalendar = () => {
+    const start = new Date(calCursor.getFullYear(), calCursor.getMonth(), 1);
+    start.setDate(1 - start.getDay());
+    const end = new Date(start);
+    end.setDate(start.getDate() + 41);
+    const events = buildCalendarEvents(calendarNotes, start, end);
+    const hasAnyDated = calendarNotes.some((n) => n.due_date);
+    if (!calendarLoading && events.length === 0) {
+      return (
+        <EmptyState
+          title={hasAnyDated ? "No tasks this month" : "No dated tasks"}
+          message={hasAnyDated ? "Nothing is scheduled in the visible month. Use the arrows to browse." : "Add a due date to a note or todo and it will show up here."}
+          icon={<CalendarDays size={48} />}
+          actionLabel={can("notes.create") ? "New Note" : undefined}
+          onAction={can("notes.create") ? openCreate : undefined}
+        />
+      );
+    }
+    return (
+      <TaskCalendar
+        notes={calendarNotes}
+        month={calCursor}
+        loading={calendarLoading}
+        onMonthChange={setCalCursor}
+        onOpenNote={openDetail}
+        onReschedule={handleCalendarReschedule}
+        onExport={handleCalendarExport}
+      />
     );
   };
 
@@ -585,7 +669,7 @@ export default function Notes() {
   };
 
   const renderKanbanSkeleton = () => (
-    <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+    <ScrollArea direction="horizontal" viewportClassName="flex gap-4 pb-4 min-h-[400px] sa-viewport-contain">
       {KANBAN_COLUMNS.map((col) => {
         const ColIcon = col.icon;
         return (
@@ -613,12 +697,15 @@ export default function Notes() {
           </div>
         );
       })}
-    </div>
+    </ScrollArea>
   );
 
   const renderContent = () => {
     if (viewMode === "list") {
       return renderNoteTable();
+    }
+    if (viewMode === "calendar") {
+      return renderCalendar();
     }
     if (isLoading) {
       return <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-lg" variant="text" />)}</div>;
@@ -707,6 +794,23 @@ export default function Notes() {
             </div>
           </div>
 
+          {viewingNote.due_date && (
+            <div className="rounded-xl border border-border bg-app p-4">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted uppercase tracking-wider mb-2"><CalendarDays size={13} />Calendar</div>
+              <div className="flex flex-wrap gap-2">
+                <a href={googleCalUrl(viewingNote) || "#"} target="_blank" rel="noreferrer" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+                  <ExternalLink size={14} />Google Calendar
+                </a>
+                <a href={outlookCalUrl(viewingNote) || "#"} target="_blank" rel="noreferrer" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+                  <ExternalLink size={14} />Outlook
+                </a>
+                <button onClick={() => handleExportOne(viewingNote)} className="btn-secondary text-sm inline-flex items-center gap-1.5">
+                  <Download size={14} />Export .ics
+                </button>
+              </div>
+            </div>
+          )}
+
           {viewingNote.tags.length > 0 && (
             <div>
               <div className="text-xs font-medium text-muted uppercase tracking-wider mb-2">Tags</div>
@@ -754,12 +858,32 @@ export default function Notes() {
               )}
             </div>
 
-          <div className="flex flex-wrap justify-end gap-2 pt-4 border-t border-border">
-            {!viewingNote.is_completed && <button onClick={() => { completeMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm"><CheckCircle2 size={16} className="mr-1" />Complete</button>}
-            {can("notes.update") && <button onClick={() => { archiveMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm">{viewingNote.is_archived ? <><ArchiveRestore size={16} className="mr-1" />Unarchive</> : <><Archive size={16} className="mr-1" />Archive</>}</button>}
-            {can("notes.create") && <button onClick={() => { duplicateMutation.mutate(viewingNote.id); }} className="btn-secondary text-sm"><Copy size={16} className="mr-1" />Duplicate</button>}
-            {can("notes.update") && <button onClick={() => { setViewingNote(null); openEdit(viewingNote); }} className="btn-secondary text-sm"><Edit3 size={16} className="mr-1" />Edit</button>}
-            {can("notes.delete") && <button onClick={() => { setConfirmDelete(viewingNote); }} className="btn-danger text-sm"><Trash2 size={16} className="mr-1" />Delete</button>}
+          <div className="grid grid-cols-2 gap-2 pt-4 border-t border-border sm:flex sm:flex-wrap sm:justify-end">
+            {!viewingNote.is_completed && (
+              <button onClick={() => { completeMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm">
+                <CheckCircle2 size={16} />Complete
+              </button>
+            )}
+            {can("notes.update") && (
+              <button onClick={() => { archiveMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm">
+                {viewingNote.is_archived ? <><ArchiveRestore size={16} />Unarchive</> : <><Archive size={16} />Archive</>}
+              </button>
+            )}
+            {can("notes.create") && (
+              <button onClick={() => { duplicateMutation.mutate(viewingNote.id); }} className="btn-secondary text-sm">
+                <Copy size={16} />Duplicate
+              </button>
+            )}
+            {can("notes.update") && (
+              <button onClick={() => { setViewingNote(null); openEdit(viewingNote); }} className="btn-secondary text-sm">
+                <Edit3 size={16} />Edit
+              </button>
+            )}
+            {can("notes.delete") && (
+              <button onClick={() => { setConfirmDelete(viewingNote); }} className="btn-danger text-sm last:odd:col-span-2">
+                <Trash2 size={16} />Delete
+              </button>
+            )}
           </div>
         </div>
       </SlideOver>
@@ -792,6 +916,7 @@ export default function Notes() {
             <button onClick={() => setViewMode("list")} className={viewBtnClass(viewMode === "list")} title="List view" aria-label="List view"><List size={16} /></button>
             <button onClick={() => setViewMode("card")} className={viewBtnClass(viewMode === "card")} title="Card view" aria-label="Card view"><LayoutGrid size={16} /></button>
             <button onClick={() => setViewMode("kanban")} className={viewBtnClass(viewMode === "kanban")} title="Kanban view" aria-label="Kanban view"><Columns3 size={16} /></button>
+            <button onClick={() => setViewMode("calendar")} className={viewBtnClass(viewMode === "calendar")} title="Calendar view" aria-label="Calendar view"><CalendarDays size={16} /></button>
           </div>
           {can("notes.create") && (
             <button onClick={() => setShowTagManager(true)} className="btn-secondary text-sm px-3 py-1.5" aria-label="Manage tags" title="Manage tags"><TagIcon size={16} /></button>
@@ -806,9 +931,9 @@ export default function Notes() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
-        <div className="relative sm:col-span-2 lg:col-span-1">
+        <div className="relative sm:col-span-2 lg:col-span-2">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-          <input className="input pl-10" placeholder="Search notes..." aria-label="Search notes" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+          <input className="input pl-10 w-full" placeholder="Search notes..." aria-label="Search notes" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
         <FittedSelect
           value={category}
@@ -849,8 +974,11 @@ export default function Notes() {
           ariaLabel="Filter by assignee"
           maxWidth={180}
         />
-        <input type="date" className="input w-40" value={dueDateFrom} onChange={(e) => { setDueDateFrom(e.target.value); setPage(1); }} aria-label="Due after" title="Due after" />
-        <input type="date" className="input w-40" value={dueDateTo} onChange={(e) => { setDueDateTo(e.target.value); setPage(1); }} aria-label="Due before" title="Due before" />
+        <div role="group" aria-label="Filter by due date" className="sm:col-span-2 lg:col-span-2 flex items-center gap-2">
+          <input type="date" className="input flex-1 min-w-0" value={dueDateFrom} onChange={(e) => { setDueDateFrom(e.target.value); setPage(1); }} aria-label="Due after" title="Due after" />
+          <span className="text-faint text-sm shrink-0 select-none" aria-hidden="true">to</span>
+          <input type="date" className="input flex-1 min-w-0" value={dueDateTo} onChange={(e) => { setDueDateTo(e.target.value); setPage(1); }} aria-label="Due before" title="Due before" />
+        </div>
       </div>
 
       {viewMode === "list" && (
@@ -912,9 +1040,9 @@ export default function Notes() {
         {renderContent()}
       </div>
 
-      {data && viewMode !== "kanban" && <Pagination page={page} totalPages={data.pages} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />}
+      {data && viewMode !== "kanban" && viewMode !== "calendar" && <Pagination page={page} totalPages={data.pages} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />}
 
-      <Modal open={showForm} title={editingNote ? "Edit Note" : "New Note"} onClose={() => { setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); }} wide>
+      <SlideOver open={showForm} title={editingNote ? "Edit Note" : "New Note"} onClose={() => { setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); }} wide>
           <div className="space-y-5">
             {!editingNote && templates.length > 0 && (
               <div className="rounded-xl border border-border bg-app p-4">
@@ -1076,7 +1204,7 @@ export default function Notes() {
               <button onClick={handleFormSubmit} className="btn-primary" disabled={createMutation.isPending || updateMutation.isPending}>{editingNote ? "Save Changes" : "Create Note"}</button>
             </div>
           </div>
-        </Modal>
+        </SlideOver>
 
       <Modal open={!!showTagManager} title="Manage Tags" onClose={() => setShowTagManager(false)}>
           <div className="space-y-5">

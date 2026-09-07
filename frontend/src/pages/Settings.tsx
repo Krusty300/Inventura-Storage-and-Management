@@ -430,14 +430,16 @@ export default function Settings() {
             <KeyRound size={18} className="text-faint" />
             Change Password
           </h2>
-          <form onSubmit={handlePassword} className="space-y-4 max-w-md">
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">Current Password</label>
-              <input type="password" className="input" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1">New Password</label>
-              <input type="password" className="input" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={6} />
+          <form onSubmit={handlePassword} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Current Password</label>
+                <input type="password" className="input" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">New Password</label>
+                <input type="password" className="input" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={6} />
+              </div>
             </div>
             <div className="flex justify-end">
               <button type="submit" disabled={pwSaving} className="btn-primary">

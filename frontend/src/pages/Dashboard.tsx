@@ -419,21 +419,21 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-red-500 text-left">
+          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow text-left">
             <div className="flex items-center gap-2">
               <AlertTriangle className="text-red-500" size={16} />
               <p className="text-sm text-muted">High Stockout Risk</p>
             </div>
             <p className="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{riskSummary.high}</p>
           </button>
-          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-amber-400 text-left">
+          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow text-left">
             <div className="flex items-center gap-2">
               <AlertTriangle className="text-amber-500" size={16} />
               <p className="text-sm text-muted">Medium Stockout Risk</p>
             </div>
             <p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">{riskSummary.medium}</p>
           </button>
-          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow border-l-4 border-l-emerald-400 text-left">
+          <button onClick={() => navigate(`/reports?tab=stockout&lead_time_days=${riskLeadTime}`)} className="card cursor-pointer hover:shadow-md transition-shadow text-left">
             <p className="text-sm text-muted">Low Stockout Risk</p>
             <p className="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">{riskSummary.low}</p>
           </button>

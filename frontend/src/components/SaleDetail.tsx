@@ -8,7 +8,7 @@ import { paymentLabel } from "../utils/payments";
 import { statusBadge } from "../utils/statusBadges";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
 import { useSettings } from "../hooks/useSettings";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import AttachmentSection from "./AttachmentSection";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -208,7 +208,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
 
   return (
     <>
-    <Modal open onClose={onClose} title={`Invoice ${sale.invoice_number}`} xwide>
+    <SlideOver open onClose={onClose} title={`Invoice ${sale.invoice_number}`} wide>
       <div className="space-y-5 text-sm">
         <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
           <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
@@ -458,7 +458,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
           </div>
         )}
       </div>
-    </Modal>
+    </SlideOver>
 
     {pdfPreviewUrl && (
       <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={() => { URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); }}>

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Pencil, Trash2, Search, BadgePercent } from "lucide-react";
+import { Pencil, Trash2, Search, BadgePercent, CalendarRange, Percent, Coins, Layers, Clock } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Promotion } from "../types";
-import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -13,6 +13,7 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../hooks/useSettings";
 import { usePageSize } from "../hooks/usePageSize";
+import { useDateFormat } from "../hooks/useDateFormat";
 import { errorMessage } from "../utils/errors";
 import { formatCurrency } from "../utils/currency";
 
@@ -138,6 +139,18 @@ export default function Promotions() {
   );
 }
 
+function FormCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <section className="border border-border rounded-xl overflow-hidden">
+      <header className="px-5 py-3 bg-app border-b border-border flex items-center gap-2">
+        {icon}
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
+      </header>
+      <div className="p-5 space-y-4">{children}</div>
+    </section>
+  );
+}
+
 function PromotionForm({ promotion, currencySymbol, onClose, onSaved }: { promotion: Promotion | null; currencySymbol: string; onClose: () => void; onSaved: () => void }) {
   const [code, setCode] = useState(promotion?.code || "");
   const [description, setDescription] = useState(promotion?.description || "");
@@ -187,128 +200,188 @@ function PromotionForm({ promotion, currencySymbol, onClose, onSaved }: { promot
   };
 
   return (
-    <Modal open onClose={onClose} title={promotion ? "Edit Promotion" : "Add Promotion"} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Code *</label>
-          <input className="input font-mono" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. SAVE20" required />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Description</label>
-          <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Discount Type *</label>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="radio" name="discount_type" value="percentage" checked={discountType === "percentage"} onChange={() => setDiscountType("percentage")} className="border-border-strong" />
-              Percentage (%)
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="radio" name="discount_type" value="fixed" checked={discountType === "fixed"} onChange={() => setDiscountType("fixed")} className="border-border-strong" />
-              Fixed Amount ({currencySymbol})
-            </label>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+    <SlideOver
+      open
+      onClose={onClose}
+      wide
+      ariaLabel={promotion ? "Edit Promotion" : "Add Promotion"}
+      title={promotion ? "Edit Promotion" : "Add Promotion"}
+      actions={
+        <button type="submit" form="promotion-form" disabled={saving || !code.trim()} className="btn-primary">
+          {saving ? "Saving..." : promotion ? "Update" : "Create"}
+        </button>
+      }
+    >
+      <form id="promotion-form" onSubmit={handleSubmit} className="space-y-5">
+        <FormCard icon={<BadgePercent size={16} className="text-primary shrink-0" />} title="Code & Description">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Value *</label>
+            <label className="block text-sm font-medium text-ink mb-1">Code *</label>
+            <input className="input font-mono uppercase" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. SAVE20" required />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Description</label>
+            <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this promotion offers" />
+          </div>
+        </FormCard>
+
+        <FormCard icon={<Percent size={16} className="text-primary shrink-0" />} title="Discount">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-2">Discount Type *</label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={`flex items-center gap-2 text-sm border rounded-lg px-3 py-2.5 cursor-pointer transition-colors ${discountType === "percentage" ? "border-primary bg-primary-soft dark:bg-primary/10" : "border-border hover:bg-app"}`}>
+                <input type="radio" name="discount_type" value="percentage" checked={discountType === "percentage"} onChange={() => setDiscountType("percentage")} className="border-border-strong" />
+                Percentage (%)
+              </label>
+              <label className={`flex items-center gap-2 text-sm border rounded-lg px-3 py-2.5 cursor-pointer transition-colors ${discountType === "fixed" ? "border-primary bg-primary-soft dark:bg-primary/10" : "border-border hover:bg-app"}`}>
+                <input type="radio" name="discount_type" value="fixed" checked={discountType === "fixed"} onChange={() => setDiscountType("fixed")} className="border-border-strong" />
+                Fixed ({currencySymbol})
+              </label>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">{discountType === "percentage" ? "Discount Value (%) *" : `Discount Amount (${currencySymbol}) *`}</label>
             <input type="number" step="0.01" min="0" max={discountType === "percentage" ? "100" : undefined} className="input" value={value} onChange={(e) => setValue(e.target.value)} required />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Max Uses (0 = unlimited)</label>
-            <input type="number" min="0" className="input" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
-          </div>
-        </div>
+        </FormCard>
 
-        <div className="grid grid-cols-2 gap-4">
+        <FormCard icon={<Layers size={16} className="text-primary shrink-0" />} title="Minimums">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Min Qty (0 = no minimum)</label>
+            <label className="block text-sm font-medium text-ink mb-1">Min Qty <span className="text-faint font-normal">(0 = no minimum)</span></label>
             <input type="number" min="0" className="input" value={minQty} onChange={(e) => setMinQty(e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Min Amount (0 = no minimum)</label>
+            <label className="block text-sm font-medium text-ink mb-1">Min Amount <span className="text-faint font-normal">(0 = no minimum)</span></label>
             <input type="number" step="0.01" min="0" className="input" value={minAmount} onChange={(e) => setMinAmount(e.target.value)} />
           </div>
-        </div>
+        </FormCard>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Valid From</label>
-            <input type="date" className="input" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+        <FormCard icon={<CalendarRange size={16} className="text-primary shrink-0" />} title="Validity & Usage">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Valid From</label>
+              <input type="date" className="input" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Valid To</label>
+              <input type="date" className="input" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-ink mb-1">Valid To</label>
-            <input type="date" className="input" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+            <label className="block text-sm font-medium text-ink mb-1">Max Uses <span className="text-faint font-normal">(0 = unlimited)</span></label>
+            <input type="number" min="0" className="input" value={maxUses} onChange={(e) => setMaxUses(e.target.value)} />
           </div>
-        </div>
+        </FormCard>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
           <input type="checkbox" className="rounded border-border-strong" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
           Active
         </label>
-
-        <div className="flex justify-end gap-3 pt-2">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !code.trim()} className="btn-primary">{saving ? "Saving..." : promotion ? "Update" : "Create"}</button>
-        </div>
       </form>
-    </Modal>
+    </SlideOver>
+  );
+}
+
+function DetailStat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg bg-app p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-faint">{label}</p>
+      <p className="text-sm font-semibold text-ink mt-0.5 truncate" title={typeof children === "string" ? children : undefined}>{children}</p>
+    </div>
   );
 }
 
 function PromotionDetail({ promotion, currencySymbol, onClose, onEdit }: { promotion: Promotion; currencySymbol: string; onClose: () => void; onEdit?: () => void }) {
+  const formatDate = useDateFormat();
+  const discountLabel = promotion.discount_type === "percentage" ? `${promotion.value}%` : formatCurrency(promotion.value, currencySymbol);
+  const validity = [promotion.valid_from, promotion.valid_to].filter(Boolean).join(" → ") || "—";
+  const unlimited = promotion.max_uses <= 0;
+  const usedPct = unlimited ? 0 : Math.min(Math.round((promotion.used_count / promotion.max_uses) * 100), 100);
+  const exhausted = !unlimited && promotion.used_count >= promotion.max_uses;
+
   return (
-    <Modal open onClose={onClose} title={promotion.code} wide>
+    <SlideOver open onClose={onClose} title={promotion.code} wide ariaLabel={promotion.code}>
       <div className="space-y-5">
-        <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${promotion.is_active ? "bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400" : "bg-gray-100 text-gray-500 dark:bg-gray-500/10 dark:text-gray-400"}`}>
-            {promotion.is_active ? "Active" : "Inactive"}
-          </span>
+        <div className="border border-border rounded-xl overflow-hidden bg-white dark:bg-app">
+          <div className="border-b border-border px-6 py-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:bg-primary/15 dark:text-primary flex items-center justify-center shrink-0">
+                  <BadgePercent size={22} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-faint">Promotion</p>
+                  <h3 className="text-xl font-bold text-ink mt-0.5 truncate">{promotion.code}</h3>
+                  {promotion.description && <p className="text-sm text-muted mt-1">{promotion.description}</p>}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <span className={`badge ${promotion.is_active ? "badge-success" : "badge-neutral"}`}>
+                  {promotion.is_active ? "Active" : "Inactive"}
+                </span>
+                {exhausted && <span className="badge badge-danger">Exhausted</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 py-5">
+            <DetailStat label="Discount">
+              <span className="inline-flex items-center gap-1">
+                {promotion.discount_type === "percentage" ? <Percent size={14} className="text-faint shrink-0" /> : <Coins size={14} className="text-faint shrink-0" />}
+                {discountLabel}
+              </span>
+            </DetailStat>
+            <DetailStat label="Type">{promotion.discount_type === "percentage" ? "Percentage" : "Fixed Amount"}</DetailStat>
+            <DetailStat label="Minim. qty / amt">
+              {promotion.min_qty > 0 && promotion.min_amount > 0
+                ? `${promotion.min_qty} · ${formatCurrency(promotion.min_amount, currencySymbol)}`
+                : promotion.min_qty > 0
+                  ? `${promotion.min_qty} units`
+                  : promotion.min_amount > 0
+                    ? formatCurrency(promotion.min_amount, currencySymbol)
+                    : "None"}
+            </DetailStat>
+            <DetailStat label="Updated">{promotion.updated_at ? formatDate(promotion.updated_at) : "—"}</DetailStat>
+          </div>
         </div>
 
-        {promotion.description && <p className="text-sm text-muted">{promotion.description}</p>}
-
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-muted">Discount:</span>{" "}
-            <span className="font-medium text-ink">
-              {promotion.discount_type === "percentage" ? `${promotion.value}%` : formatCurrency(promotion.value, currencySymbol)}
-            </span>
+        <div className="border border-border rounded-xl overflow-hidden bg-white dark:bg-app">
+          <div className="grid grid-cols-2 divide-x divide-border">
+            <div className="px-6 py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-faint mb-1">Usage</p>
+              <p className="text-sm font-semibold text-ink inline-flex items-center gap-1.5">
+                <Clock size={14} className="text-faint shrink-0" />
+                {unlimited ? `${promotion.used_count} used` : `${promotion.used_count} / ${promotion.max_uses}`}
+              </p>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-faint mb-1">Validity</p>
+              <p className="text-sm font-semibold text-ink inline-flex items-center gap-1.5 truncate">
+                <CalendarRange size={14} className="text-faint shrink-0" />
+                <span className="truncate">{validity}</span>
+              </p>
+            </div>
           </div>
-          <div>
-            <span className="text-muted">Type:</span>{" "}
-            <span className="text-ink">{promotion.discount_type === "percentage" ? "Percentage" : "Fixed Amount"}</span>
-          </div>
-          <div>
-            <span className="text-muted">Min Qty:</span>{" "}
-            <span className="text-ink">{promotion.min_qty > 0 ? promotion.min_qty : "\u2014"}</span>
-          </div>
-          <div>
-            <span className="text-muted">Min Amount:</span>{" "}
-            <span className="text-ink">{promotion.min_amount > 0 ? formatCurrency(promotion.min_amount, currencySymbol) : "\u2014"}</span>
-          </div>
-          <div>
-            <span className="text-muted">Valid From:</span>{" "}
-            <span className="text-ink">{promotion.valid_from || "\u2014"}</span>
-          </div>
-          <div>
-            <span className="text-muted">Valid To:</span>{" "}
-            <span className="text-ink">{promotion.valid_to || "\u2014"}</span>
-          </div>
-          <div>
-            <span className="text-muted">Uses:</span>{" "}
-            <span className="text-ink">{promotion.max_uses > 0 ? `${promotion.used_count} / ${promotion.max_uses}` : `${promotion.used_count} (unlimited)`}</span>
-          </div>
+          {!unlimited && (
+            <div className="border-t border-border px-6 py-4">
+              <div className="flex items-center justify-between text-xs text-muted mb-2">
+                <span className="font-medium">Redemption</span>
+                <span className="tabular-nums">{usedPct}% used</span>
+              </div>
+              <div className="h-2 rounded-full bg-subtle overflow-hidden" role="progressbar" aria-valuenow={promotion.used_count} aria-valuemin={0} aria-valuemax={promotion.max_uses} aria-label={`${promotion.code} redemption`}>
+                <div className={`h-full rounded-full ${exhausted ? "bg-red-500" : usedPct >= 80 ? "bg-amber-500" : "bg-primary"}`} style={{ width: `${usedPct}%` }} />
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex justify-end gap-3 pt-2 border-t border-border">
-          <button type="button" onClick={onClose} className="btn-secondary">Close</button>
-          {onEdit && <button type="button" onClick={onEdit} className="btn-primary">Edit</button>}
-        </div>
+        {onEdit && (
+          <div className="flex justify-end pt-2 border-t border-border">
+            <button type="button" onClick={onEdit} className="btn-primary inline-flex items-center gap-2">
+              <Pencil size={16} /> Edit Promotion
+            </button>
+          </div>
+        )}
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

@@ -14,6 +14,7 @@ import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS, paymentLabel } from "../utils/
 import { getPlaceholder, onImageError } from "../utils/placeholders";
 import FittedSelect from "./FittedSelect";
 import CartSwitcher from "./CartSwitcher";
+import ScrollArea from "./ScrollArea";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { loadCartWidth, saveCartWidth } from "../hooks/useSaleDraft";
 import {
@@ -951,7 +952,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <ScrollArea className="flex-1 min-h-0" viewportClassName="h-full p-6 sa-viewport-contain">
             {sellable.length === 0 ? (
               <p className="text-muted text-sm py-16 text-center">No sellable products found</p>
             ) : visibleProducts.length === 0 ? (
@@ -995,7 +996,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 })}
               </div>
             )}
-          </div>
+          </ScrollArea>
         </section>
 
         {isWide && (
@@ -1107,7 +1108,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
               <textarea className="input text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={formDisabled} aria-label="Sale notes" />
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            <ScrollArea className="flex-1 min-h-0" viewportClassName="h-full px-5 py-4 space-y-3 sa-viewport-contain">
               {items.length === 0 ? (
                 <p className="text-muted text-sm text-center py-10">Cart is empty — tap a product to add it</p>
               ) : (
@@ -1125,7 +1126,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   />
                 ))
               )}
-            </div>
+            </ScrollArea>
 
             <div className="px-5 py-4 border-t border-border space-y-3 bg-app">
               <div className="flex justify-between text-sm">

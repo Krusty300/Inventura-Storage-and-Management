@@ -4,6 +4,7 @@ import { Search, Loader2 } from "lucide-react";
 import api from "../api/client";
 import { useDebounce } from "../hooks/useDebounce";
 import { getLinkableEntity } from "../utils/linkableEntities";
+import ScrollArea from "./ScrollArea";
 
 interface Props {
   entityType: string;
@@ -101,24 +102,26 @@ export default function EntitySearchInput({ entityType, onSelect, excludeIds = [
         )}
       </div>
       {open && results.length > 0 && (
-        <div ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 card p-0 overflow-hidden max-h-48 overflow-y-auto shadow-lg" role="listbox">
-          {results.map((r, idx) => (
-            <button
-              key={`${r.type}-${r.id}`}
-              type="button"
-              onClick={() => select(r)}
-              onMouseEnter={() => setActiveIdx(idx)}
-              className={`w-full flex items-center justify-between px-3 py-2 text-left text-sm transition-colors ${idx === activeIdx ? "bg-primary-soft dark:bg-primary/10" : "hover:bg-app"}`}
-              role="option"
-              aria-selected={idx === activeIdx}
-            >
-              <span className="min-w-0">
-                <span className="block font-medium text-ink truncate">{r.label}</span>
-                {r.subtitle && <span className="block text-xs text-muted truncate">{r.subtitle}</span>}
-              </span>
-              <span className="shrink-0 text-xs text-faint ml-2">#{r.id}</span>
-            </button>
-          ))}
+        <div ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50">
+          <ScrollArea className="card p-0 overflow-hidden shadow-lg" role="listbox" viewportClassName="max-h-48 sa-viewport-contain">
+            {results.map((r, idx) => (
+              <button
+                key={`${r.type}-${r.id}`}
+                type="button"
+                onClick={() => select(r)}
+                onMouseEnter={() => setActiveIdx(idx)}
+                className={`w-full flex items-center justify-between px-3 py-2 text-left text-sm transition-colors ${idx === activeIdx ? "bg-primary-soft dark:bg-primary/10" : "hover:bg-app"}`}
+                role="option"
+                aria-selected={idx === activeIdx}
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium text-ink truncate">{r.label}</span>
+                  {r.subtitle && <span className="block text-xs text-muted truncate">{r.subtitle}</span>}
+                </span>
+                <span className="shrink-0 text-xs text-faint ml-2">#{r.id}</span>
+              </button>
+            ))}
+          </ScrollArea>
         </div>
       )}
       {open && query.trim().length >= 2 && !isFetching && results.length === 0 && (

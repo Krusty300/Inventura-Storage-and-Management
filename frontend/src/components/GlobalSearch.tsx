@@ -6,6 +6,7 @@ import api from "../api/client";
 import type { GlobalSearchResponse, GlobalSearchResult } from "../types";
 import { useDebounce } from "../hooks/useDebounce";
 import Skeleton from "./Skeleton";
+import ScrollArea from "./ScrollArea";
 
 const TYPE_LABELS: Record<string, string> = {
   product: "Products",
@@ -136,7 +137,7 @@ export default function GlobalSearch() {
       </div>
 
       {showPanel && (
-        <div className="absolute left-0 right-0 top-full mt-2 z-50 card p-0 overflow-hidden max-h-[70vh] overflow-y-auto">
+        <ScrollArea className="absolute left-0 right-0 top-full mt-2 z-50 card p-0 overflow-hidden" viewportClassName="max-h-[70vh] sa-viewport-contain">
           {isFetching && results.length === 0 ? (
             <div className="divide-y divide-border" aria-busy="true" aria-label="Searching" role="status">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -186,7 +187,7 @@ export default function GlobalSearch() {
               </div>
             </div>
           )}
-        </div>
+        </ScrollArea>
       )}
     </div>
   );

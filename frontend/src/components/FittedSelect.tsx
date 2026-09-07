@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import ScrollArea from "./ScrollArea";
 
 export interface FittedSelectOption {
   value: string;
@@ -114,14 +115,15 @@ export default function FittedSelect({
           className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-faint transition-transform ${open ? "rotate-180" : ""}`}
         />
       </div>
-      <ul
+      <ScrollArea
         id={listId}
         role="listbox"
         aria-label={ariaLabel ? `${ariaLabel} options` : undefined}
         style={{ maxWidth: `min(${maxWidth}px, calc(100vw - 2rem))` }}
-        className={`absolute left-0 top-full mt-1 z-50 min-w-full w-max max-h-56 overflow-auto rounded-lg border border-border-strong bg-surface shadow-lg px-1 py-1 transition-opacity ${
+        className={`absolute left-0 top-full mt-1 z-50 min-w-full w-max rounded-lg border border-border-strong bg-surface shadow-lg transition-opacity ${
           open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
+        viewportClassName="max-h-56 px-1 py-1 sa-viewport-contain"
       >
         {options.map((o, i) => (
           <li key={o.value}>
@@ -151,7 +153,7 @@ export default function FittedSelect({
         {options.length === 0 && (
           <li className="px-2 py-2 text-sm text-muted whitespace-nowrap">No options</li>
         )}
-      </ul>
+      </ScrollArea>
     </div>
   );
 }

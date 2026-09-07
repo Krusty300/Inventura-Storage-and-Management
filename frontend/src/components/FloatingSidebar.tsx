@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, type PointerEvent as ReactPoi
 import { Link, useLocation } from "react-router-dom";
 import { PanelLeftOpen, LogOut, ChevronRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import ScrollArea from "./ScrollArea";
 import { navGroups, type NavItem } from "../utils/navItems";
 
 const LABEL_BREAKPOINT = 80;
@@ -52,7 +53,9 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
   const widthRef = useRef(width);
   const showLabels = width >= LABEL_BREAKPOINT;
 
-  widthRef.current = width;
+  useEffect(() => {
+    widthRef.current = width;
+  }, [width]);
 
   useEffect(() => {
     if (!overlay) return;
@@ -146,7 +149,7 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
         }`}
         style={{ width }}
       >
-        <div className="sidebar-scroll flex-1 overflow-y-auto overflow-x-hidden w-full py-2 relative">
+        <ScrollArea className="flex-1 min-h-0" viewportClassName="h-full w-full py-2 relative sa-viewport-contain">
           {navGroups.map((group, gi) => {
             const visibleToRole = !group.roles || group.roles.includes(user?.role ?? "");
             const visibleItems = group.items.filter((item) => can(item.perm));
@@ -219,7 +222,7 @@ export default function FloatingSidebar({ onExpand, onClose, width, onWidthChang
               </div>
             );
           })}
-        </div>
+        </ScrollArea>
 
         <div className="shrink-0 w-full border-t border-border py-2 px-1.5 relative">
           <div className="flex flex-col items-center gap-1.5">

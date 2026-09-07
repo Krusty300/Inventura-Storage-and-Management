@@ -1,5 +1,5 @@
 import type { Receipt } from "../types";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import AttachmentSection from "./AttachmentSection";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useSettings } from "../hooks/useSettings";
@@ -19,7 +19,7 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
   const currencySymbol = settings?.currency_symbol || "$";
   const total = receipt.items.reduce((sum, i) => sum + i.quantity * i.unit_cost, 0);
   return (
-    <Modal open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} xwide>
+    <SlideOver open onClose={onClose} title={`Receipt ${receipt.receipt_number}`} wide>
       <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
         <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -116,10 +116,6 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
           <AttachmentSection entityType="receipt" entityId={receipt.id} canEdit={can("receipts.create")} />
         </div>
       </div>
-
-      <div className="flex justify-end pt-4">
-        <button onClick={onClose} className="btn-secondary">Close</button>
-      </div>
-    </Modal>
+    </SlideOver>
   );
 }

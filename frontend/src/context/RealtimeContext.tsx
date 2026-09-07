@@ -27,7 +27,7 @@ const entityQueryMap: Record<string, string[]> = {
   user: ["users", "auth-sessions", "assignable-users"],
   activity_log: ["activity-logs"],
   notification: ["notifications"],
-  note: ["notes", "notes-kanban", "note-tags", "note-templates", "assignable-users"],
+  note: ["notes", "notes-kanban", "notes-calendar", "note-tags", "note-templates", "assignable-users"],
   lot: ["lots", "lot-genealogy", "lot-movements", "lot-serials", "exceptions", "dashboard"],
   location: ["locations", "location-detail", "stock-locations", "quarantined-locations", "dashboard"],
   quality_check: ["quality-checks", "exceptions", "dashboard"],

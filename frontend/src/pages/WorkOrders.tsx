@@ -21,6 +21,7 @@ import { useToast } from "../context/ToastContext";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import FittedSelect from "../components/FittedSelect";
+import ScrollArea from "../components/ScrollArea";
 
 import { usePageSize } from "../hooks/usePageSize";
 import { errorMessage } from "../utils/errors";
@@ -161,7 +162,7 @@ export default function WorkOrders() {
 
   const renderKanbanBoard = () => {
     return (
-      <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+      <ScrollArea direction="horizontal" viewportClassName="flex gap-4 pb-4 min-h-[400px] sa-viewport-contain">
         {KANBAN_COLUMNS.map((col) => {
           const colWos = kanbanWos.filter((w) => w.status === col.key);
           return (
@@ -178,10 +179,10 @@ export default function WorkOrders() {
                   <div className="space-y-3">{colWos.map((w) => renderWoCard(w))}</div>
                 )}
               </div>
-            </div>
-          );
-        })}
-      </div>
+</div>
+        );
+      })}
+      </ScrollArea>
     );
   };
 
@@ -221,7 +222,7 @@ export default function WorkOrders() {
   };
 
   const renderKanbanSkeleton = () => (
-    <div className="flex gap-4 overflow-x-auto pb-4 min-h-[400px]">
+    <ScrollArea direction="horizontal" viewportClassName="flex gap-4 pb-4 min-h-[400px] sa-viewport-contain">
       {KANBAN_COLUMNS.map((col) => (
         <div key={col.key} className="flex-1 min-w-[280px]">
           <div className="flex items-center gap-2 px-3 py-2.5 mb-3 rounded-lg bg-subtle border border-border">
@@ -239,7 +240,7 @@ export default function WorkOrders() {
           </div>
         </div>
       ))}
-    </div>
+    </ScrollArea>
   );
 
   const openNew = () => { setEditing(null); setShowForm(true); };

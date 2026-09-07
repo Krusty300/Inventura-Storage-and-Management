@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { X, GripVertical } from "lucide-react";
+import ScrollArea from "./ScrollArea";
 
 interface Props {
   open: boolean;
@@ -92,7 +93,7 @@ export default function SlideOver({ open, onClose, title, children, wide, ariaLa
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`relative h-full bg-surface shadow-2xl overflow-auto outline-none animate-slide-in ${wide ? "w-full max-w-2xl" : "w-full max-w-xl"}`}
+        className={`relative h-full bg-surface shadow-2xl outline-none animate-slide-in flex flex-col overflow-hidden ${wide ? "w-full max-w-2xl" : "w-full max-w-xl"}`}
         style={{
           transform: dragOffset > 0 ? `translateX(${dragOffset}px)` : undefined,
           transition: dragging ? "none" : "transform 0.25s ease",
@@ -127,7 +128,9 @@ export default function SlideOver({ open, onClose, title, children, wide, ariaLa
             </button>
           </div>
         </div>
-        <div className="p-6">{children}</div>
+        <ScrollArea className="flex-1 min-h-0" viewportClassName="h-full p-6 sa-viewport-contain">
+          {children}
+        </ScrollArea>
       </div>
     </div>
   );

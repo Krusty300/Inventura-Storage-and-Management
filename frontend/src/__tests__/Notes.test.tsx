@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -10,6 +10,7 @@ vi.mock("../api/client", () => ({
 import Notes from "../pages/Notes";
 
 const getMock = api.get as ReturnType<typeof vi.fn>;
+const putMock = api.put as ReturnType<typeof vi.fn>;
 
 function mockNote(overrides: Record<string, unknown> = {}) {
   return {
@@ -194,5 +195,47 @@ describe("Notes Page", () => {
     mockNotes([]);
     renderWithProviders(<Notes />);
     expect(await screen.findByPlaceholderText("Search notes...")).toBeInTheDocument();
+  });
+
+  it("switches to the calendar view and shows dated tasks", async () => {
+    const today = new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    mockNotes([mockNote({ title: "Ship order", due_date: `${iso}T09:00:00` })]);
+    renderWithProviders(<Notes />);
+    fireEvent.click(await screen.findByLabelText("Calendar view"));
+    expect(await screen.findByText("Ship order")).toBeInTheDocument();
+  });
+
+  it("shows the empty calendar state when nothing is due", async () => {
+    mockNotes([mockNote({ due_date: null })]);
+    renderWithProviders(<Notes />);
+    fireEvent.click(await screen.findByLabelText("Calendar view"));
+    expect(await screen.findByText("No dated tasks")).toBeInTheDocument();
+  });
+
+  it("reschedules a task by dragging it to another day", async () => {
+    const today = new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const target = new Date(today);
+    target.setDate(target.getDate() + 1);
+    const targetIso = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+    putMock.mockResolvedValue({ data: mockNote({ title: "Move me", due_date: `${iso}T09:00:00` }) });
+    mockNotes([mockNote({ title: "Move me", due_date: `${iso}T09:00:00` })]);
+    renderWithProviders(<Notes />);
+    fireEvent.click(await screen.findByLabelText("Calendar view"));
+
+    const chip = await screen.findByText("Move me");
+    fireEvent.dragStart(chip, {
+      dataTransfer: { setData: vi.fn(), getData: () => "1", effectAllowed: "move" },
+    });
+    const targetCell = document.querySelector(`[data-date="${targetIso}"]`);
+    expect(targetCell).not.toBeNull();
+    fireEvent.drop(targetCell as Element, {
+      dataTransfer: { getData: () => "1", dropEffect: "move" },
+    });
+
+    await waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith("/notes/1", expect.objectContaining({ due_date: `${targetIso}T09:00` }))
+    );
   });
 });

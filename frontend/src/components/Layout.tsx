@@ -8,13 +8,15 @@ import {
   Monitor,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronRight,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemeMode } from "../context/ThemeContext";
 import NotificationBell from "./NotificationBell";
 import FloatingSidebar from "./FloatingSidebar";
+import ScrollArea from "./ScrollArea";
 import DateTimeDisplay from "./DateTimeDisplay";
-import { navItems, navGroups } from "../utils/navItems";
+import { navGroups } from "../utils/navItems";
 
 const MIN_SIDEBAR_WIDTH = 208;
 const DEFAULT_SIDEBAR_WIDTH = 256;
@@ -53,6 +55,22 @@ export default function Layout() {
     const saved = Number(localStorage.getItem("floatingSidebarWidth"));
     return saved >= MIN_FLOATING_WIDTH && saved <= MAX_FLOATING_WIDTH ? saved : DEFAULT_FLOATING_WIDTH;
   });
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem("collapsedNavGroups");
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch { /* ignore */ }
+    return new Set();
+  });
+  const toggleGroup = useCallback((groupId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      localStorage.setItem("collapsedNavGroups", JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
   const floatingWidthRef = useRef(floatingWidth);
   const sidebarWidthRef = useRef(sidebarWidth);
   const setFloatingWidth = useCallback((w: number) => {
@@ -65,12 +83,10 @@ export default function Layout() {
   const { theme, setTheme } = useTheme();
   const isTablet = useMediaQuery(TABLET_MQ);
   const isDesktop = useMediaQuery(DESKTOP_MQ);
-  const roleRestrictedTos = new Set(
-    navGroups
-      .filter((g) => g.roles && !g.roles.includes(user?.role ?? ""))
-      .flatMap((g) => g.items.map((it) => it.to)),
-  );
-  const visibleNavItems = navItems.filter((item) => can(item.perm) && !roleRestrictedTos.has(item.to));
+
+  const activeGroupId = navGroups.find((g) =>
+    g.items.some((item) => location.pathname === item.to)
+  )?.id;
 
   const collapsed = isTablet && sidebarCollapsed;
   const overlay = collapsed && !isDesktop;
@@ -143,23 +159,54 @@ export default function Layout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         } ${collapsed ? "md:border-r-0 md:invisible" : ""}`}
       >
-        <nav className="sidebar-scroll flex-1 overflow-y-auto p-4 space-y-1">
-          {visibleNavItems.map((item) => {
-            const isActive = location.pathname === item.to;
+        <ScrollArea as="nav" className="flex-1 min-h-0" viewportClassName="h-full p-4 space-y-1 sa-viewport-contain">
+          {navGroups.map((group, gi) => {
+            const visibleToRole = !group.roles || group.roles.includes(user?.role ?? "");
+            const visibleItems = group.items.filter((item) => can(item.perm));
+            if (!visibleToRole || visibleItems.length === 0) return null;
+            const isGroupActive = group.id === activeGroupId;
+            const isGroupCollapsed = collapsedGroups.has(group.id);
             return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`sidebar-link ${isActive ? "active" : ""}`}
-                aria-current={isActive ? "page" : undefined}
-                onClick={() => setSidebarOpen(false)}
-              >
-                <item.icon size={20} />
-                {item.label}
-              </Link>
+              <div key={group.id}>
+                {gi > 0 && (
+                  <div className="mx-2 my-2 border-t border-border/60" aria-hidden="true" />
+                )}
+                <button
+                  onClick={() => toggleGroup(group.id)}
+                  className="w-full flex items-center gap-1 px-3 pt-2 pb-1 mt-1 text-[10px] font-semibold uppercase tracking-wider text-faint hover:text-muted transition-colors"
+                  aria-expanded={!isGroupCollapsed}
+                >
+                  <ChevronRight
+                    size={12}
+                    className={`shrink-0 transition-transform duration-150 ${isGroupCollapsed ? "" : "rotate-90"}`}
+                  />
+                  <span className={`truncate ${isGroupActive ? "text-primary dark:text-primary" : ""}`}>
+                    {group.label}
+                  </span>
+                </button>
+                {!isGroupCollapsed && (
+                  <div className="space-y-1">
+                    {visibleItems.map((item) => {
+                      const isActive = location.pathname === item.to;
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          className={`sidebar-link ${isActive ? "active" : ""}`}
+                          aria-current={isActive ? "page" : undefined}
+                          onClick={() => setSidebarOpen(false)}
+                        >
+                          <item.icon size={20} />
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
-        </nav>
+        </ScrollArea>
         <div className="shrink-0 border-t border-border p-4">
           <div className="flex items-center justify-between gap-2">
             <Link to="/profile" className="flex items-center gap-2 min-w-0">
@@ -270,9 +317,15 @@ export default function Layout() {
             </Link>
           </div>
         </header>
-        <main id="main-content" className="flex-1 overflow-auto p-6">
+        <ScrollArea
+          as="main"
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 outline-none"
+          viewportClassName="h-full p-6"
+        >
           <Outlet />
-        </main>
+        </ScrollArea>
       </div>
 
       {loggingOut && (
