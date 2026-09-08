@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { ASN, LPN, PaginatedResponse, Product, Supplier } from "../types";
-import Modal from "../components/Modal";
 import SlideOver from "../components/SlideOver";
 import AttachmentSection from "../components/AttachmentSection";
 import LocationPicker from "../components/LocationPicker";
@@ -469,7 +468,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
   };
 
   return (
-    <Modal open onClose={onClose} title="New ASN" wide>
+    <SlideOver open onClose={onClose} title="New ASN" wide ariaLabel="New ASN">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
@@ -516,7 +515,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Creating..." : "Create ASN"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }
 
@@ -646,7 +645,7 @@ function AsnEditModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => void
   };
 
   return (
-    <Modal open onClose={onClose} title={`Edit ${asn.asn_number}`}>
+    <SlideOver open onClose={onClose} title={`Edit ${asn.asn_number}`} ariaLabel={`Edit ${asn.asn_number}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Expected Arrival</label>
@@ -661,7 +660,7 @@ function AsnEditModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => void
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : "Save Changes"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }
 
@@ -852,7 +851,7 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
   };
 
   return (
-    <Modal open onClose={onClose} title={`Receive ${asn.asn_number}`} wide>
+    <SlideOver open onClose={onClose} title={`Receive ${asn.asn_number}`} wide ariaLabel={`Receive ${asn.asn_number}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="divide-y divide-border max-h-[50vh] overflow-auto border border-border rounded-lg">
           {rows.map((row, idx) => (
@@ -868,6 +867,6 @@ function AsnReceiveModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => v
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Receiving..." : "Receive Stock"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }

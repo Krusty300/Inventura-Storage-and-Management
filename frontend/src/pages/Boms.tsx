@@ -4,7 +4,7 @@ import { Boxes, Eye, Layers, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { BOM, PaginatedResponse, ProductCost } from "../types";
-import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -226,7 +226,7 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
   };
 
   return (
-    <Modal open onClose={onClose} title={bom ? "Edit BOM" : "New BOM"} wide>
+    <SlideOver open onClose={onClose} title={bom ? "Edit BOM" : "New BOM"} wide>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -306,7 +306,7 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
           <button type="submit" disabled={saving || !productId} className="btn-primary">{saving ? "Saving..." : "Save BOM"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }
 
@@ -325,7 +325,7 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
   const variance = rolledUp !== undefined ? rolledUp - direct : 0;
   const componentCost = (productId: number) => cost?.items.find((c) => c.product_id === productId)?.component_unit_cost;
   return (
-    <Modal
+    <SlideOver
       open
       onClose={onClose}
       title={
@@ -406,6 +406,6 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
           <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

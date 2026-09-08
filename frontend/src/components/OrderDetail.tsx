@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Fingerprint, Printer } from "lucide-react";
+import { Download, ExternalLink, Eye, Fingerprint, Printer, Pencil, X } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { LPN, Order, OrderItem } from "../types";
@@ -22,6 +22,7 @@ interface Props {
   order: Order;
   onClose: () => void;
   onUpdated: () => void;
+  onEdit?: () => void;
 }
 
 interface LocationOption {
@@ -171,7 +172,7 @@ function ReceiveRow({
   );
 }
 
-export default function OrderDetail({ order, onClose, onUpdated }: Props) {
+export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props) {
   const formatDate = useDateFormat();
   const [confirming, setConfirming] = useState<string | null>(null);
   const [receiving, setReceiving] = useState(false);
@@ -200,12 +201,56 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const serializedItems = order.items.filter((i) => i.is_serialized);
   const needsSerials = serializedItems.length > 0;
 
-  const printPdf = () => {
-    api.get(`/orders/${order.id}/pdf`, { responseType: "blob" }).then(({ data }) => {
-      const url = URL.createObjectURL(data);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  useEffect(() => {
+    return () => { if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl); };
+  }, [pdfPreviewUrl]);
+
+  const fetchPdfBlob = async (): Promise<Blob> => {
+    const { data } = await api.get(`/orders/${order.id}/pdf`, { responseType: "blob" });
+    return data;
+  };
+
+  const previewOrder = async () => {
+    setPdfLoading(true);
+    try {
+      const blob = await fetchPdfBlob();
+      const url = URL.createObjectURL(blob);
+      setPdfPreviewUrl(url);
+    } catch {
+      addToast("Failed to generate PDF", "error");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const printPdf = async () => {
+    try {
+      const blob = await fetchPdfBlob();
+      const url = URL.createObjectURL(blob);
       window.open(url, "_blank", "noopener,noreferrer");
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    }).catch(() => addToast("Failed to generate PDF", "error"));
+    } catch {
+      addToast("Failed to generate PDF", "error");
+    }
+  };
+
+  const downloadPdf = async () => {
+    try {
+      const blob = await fetchPdfBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${order.order_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      addToast("Failed to download PDF", "error");
+    }
   };
 
   const updateStatus = async (status: string) => {
@@ -287,7 +332,21 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
   const confirmLabel = `Are you sure you want to cancel ${order.order_number}?`;
 
   return (
-    <SlideOver open onClose={onClose} title={order.order_number} wide ariaLabel={`Order ${order.order_number}`}>
+    <>
+    <SlideOver
+      open
+      onClose={onClose}
+      title={order.order_number}
+      wide
+      ariaLabel={`Order ${order.order_number}`}
+actions={
+        order.status === "pending" && onEdit ? (
+          <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label={`Edit order ${order.order_number}`}>
+            <Pencil size={14} />Edit Order
+          </button>
+        ) : undefined
+      }
+    >
       <div className="space-y-5">
         <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
           <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
@@ -412,6 +471,11 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
         )}
 
         <div className="flex gap-3 pt-2">
+          {order.status !== "pending" && (
+            <button onClick={previewOrder} disabled={pdfLoading} className="btn-primary flex-1 inline-flex items-center justify-center gap-2">
+              <Eye size={16} />{pdfLoading ? "Generating..." : "Preview"}
+            </button>
+          )}
           <button onClick={printPdf} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
             <Printer size={16} /> Print PDF
           </button>
@@ -436,5 +500,26 @@ export default function OrderDetail({ order, onClose, onUpdated }: Props) {
         <AttachmentSection entityType="order" entityId={order.id} canEdit={can("orders.update")} />
       </div>
     </SlideOver>
+
+    {pdfPreviewUrl && (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={() => { URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); }}>
+        <div className="bg-surface rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col mx-4" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+            <h3 className="font-bold text-ink">{order.order_number} — Preview</h3>
+            <button onClick={() => { URL.revokeObjectURL(pdfPreviewUrl); setPdfPreviewUrl(null); }} className="text-faint hover:text-muted p-1" aria-label="Close preview">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden p-2">
+            <iframe src={pdfPreviewUrl} className="w-full h-full min-h-[600px] rounded border border-border" title={`PDF preview of ${order.order_number}`} />
+          </div>
+          <div className="flex justify-end gap-2 px-6 py-3 border-t border-border">
+            <button onClick={printPdf} className="btn-secondary text-sm inline-flex items-center gap-1"><ExternalLink size={14} />Open in tab</button>
+            <button onClick={downloadPdf} className="btn-primary text-sm inline-flex items-center gap-1"><Download size={14} />Download</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

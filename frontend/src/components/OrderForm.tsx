@@ -6,7 +6,7 @@ import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Order, Product, Supplier, Location } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
 import { isSelectable, selectableProducts, productLabel } from "../utils/variants";
 import { formatCurrency } from "../utils/currency";
@@ -130,12 +130,14 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   };
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? "Edit Purchase Order" : "New Purchase Order"} wide>
+    <SlideOver
+      open
+      onClose={onClose}
+      title={isEdit ? `Edit ${order!.order_number}` : "New Purchase Order"}
+      wide
+      ariaLabel={isEdit ? `Edit order ${order!.order_number}` : "New Purchase Order"}
+    >
       <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
-        <div className="border-b border-border px-6 py-4">
-          <p className="text-xs font-semibold uppercase tracking-widest text-faint">{isEdit ? `Edit ${order!.order_number}` : "New Purchase Order"}</p>
-          <h3 className="text-lg font-bold text-ink mt-1 tracking-tight">{isEdit ? "Edit Purchase Order" : "New Purchase Order"}</h3>
-        </div>
         <form onSubmit={handleSubmit} className="space-y-5 px-6 py-5">
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Supplier</label>
@@ -201,7 +203,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <textarea className="input" rows={2} aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
         <div className="flex justify-end gap-3 pt-2 border-t border-border">
@@ -212,6 +214,6 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
         </div>
         </form>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

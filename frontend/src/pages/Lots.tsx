@@ -6,7 +6,7 @@ import { Eye, FlaskConical, ShieldCheck, ShieldX, CalendarX, FileText, Search } 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Lot, PaginatedResponse, SerialNumber, StockMovement } from "../types";
-import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -216,7 +216,7 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
   });
 
   return (
-    <Modal open onClose={onClose} title={`Lot ${lot.lot_number}`} wide>
+    <SlideOver open onClose={onClose} title={`Lot ${lot.lot_number}`} wide ariaLabel={`Lot ${lot.lot_number} details`}>
       <div className="space-y-4">
         <div className="grid grid-cols-4 gap-4 text-sm">
           <div>
@@ -320,11 +320,7 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
             </table>
           )}
         </div>
-
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="btn-secondary">Close</button>
-        </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

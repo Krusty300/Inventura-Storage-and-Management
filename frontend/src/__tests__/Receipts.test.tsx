@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithProviders } from "./testUtils";
 import api from "../api/client";
 
@@ -122,6 +122,29 @@ describe("Receipts Page", () => {
     mockReceipts([]);
     renderWithProviders(<Receipts />);
     expect(await screen.findByText("No receipts yet")).toBeInTheDocument();
+  });
+
+  it("shows preview and print PDF actions in the receipt detail", async () => {
+    mockReceipts([mockReceipt()]);
+    renderWithProviders(<Receipts />);
+    fireEvent.click(await screen.findByLabelText("View receipt RCV-0001"));
+    const dialog = await screen.findByRole("dialog", { name: "Receipt RCV-0001" });
+    expect(within(dialog).getByRole("button", { name: "Preview" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Print PDF" })).toBeInTheDocument();
+  });
+
+  it("previews the PDF for a receipt from its detail view", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/receipts") return Promise.resolve({ data: { items: [mockReceipt({ items: [{ id: 1, product_id: 1, product_name: "Widget", quantity: 2, unit_cost: 5, lot_number: "", location_name: "Main", product_image: "" }] })], total: 1, page: 1, pages: 1 } });
+      if (url === "/receipts/1/pdf") return Promise.resolve({ data: new Blob(["%PDF-1.4"], { type: "application/pdf" }) });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    URL.createObjectURL = vi.fn(() => "blob:receipt-pdf");
+    renderWithProviders(<Receipts />);
+    fireEvent.click(await screen.findByLabelText("View receipt RCV-0001"));
+    fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
+    await vi.waitFor(() => expect(getMock).toHaveBeenCalledWith("/receipts/1/pdf", expect.objectContaining({ responseType: "blob" })));
+    expect(await screen.findByTitle("PDF preview of RCV-0001")).toBeInTheDocument();
   });
 
   it("prefills the receipt location from the single location holding serialized stock", async () => {

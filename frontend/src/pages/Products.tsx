@@ -11,7 +11,7 @@ import AdjustStockModal from "../components/AdjustStockModal";
 import BulkEditModal from "../components/BulkEditModal";
 import CsvImportModal from "../components/CsvImportModal";
 import ConfirmDialog from "../components/ConfirmDialog";
-import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import BarcodeScanner from "../components/BarcodeScanner";
 import FittedSelect from "../components/FittedSelect";
 import Skeleton from "../components/Skeleton";
@@ -559,7 +559,7 @@ export default function Products() {
         onCancel={() => setToggling(null)}
       />
 
-      <Modal open={!!movementProduct} onClose={() => setMovementProduct(null)} title={`Movements: ${movementProduct?.display_name || ""}`} wide>
+      <SlideOver open={!!movementProduct} onClose={() => setMovementProduct(null)} title={`Movements: ${movementProduct?.display_name || ""}`} wide ariaLabel={`Movements for ${movementProduct?.display_name || ""}`}>
         {movementsLoading && <Skeleton variant="rows" rows={3} cols={5} />}
         {movementsError && <p className="text-red-600 dark:text-red-400 text-sm">Failed to load movements.</p>}
         {!movementsLoading && !movementsError && movements && movements.length === 0 && <p className="text-muted text-sm">No movements recorded for this product.</p>}
@@ -587,7 +587,7 @@ export default function Products() {
             </tbody>
           </table>
         )}
-      </Modal>
+      </SlideOver>
     </div>
   );
 }

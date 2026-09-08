@@ -81,14 +81,14 @@ export default function Login() {
           />
         </div>
         <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+          <label className="flex items-center justify-between w-full gap-2 text-sm text-muted cursor-pointer">
+            <span>Remember me</span>
             <input
               type="checkbox"
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
               className="h-4 w-4 rounded border-border-strong text-primary dark:text-primary focus:ring-primary"
             />
-            Remember me
           </label>
         </div>
         <button type="submit" className="btn-primary w-full" disabled={submitting}>

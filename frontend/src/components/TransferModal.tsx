@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, SerialNumber, StockLocation } from "../types";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
@@ -189,12 +189,26 @@ export default function TransferModal({ onClose, onSaved }: Props) {
   };
 
   return (
-    <Modal open onClose={onClose} title="Transfer Stock Between Locations" xwide>
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <SlideOver
+      open
+      onClose={onClose}
+      ariaLabel="Transfer Stock Between Locations"
+      title="Transfer Stock Between Locations"
+      wide
+      actions={
+        <button type="submit" form="transfer-form" disabled={transferMutation.isPending || noStock || noSerials} className="btn-primary">
+          {transferMutation.isPending ? "Transferring..." : "Transfer Stock"}
+        </button>
+      }
+    >
+      <form id="transfer-form" onSubmit={handleSubmit} className="space-y-5">
         {/* 1. Product & quantity */}
-        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
-          <SectionHeading step={1}>Product & Quantity</SectionHeading>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <section className="border border-border rounded-xl overflow-hidden">
+          <header className="px-5 py-3 bg-app border-b border-border">
+            <SectionHeading step={1}>Product & Quantity</SectionHeading>
+          </header>
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-ink mb-1">Product *</label>
               <FittedSelect
@@ -256,12 +270,16 @@ export default function TransferModal({ onClose, onSaved }: Props) {
               </>
             )}
           </div>
-        </div>
+          </div>
+        </section>
 
         {/* 2. Route */}
-        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
-          <SectionHeading step={2}>Transfer Route</SectionHeading>
-          <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+        <section className="border border-border rounded-xl overflow-hidden">
+          <header className="px-5 py-3 bg-app border-b border-border">
+            <SectionHeading step={2}>Transfer Route</SectionHeading>
+          </header>
+          <div className="p-5 space-y-4">
+            <div className="flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:items-center">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">From Location *</label>
               {isSerialized ? (
@@ -342,12 +360,16 @@ export default function TransferModal({ onClose, onSaved }: Props) {
               </div>
             </div>
           )}
-        </div>
+          </div>
+        </section>
 
         {/* 3. Details */}
-        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
-          <SectionHeading step={3}>Details</SectionHeading>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <section className="border border-border rounded-xl overflow-hidden">
+          <header className="px-5 py-3 bg-app border-b border-border">
+            <SectionHeading step={3}>Details</SectionHeading>
+          </header>
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {isSerialized ? (
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Available at source</label>
@@ -399,7 +421,8 @@ export default function TransferModal({ onClose, onSaved }: Props) {
               <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
           </div>
-        </div>
+          </div>
+        </section>
 
         {noStock && (
           <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-3 py-2 flex items-center gap-1.5">
@@ -418,14 +441,7 @@ export default function TransferModal({ onClose, onSaved }: Props) {
           <ArrowLeftRight size={14} className="text-primary" />
           A single reference is used for both the outbound and inbound movement.
         </p>
-
-        <div className="flex justify-end gap-3 pt-4">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={transferMutation.isPending || noStock || noSerials} className="btn-primary">
-            {transferMutation.isPending ? "Transferring..." : "Transfer Stock"}
-          </button>
-        </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }

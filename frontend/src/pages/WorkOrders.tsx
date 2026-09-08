@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useState } from "react";
-import { Columns3, CheckCircle, Factory, Eye, List, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
+import { AlertTriangle, Columns3, CheckCircle, Factory, Eye, List, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
@@ -79,6 +79,7 @@ export default function WorkOrders() {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["work-orders"] });
     queryClient.invalidateQueries({ queryKey: ["work-orders-kanban"] });
+    queryClient.invalidateQueries({ queryKey: ["work-order"] });
     queryClient.invalidateQueries({ queryKey: ["products"] });
   };
 
@@ -386,7 +387,15 @@ export default function WorkOrders() {
         />
       )}
 
-      {viewing && <WorkOrderDetail wo={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <WorkOrderDetail
+          wo={viewing}
+          onClose={() => setViewing(null)}
+          onChanged={refresh}
+          onEdit={() => { setViewing(null); setEditing(viewing); setShowForm(true); }}
+          onComplete={() => setCompleting(viewing)}
+        />
+      )}
 
       {completing && (
         <CompleteModal
@@ -475,7 +484,7 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
   };
 
   return (
-    <Modal open onClose={onClose} title={wo ? `Edit ${wo.wo_number}` : "New Work Order"} wide>
+    <SlideOver open onClose={onClose} title={wo ? `Edit ${wo.wo_number}` : "New Work Order"} ariaLabel={wo ? `Edit ${wo.wo_number}` : "New Work Order"}>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <p className="text-xs font-semibold text-faint uppercase tracking-wider mb-2">Production</p>
@@ -550,19 +559,38 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
           <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
-        <div className="flex justify-end gap-3 pt-4 border-t border-border">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !productId} className="btn-primary">{saving ? "Saving..." : "Save Work Order"}</button>
+        <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-border">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1 sm:flex-none">Cancel</button>
+          <button type="submit" disabled={saving || !productId} className="btn-primary flex-1 sm:flex-none">{saving ? "Saving..." : "Save Work Order"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }
 
-function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }) {
+function WorkOrderDetail({ wo, onClose, onChanged, onEdit, onComplete }: {
+  wo: WorkOrder;
+  onClose: () => void;
+  onChanged: () => void;
+  onEdit?: () => void;
+  onComplete?: () => void;
+}) {
   const formatDate = useDateFormat();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const { can } = useAuth();
+  const { addToast } = useToast();
+  const [acting, setActing] = useState(false);
+
+  const { data: fresh } = useQuery({
+    queryKey: ["work-order", wo.id],
+    queryFn: async () => (await api.get(`/work-orders/${wo.id}`)).data as WorkOrder,
+    initialData: wo,
+  });
+  const current = fresh ?? wo;
+
+  const shortfallItems = current.items.filter((i) => i.quantity_issued < i.quantity_required);
+
   const { data: genealogy } = useQuery({
     queryKey: ["work-order-genealogy", wo.id],
     queryFn: async () => {
@@ -570,55 +598,105 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
       return data as WorkOrderGenealogy;
     },
   });
+
+  const run = async (fn: () => Promise<void>, msg: string) => {
+    if (acting) return;
+    setActing(true);
+    try {
+      await fn();
+      addToast(msg, "success");
+      onChanged();
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Action failed"), "error");
+    }
+    setActing(false);
+  };
+
+  const printPdf = async () => {
+    try {
+      const { data } = await api.get(`/work-orders/${current.id}/pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(data);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      addToast("Failed to generate PDF", "error");
+    }
+  };
+
+  const headerActions = current.status === "planned" && can("work_orders.update") && onEdit ? (
+    <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label={`Edit ${current.wo_number}`}>
+      <Pencil size={14} />Edit Work Order
+    </button>
+  ) : undefined;
+
   return (
-    <SlideOver open onClose={onClose} title={wo.wo_number} wide ariaLabel={`Work order ${wo.wo_number} details`}>
+    <SlideOver open onClose={onClose} title={current.wo_number} wide ariaLabel={`Work order ${current.wo_number} details`} actions={headerActions}>
       <div className="space-y-5">
         <div className="flex items-center justify-between gap-2">
-          <span className={`badge ${statusBadge(wo.status)}`}>{wo.status.replace("_", " ")}</span>
-          <span className={`badge ${wo.priority === "high" ? "badge-danger" : wo.priority === "low" ? "badge-success" : "badge-info"}`}>{wo.priority}</span>
+          <span className={`badge ${statusBadge(current.status)}`}>{current.status.replace("_", " ")}</span>
+          <span className={`badge ${current.priority === "high" ? "badge-danger" : current.priority === "low" ? "badge-success" : "badge-info"}`}>{current.priority}</span>
         </div>
 
         <div className="border border-border rounded-xl px-5 py-4 sm:px-6 sm:py-5">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
             <div className="min-w-0">
               <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Product</p>
-              <p className="font-medium text-ink break-words">{wo.product_name}</p>
+              <p className="font-medium text-ink break-words">{current.product_name}</p>
             </div>
             <div className="min-w-0">
               <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Quantity</p>
-              <p className="font-semibold text-ink tabular-nums">{wo.quantity}</p>
+              <p className="font-semibold text-ink tabular-nums">{current.quantity}</p>
             </div>
             <div className="min-w-0">
               <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Issued / Required</p>
-              <p className={`font-semibold tabular-nums ${!wo.fully_issued && wo.status !== "planned" ? "text-amber-600 dark:text-amber-400" : "text-ink"}`}>
-                {wo.total_issued}<span className="text-faint text-sm font-medium"> / {wo.total_required}</span>
+              <p className={`font-semibold tabular-nums ${!current.fully_issued && current.status !== "planned" ? "text-amber-600 dark:text-amber-400" : "text-ink"}`}>
+                {current.total_issued}<span className="text-faint text-sm font-medium"> / {current.total_required}</span>
               </p>
-              {!wo.fully_issued && wo.status !== "planned" && <p className="text-[11px] mt-0.5 text-amber-600 dark:text-amber-400">Components not fully issued</p>}
+              {!current.fully_issued && current.status !== "planned" && <p className="text-[11px] mt-0.5 text-amber-600 dark:text-amber-400">Components not fully issued</p>}
             </div>
             <div className="min-w-0">
               <p className="text-faint text-xs uppercase tracking-wide mb-0.5">BOM</p>
-              <p className="font-medium text-ink break-words">{wo.bom_name || "Manual components"}</p>
+              <p className="font-medium text-ink break-words">{current.bom_name || "Manual components"}</p>
             </div>
           </div>
         </div>
 
+        {!current.fully_issued && current.status !== "planned" && shortfallItems.length > 0 && (
+          <div role="status" className="flex items-start gap-3 rounded-lg bg-amber-500/10 border border-amber-500/30 px-4 py-3">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="text-sm text-amber-800 dark:text-amber-200 min-w-0">
+              <p className="font-semibold">Components not fully issued</p>
+              <p className="text-xs mt-1 text-amber-700 dark:text-amber-300/80">
+                {current.total_required - current.total_issued} of {current.total_required} component unit(s) still short across {shortfallItems.length} {shortfallItems.length === 1 ? "item" : "items"}.
+              </p>
+              <ul className="mt-1.5 text-xs space-y-0.5">
+                {shortfallItems.map((it) => (
+                  <li key={it.id}>
+                    <span className="font-medium">{it.product_name}</span> — {it.quantity_issued} / {it.quantity_required} issued
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-muted">Created By</p>
-            <p className="font-medium">{wo.username}</p>
+            <p className="font-medium">{current.username}</p>
           </div>
           <div>
             <p className="text-muted">Started</p>
-            <p className="font-medium">{wo.started_at ? formatDate(wo.started_at) : "—"}</p>
+            <p className="font-medium">{current.started_at ? formatDate(current.started_at) : "—"}</p>
           </div>
           <div className="col-span-2">
             <p className="text-muted">Created</p>
-            <p className="font-medium">{formatDate(wo.created_at)}</p>
+            <p className="font-medium">{formatDate(current.created_at)}</p>
           </div>
-          {wo.notes && (
+          {current.notes && (
             <div className="col-span-2">
               <p className="text-muted">Notes</p>
-              <p className="font-medium">{wo.notes}</p>
+              <p className="font-medium">{current.notes}</p>
             </div>
           )}
         </div>
@@ -638,7 +716,7 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {wo.items.map((item) => (
+                {current.items.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-2 font-medium">{item.product_name}</td>
                     <td className="px-4 py-2">{item.quantity_required}</td>
@@ -652,10 +730,32 @@ function WorkOrderDetail({ wo, onClose }: { wo: WorkOrder; onClose: () => void }
             </table>
           </div>
         </div>
-        <GenealogySection genealogy={genealogy} woNumber={wo.wo_number} />
-        <CostSection woId={wo.id} />
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="btn-secondary">Close</button>
+        <GenealogySection genealogy={genealogy} woNumber={current.wo_number} />
+        <CostSection woId={current.id} />
+        <div className="flex flex-wrap items-center gap-2 pt-2">
+          {current.status === "planned" && can("work_orders.release") && (
+            <button onClick={() => run(() => api.post(`/work-orders/${current.id}/release`), `${current.wo_number} released`)} disabled={acting} className="btn-secondary flex-1 sm:flex-none">
+              <Rocket size={16} />Release
+            </button>
+          )}
+          {current.status === "released" && can("work_orders.release") && (
+            <button onClick={() => run(() => api.post(`/work-orders/${current.id}/start`), `${current.wo_number} started`)} disabled={acting} className="btn-secondary flex-1 sm:flex-none">
+              <Play size={16} />Start
+            </button>
+          )}
+          {(current.status === "released" || current.status === "in_progress") && can("work_orders.complete") && onComplete && (
+            <button onClick={onComplete} className="btn-primary flex-1 sm:flex-none">
+              <CheckCircle size={16} />Complete WO
+            </button>
+          )}
+          {(current.status === "planned" || current.status === "released" || current.status === "in_progress") && can("work_orders.update") && (
+            <button onClick={() => run(() => api.post(`/work-orders/${current.id}/cancel`), `${current.wo_number} cancelled`)} disabled={acting} className="btn-danger flex-1 sm:flex-none">
+              <XCircle size={16} />Cancel
+            </button>
+          )}
+          <button onClick={printPdf} className="btn-secondary flex-1 sm:flex-none">
+            <Printer size={16} />Print PDF
+          </button>
         </div>
       </div>
     </SlideOver>
@@ -838,9 +938,9 @@ function CompleteModal({ wo, onClose, onSaved }: { wo: WorkOrder; onClose: () =>
             ? "Each serial number registers one finished unit, enabling serial-level traceability back to consumed lots."
             : "Receiving creates a finished-good stock entry; a supplied lot number enables lot traceability."}
         </p>
-        <div className="flex justify-end gap-3 pt-4">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !receiveLocationId} className="btn-primary">{saving ? "Completing..." : "Complete WO"}</button>
+        <div className="flex flex-wrap justify-end gap-3 pt-4">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1 sm:flex-none">Cancel</button>
+          <button type="submit" disabled={saving || !receiveLocationId} className="btn-primary flex-1 sm:flex-none">{saving ? "Completing..." : "Complete WO"}</button>
         </div>
       </form>
     </Modal>

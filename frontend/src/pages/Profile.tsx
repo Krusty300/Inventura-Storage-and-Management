@@ -328,26 +328,37 @@ export default function Profile() {
             ) : (
               <ul className="divide-y divide-border">
                 {activeSessions.map((s) => (
-                  <li key={s.id} className="flex items-center justify-between gap-3 py-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-sm text-ink">
-                        <Monitor size={15} className="text-faint shrink-0" />
-                        <span className="font-medium truncate">{deviceLabel(s.user_agent)}</span>
-                        {s.is_current && (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-primary-soft dark:bg-primary/10 text-primary-strong dark:text-primary border border-primary-soft dark:border-primary/30">
-                            This device
-                          </span>
-                        )}
+                  <li key={s.id} className="py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="flex items-center justify-center h-9 w-9 rounded-lg bg-subtle text-muted dark:bg-subtle-strong shrink-0">
+                          <Monitor size={16} />
+                        </div>
+                        <div className="min-w-0 pt-0.5">
+                          <div className="flex flex-wrap items-center gap-2 text-sm text-ink">
+                            <span className="font-medium truncate">{deviceLabel(s.user_agent)}</span>
+                            {s.is_current && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-primary-soft dark:bg-primary/10 text-primary-strong dark:text-primary border border-primary-soft dark:border-primary/30">
+                                This device
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-faint mt-1 truncate">
+                            {s.ip_address || "Unknown IP"}
+                          </p>
+                          <p className="text-xs text-faint mt-0.5">
+                            Last seen {formatDateTime(s.last_seen_at)}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-faint mt-0.5 truncate">
-                        {s.ip_address || "Unknown IP"} · Last seen {formatDateTime(s.last_seen_at)}
-                      </p>
+                      {!s.is_current && (
+                        <div className="flex items-start shrink-0 pt-1">
+                          <button type="button" onClick={() => revokeSession(s.id)} className="text-sm text-muted hover:text-red-600 whitespace-nowrap">
+                            Revoke
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {!s.is_current && (
-                      <button type="button" onClick={() => revokeSession(s.id)} className="text-sm text-muted hover:text-red-600 shrink-0">
-                        Revoke
-                      </button>
-                    )}
                   </li>
                 ))}
               </ul>

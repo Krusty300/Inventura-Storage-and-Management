@@ -13,12 +13,13 @@ import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import FittedSelect from "../components/FittedSelect";
+import PaymentMethodPicker from "../components/PaymentMethodPicker";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
 import { useExportCsv } from "../hooks/useExportCsv";
 import { formatCurrency } from "../utils/currency";
-import { PAYMENT_METHODS, MOBILE_MONEY_PROVIDERS, paymentLabel, providerLabel } from "../utils/payments";
+import { PAYMENT_METHODS, paymentLabel, providerLabel } from "../utils/payments";
 import { statusBadge } from "../utils/statusBadges";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -364,19 +365,17 @@ export default function Sales() {
           <div className="space-y-3 mt-3">
             <div>
               <label className="block text-xs font-medium text-muted mb-1">Refund method</label>
-              <FittedSelect value={refundMethod} onChange={setRefundMethod} options={[{ value: "cash", label: "Cash" }, ...PAYMENT_METHODS.filter((m) => m.value !== "cash").map((m) => ({ value: m.value, label: m.label }))]} />
+              <PaymentMethodPicker
+                method={refundMethod}
+                provider={refundProvider}
+                onSelect={(m, p) => { setRefundMethod(m); if (p) setRefundProvider(p); }}
+              />
             </div>
             {refundMethod === "mobile_money" && (
-              <>
-                <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Provider</label>
-                  <FittedSelect value={refundProvider} onChange={setRefundProvider} options={MOBILE_MONEY_PROVIDERS.map((p) => ({ value: p.value, label: p.label }))} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Customer phone (254XXXXXXXXX)</label>
-                  <input className="input text-sm w-full" placeholder="e.g. 254712345678" value={refundPhone} onChange={(e) => setRefundPhone(e.target.value)} />
-                </div>
-              </>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1">Customer phone (254XXXXXXXXX)</label>
+                <input className="input text-sm w-full" placeholder="e.g. 254712345678" value={refundPhone} onChange={(e) => setRefundPhone(e.target.value)} />
+              </div>
             )}
           </div>
         )}

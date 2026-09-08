@@ -154,3 +154,36 @@ def test_pending_list():
     resp = client.get("/api/users/pending", headers=admin_headers)
     assert resp.status_code == 200
     assert len(resp.json()) == 2
+
+
+def test_rejected_user_can_rereregister():
+    user = create_test_user("rejected1", "rejected1@example.com", "pass123", "worker", approved=False)
+    admin_user = create_test_user("admin_rr", "admin_rr@example.com", "adminpass", "admin")
+    resp = client.post("/api/auth/login", json={"username": "admin_rr", "password": "adminpass"})
+    admin_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    # Admin rejects the pending registration -> account is deactivated & unapproved.
+    resp = client.post(f"/api/users/{user.id}/reject", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is False
+
+    # The same identity can now register again; the account is reclaimed and
+    # reappears as a new pending registration (role/email updated).
+    resp = client.post("/api/auth/register", json={
+        "username": "rejected1",
+        "email": "rejected1@example.com",
+        "password": "newpass456",
+        "role": "manager",
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["user"]["is_active"] is True
+    assert data["user"]["is_approved"] is False
+    assert data["user"]["role"] == "manager"
+    assert "pending" in data["message"].lower()
+
+    # And it shows up in the pending list again for review.
+    resp = client.get("/api/users/pending", headers=admin_headers)
+    assert resp.status_code == 200
+    assert any(u["username"] == "rejected1" and u["role"] == "manager" for u in resp.json())
+

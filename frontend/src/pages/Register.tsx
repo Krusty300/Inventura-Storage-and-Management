@@ -4,6 +4,7 @@ import { Loader2, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import AuthLayout from "../components/AuthLayout";
 import PasswordInput from "../components/PasswordInput";
+import FittedSelect from "../components/FittedSelect";
 import { errorMessage } from "../utils/errors";
 
 export default function Register() {
@@ -11,6 +12,7 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [role, setRole] = useState("worker");
   const [error, setError] = useState("");
   const [confirmError, setConfirmError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,7 +30,7 @@ export default function Register() {
     }
     setSubmitting(true);
     try {
-      const result = await register(username, email, password, "worker");
+      const result = await register(username, email, password, role);
       if (result?.pending) {
         setPendingApproval(true);
       } else {
@@ -138,6 +140,21 @@ export default function Register() {
             minLength={6}
           />
           {confirmError && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{confirmError}</p>}
+        </div>
+        <div>
+          <label htmlFor="register-role" className="block text-sm font-medium text-ink mb-1">
+            I'd like to register as
+          </label>
+          <FittedSelect
+            value={role}
+            onChange={(v) => setRole(v)}
+            options={[
+              { value: "worker", label: "Worker" },
+              { value: "manager", label: "Manager" },
+            ]}
+            ariaLabel="Role"
+          />
+          <p className="mt-1 text-xs text-muted">Admin approval is required before you can sign in.</p>
         </div>
         <button type="submit" className="btn-primary w-full" disabled={submitting}>
           {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Register"}

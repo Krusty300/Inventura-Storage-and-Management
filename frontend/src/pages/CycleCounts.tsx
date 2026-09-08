@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { CycleCount, Location, PaginatedResponse } from "../types";
-import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import FittedSelect from "../components/FittedSelect";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
@@ -235,7 +235,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   };
 
   return (
-    <Modal open onClose={onClose} title="New Cycle Count" wide>
+    <SlideOver open onClose={onClose} title="New Cycle Count" wide ariaLabel="New Cycle Count">
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="rounded-xl border border-border bg-app p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -300,7 +300,7 @@ function CycleCountForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
           <button type="submit" disabled={saving || !location_id} className="btn-primary">{saving ? "Creating..." : "Create Count"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }
 
@@ -309,7 +309,7 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   return (
-    <Modal open onClose={onClose} title={`Cycle Count ${count.cc_number}`} xwide>
+    <SlideOver open onClose={onClose} title={`Cycle Count ${count.cc_number}`} wide ariaLabel={`Cycle count ${count.cc_number} details`}>
       <div className="space-y-4">
         <div className="rounded-xl border border-border bg-app p-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
@@ -327,6 +327,12 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
             </div>
           </div>
         </div>
+        {count.notes && (
+          <div className="text-sm">
+            <p className="text-faint text-xs uppercase tracking-wide mb-1">Notes</p>
+            <p className="text-muted whitespace-pre-wrap">{count.notes}</p>
+          </div>
+        )}
         <div className="border border-border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -365,11 +371,8 @@ function CycleCountDetail({ count, onClose }: { count: CycleCount; onClose: () =
             </tbody>
           </table>
         </div>
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="btn-secondary">Close</button>
-        </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }
 
@@ -456,7 +459,7 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
   }).length;
 
   return (
-    <Modal open onClose={onClose} title={`Count ${count.cc_number}`} wide>
+    <SlideOver open onClose={onClose} title={`Count ${count.cc_number}`} wide ariaLabel={`Submit count for ${count.cc_number}`}>
       {showPreview ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">Review the counted quantities before posting the count adjustment to inventory.</p>
@@ -569,6 +572,6 @@ function CountSubmitModal({ count, onClose, onSaved }: { count: CycleCount; onCl
           </div>
         </form>
       )}
-    </Modal>
+    </SlideOver>
   );
 }

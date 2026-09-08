@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Kit, PaginatedResponse, ProductCost, Location } from "../types";
 import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -165,7 +166,14 @@ export default function Kits() {
         />
       )}
 
-      {viewing && <KitDetail kit={viewing} onClose={() => setViewing(null)} onEdited={refresh} />}
+      {viewing && (
+        <KitDetail
+          kit={viewing}
+          onClose={() => setViewing(null)}
+          onEdited={refresh}
+          onEdit={can("kit.update") ? () => { setEditing(viewing); setViewing(null); setShowForm(true); } : undefined}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleting}
@@ -244,7 +252,7 @@ function KitForm({ kit, onClose, onSaved }: { kit: Kit | null; onClose: () => vo
   };
 
   return (
-    <Modal open onClose={onClose} title={kit ? "Edit Kit" : "New Kit"} wide>
+    <SlideOver open onClose={onClose} title={kit ? "Edit Kit" : "New Kit"} wide ariaLabel={kit ? `Edit ${kit.name}` : "New Kit"}>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -347,12 +355,12 @@ function KitForm({ kit, onClose, onSaved }: { kit: Kit | null; onClose: () => vo
           Active
         </label>
 
-        <div className="flex justify-end gap-3 pt-4 border-t border-border">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !productId} className="btn-primary">{saving ? "Saving..." : "Save Kit"}</button>
+        <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-border">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1 sm:flex-none">Cancel</button>
+          <button type="submit" disabled={saving || !productId} className="btn-primary flex-1 sm:flex-none">{saving ? "Saving..." : "Save Kit"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }
 
@@ -368,7 +376,7 @@ function useLocationOptions() {
   return { locations, isLoading };
 }
 
-function KitDetail({ kit, onClose, onEdited }: { kit: Kit; onClose: () => void; onEdited: () => void }) {
+function KitDetail({ kit, onClose, onEdited, onEdit }: { kit: Kit; onClose: () => void; onEdited: () => void; onEdit?: () => void }) {
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
   const { addToast } = useToast();
@@ -431,9 +439,9 @@ function KitDetail({ kit, onClose, onEdited }: { kit: Kit; onClose: () => void; 
             ))}
           </datalist>
         </div>
-        <div className="flex justify-end gap-3 pt-2">
-          <button onClick={() => { setShowAssemble(false); setShowDisassemble(false); }} className="btn-secondary" disabled={busy}>Cancel</button>
-          <button onClick={() => runAction(action)} disabled={busy} className={action === "assemble" ? "btn-primary" : "btn-secondary"}>
+        <div className="flex flex-wrap justify-end gap-3 pt-2">
+          <button onClick={() => { setShowAssemble(false); setShowDisassemble(false); }} className="btn-secondary flex-1 sm:flex-none" disabled={busy}>Cancel</button>
+          <button onClick={() => runAction(action)} disabled={busy} className={`${action === "assemble" ? "btn-primary" : "btn-secondary"} flex-1 sm:flex-none`}>
             {busy ? "Working..." : action === "assemble" ? "Assemble kit" : "Disassemble kit"}
           </button>
         </div>
@@ -441,21 +449,28 @@ function KitDetail({ kit, onClose, onEdited }: { kit: Kit; onClose: () => void; 
     </Modal>
   );
 
+  const headerActions = onEdit ? (
+    <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label={`Edit ${kit.name}`}>
+      <Pencil size={14} />Edit Kit
+    </button>
+  ) : undefined;
+
   return (
     <>
-      <Modal
+      <SlideOver
         open
         onClose={onClose}
-        title={
-          <span className="flex items-center gap-2">
-            {kit.name || kit.product_name}
-            <span className={`badge ${kit.is_active ? "badge-success" : "badge-danger"}`}>{kit.is_active ? "Active" : "Inactive"}</span>
-          </span>
-        }
+        title={kit.name || kit.product_name}
         wide
+        ariaLabel={`${kit.name || kit.product_name} details`}
+        actions={headerActions}
       >
         <div className="space-y-5">
           <div className="border border-border rounded-xl px-5 py-4 sm:px-6 sm:py-5">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <span className="text-xs font-semibold text-faint uppercase tracking-wider">Overview</span>
+              <span className={`badge ${kit.is_active ? "badge-success" : "badge-danger"}`}>{kit.is_active ? "Active" : "Inactive"}</span>
+            </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
               <div className="min-w-0">
                 <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Output Product</p>
@@ -521,23 +536,23 @@ function KitDetail({ kit, onClose, onEdited }: { kit: Kit; onClose: () => void; 
               </tbody>
             </table>
           </div>
-          <div className="flex flex-wrap justify-between items-center gap-2 pt-1">
-            <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="flex flex-wrap gap-2">
               {can("kit.update") && (
                 <>
-                  <button onClick={() => { setActionQty("1"); setActionLocation(""); setShowAssemble(true); }} className="btn-primary text-sm inline-flex items-center gap-1">
+                  <button onClick={() => { setActionQty("1"); setActionLocation(""); setShowAssemble(true); }} className="btn-primary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                     <PackagePlus size={15} />Assemble
                   </button>
-                  <button onClick={() => { setActionQty("1"); setActionLocation(""); setShowDisassemble(true); }} className="btn-secondary text-sm inline-flex items-center gap-1">
+                  <button onClick={() => { setActionQty("1"); setActionLocation(""); setShowDisassemble(true); }} className="btn-secondary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                     <PackageMinus size={15} />Disassemble
                   </button>
                 </>
               )}
             </div>
-            <button onClick={onClose} className="btn-secondary">Close</button>
+            <button onClick={onClose} className="btn-secondary flex-1 sm:flex-none">Close</button>
           </div>
         </div>
-      </Modal>
+      </SlideOver>
       {showAssemble && renderActionModal("assemble")}
       {showDisassemble && renderActionModal("disassemble")}
     </>

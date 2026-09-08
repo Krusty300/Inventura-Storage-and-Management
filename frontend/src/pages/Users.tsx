@@ -72,7 +72,6 @@ export default function Users() {
       const { data } = await api.get("/users/pending");
       return data as User[];
     },
-    enabled: activeTab === "pending",
   });
 
   const pendingUsers = pendingData || [];
@@ -192,39 +191,41 @@ export default function Users() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2">
-        <div className="relative sm:col-span-2 lg:col-span-1">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative w-full lg:max-w-md">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-          <input className="input pl-10" placeholder="Search by username or email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search users" />
+          <input className="input pl-10 w-full" placeholder="Search by username or email..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search users" />
         </div>
-        <div className="flex gap-1 bg-app-alt rounded-lg p-1">
-          <button
-            onClick={() => setActiveTab("all")}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "all" ? "bg-white dark:bg-gray-700 text-ink shadow-sm" : "text-muted hover:text-ink"}`}
-          >
-            All Users
-          </button>
-          <button
-            onClick={() => setActiveTab("pending")}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-1.5 ${activeTab === "pending" ? "bg-white dark:bg-gray-700 text-ink shadow-sm" : "text-muted hover:text-ink"}`}
-          >
-            <Clock size={14} />
-            Pending
-            {pendingUsers.length > 0 && (
-              <span className="bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">{pendingUsers.length}</span>
-            )}
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 bg-app-alt rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab("all")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "all" ? "bg-white dark:bg-gray-700 text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+            >
+              All Users
+            </button>
+            <button
+              onClick={() => setActiveTab("pending")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors inline-flex items-center gap-1.5 ${activeTab === "pending" ? "bg-white dark:bg-gray-700 text-ink shadow-sm" : "text-muted hover:text-ink"}`}
+            >
+              <Clock size={14} />
+              Pending
+              {pendingUsers.length > 0 && (
+                <span className="bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">{pendingUsers.length}</span>
+              )}
+            </button>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => { setShowInactive(e.target.checked); setPage(1); }}
+              className="accent-primary"
+              aria-label="Show deactivated users"
+            />
+            Show deactivated
+          </label>
         </div>
-        <label className="inline-flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => { setShowInactive(e.target.checked); setPage(1); }}
-            className="accent-primary"
-            aria-label="Show deactivated users"
-          />
-          Show deactivated
-        </label>
       </div>
 
       <div className="card overflow-hidden p-0">

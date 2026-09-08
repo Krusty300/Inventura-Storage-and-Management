@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
 import Skeleton from "./Skeleton";
 import LocationPicker from "./LocationPicker";
@@ -293,7 +293,7 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
   };
 
   return (
-    <Modal open onClose={onClose} title="Record Receipt" wide>
+    <SlideOver open onClose={onClose} title="Record Receipt" wide ariaLabel="Record Receipt">
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="rounded-xl border border-border bg-app p-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -348,6 +348,6 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : "Record Receipt"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }

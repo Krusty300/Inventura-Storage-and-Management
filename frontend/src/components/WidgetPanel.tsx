@@ -5,7 +5,7 @@ import type { WidgetConfig } from "../types";
 import { WIDGET_REGISTRY, getWidgetMeta } from "../utils/widgetRegistry";
 
 interface WidgetPanelProps {
-  children: (visibleWidgets: string[]) => React.ReactNode;
+  children: (visibleWidgets: string[], toolbar: React.ReactNode) => React.ReactNode;
 }
 
 export default function WidgetPanel({ children }: WidgetPanelProps) {
@@ -62,30 +62,29 @@ export default function WidgetPanel({ children }: WidgetPanelProps) {
 
   const visibleWidgets = widgets.filter((w) => w.visible).map((w) => w.id);
 
+  const toolbar = (
+    <div className="flex items-center gap-2 shrink-0">
+      {editMode && (
+        <button onClick={resetToDefault} className="btn-secondary text-xs">Reset Layout</button>
+      )}
+      <button
+        onClick={() => setEditMode(!editMode)}
+        className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+          editMode
+            ? "bg-primary-solid text-white border-primary-solid hover:bg-primary-solid-hover"
+            : "border-border text-muted hover:text-ink hover:border-ink/20"
+        }`}
+        aria-label={editMode ? "Exit edit mode" : "Customize dashboard"}
+      >
+        <Settings size={14} />
+        {editMode ? "Done" : "Customize"}
+      </button>
+    </div>
+  );
+
   return (
     <>
-      <div className="flex items-center justify-between">
-        <div />
-        <div className="flex items-center gap-2">
-          {editMode && (
-            <button onClick={resetToDefault} className="btn-secondary text-xs">Reset Layout</button>
-          )}
-          <button
-            onClick={() => setEditMode(!editMode)}
-            className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-              editMode
-                ? "bg-primary-solid text-white border-primary-solid hover:bg-primary-solid-hover"
-                : "border-border text-muted hover:text-ink hover:border-ink/20"
-            }`}
-            aria-label={editMode ? "Exit edit mode" : "Customize dashboard"}
-          >
-            <Settings size={14} />
-            {editMode ? "Done" : "Customize"}
-          </button>
-        </div>
-      </div>
-
-      {children(visibleWidgets)}
+      {children(visibleWidgets, toolbar)}
 
       {editMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setEditMode(false)}>

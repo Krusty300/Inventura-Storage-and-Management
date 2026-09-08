@@ -4,7 +4,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   AlertTriangle,
-  LayoutDashboard,
   Package,
   Factory,
   PackagePlus,
@@ -273,7 +272,7 @@ export default function Dashboard() {
     },
     { label: "Low Stock Items", value: stats.low_stock_count, link: "/products?low_stock=1", minRole: "manager" as const },
     { label: "Expiring Soon", value: stats.expiring_soon_count, link: "/products", minRole: "manager" as const },
-    { label: "Quarantined Units", value: stats.quarantined_units ?? 0, link: "/exceptions", minRole: "manager" as const },
+    { label: "Quarantined Units", value: stats.quarantined_units ?? 0, link: "/exceptions?section=quarantined_lots", minRole: "manager" as const },
     { label: "Serial Numbers in Stock", value: stats.serial_numbers_in_stock ?? 0, link: "/serial-numbers", minRole: "manager" as const },
     { label: "Movements Today", value: stats.total_stock_movements_today, link: "/stock-movements", minRole: "manager" as const },
     { label: "LPNs", value: lpns?.total ?? 0, link: "/lpns", minRole: "manager" as const, loading: lpnsQuery.isPending },
@@ -335,15 +334,24 @@ export default function Dashboard() {
 
   return (
     <WidgetPanel>
-    {(visibleWidgets) => (
+    {(visibleWidgets, customizeButton) => (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
-            <LayoutDashboard size={22} strokeWidth={2} />
-          </div>
+          {user?.avatar_url ? (
+            <img
+              src={user.avatar_url}
+              alt={`${user.username} avatar`}
+              className="hidden sm:block h-12 w-12 rounded-full object-cover border border-border shrink-0"
+              loading="lazy"
+            />
+          ) : (
+            <span className="hidden sm:flex items-center justify-center h-12 w-12 rounded-full bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary text-lg font-semibold shrink-0">
+              {user?.username?.charAt(0).toUpperCase()}
+            </span>
+          )}
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
+            <h1 className="text-2xl font-bold text-ink truncate">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
             <p className="text-sm text-muted mt-1">A live overview of stock, sales, and warehouse health.</p>
           </div>
         </div>
@@ -357,7 +365,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <GlobalSearch />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex-1 min-w-0">
+          <GlobalSearch />
+        </div>
+        {customizeButton}
+      </div>
 
       {statsQuery.isError && stats && (
         <div role="alert" className="flex items-center justify-between bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">

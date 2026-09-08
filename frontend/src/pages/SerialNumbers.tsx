@@ -6,7 +6,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Fingerprint, Search, ShieldCheck,
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, SerialNumber, StockMovement } from "../types";
-import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
@@ -304,7 +304,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
   });
 
   return (
-    <Modal open onClose={onClose} title={`Serial ${serial.serial_number}`} wide>
+    <SlideOver open onClose={onClose} title={`Serial ${serial.serial_number}`} wide ariaLabel={`Serial ${serial.serial_number} details`}>
       <div className="space-y-4">
         <div className="grid grid-cols-5 gap-4 text-sm">
           <div>
@@ -392,7 +392,6 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
               Activate
             </button>
           )}
-          <button onClick={onClose} className="btn-secondary">Close</button>
         </div>
       </div>
       {quarantining && (
@@ -409,6 +408,6 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
           }}
         />
       )}
-    </Modal>
+    </SlideOver>
   );
 }

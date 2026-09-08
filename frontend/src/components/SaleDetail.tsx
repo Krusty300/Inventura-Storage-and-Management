@@ -208,7 +208,21 @@ export default function SaleDetail({ sale, onClose }: Props) {
 
   return (
     <>
-    <SlideOver open onClose={onClose} title={`Invoice ${sale.invoice_number}`} wide>
+    <SlideOver
+      open
+      onClose={onClose}
+      title={`Invoice ${sale.invoice_number}`}
+      wide
+      actions={can("sales.create") && !editingNote ? (
+        <button
+          onClick={() => { setNoteDraft(currentNote); setEditingNote(true); }}
+          className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5"
+          aria-label={currentNote ? "Edit note" : "Add note"}
+        >
+          <Pencil size={14} />{currentNote ? "Edit note" : "Add note"}
+        </button>
+      ) : undefined}
+    >
       <div className="space-y-5 text-sm">
         <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
           <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
@@ -332,11 +346,6 @@ export default function SaleDetail({ sale, onClose }: Props) {
           <div className="px-6 pb-5 text-sm">
             <div className="flex items-center justify-between gap-3 mb-1">
               <p className="text-faint text-xs uppercase tracking-wide">Notes</p>
-              {can("sales.create") && !editingNote && (
-                <button onClick={() => { setNoteDraft(currentNote); setEditingNote(true); }} className="btn-secondary text-xs px-2 py-1 inline-flex items-center gap-1">
-                  <Pencil size={12} />{currentNote ? "Edit Notes" : "Add note"}
-                </button>
-              )}
             </div>
             {editingNote ? (
               <div className="space-y-2">
@@ -374,11 +383,11 @@ export default function SaleDetail({ sale, onClose }: Props) {
                 <label className="block text-xs font-medium text-muted mb-1">Phone (254XXXXXXXXX)</label>
                 <input className="input text-sm" value={refundPhone} onChange={(e) => setRefundPhone(e.target.value)} placeholder="e.g. 254712345678" />
               </div>
-              <button onClick={() => stkPush.mutate()} disabled={stkPending || !refundPhone.trim()} className="btn-primary text-xs inline-flex items-center gap-1">
+              <button onClick={() => stkPush.mutate()} disabled={stkPending || !refundPhone.trim()} className="btn-primary text-xs inline-flex items-center gap-1 flex-1 sm:flex-none">
                 <Send size={13} />
                 {stkPending ? "Sending..." : "STK Push"}
               </button>
-              <button onClick={() => b2cRefund.mutate()} disabled={b2cPending || !refundPhone.trim()} className="btn-secondary text-xs inline-flex items-center gap-1">
+              <button onClick={() => b2cRefund.mutate()} disabled={b2cPending || !refundPhone.trim()} className="btn-secondary text-xs inline-flex items-center gap-1 flex-1 sm:flex-none">
                 <RefreshCw size={13} />
                 {b2cPending ? "Sending..." : "B2C Refund"}
               </button>
@@ -387,7 +396,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
         )}
 
         {sale.status === "refunded" && (
-          <div className="flex items-center justify-between bg-subtle border border-border rounded-lg px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-subtle border border-border rounded-lg px-4 py-3">
             <div className="space-y-1">
               <p className="text-muted">Refund: <span className="font-medium text-ink">
                 {sale.refund_method ? paymentLabel(sale.refund_method, sale.refund_provider) : paymentLabel(sale.payment_method, sale.payment_provider)}
@@ -395,39 +404,39 @@ export default function SaleDetail({ sale, onClose }: Props) {
               {refundStatus && <p className="text-muted">Status: <span className={`badge ${refundBadge}`}>{refundStatus}</span></p>}
             </div>
             {refundStatus === "pending" && can("sales.refund") && (
-              <button onClick={() => completeRefund.mutate()} disabled={completeRefund.isPending} className="btn-secondary">
+              <button onClick={() => completeRefund.mutate()} disabled={completeRefund.isPending} className="btn-secondary flex-1 sm:flex-none">
                 {completeRefund.isPending ? "Updating..." : "Complete Refund"}
               </button>
             )}
           </div>
         )}
 
-        <div className="flex justify-between pt-1">
-          <div className="flex gap-2">
+        <div className="flex flex-wrap justify-between gap-2 pt-1">
+          <div className="flex flex-wrap gap-2">
             {sale.status === "pending" && can("sales.refund") && (
               <>
-                <button onClick={() => setConfirmAction("cancel")} className="btn-danger text-sm inline-flex items-center gap-1">
+                <button onClick={() => setConfirmAction("cancel")} className="btn-danger text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                   <XCircle size={14} />Cancel
                 </button>
-                <button onClick={() => setConfirmAction("delete")} className="btn-danger text-sm inline-flex items-center gap-1">
+                <button onClick={() => setConfirmAction("delete")} className="btn-danger text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                   <Trash2 size={14} />Delete
                 </button>
               </>
             )}
             {sale.status === "cancelled" && can("sales.refund") && (
-              <button onClick={() => setConfirmAction("delete")} className="btn-danger text-sm inline-flex items-center gap-1">
+              <button onClick={() => setConfirmAction("delete")} className="btn-danger text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                 <Trash2 size={14} />Delete
               </button>
             )}
           </div>
-          <div className="flex gap-2">
-            <button onClick={previewInvoice} disabled={pdfLoading} className="btn-primary text-sm inline-flex items-center gap-1">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={previewInvoice} disabled={pdfLoading} className="btn-primary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
               <Eye size={14} />{pdfLoading ? "Generating..." : "Preview"}
             </button>
-            <button onClick={openInNewTab} className="btn-secondary text-sm inline-flex items-center gap-1">
+            <button onClick={openInNewTab} className="btn-secondary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
               <ExternalLink size={14} />Open in tab
             </button>
-            <button onClick={downloadInvoice} className="btn-secondary text-sm inline-flex items-center gap-1">
+            <button onClick={downloadInvoice} className="btn-secondary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
               <Download size={14} />Download
             </button>
           </div>

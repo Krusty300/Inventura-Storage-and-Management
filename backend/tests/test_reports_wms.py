@@ -1,4 +1,4 @@
-from app.models import CycleCountItem, Lot, StockMovement, User
+from app.models import CycleCountItem, Lot, SerialNumber, StockMovement, User
 from tests.conftest import TestingSessionLocal, client
 
 
@@ -48,6 +48,34 @@ def test_exceptions_quarantined_lot_and_pending_asn(auth_headers):
     data = client.get("/api/reports/exceptions", headers=auth_headers).json()
     assert any(l["lot_number"] == "Q-LOT" for l in data["quarantined_lots"])
     assert data["summary"]["pending_asns"] >= 1
+
+
+def test_exceptions_quarantined_serials(auth_headers):
+    prod = client.post("/api/products", json={
+        "location_id": 1, "sku": "EX-SER", "name": "EX-SER", "unit_price": 10.0,
+        "quantity": 0, "reorder_level": 5, "is_serialized": True,
+    }, headers=auth_headers).json()
+    # no lot_number -> no-lot serial, matching the "orphan serials" case
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "serial_numbers": ["Q-SER-A", "Q-SER-B"]}],
+    }, headers=auth_headers).status_code == 201
+
+    db = TestingSessionLocal()
+    try:
+        for sn in db.query(SerialNumber).filter(SerialNumber.product_id == prod["id"]).all():
+            sn.status = "quarantined"
+        db.commit()
+    finally:
+        db.close()
+
+    data = client.get("/api/reports/exceptions", headers=auth_headers).json()
+    serials = {s["serial_number"]: s for s in data["quarantined_serials"]}
+    assert "Q-SER-A" in serials
+    assert serials["Q-SER-A"]["product_name"] == "EX-SER"
+    assert serials["Q-SER-A"]["lot_number"] == ""
+    assert serials["Q-SER-A"]["location_name"]
+    assert data["summary"]["quarantined_serials"] >= 2
+    assert data["summary"]["quarantined_units"] >= 2
 
 
 def test_quarantined_stock_excluded_from_sellable_metrics(auth_headers):

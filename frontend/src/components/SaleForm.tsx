@@ -10,9 +10,10 @@ import { formatCurrency } from "../utils/currency";
 import { errorMessage } from "../utils/errors";
 import type { Sale } from "../types";
 import { isSelectable, selectableProducts } from "../utils/variants";
-import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS, paymentLabel } from "../utils/payments";
+import { MOBILE_MONEY_PROVIDERS, paymentLabel } from "../utils/payments";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
 import FittedSelect from "./FittedSelect";
+import PaymentMethodPicker from "./PaymentMethodPicker";
 import CartSwitcher from "./CartSwitcher";
 import ScrollArea from "./ScrollArea";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
@@ -779,8 +780,8 @@ export default function SaleForm({ onClose, onSaved }: Props) {
       {isLocked && isDraftRestored && (
         <div className="absolute inset-0 z-[60] bg-app/80 backdrop-blur-sm flex items-center justify-center p-6">
           <div className="card p-8 max-w-sm w-full space-y-6 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mx-auto">
-              <Lock size={28} className="text-primary dark:text-primary" />
+            <div className="mx-auto w-24 h-24 rounded-2xl overflow-hidden bg-subtle border border-border">
+              <img src={getPlaceholder()} alt="" className="w-full h-full object-cover" loading="lazy" />
             </div>
             <div className="space-y-2">
               <h3 className="text-lg font-bold text-ink">Draft Locked</h3>
@@ -803,6 +804,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   value={lockUsername}
                   onChange={(e) => setLockUsername(e.target.value)}
                   autoComplete="username"
+                  aria-label="Locked form username"
                 />
               </div>
               <div>
@@ -814,6 +816,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   value={lockPassword}
                   onChange={(e) => setLockPassword(e.target.value)}
                   autoComplete="current-password"
+                  aria-label="Locked form password"
                 />
               </div>
               {lockError && (
@@ -885,7 +888,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-4 px-6 py-3 border-b border-border bg-surface">
+      <div className="flex items-center justify-between gap-4 px-6 py-3 border-b border-border bg-surface flex-wrap">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-bold text-ink">Register</h2>
           <span className="text-xs text-muted hidden sm:inline">Tap a product to add it to the sale</span>
@@ -1013,7 +1016,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         )}
 
         <aside
-          className="shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-surface flex flex-col h-[45vh] lg:h-auto"
+          className="shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-surface flex flex-col max-h-[50vh] lg:max-h-none lg:h-auto overflow-y-auto lg:overflow-visible"
           style={{ width: isWide ? `${cartWidth}px` : undefined }}
           aria-label="Sale cart"
         >
@@ -1029,7 +1032,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           </div>
           <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-5 py-4 border-b border-border space-y-3">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-3">
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Customer</label>
                   <FittedSelect
@@ -1068,27 +1071,16 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Payment</label>
-                  <FittedSelect
-                    ariaLabel="Payment method"
-                    value={paymentMethod}
-                    onChange={setPaymentMethod}
-                    options={PAYMENT_METHODS}
+                  <PaymentMethodPicker
+                    method={paymentMethod}
+                    provider={paymentProvider}
+                    onSelect={(m, p) => { setPaymentMethod(m); setPaymentProvider(p ?? MOBILE_MONEY_PROVIDERS[0].value); }}
                     disabled={formDisabled}
                   />
                 </div>
               </div>
               {paymentMethod === "mobile_money" && (
                 <>
-                  <div>
-                    <label className="block text-xs font-medium text-muted mb-1.5">Mobile Money Provider</label>
-                    <FittedSelect
-                      ariaLabel="Mobile money provider"
-                      value={paymentProvider}
-                      onChange={setPaymentProvider}
-                      options={MOBILE_MONEY_PROVIDERS}
-                      disabled={formDisabled}
-                    />
-                  </div>
                   <div>
                     <label className="block text-xs font-medium text-muted mb-1.5">Payer Phone</label>
                     <input className="input text-sm" placeholder="e.g. 07XX XXX XXX" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} disabled={formDisabled} aria-label="Payer phone" />
@@ -1108,7 +1100,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
               <textarea className="input text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={formDisabled} aria-label="Sale notes" />
             </div>
 
-            <ScrollArea className="flex-1 min-h-0" viewportClassName="h-full px-5 py-4 space-y-3 sa-viewport-contain">
+            <ScrollArea className="flex-1 min-h-[8rem] lg:min-h-0" viewportClassName="h-full px-5 py-4 space-y-3 sa-viewport-contain">
               {items.length === 0 ? (
                 <p className="text-muted text-sm text-center py-10">Cart is empty — tap a product to add it</p>
               ) : (
@@ -1133,9 +1125,9 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 <span className="text-muted">Subtotal</span>
                 <span>{formatCurrency(subtotal, currency)}</span>
               </div>
-              <div className="flex items-center justify-between text-sm gap-3">
+              <div className="flex items-center justify-between text-sm gap-3 flex-wrap">
                 <span className="text-muted shrink-0">Discount</span>
-                <div className="relative flex-1 max-w-[160px]">
+                <div className="relative flex-1 min-w-0 max-w-[160px]">
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-faint">{currency}</span>
                   <input
                     type="number"
@@ -1150,9 +1142,9 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-between text-sm gap-3">
+              <div className="flex items-center justify-between text-sm gap-3 flex-wrap">
                 <span className="text-muted shrink-0">Promo Code</span>
-                <div className="flex gap-2 flex-1 max-w-[240px]">
+                <div className="flex gap-2 flex-1 min-w-0 max-w-[240px]">
                   <input
                     type="text"
                     className="input py-1.5 text-sm font-mono flex-1"
@@ -1163,7 +1155,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     disabled={formDisabled}
                     aria-label="Promo code"
                   />
-                  <button type="button" onClick={() => validatePromo()} disabled={formDisabled || promoValidating || !promoCode.trim()} className="btn-secondary text-xs px-2 py-1.5 disabled:opacity-40">
+                  <button type="button" onClick={() => validatePromo()} disabled={formDisabled || promoValidating || !promoCode.trim()} className="btn-secondary text-xs px-2 py-1.5 disabled:opacity-40" aria-label="Apply promo code">
                     {promoValidating ? "..." : "Apply"}
                   </button>
                 </div>
@@ -1195,6 +1187,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                       }}
                       disabled={formDisabled}
                       className="text-xs font-medium bg-emerald-600 text-white px-2.5 py-1 rounded-md hover:bg-emerald-700 disabled:opacity-40"
+                      aria-label="Apply suggested promo"
                     >
                       Apply
                     </button>
@@ -1237,7 +1230,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     disabled={formDisabled}
                     aria-label="Cash received"
                   />
-                  <button type="button" onClick={() => setAmountReceived(total.toFixed(2))} disabled={formDisabled} className="btn-secondary text-xs px-2 py-1.5 disabled:opacity-40">Exact</button>
+                  <button type="button" onClick={() => setAmountReceived(total.toFixed(2))} disabled={formDisabled} className="btn-secondary text-xs px-2 py-1.5 disabled:opacity-40" aria-label="Set received amount to exact total">Exact</button>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   {[5, 10, 20, 50].map((n) => (
@@ -1247,6 +1240,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                       onClick={() => setAmountReceived((cashReceived + n).toFixed(2))}
                       disabled={formDisabled}
                       className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-muted hover:bg-app disabled:opacity-40"
+                      aria-label={`Add ${n} to received amount`}
                     >
                       +{n}
                     </button>

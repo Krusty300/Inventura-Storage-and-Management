@@ -30,6 +30,12 @@ function mockCatalog(products: ReturnType<typeof makeProduct>[], qcs: any[] = []
   });
 }
 
+function selectMobileMoney(providerLabel: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: "Payment method" }));
+  fireEvent.click(screen.getByRole("option", { name: "Mobile Money" }));
+  fireEvent.click(screen.getByRole("option", { name: providerLabel }));
+}
+
 describe("SaleForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -196,9 +202,7 @@ describe("SaleForm", () => {
     postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
-    expect(screen.getByRole("combobox", { name: "Mobile money provider" })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "Mobile money provider" }), { target: { value: "t-kash" } });
+    selectMobileMoney("T-Kash");
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
       payment_method: "mobile_money",
@@ -213,8 +217,7 @@ describe("SaleForm", () => {
     postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Mobile money provider" }), { target: { value: "m-pesa" } });
+    selectMobileMoney("M-Pesa");
     expect(screen.getByLabelText("Payer phone")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Payer phone"), { target: { value: "0722 100 100" } });
     fireEvent.change(screen.getByLabelText("Payment reference"), { target: { value: "TX-REF-9" } });
@@ -314,7 +317,7 @@ describe("SaleForm", () => {
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
     fireEvent.change(screen.getByLabelText("Promo code"), { target: { value: "SAVE10" } });
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    fireEvent.click(screen.getByRole("button", { name: /Apply/ }));
     expect(await screen.findByText(/Promo \(SAVE10\)/)).toBeInTheDocument();
     // moving to a new cart and back must restore the per-cart promo
     fireEvent.click(screen.getByRole("button", { name: "New cart" }));
@@ -329,7 +332,7 @@ describe("SaleForm", () => {
     postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
     fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
+    selectMobileMoney("M-Pesa");
     fireEvent.change(screen.getByLabelText("Payer phone"), { target: { value: "0722 100 100" } });
     fireEvent.click(screen.getByRole("button", { name: /Complete Sale/ }));
     // the STK screen must still show the phone so the push can be sent/retried

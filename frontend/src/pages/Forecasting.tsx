@@ -18,7 +18,7 @@ import type { ForecastingDetail, ForecastingReplenishment } from "../types";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import FittedSelect from "../components/FittedSelect";
-import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
@@ -260,7 +260,7 @@ function ForecastDetailModal({
   ];
 
   return (
-    <Modal open onClose={onClose} title={`Forecast: ${detail.product_name}`} xwide>
+    <SlideOver open onClose={onClose} title={`Forecast: ${detail.product_name}`} wide ariaLabel={`Forecast for ${detail.product_name}`}>
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-muted">
           <span>{detail.sku}</span>
@@ -293,6 +293,6 @@ function ForecastDetailModal({
           </ResponsiveContainer>
         </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

@@ -169,9 +169,9 @@ describe("Shipments", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Product Shipping" }));
 
     expect(await screen.findByRole("combobox", { name: "Payment method" })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
-    expect(screen.getByRole("combobox", { name: "Mobile money provider" })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "Mobile money provider" }), { target: { value: "airtel_money" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Payment method" }));
+    fireEvent.click(screen.getByRole("option", { name: "Mobile Money" }));
+    fireEvent.click(screen.getByRole("option", { name: "Airtel Money" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Invoice" }));
 
     await waitFor(() =>
@@ -206,8 +206,10 @@ describe("Shipments", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Pack" }));
     fireEvent.click(await screen.findByRole("button", { name: "Product Shipping" }));
 
-    fireEvent.change(await screen.findByRole("combobox", { name: "Payment method" }), { target: { value: "mobile_money" } });
-    expect(screen.getByRole("combobox", { name: "Mobile money provider" })).toHaveValue("M-Pesa");
+    fireEvent.click(await screen.findByRole("combobox", { name: "Payment method" }));
+    fireEvent.click(screen.getByRole("option", { name: "Mobile Money" }));
+    expect(screen.getByRole("option", { name: "M-Pesa" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: "M-Pesa" }));
     fireEvent.change(screen.getByLabelText("Payer phone"), { target: { value: "0722 123 456" } });
     fireEvent.change(screen.getByLabelText("Payment reference"), { target: { value: "SHP-REF-42" } });
     fireEvent.click(screen.getByRole("button", { name: "Create Invoice" }));

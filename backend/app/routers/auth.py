@@ -122,8 +122,46 @@ def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
     password_error = validate_password(req.password)
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)
-    if db.query(User).filter((User.username == req.username) | (User.email == req.email)).first():
-        raise HTTPException(status_code=400, detail="Username or email already exists")
+    existing = (
+        db.query(User)
+        .filter((User.username == req.username) | (User.email == req.email))
+        .first()
+    )
+    if existing:
+        if existing.is_active or existing.is_approved:
+            raise HTTPException(status_code=400, detail="Username or email already exists")
+        # The matching account was rejected/deactivated (inactive & unapproved):
+        # let them re-register by reclaiming the account rather than erroring out
+        # on a throwaway identity.
+        existing.username = req.username
+        existing.email = req.email.lower()
+        existing.password_hash = hash_password(req.password)
+        existing.role = req.role
+        existing.permissions = None
+        existing.avatar_url = ""
+        existing.is_approved = False
+        existing.is_active = True
+        existing.last_login_at = None
+        db.flush()
+        from app.services.notify import notify_admins
+        notify_admins(
+            db,
+            "New user registration",
+            f"{existing.username} ({existing.email}) re-registered as {existing.role}.",
+            type="info",
+            link="/users",
+        )
+        db.commit()
+        db.refresh(existing)
+        broadcast_change("user", "updated")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=201,
+            content={
+                "message": "Registration successful. Your account is pending admin approval.",
+                "user": UserOut.model_validate(existing).model_dump(mode="json"),
+            },
+        )
     is_first_user = db.query(User).count() == 0
     user = User(
         username=req.username,

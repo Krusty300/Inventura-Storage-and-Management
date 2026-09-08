@@ -7,7 +7,7 @@ import api from "../api/client";
 import { PAGE_SIZE } from "../utils/constants";
 import { statusBadge } from "../utils/statusBadges";
 import type { Lot, PaginatedResponse, QualityCheck } from "../types";
-import Modal from "../components/Modal";
+import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AttachmentSection from "../components/AttachmentSection";
 import Pagination from "../components/Pagination";
@@ -161,7 +161,13 @@ export default function QualityChecks() {
         />
       )}
 
-      {viewing && <QualityCheckDetail qc={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <QualityCheckDetail
+          qc={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={can("quality_checks.update") ? () => { setEditing(viewing); setShowForm(true); setViewing(null); } : undefined}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleting}
@@ -248,7 +254,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
   };
 
   return (
-    <Modal open onClose={onClose} title={qc ? `Edit ${qc.qc_number}` : "New Quality Check"} wide>
+    <SlideOver open onClose={onClose} title={qc ? `Edit ${qc.qc_number}` : "New Quality Check"} wide ariaLabel={qc ? `Edit ${qc.qc_number}` : "New Quality Check"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -343,15 +349,20 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
           <button type="submit" disabled={saving || !productId} className="btn-primary">{saving ? "Saving..." : "Save Check"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }
 
-function QualityCheckDetail({ qc, onClose }: { qc: QualityCheck; onClose: () => void }) {
+function QualityCheckDetail({ qc, onClose, onEdit }: { qc: QualityCheck; onClose: () => void; onEdit?: () => void }) {
   const formatDateTime = useDateTimeFormat();
   const { can } = useAuth();
+  const headerActions = onEdit ? (
+    <button onClick={onEdit} className="btn-secondary text-sm px-3 py-1.5 inline-flex items-center gap-1.5" aria-label={`Edit ${qc.qc_number}`}>
+      <Pencil size={14} />Edit Check
+    </button>
+  ) : undefined;
   return (
-    <Modal open onClose={onClose} title={qc.qc_number} wide>
+    <SlideOver open onClose={onClose} title={qc.qc_number} wide ariaLabel={`Quality check ${qc.qc_number} details`} actions={headerActions}>
       <div className="space-y-5">
         <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
           <div className="border-b border-border px-6 py-5 flex flex-wrap items-start justify-between gap-4">
@@ -405,10 +416,7 @@ function QualityCheckDetail({ qc, onClose }: { qc: QualityCheck; onClose: () => 
           )}
         </div>
         <AttachmentSection entityType="quality_check" entityId={qc.id} canEdit={can("quality_checks.update")} />
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="btn-secondary">Close</button>
-        </div>
       </div>
-    </Modal>
+    </SlideOver>
   );
 }

@@ -122,13 +122,13 @@ describe("Kits", () => {
 
     const outputBox = screen.getByLabelText("Output product");
     fireEvent.click(outputBox);
-    const outputGroup = outputBox.closest("div")!.parentElement as HTMLElement;
-    fireEvent.click(await within(outputGroup).findByRole("option", { name: /Gift Set \(SKU-OUT\)/ }));
+    const outputMenu = document.getElementById(outputBox.getAttribute("aria-controls")!)!;
+    fireEvent.click(await within(outputMenu).findByRole("option", { name: /Gift Set \(SKU-OUT\)/ }));
 
     const compBox = screen.getAllByLabelText("Component product")[0];
     fireEvent.click(compBox);
-    const compGroup = compBox.closest("div")!.parentElement as HTMLElement;
-    fireEvent.click(await within(compGroup).findByRole("option", { name: /Widget \(SKU-W\)/ }));
+    const compMenu = document.getElementById(compBox.getAttribute("aria-controls")!)!;
+    fireEvent.click(await within(compMenu).findByRole("option", { name: /Widget \(SKU-W\)/ }));
 
     fireEvent.click(screen.getByRole("button", { name: "Save Kit" }));
     await waitFor(() => {

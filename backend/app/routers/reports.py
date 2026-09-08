@@ -24,6 +24,7 @@ from app.models.stock_line import StockLine
 from app.models.customer import Customer
 from app.models.settings import Settings
 from app.models.quality_check import QualityCheck
+from app.models.serial_number import SerialNumber
 from app.services.auth import require_permission
 from app.services import expiry as expiry_svc
 from app.services import inventory
@@ -513,6 +514,17 @@ def exception_dashboard(db: Session = Depends(get_db)):
         "expiry_date": l.expiry_date, "received_date": l.received_date,
     } for l in quarantined]
 
+    quarantined_serials = db.query(SerialNumber).options(
+        joinedload(SerialNumber.product), joinedload(SerialNumber.lot), joinedload(SerialNumber.location)
+    ).filter(
+        SerialNumber.status == "quarantined"
+    ).order_by(SerialNumber.created_at.desc()).limit(100).all()
+    quarantined_serial_rows = [{
+        "id": s.id, "serial_number": s.serial_number, "product_id": s.product_id,
+        "product_name": s.product_name, "lot_id": s.lot_id, "lot_number": s.lot_number,
+        "location_name": s.location_name,
+    } for s in quarantined_serials]
+
     open_counts = db.query(CycleCount).options(
         joinedload(CycleCount.items), joinedload(CycleCount.location)
     ).filter(CycleCount.status.in_(["pending", "in_progress"])).order_by(CycleCount.created_at.desc()).limit(100).all()
@@ -548,17 +560,28 @@ def exception_dashboard(db: Session = Depends(get_db)):
         "lot_number": q.lot_number, "checked_at": q.checked_at,
     } for q in quality_checks]
 
+    bulk_quarantined_total = db.query(
+        func.coalesce(func.sum(StockLine.quantity), 0)
+    ).join(Lot, StockLine.lot_id == Lot.id).filter(Lot.status == "quarantined").scalar() or 0
+    quarantined_lots_total = db.query(func.count(Lot.id)).filter(Lot.status == "quarantined").scalar() or 0
+    quarantined_serials_total = db.query(func.count(SerialNumber.id)).filter(
+        SerialNumber.status == "quarantined"
+    ).scalar() or 0
+
     return {
         "low_stock": low_stock,
         "zero_stock": zero_stock,
         "quarantined_lots": quarantined_lots,
+        "quarantined_serials": quarantined_serial_rows,
         "open_cycle_counts": open_cycle_counts,
         "pending_asns": pending_asn_rows,
         "quality_checks": quality_check_rows,
         "summary": {
             "low_stock": len(low_stock),
             "zero_stock": len(zero_stock),
-            "quarantined_lots": len(quarantined_lots),
+            "quarantined_lots": quarantined_lots_total,
+            "quarantined_serials": quarantined_serials_total,
+            "quarantined_units": bulk_quarantined_total + quarantined_serials_total,
             "open_cycle_counts": len(open_cycle_counts),
             "pending_asns": len(pending_asn_rows),
             "quality_checks": len(quality_check_rows),

@@ -13,6 +13,7 @@ import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FittedSelect from "../components/FittedSelect";
+import PaymentMethodPicker from "../components/PaymentMethodPicker";
 import { useDebounce } from "../hooks/useDebounce";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -23,7 +24,7 @@ import { useToast } from "../context/ToastContext";
 import { usePageSize } from "../hooks/usePageSize";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
-import { MOBILE_MONEY_PROVIDERS, PAYMENT_METHODS, paymentLabel } from "../utils/payments";
+import { MOBILE_MONEY_PROVIDERS, paymentLabel } from "../utils/payments";
 import { errorMessage } from "../utils/errors";
 
 export default function Shipments() {
@@ -265,7 +266,7 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
   };
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? `Edit ${shipment!.shipment_number}` : "New Shipment"} xwide>
+    <SlideOver open onClose={onClose} title={isEdit ? `Edit ${shipment!.shipment_number}` : "New Shipment"} wide ariaLabel={isEdit ? `Edit ${shipment!.shipment_number}` : "New Shipment"}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
@@ -314,7 +315,7 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : isEdit ? "Save Changes" : "Create Shipment"}</button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }
 
@@ -558,20 +559,20 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
                 </div>
               </>
             )}
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex flex-wrap gap-2">
               {canPick && (
-                <button onClick={handlePick} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
-                  Pick
+                <button onClick={handlePick} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1 flex-1 sm:flex-none">
+                  <PackageOpen size={16} />Pick
                 </button>
               )}
               {canPack && (
-                <button onClick={() => run("pack", `/shipments/${current.id}/pack`, "Packed")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
-                  Pack
+                <button onClick={() => run("pack", `/shipments/${current.id}/pack`, "Packed")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1 flex-1 sm:flex-none">
+                  <PackageCheck size={16} />Pack
                 </button>
               )}
               {canShip && (
-                <button onClick={ship} disabled={busy !== null} className="btn-primary inline-flex items-center gap-1">
-                  Product Shipping
+                <button onClick={ship} disabled={busy !== null} className="btn-primary inline-flex items-center gap-1 flex-1 sm:flex-none">
+                  <PackagePlus size={16} />Product Shipping
                 </button>
               )}
             </div>
@@ -581,14 +582,12 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
           <div className="flex items-end gap-3 justify-end flex-wrap">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Payment Method</label>
-              <FittedSelect value={paymentMethod} onChange={setPaymentMethod} ariaLabel="Payment method" options={PAYMENT_METHODS.map((m) => ({ value: m.value, label: m.label }))} />
+              <PaymentMethodPicker
+                method={paymentMethod}
+                provider={paymentProvider}
+                onSelect={(m, p) => { setPaymentMethod(m); setPaymentProvider(p ?? MOBILE_MONEY_PROVIDERS[0].value); }}
+              />
             </div>
-            {paymentMethod === "mobile_money" && (
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1">Mobile Money Provider</label>
-                <FittedSelect value={paymentProvider} onChange={setPaymentProvider} ariaLabel="Mobile money provider" options={MOBILE_MONEY_PROVIDERS.map((p) => ({ value: p.value, label: p.label }))} />
-              </div>
-            )}
             {paymentMethod === "mobile_money" && (
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Payer Phone</label>
@@ -607,21 +606,21 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
                 <input className="input" placeholder={paymentMethod === "mobile_money" ? "Provider confirmation code" : "Reference (optional)"} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} aria-label="Payment reference" />
               </div>
             )}
-            <button onClick={createSale} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1">
-              Create Invoice
+            <button onClick={createSale} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1 flex-1 sm:flex-none">
+              <CheckCircle2 size={16} />Create Invoice
             </button>
           </div>
         )}
         {current.status !== "shipped" && current.status !== "cancelled" && canCancel && (
-          <div className="flex justify-end">
-            <button onClick={() => run("cancel", `/shipments/${current.id}/cancel`, "Cancelled")} disabled={busy !== null} className="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400 inline-flex items-center gap-1">
-              Cancel Shipment
+          <div className="flex flex-wrap justify-end gap-2">
+            <button onClick={() => run("cancel", `/shipments/${current.id}/cancel`, "Cancelled")} disabled={busy !== null} className="btn-danger inline-flex items-center gap-1 flex-1 sm:flex-none">
+              <XCircle size={16} />Cancel Shipment
             </button>
           </div>
         )}
 
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="btn-secondary">Close</button>
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
+          <button onClick={onClose} className="btn-secondary flex-1 sm:flex-none">Close</button>
         </div>
       </div>
       {pickingSerials && (

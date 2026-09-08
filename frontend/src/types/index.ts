@@ -745,6 +745,8 @@ export interface ExceptionsReport {
     low_stock: number;
     zero_stock: number;
     quarantined_lots: number;
+    quarantined_serials: number;
+    quarantined_units: number;
     open_cycle_counts: number;
     pending_asns: number;
     quality_checks: number;
@@ -752,6 +754,7 @@ export interface ExceptionsReport {
   low_stock: { id: number; name: string; sku: string; quantity: number; reorder_level: number; category: string; supplier: string }[];
   zero_stock: { id: number; name: string; sku: string }[];
   quarantined_lots: { id: number; lot_number: string; product_name: string; product_id: number; on_hand: number; expiry_date: string | null; received_date: string }[];
+  quarantined_serials: { id: number; serial_number: string; product_id: number; product_name: string; lot_id: number | null; lot_number: string; location_name: string }[];
   open_cycle_counts: { id: number; cc_number: string; status: string; location: string; has_variance: boolean; total_expected: number; total_variance: number; created_at: string }[];
   pending_asns: { id: number; asn_number: string; supplier: string; expected_arrival: string | null; items_pending: number; created_at: string }[];
   quality_checks: { id: number; qc_number: string; product_id: number; product_name: string; location_id: number | null; location_name: string; result: string; lot_number: string; checked_at: string | null }[];

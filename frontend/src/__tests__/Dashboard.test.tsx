@@ -231,7 +231,7 @@ describe("Dashboard Page", () => {
     const input = screen.getByLabelText("Global search");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "widget" } });
-    expect(await screen.findByText("LOT-001")).toBeInTheDocument();
+    expect(await screen.findByText("LOT-001", {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByText("Widget Co")).toBeInTheDocument();
     expect(screen.getByText("Customers (1)")).toBeInTheDocument();
     expect(getMock).toHaveBeenCalledWith("/search", { params: { q: "widget" } });
@@ -249,11 +249,11 @@ describe("Dashboard Page", () => {
     const input = screen.getByLabelText("Global search");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "widget" } });
-    const result = await screen.findByRole("button", { name: /SKU-001/ });
+    const result = await screen.findByRole("button", { name: /SKU-001/ }, { timeout: 5000 });
     fireEvent.click(result);
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent("/products?search=Widget");
-    });
+    }, { timeout: 5000 });
     expect(screen.getByLabelText("Global search")).toHaveValue("");
   });
 

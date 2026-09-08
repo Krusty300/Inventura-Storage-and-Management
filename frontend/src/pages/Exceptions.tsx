@@ -1,6 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useState } from "react";
-import { AlertTriangle, PackageX, ShieldAlert, ShieldCheck, ClipboardList, Truck, Search, Undo2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { AlertTriangle, PackageX, ShieldAlert, ShieldCheck, ClipboardList, Truck, Search, Tags, Undo2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { ExceptionsReport, LotGenealogy } from "../types";
@@ -13,10 +14,24 @@ import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
 
 
-type Section = "quality_checks" | "low_stock" | "zero_stock" | "quarantined_lots" | "open_cycle_counts" | "pending_asns";
+type Section = "quality_checks" | "low_stock" | "zero_stock" | "quarantined_lots" | "quarantined_serials" | "open_cycle_counts" | "pending_asns";
+
+const SECTIONS: { key: Section; label: string; icon: typeof AlertTriangle; color: string }[] = [
+  { key: "quality_checks", label: "Quality Checks", icon: ShieldCheck, color: "bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400" },
+  { key: "low_stock", label: "Low Stock", icon: AlertTriangle, color: "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  { key: "zero_stock", label: "Out of Stock", icon: PackageX, color: "bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400" },
+  { key: "quarantined_lots", label: "Quarantined Lots", icon: ShieldAlert, color: "bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400" },
+  { key: "quarantined_serials", label: "Quarantined Serials", icon: Tags, color: "bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400" },
+  { key: "open_cycle_counts", label: "Open Cycle Counts", icon: ClipboardList, color: "bg-sky-100 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400" },
+  { key: "pending_asns", label: "Pending ASNs", icon: Truck, color: "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400" },
+];
 
 export default function Exceptions() {
-  const [section, setSection] = useState<Section>("quality_checks");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [section, setSection] = useState<Section>(() => {
+    const requested = searchParams.get("section");
+    return SECTIONS.some((s) => s.key === requested) ? (requested as Section) : "quality_checks";
+  });
   const queryClient = useQueryClient();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["exceptions"],
@@ -26,14 +41,15 @@ export default function Exceptions() {
     },
   });
 
-  const sections: { key: Section; label: string; icon: typeof AlertTriangle; color: string }[] = [
-    { key: "quality_checks", label: "Quality Checks", icon: ShieldCheck, color: "bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400" },
-    { key: "low_stock", label: "Low Stock", icon: AlertTriangle, color: "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" },
-    { key: "zero_stock", label: "Out of Stock", icon: PackageX, color: "bg-red-100 dark:bg-red-500/10 text-red-700 dark:text-red-400" },
-    { key: "quarantined_lots", label: "Quarantined Lots", icon: ShieldAlert, color: "bg-orange-100 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400" },
-    { key: "open_cycle_counts", label: "Open Cycle Counts", icon: ClipboardList, color: "bg-sky-100 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400" },
-    { key: "pending_asns", label: "Pending ASNs", icon: Truck, color: "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400" },
-  ];
+  useEffect(() => {
+    const s = searchParams.get("section") as Section | null;
+    if (s && SECTIONS.some((x) => x.key === s)) setSection(s);
+  }, [searchParams]);
+
+  const selectSection = (s: Section) => {
+    setSection(s);
+    setSearchParams({ section: s }, { replace: true });
+  };
 
   if (isLoading) return <Skeleton variant="rows" rows={8} cols={4} />;
   if (isError) return <ErrorState variant="block" title="Failed to load exceptions" onRetry={() => queryClient.invalidateQueries({ queryKey: ["exceptions"] })} />;
@@ -52,13 +68,13 @@ export default function Exceptions() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-        {sections.map((s) => {
+        {SECTIONS.map((s) => {
           const count = data.summary[s.key] ?? 0;
           const Icon = s.icon;
           return (
             <button
               key={s.key}
-              onClick={() => setSection(s.key)}
+              onClick={() => selectSection(s.key)}
               className={`card p-4 text-left hover:shadow transition-shadow ${section === s.key ? "ring-2 ring-primary" : ""}`}
               aria-label={`Show ${s.label}`}
             >
@@ -73,12 +89,20 @@ export default function Exceptions() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="px-4 py-3 bg-app border-b font-medium text-ink">{section === "quality_checks" ? "Quality Checks" : section.replace(/_/g, " ")}</div>
+        <div className="px-4 py-3 bg-app border-b font-medium text-ink flex items-center justify-between gap-4">
+          <span>{SECTIONS.find((s) => s.key === section)?.label}</span>
+          {(section === "quarantined_lots" || section === "quarantined_serials") && (
+            <span className="text-xs font-normal text-muted">
+              {data.summary.quarantined_units ?? 0} units quarantined · {data.summary.quarantined_lots ?? 0} lots · {data.summary.quarantined_serials ?? 0} serials
+            </span>
+          )}
+        </div>
         <div className="p-4 overflow-x-auto">
           {section === "quality_checks" && <QualityCheckTable data={data} />}
           {section === "low_stock" && <LowStockTable data={data} />}
           {section === "zero_stock" && <ZeroStockTable data={data} />}
           {section === "quarantined_lots" && <QuarantineTable data={data} />}
+          {section === "quarantined_serials" && <QuarantineSerialTable data={data} />}
           {section === "open_cycle_counts" && <CycleCountTable data={data} />}
           {section === "pending_asns" && <AsnTable data={data} />}
         </div>
@@ -206,6 +230,68 @@ function QuarantineTable({ data }: { data: ExceptionsReport }) {
         title="Release Quarantined Lot"
         message={`Release lot ${releaseTarget?.lot_number} back to sellable stock?`}
         confirmLabel="Release Lot"
+        confirmClass="btn-primary"
+        onConfirm={confirmRelease}
+        onCancel={() => setReleaseTarget(null)}
+      />
+    </div>
+  );
+}
+
+function QuarantineSerialTable({ data }: { data: ExceptionsReport }) {
+  const [releaseTarget, setReleaseTarget] = useState<(typeof data.quarantined_serials)[number] | null>(null);
+  const [releasing, setReleasing] = useState<number | null>(null);
+  const queryClient = useQueryClient();
+  const { can } = useAuth();
+  const { addToast } = useToast();
+  const serials = data.quarantined_serials ?? [];
+  if (serials.length === 0) return <p className="text-sm text-muted">No quarantined serials.</p>;
+
+  const confirmRelease = async () => {
+    if (!releaseTarget) return;
+    const serial = releaseTarget;
+    setReleaseTarget(null);
+    setReleasing(serial.id);
+    try {
+      await api.put(`/serial-numbers/${serial.id}/status`, { status: "in_stock" });
+      addToast(`Serial ${serial.serial_number} released`, "success");
+      queryClient.invalidateQueries({ queryKey: ["exceptions"] });
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to release serial"), "error");
+    } finally {
+      setReleasing(null);
+    }
+  };
+
+  return (
+    <div>
+      <table className="w-full text-sm">
+        <thead><tr className="text-left text-muted border-b"><th className="py-2">Serial</th><th className="py-2">Product</th><th className="py-2">Location</th><th className="py-2">Lot</th><th className="py-2">Actions</th></tr></thead>
+        <tbody className="divide-y divide-border">
+          {serials.map((s) => (
+            <tr key={s.id}>
+              <td className="py-2 font-medium">{s.serial_number}</td>
+              <td className="py-2 text-muted">{s.product_name}</td>
+              <td className="py-2 text-muted">{s.location_name || "—"}</td>
+              <td className="py-2 text-muted">{s.lot_number || "—"}</td>
+              <td className="py-2">
+                {can("serial_numbers.update") && (
+                  <button onClick={() => setReleaseTarget(s)} disabled={releasing === s.id}
+                    aria-label={`Release serial ${s.serial_number}`}
+                    className="btn-primary text-xs py-1 px-2 inline-flex items-center gap-1">
+                    <Undo2 size={12} /> {releasing === s.id ? "Releasing..." : "Release"}
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <ConfirmDialog
+        open={!!releaseTarget}
+        title="Release Quarantined Serial"
+        message={`Release serial ${releaseTarget?.serial_number} back to sellable stock?`}
+        confirmLabel="Release Serial"
         confirmClass="btn-primary"
         onConfirm={confirmRelease}
         onCancel={() => setReleaseTarget(null)}

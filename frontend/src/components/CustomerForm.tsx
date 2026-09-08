@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
 import { useToast } from "../context/ToastContext";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
 import { errorMessage } from "../utils/errors";
 
@@ -55,7 +55,7 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
   };
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? "Edit Customer" : "New Customer"}>
+    <SlideOver open onClose={onClose} title={isEdit ? "Edit Customer" : "New Customer"} wide ariaLabel={isEdit ? "Edit Customer" : "New Customer"}>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="rounded-xl border border-border bg-app p-4 space-y-4">
           <div>
@@ -118,6 +118,6 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
           </button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }

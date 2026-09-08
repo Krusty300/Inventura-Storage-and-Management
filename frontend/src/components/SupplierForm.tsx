@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../api/client";
 import type { Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import { errorMessage } from "../utils/errors";
 
 interface Props {
@@ -69,7 +69,7 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
   );
 
   return (
-    <Modal open onClose={onClose} title={supplier ? "Edit Supplier" : "Add Supplier"} wide>
+    <SlideOver open onClose={onClose} title={supplier ? "Edit Supplier" : "Add Supplier"} wide ariaLabel={supplier ? "Edit Supplier" : "Add Supplier"}>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="rounded-xl border border-border bg-app p-4 space-y-4">
           <div className="text-xs font-medium text-muted uppercase tracking-wider">Basic info</div>
@@ -110,6 +110,6 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
           </button>
         </div>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }

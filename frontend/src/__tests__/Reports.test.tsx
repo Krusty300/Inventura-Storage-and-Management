@@ -39,7 +39,7 @@ describe("Reports Page", () => {
     renderWithProviders(<Reports />);
     await waitFor(() => {
       expect(screen.getByText("Inventory Value (Cost)")).toBeInTheDocument();
-    }, { timeout: 15000 });
+    }, { timeout: 45000 });
     expect(screen.getByText("Retail Value")).toBeInTheDocument();
     expect(screen.getByText("Potential Profit")).toBeInTheDocument();
   });

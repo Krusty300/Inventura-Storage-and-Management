@@ -9,6 +9,7 @@ vi.mock("../api/client", () => ({
 
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 
+const getMock = api.get as ReturnType<typeof vi.fn>;
 const patchMock = api.patch as ReturnType<typeof vi.fn>;
 
 const fields: BulkFieldConfig[] = [
@@ -29,6 +30,7 @@ describe("EntityBulkEditModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    getMock.mockResolvedValue({ data: {} });
   });
 
   it("shows the selected count and disables submit until a field changes", () => {

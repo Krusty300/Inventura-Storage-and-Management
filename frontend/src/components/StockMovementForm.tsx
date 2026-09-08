@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Package, ArrowDownUp } from "lucide-react";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, StockMovement } from "../types";
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
@@ -84,94 +85,109 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
   };
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? "Edit Stock Movement" : "Record Stock Movement"}>
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Product *</label>
-            {!isEdit && (
-              <div className="mb-2">
-                <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />
-              </div>
-            )}
-            <FittedSelect
-              ariaLabel="Product"
-              value={productId}
-              onChange={(v) => { setProductId(v); setLocationId(""); }}
-              options={[
-                { value: "", label: "Select product" },
-                ...products.map((p) => ({ value: String(p.id), label: productLabel(p) })),
-              ]}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Movement Type</label>
-            <FittedSelect
-              ariaLabel="Movement Type"
-              value={movementType}
-              onChange={setMovementType}
-              options={[
-                { value: "in", label: "Stock In" },
-                { value: "out", label: "Stock Out" },
-                { value: "adjustment", label: "Adjustment" },
-                { value: "return", label: "Return" },
-              ]}
-            />
-          </div>
-          {showLocation && (
+    <SlideOver
+      open
+      onClose={onClose}
+      ariaLabel={isEdit ? "Edit Stock Movement" : "Record Stock Movement"}
+      title={isEdit ? "Edit Stock Movement" : "Record Stock Movement"}
+      actions={
+        <button type="submit" form="stock-movement-form" disabled={saving} className="btn-primary">
+          {saving ? "Saving..." : isEdit ? "Update Movement" : "Record"}
+        </button>
+      }
+    >
+      <form id="stock-movement-form" onSubmit={handleSubmit} className="space-y-5">
+        <section className="border border-border rounded-xl overflow-hidden">
+          <header className="px-5 py-3 bg-app border-b border-border flex items-center gap-2">
+            <Package size={16} className="text-primary shrink-0" />
+            <h3 className="text-sm font-semibold text-ink">Product & Movement</h3>
+          </header>
+          <div className="p-5 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-ink mb-1">Location *</label>
+              <label className="block text-sm font-medium text-ink mb-1">Product *</label>
+              {!isEdit && (
+                <div className="mb-2">
+                  <BarcodeScanner onProductFound={(p) => { if (isSelectable(p)) setProductId(p.id.toString()); else addToast("Product has variants - scan a specific variant", "error"); }} placeholder="Scan barcode to select..." autoFocus />
+                </div>
+              )}
               <FittedSelect
-                ariaLabel="Location"
-                value={locationId}
-                onChange={setLocationId}
+                ariaLabel="Product"
+                value={productId}
+                onChange={(v) => { setProductId(v); setLocationId(""); }}
                 options={[
-                  { value: "", label: "Default (product location)" },
-                  ...locationOptions.map((l) => {
-                    const count = stockCountByLoc.get(l.id);
-                    return { value: String(l.id), label: `${l.path}${count !== undefined ? ` (${count})` : ""}` };
-                  }),
+                  { value: "", label: "Select product" },
+                  ...products.map((p) => ({ value: String(p.id), label: productLabel(p) })),
                 ]}
               />
-              <p className="text-xs text-faint mt-1">
-                {movementType === "out"
-                  ? "Stock will be removed from this location."
-                  : "Stock will be added to this location."}
-              </p>
             </div>
-          )}
-        </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Movement Type</label>
+              <FittedSelect
+                ariaLabel="Movement Type"
+                value={movementType}
+                onChange={setMovementType}
+                options={[
+                  { value: "in", label: "Stock In" },
+                  { value: "out", label: "Stock Out" },
+                  { value: "adjustment", label: "Adjustment" },
+                  { value: "return", label: "Return" },
+                ]}
+              />
+            </div>
+            {showLocation && (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Location *</label>
+                <FittedSelect
+                  ariaLabel="Location"
+                  value={locationId}
+                  onChange={setLocationId}
+                  options={[
+                    { value: "", label: "Default (product location)" },
+                    ...locationOptions.map((l) => {
+                      const count = stockCountByLoc.get(l.id);
+                      return { value: String(l.id), label: `${l.path}${count !== undefined ? ` (${count})` : ""}` };
+                    }),
+                  ]}
+                />
+                <p className="text-xs text-faint mt-1">
+                  {movementType === "out"
+                    ? "Stock will be removed from this location."
+                    : "Stock will be added to this location."}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
 
-        <div className="rounded-xl border border-border bg-app p-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
-            <input
-              type="number"
-              className="input"
-              value={quantityChange}
-              onChange={(e) => setQuantityChange(e.target.value)}
-              min={movementType === "adjustment" ? undefined : "1"}
-              required
-            />
+        <section className="border border-border rounded-xl overflow-hidden">
+          <header className="px-5 py-3 bg-app border-b border-border flex items-center gap-2">
+            <ArrowDownUp size={16} className="text-primary shrink-0" />
+            <h3 className="text-sm font-semibold text-ink">Quantity & Reference</h3>
+          </header>
+          <div className="p-5 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Quantity *</label>
+              <input
+                type="number"
+                className="input"
+                value={quantityChange}
+                onChange={(e) => setQuantityChange(e.target.value)}
+                min={movementType === "adjustment" ? undefined : "1"}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Reference (e.g. PO#)</label>
+              <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
+              <p className="text-xs text-faint mt-1">Leave blank to auto-generate a reference.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1">Notes</label>
+              <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Reference (e.g. PO#)</label>
-            <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} />
-            <p className="text-xs text-faint mt-1">Leave blank to auto-generate a reference.</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-            <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-2 border-t border-border">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">
-            {saving ? "Saving..." : (isEdit ? "Update Movement" : "Record")}
-          </button>
-        </div>
+        </section>
       </form>
-    </Modal>
+    </SlideOver>
   );
 }

@@ -182,7 +182,7 @@ describe("ASNs Page", () => {
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
     const dialog = await screen.findByRole("dialog", { name: "New ASN" });
-    await within(dialog).findByRole("option", { name: "Acme Supplies" });
+    await screen.findByRole("option", { name: "Acme Supplies" });
     fireEvent.change(within(dialog).getByLabelText("Supplier"), { target: { value: "1" } });
 
     expect(await screen.findByText(/1 linked product/)).toBeInTheDocument();
@@ -211,8 +211,8 @@ describe("ASNs Page", () => {
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
     const dialog = await screen.findByRole("dialog", { name: "New ASN" });
-    await within(dialog).findByRole("option", { name: "Acme Supplies" });
-    await within(dialog).findByRole("option", { name: "Widget (SKU-1)" });
+    await screen.findByRole("option", { name: "Acme Supplies" });
+    await screen.findByRole("option", { name: "Widget (SKU-1)" });
     fireEvent.change(within(dialog).getByLabelText("Product"), { target: { value: "1" } });
     fireEvent.change(within(dialog).getByLabelText("Supplier"), { target: { value: "1" } });
     await waitFor(() => expect(screen.queryByText("Loading supplier products...")).not.toBeInTheDocument());
@@ -269,7 +269,7 @@ describe("ASNs Page", () => {
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByRole("button", { name: "New ASN" }));
     const dialog = await screen.findByRole("dialog", { name: "New ASN" });
-    await within(dialog).findByRole("option", { name: "Acme Supplies" });
+    await screen.findByRole("option", { name: "Acme Supplies" });
     fireEvent.change(within(dialog).getByLabelText("Supplier"), { target: { value: "1" } });
 
     expect(await screen.findByRole("option", { name: "T-Shirt - Red / M (TSHIRT-RED-M)" })).toBeInTheDocument();

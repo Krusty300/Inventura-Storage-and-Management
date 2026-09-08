@@ -16,10 +16,11 @@ function mockExceptions(data: Record<string, unknown> = {}) {
     if (url === "/reports/exceptions") {
       return Promise.resolve({
         data: {
-          summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 0, open_cycle_counts: 0, pending_asns: 0, quality_checks: 0 },
+          summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 0, quarantined_serials: 0, quarantined_units: 0, open_cycle_counts: 0, pending_asns: 0, quality_checks: 0 },
           low_stock: [],
           zero_stock: [],
           quarantined_lots: [],
+          quarantined_serials: [],
           open_cycle_counts: [],
           pending_asns: [],
           quality_checks: [],
@@ -133,5 +134,39 @@ describe("Exceptions Page", () => {
     fireEvent.click(screen.getByRole("button", { name: /Release/ }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(putMock).not.toHaveBeenCalled();
+  });
+
+  it("lists quarantined serials (including no-lot ones) and releases from the section", async () => {
+    const putMock = api.put as ReturnType<typeof vi.fn>;
+    putMock.mockResolvedValue({ data: {} });
+    mockExceptions({
+      summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 0, quarantined_serials: 2, quarantined_units: 2, open_cycle_counts: 0, pending_asns: 0 },
+      quarantined_serials: [
+        { id: 11, serial_number: "Q-SER-1", product_id: 1, product_name: "Widget", lot_id: null, lot_number: "", location_name: "Quarantine Area" },
+        { id: 12, serial_number: "Q-SER-2", product_id: 1, product_name: "Widget", lot_id: 5, lot_number: "Q-LOT-1", location_name: "" },
+      ],
+    });
+    renderWithProviders(<Exceptions />);
+    expect(await screen.findByText("Exceptions Dashboard")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show Quarantined Serials" }));
+    expect(await screen.findByText("Q-SER-1")).toBeInTheDocument();
+    expect(screen.getByText("Q-SER-2")).toBeInTheDocument();
+    expect(screen.getByText("Quarantine Area")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Release serial Q-SER-1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Release Serial" }));
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/serial-numbers/11/status", { status: "in_stock" }));
+  });
+
+  it("deep links to the Quarantined Lots section via ?section=", async () => {
+    mockExceptions({
+      summary: { low_stock: 0, zero_stock: 0, quarantined_lots: 1, quarantined_serials: 0, quarantined_units: 12, open_cycle_counts: 0, pending_asns: 0 },
+      quarantined_lots: [{
+        id: 5, lot_number: "Q-LOT-1", product_id: 1, product_name: "Widget",
+        on_hand: 12, expiry_date: null, received_date: "2026-01-15T00:00:00",
+      }],
+    });
+    renderWithProviders(<Exceptions />, { route: "/exceptions?section=quarantined_lots" });
+    expect(await screen.findByText("Q-LOT-1")).toBeInTheDocument();
+    expect(screen.getByText("12 units quarantined · 1 lots · 0 serials")).toBeInTheDocument();
   });
 });

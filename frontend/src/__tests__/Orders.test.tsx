@@ -11,6 +11,7 @@ import Orders from "../pages/Orders";
 
 const getMock = api.get as ReturnType<typeof vi.fn>;
 const postMock = api.post as ReturnType<typeof vi.fn>;
+const putMock = api.put as ReturnType<typeof vi.fn>;
 
 function mockOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -166,5 +167,61 @@ describe("Orders Page", () => {
     selects = await screen.findAllByRole("combobox");
     fireEvent.change(selects[selects.length - 1], { target: { value: "10" } });
     expect(await screen.findByText("Product already added to this order")).toBeInTheDocument();
+  });
+
+  it("opens the edit slide-over for a pending order and saves updates", async () => {
+    const order = mockOrder();
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "€" } });
+      if (url === "/orders") return Promise.resolve({ data: { items: [order], total: 1, page: 1, pages: 1 } });
+      if (url === "/suppliers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Supplies" }], total: 1, page: 1, pages: 1 } });
+      if (url === "/products") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [{ id: 1, name: "Main", is_active: true }] } });
+      if (url === "/suppliers/1/products") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    putMock.mockResolvedValue({ data: {} });
+    renderWithProviders(<Orders />);
+    fireEvent.click(await screen.findByLabelText("Edit order PO-1001"));
+    const dialog = await screen.findByRole("dialog", { name: "Edit order PO-1001" });
+    fireEvent.change(within(dialog).getByLabelText("Notes"), { target: { value: "Updated notes" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update Order" }));
+    await vi.waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith("/orders/1", expect.objectContaining({ notes: "Updated notes" }))
+    );
+  });
+
+  it("previews the PDF for a received order from its detail view", async () => {
+    const order = mockOrder({ id: 2, order_number: "PO-1002", status: "received", total_amount: 300 });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "€" } });
+      if (url === "/orders") return Promise.resolve({ data: { items: [order], total: 1, page: 1, pages: 1 } });
+      if (url === `/orders/${order.id}/pdf`) return Promise.resolve({ data: new Blob(["%PDF-1.4"], { type: "application/pdf" }) });
+      if (url === "/locations") return Promise.resolve({ data: { items: [] } });
+      if (url === "/lpns") return Promise.resolve({ data: { items: [] } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    URL.createObjectURL = vi.fn(() => "blob:order-pdf");
+    renderWithProviders(<Orders />);
+    fireEvent.click(await screen.findByLabelText("View order PO-1002"));
+    fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
+    await vi.waitFor(() => expect(getMock).toHaveBeenCalledWith(`/orders/2/pdf`, expect.objectContaining({ responseType: "blob" })));
+    expect(await screen.findByTitle("PDF preview of PO-1002")).toBeInTheDocument();
+  });
+
+  it("does not show the edit action in the detail slide-over for a received order", async () => {
+    const order = mockOrder({ id: 2, order_number: "PO-1002", status: "received" });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "€" } });
+      if (url === "/orders") return Promise.resolve({ data: { items: [order], total: 1, page: 1, pages: 1 } });
+      if (url === "/locations") return Promise.resolve({ data: { items: [] } });
+      if (url === "/lpns") return Promise.resolve({ data: { items: [] } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Orders />);
+    fireEvent.click(await screen.findByLabelText("View order PO-1002"));
+    expect(await screen.findByRole("dialog", { name: "Order PO-1002" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit order PO-1002" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
   });
 });

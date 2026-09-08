@@ -6,6 +6,7 @@ import api from "../api/client";
 import type { Order, PaginatedResponse } from "../types";
 import OrderForm from "../components/OrderForm";
 import OrderDetail from "../components/OrderDetail";
+import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FittedSelect from "../components/FittedSelect";
 import BulkActionBar from "../components/BulkActionBar";
@@ -33,6 +34,7 @@ export default function Orders() {
   const { pageSize, setPageSize } = usePageSize();
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [editing, setEditing] = useState<Order | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
   const [viewing, setViewing] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState<Order | null>(null);
   const [confirmAutoReorder, setConfirmAutoReorder] = useState(false);
@@ -69,6 +71,18 @@ export default function Orders() {
       addToast(errorMessage(err, "Auto-reorder failed"), "error");
     },
   });
+
+  const openEdit = async (order: Order) => {
+    setEditing(order);
+    setEditLoading(true);
+    try {
+      const { data } = await api.get(`/orders/${order.id}`);
+      setEditing(data as Order);
+    } catch {
+      /* fall back to the row data */
+    }
+    setEditLoading(false);
+  };
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["orders", debouncedSearch, statusFilter, page, pageSize],
@@ -203,7 +217,7 @@ export default function Orders() {
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     {o.status === "pending" && (
-                      <button onClick={() => setEditing(o)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit order ${o.order_number}`}>
+                      <button onClick={() => openEdit(o)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit order ${o.order_number}`}>
                         <Pencil size={16} />
                       </button>
                     )}
@@ -229,11 +243,51 @@ export default function Orders() {
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
 
-      {(showForm || editing) && (
+      {showForm && (
         <OrderForm
-          order={editing || undefined}
-          onClose={() => { setShowForm(false); setEditing(null); }}
-          onSaved={() => { setShowForm(false); setEditing(null); queryClient.invalidateQueries({ queryKey: ["orders"] }); }}
+          order={undefined}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); queryClient.invalidateQueries({ queryKey: ["orders"] }); }}
+        />
+      )}
+
+      {editing && editLoading && (
+        <SlideOver
+          open
+          onClose={() => { setEditing(null); setEditLoading(false); }}
+          title={`Edit ${editing.order_number}`}
+          wide
+          ariaLabel={`Edit ${editing.order_number}`}
+        >
+          <div className="space-y-5" role="status" aria-busy="true" aria-label={`Loading order ${editing.order_number}`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Skeleton variant="text" className="h-4 w-20" />
+                <Skeleton variant="text" className="h-10 w-full" />
+              </div>
+              <div className="space-y-1.5">
+                <Skeleton variant="text" className="h-4 w-20" />
+                <Skeleton variant="text" className="h-10 w-full" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Skeleton variant="text" className="h-4 w-16" />
+              <Skeleton variant="text" className="h-20 w-full" />
+            </div>
+            <Skeleton variant="rows" rows={3} cols={3} />
+            <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-border">
+              <Skeleton variant="text" className="h-9 w-20" />
+              <Skeleton variant="text" className="h-9 w-32" />
+            </div>
+          </div>
+        </SlideOver>
+      )}
+
+      {editing && !editLoading && (
+        <OrderForm
+          order={editing}
+          onClose={() => { setEditing(null); }}
+          onSaved={() => { setEditing(null); queryClient.invalidateQueries({ queryKey: ["orders"] }); }}
         />
       )}
 
@@ -242,6 +296,7 @@ export default function Orders() {
           order={viewing}
           onClose={() => setViewing(null)}
           onUpdated={() => { setViewing(null); queryClient.invalidateQueries({ queryKey: ["orders"] }); }}
+          onEdit={() => { setViewing(null); openEdit(viewing); }}
         />
       )}
 
