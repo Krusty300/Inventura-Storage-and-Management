@@ -172,18 +172,20 @@ def test_deactivated_user_can_be_reactivated(auth_headers):
     assert created.status_code == 201
     uid = created.json()["id"]
 
-    # Deactivate via delete -> leaves the active list
+    # Deactivate via delete -> leaves the active list, moves to Trash
     assert client.delete(f"/api/users/{uid}", headers=auth_headers).status_code == 200
     active_ids = [u["id"] for u in client.get("/api/users", headers=auth_headers).json()["items"]]
     assert uid not in active_ids
 
-    # Hidden by default but visible with include_inactive, marked inactive
+    # Soft-deleted (trashed) users no longer appear with include_inactive.
     incl = client.get("/api/users?include_inactive=true", headers=auth_headers).json()["items"]
-    row = next(u for u in incl if u["id"] == uid)
-    assert row["is_active"] is False
+    assert all(u["id"] != uid for u in incl)
+    trash = client.get("/api/trash", headers=auth_headers).json()
+    assert any(i["entity_type"] == "user" and i["id"] == uid for i in trash["items"])
 
-    # Reactivate via update -> back in the active list and can sign in
-    resp = client.put(f"/api/users/{uid}", json={"is_active": True}, headers=auth_headers)
+    # Restore through the Trash endpoint -> back in the active list and can sign in
+    assert client.post(f"/api/trash/user/{uid}/restore", headers=auth_headers).status_code == 200
+    resp = client.get(f"/api/users/{uid}", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["is_active"] is True
     active_ids = [u["id"] for u in client.get("/api/users", headers=auth_headers).json()["items"]]

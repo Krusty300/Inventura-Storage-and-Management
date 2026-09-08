@@ -18,9 +18,23 @@ from app.schemas.supplier import (
     SupplierStats, SupplierUpdate,
 )
 from app.services.auth import require_permission
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"], dependencies=[Depends(require_permission("suppliers.view"))])
+
+
+def _purge_supplier(db: Session, s: Supplier, user) -> None:
+    has_products = db.query(Product).filter(Product.supplier_id == s.id).first() is not None
+    if has_products:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a supplier that has products")
+    has_orders = db.query(Order).filter(Order.supplier_id == s.id).first() is not None
+    if has_orders:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a supplier with order history")
+    db.delete(s)
+
+
+register("supplier", Supplier, lambda s: s.name, _purge_supplier)
 
 
 def _find_duplicate(db: Session, name: str, email: str, exclude_id: int | None = None) -> Supplier | None:
@@ -88,7 +102,7 @@ def list_suppliers(
     q = db.query(
         Supplier, stats.c.total_orders, stats.c.total_spent, stats.c.last_order_at,
         counts.c.product_count,
-    ).outerjoin(stats, stats.c.supplier_id == Supplier.id).outerjoin(counts, counts.c.supplier_id == Supplier.id)
+    ).outerjoin(stats, stats.c.supplier_id == Supplier.id).outerjoin(counts, counts.c.supplier_id == Supplier.id).filter(Supplier.is_deleted == False)  # noqa: E712
     if not include_inactive:
         q = q.filter(Supplier.is_active == True)  # noqa: E712
     if search:
@@ -231,8 +245,10 @@ def supplier_products(
 
 @router.post("/{supplier_id}/restore", response_model=SupplierOut)
 def restore_supplier(supplier_id: int, db: Session = Depends(get_db), user=Depends(require_permission("suppliers.update"))):
-    s = get_or_404(Supplier, supplier_id, db)
+    s = get_or_404(Supplier, supplier_id, db, include_deleted=True)
     s.is_active = True
+    s.is_deleted = False
+    s.deleted_at = None
     db.commit()
     db.refresh(s)
     log_activity(db, user.id, user.username, "update", "supplier", s.id, f"Restored supplier '{s.name}'")
@@ -286,10 +302,5 @@ def update_supplier(supplier_id: int, data: SupplierUpdate, db: Session = Depend
 @router.delete("/{supplier_id}")
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db), user=Depends(require_permission("suppliers.delete"))):
     s = get_or_404(Supplier, supplier_id, db)
-    name = s.name
-    s.is_active = False
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "supplier", supplier_id, f"Deleted supplier '{name}'")
-    db.commit()
-    broadcast_change("supplier", "deleted")
+    soft_delete(db, s, user, "supplier")
     return {"ok": True}

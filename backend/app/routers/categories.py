@@ -7,9 +7,23 @@ from app.database import get_db
 from app.models.category import Category
 from app.schemas.category import CategoryBulkEdit, CategoryCreate, CategoryOut, CategoryTree, CategoryUpdate
 from app.services.auth import require_permission
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/categories", tags=["categories"], dependencies=[Depends(require_permission("categories.view"))])
+
+
+def _purge_category(db: Session, cat: Category, user) -> None:
+    cat = db.query(Category).filter(Category.id == cat.id).options(joinedload(Category.products), joinedload(Category.subcategories)).first()
+    if cat.products:
+        raise HTTPException(status_code=400, detail="Cannot delete category with existing products")
+    if cat.subcategories:
+        raise HTTPException(status_code=400, detail="Cannot delete category with subcategories")
+    name = cat.name
+    db.delete(cat)
+
+
+register("category", Category, lambda c: c.name, _purge_category)
 
 
 @router.get("")
@@ -19,7 +33,7 @@ def list_categories(
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Category).options(joinedload(Category.subcategories))
+    q = db.query(Category).options(joinedload(Category.subcategories)).filter(Category.is_deleted == False)  # noqa: E712
     if search:
         q = q.filter(Category.name.ilike(f"%{search}%"))
     total = q.count()
@@ -29,12 +43,12 @@ def list_categories(
 
 @router.get("/tree", response_model=list[CategoryTree])
 def category_tree(db: Session = Depends(get_db)):
-    return db.query(Category).filter(Category.parent_id.is_(None)).options(joinedload(Category.subcategories)).all()
+    return db.query(Category).filter(Category.parent_id.is_(None), Category.is_deleted == False).options(joinedload(Category.subcategories)).all()  # noqa: E712
 
 
 @router.patch("/bulk-edit")
 def bulk_edit_categories(data: CategoryBulkEdit, db: Session = Depends(get_db), user=Depends(require_permission("categories.bulk"))):
-    cats = db.query(Category).filter(Category.id.in_(data.ids)).all()
+    cats = db.query(Category).filter(Category.id.in_(data.ids), Category.is_deleted == False).all()  # noqa: E712
     if not cats:
         raise HTTPException(status_code=404, detail="No categories found")
     updates = {}
@@ -74,7 +88,7 @@ def get_category(category_id: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=CategoryOut, status_code=201)
 def create_category(data: CategoryCreate, db: Session = Depends(get_db), user=Depends(require_permission("categories.create"))):
-    if db.query(Category).filter(Category.name == data.name).first():
+    if db.query(Category).filter(Category.name == data.name, Category.is_deleted == False).first():  # noqa: E712
         raise HTTPException(status_code=400, detail="Category already exists")
     cat = Category(**data.model_dump())
     db.add(cat)
@@ -119,9 +133,5 @@ def delete_category(category_id: int, db: Session = Depends(get_db), user=Depend
         raise HTTPException(status_code=400, detail="Cannot delete category with existing products")
     if cat.subcategories:
         raise HTTPException(status_code=400, detail="Cannot delete category with subcategories")
-    name = cat.name
-    db.delete(cat)
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "category", category_id, f"Deleted category '{name}'")
-    db.commit()
-    broadcast_change("category", "deleted")
+    soft_delete(db, cat, user, "category")
+    return {"ok": True}

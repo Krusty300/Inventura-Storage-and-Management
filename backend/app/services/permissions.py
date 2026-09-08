@@ -119,6 +119,9 @@ ALL_PERMISSIONS = frozenset({
     "customer_groups.create",
     "customer_groups.update",
     "customer_groups.delete",
+    "trash.view",
+    "trash.restore",
+    "trash.delete",
 })
 
 MANAGER_PERMISSIONS = ALL_PERMISSIONS - frozenset({

@@ -78,7 +78,9 @@ def test_delete_price_list(auth_headers):
 def test_cannot_delete_default_price_list(auth_headers):
     resp = client.post("/api/price-lists", json={"name": "Default", "is_default": True}, headers=auth_headers)
     pl_id = resp.json()["id"]
-    resp = client.delete(f"/api/price-lists/{pl_id}", headers=auth_headers)
+    # Soft delete succeeds; the default guard fires on permanent delete.
+    assert client.delete(f"/api/price-lists/{pl_id}", headers=auth_headers).status_code == 200
+    resp = client.delete(f"/api/trash/price_list/{pl_id}", headers=auth_headers)
     assert resp.status_code == 400
 
 

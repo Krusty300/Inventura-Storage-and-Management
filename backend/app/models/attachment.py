@@ -4,10 +4,11 @@ from sqlalchemy import ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.mixins import SoftDeleteMixin
 from app.models.types import UTCDateTime
 
 
-class Attachment(Base):
+class Attachment(SoftDeleteMixin, Base):
     """A document version attached to any entity (products, orders, quality
     checks, customers, suppliers, receipts) via a polymorphic
     ``entity_type`` + ``entity_id`` pair.

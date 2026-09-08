@@ -16,9 +16,20 @@ from app.schemas.customer import (
     CustomerStats, CustomerUpdate, FrequentProduct,
 )
 from app.services.auth import require_permission
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/customers", tags=["customers"], dependencies=[Depends(require_permission("customers.view"))])
+
+
+def _purge_customer(db: Session, c: Customer, user) -> None:
+    has_sales = db.query(Sale).filter(Sale.customer_id == c.id).first() is not None
+    if has_sales:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a customer with sales history")
+    db.delete(c)
+
+
+register("customer", Customer, lambda c: c.name, _purge_customer)
 
 
 def _find_duplicate(db: Session, name: str, phone: str, email: str, exclude_id: int | None = None) -> Customer | None:
@@ -76,7 +87,7 @@ def list_customers(
     stats = _stats_query(db)
     q = db.query(
         Customer, stats.c.total_sales, stats.c.total_spent, stats.c.last_purchase_at
-    ).outerjoin(stats, stats.c.customer_id == Customer.id)
+    ).outerjoin(stats, stats.c.customer_id == Customer.id).filter(Customer.is_deleted == False)  # noqa: E712
     if not include_inactive:
         q = q.filter(Customer.is_active == True)  # noqa: E712
     if search:
@@ -240,8 +251,10 @@ def customer_frequent_products(
 
 @router.post("/{customer_id}/restore", response_model=CustomerOut)
 def restore_customer(customer_id: int, db: Session = Depends(get_db), user=Depends(require_permission("customers.update"))):
-    c = get_or_404(Customer, customer_id, db)
+    c = get_or_404(Customer, customer_id, db, include_deleted=True)
     c.is_active = True
+    c.is_deleted = False
+    c.deleted_at = None
     db.commit()
     db.refresh(c)
     log_activity(db, user.id, user.username, "update", "customer", c.id, f"Restored customer '{c.name}'")
@@ -294,10 +307,5 @@ def update_customer(customer_id: int, data: CustomerUpdate, db: Session = Depend
 @router.delete("/{customer_id}")
 def delete_customer(customer_id: int, db: Session = Depends(get_db), user=Depends(require_permission("customers.delete"))):
     c = get_or_404(Customer, customer_id, db)
-    name = c.name
-    c.is_active = False
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "customer", customer_id, f"Deleted customer '{name}'")
-    db.commit()
-    broadcast_change("customer", "deleted")
+    soft_delete(db, c, user, "customer")
     return {"ok": True}

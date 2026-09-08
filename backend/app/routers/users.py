@@ -13,11 +13,23 @@ from app.schemas.user import UserOut
 from app.services.auth import get_current_user, require_permission, hash_password, verify_password
 from app.services.password_policy import validate_password
 from app.services.permissions import ALL_PERMISSIONS, has_permission
+from app.services.soft_delete import register, soft_delete
 from app.utils import log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 VALID_ROLES = {"admin", "manager", "worker"}
+
+
+def _purge_user(db: Session, u: User, user) -> None:
+    if u.id == getattr(user, "id", None):
+        raise HTTPException(status_code=400, detail="You cannot permanently delete your own account")
+    if u.role == "admin" and _admin_count(db) <= 1:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete the last admin")
+    db.delete(u)
+
+
+register("user", User, lambda u: u.username, _purge_user)
 
 
 class UserUpdateAdmin(BaseModel):
@@ -143,7 +155,7 @@ def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("users.view")),
 ):
-    q = db.query(User)
+    q = db.query(User).filter(User.is_deleted == False)  # noqa: E712
     if not include_inactive:
         q = q.filter(User.is_active == True)
     if search:
@@ -294,12 +306,7 @@ def delete_user(
         raise HTTPException(status_code=400, detail="You cannot delete your own account")
     if u.role == "admin" and _admin_count(db) <= 1:
         raise HTTPException(status_code=400, detail="Cannot delete the last admin")
-    u.is_active = False
-    db.commit()
-    log_activity(db, current_user.id, current_user.username, "delete", "user", u.id,
-                 f"Deactivated user '{u.username}'")
-    db.commit()
-    broadcast_change("user", "deleted")
+    soft_delete(db, u, current_user, "user")
     return {"ok": True}
 
 

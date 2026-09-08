@@ -13,9 +13,23 @@ from app.models.user import User
 from app.schemas.attachment import AttachmentDocumentOut, AttachmentOut
 from app.services.auth import get_current_user
 from app.services.permissions import permissions_for_user
+from app.services.soft_delete import register, soft_delete
 from app.utils import broadcast_change, get_or_404, log_activity
 
 router = APIRouter(prefix="/api/attachments", tags=["attachments"])
+
+
+def _purge_attachment(db: Session, att: Attachment, user) -> None:
+    filepath = DOC_DIR / att.storage_filename
+    try:
+        if filepath.exists():
+            filepath.unlink()
+    except Exception:
+        pass
+    db.delete(att)
+
+
+register("attachment", Attachment, lambda a: a.doc_key, _purge_attachment)
 
 DOC_DIR = Path(__file__).resolve().parent.parent / "documents"
 os.makedirs(DOC_DIR, exist_ok=True)
@@ -218,19 +232,7 @@ def delete_attachment(
     user: User = Depends(require_attachment_permission(ENTITY_UPLOAD_PERMISSION)),
 ):
     att: Attachment = request.state.attachment
-    filepath = DOC_DIR / att.storage_filename
-    try:
-        if filepath.exists():
-            filepath.unlink()
-    except Exception:
-        pass
-    db.delete(att)
-    db.commit()
-    log_activity(
-        db, user.id, user.username, "delete",
-        entity_type=att.entity_type, entity_id=att.entity_id,
-        description=f"Deleted document '{att.doc_key}' v{att.version}",
-    )
+    soft_delete(db, att, user, "attachment")
     broadcast_change(att.entity_type, "updated")
     return {"ok": True}
 
@@ -249,7 +251,11 @@ def list_attachments(
         raise HTTPException(status_code=400, detail=f"Unsupported entity type: {entity_type}")
     rows = (
         db.query(Attachment)
-        .filter(Attachment.entity_type == entity_type, Attachment.entity_id == entity_id)
+        .filter(
+            Attachment.entity_type == entity_type,
+            Attachment.entity_id == entity_id,
+            Attachment.is_deleted == False,  # noqa: E712
+        )
         .order_by(Attachment.doc_key, Attachment.version)
         .all()
     )
@@ -272,6 +278,7 @@ def list_document_versions(
             Attachment.entity_type == entity_type,
             Attachment.entity_id == entity_id,
             Attachment.doc_key == doc_key,
+            Attachment.is_deleted == False,  # noqa: E712
         )
         .order_by(Attachment.version)
         .all()

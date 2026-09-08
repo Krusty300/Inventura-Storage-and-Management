@@ -98,9 +98,14 @@ def test_delete_removes_document(auth_headers, monkeypatch, tmp_path):
     assert len(stored) == 1
     resp = client.delete(f"/api/attachments/entry/{att['id']}", headers=auth_headers)
     assert resp.status_code == 200
-    assert [f for f in tmp_path.iterdir() if f.suffix == ".pdf"] == []
+    # Soft delete keeps the file on disk until the attachment is purged...
+    assert len([f for f in tmp_path.iterdir() if f.suffix == ".pdf"]) == 1
+    # ...and hides it from listings immediately.
     listing = client.get("/api/attachments/product/1", headers=auth_headers).json()
     assert listing == []
+    # Purging removes the file permanently.
+    assert client.delete(f"/api/trash/attachment/{att['id']}", headers=auth_headers).status_code == 200
+    assert [f for f in tmp_path.iterdir() if f.suffix == ".pdf"] == []
 
 
 def test_unsupported_entity_type_rejected(auth_headers, monkeypatch, tmp_path):

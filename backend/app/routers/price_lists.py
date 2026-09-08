@@ -15,6 +15,7 @@ from app.schemas.price_list import (
 )
 from app.services.auth import require_permission
 from app.services.pricing import resolve_price
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(
@@ -22,6 +23,15 @@ router = APIRouter(
     tags=["price-lists"],
     dependencies=[Depends(require_permission("price_lists.view"))],
 )
+
+
+def _purge_price_list(db: Session, pl: PriceList, user) -> None:
+    if pl.is_default:
+        raise HTTPException(status_code=400, detail="Cannot delete the default price list")
+    db.delete(pl)
+
+
+register("price_list", PriceList, lambda p: p.name, _purge_price_list)
 
 
 def _item_count(db: Session, pl: PriceList) -> int:
@@ -39,7 +49,7 @@ def list_price_lists(
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
-    q = db.query(PriceList)
+    q = db.query(PriceList).filter(PriceList.is_deleted == False)  # noqa: E712
     if search:
         q = q.filter(PriceList.name.ilike(f"%{search}%"))
     total = q.count()
@@ -122,13 +132,8 @@ def update_price_list(pl_id: int, data: PriceListUpdate, db: Session = Depends(g
 @router.delete("/{pl_id}")
 def delete_price_list(pl_id: int, db: Session = Depends(get_db), user=Depends(require_permission("price_lists.delete"))):
     pl = get_or_404(PriceList, pl_id, db)
-    if pl.is_default:
-        raise HTTPException(status_code=400, detail="Cannot delete the default price list")
-    log_activity(db, user.id, user.username, "delete", "price_list", pl.id, f"Deleted price list '{pl.name}'")
-    db.delete(pl)
-    db.commit()
-    broadcast_change("price_list", "deleted")
-    return {"detail": "Deleted"}
+    soft_delete(db, pl, user, "price_list")
+    return {"ok": True}
 
 
 class PriceResolveRequest(BaseModel):

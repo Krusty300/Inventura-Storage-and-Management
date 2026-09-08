@@ -25,9 +25,60 @@ from app.models import (
 from app.schemas.location import LocationCreate, LocationOut, LocationUpdate
 from app.services import inventory
 from app.services.auth import require_permission
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/locations", tags=["locations"], dependencies=[Depends(require_permission("locations.view"))])
+
+
+def _purge_location(db: Session, loc: Location, user) -> None:
+    has_children = db.query(Location).filter(Location.parent_id == loc.id).first() is not None
+    if has_children:
+        raise HTTPException(status_code=400, detail="Cannot delete a location that has child locations")
+    has_stock = db.query(StockLine).filter(StockLine.location_id == loc.id).first() is not None
+    if has_stock:
+        raise HTTPException(status_code=400, detail="Cannot delete a location that has stock on hand")
+    has_products = db.query(Product).filter(Product.location_id == loc.id).first() is not None
+    if has_products:
+        raise HTTPException(status_code=400, detail="Cannot delete a location that is assigned to products")
+    has_lpns = db.query(LPN).filter(LPN.location_id == loc.id).first() is not None
+    if has_lpns:
+        raise HTTPException(status_code=400, detail="Cannot delete a location that has LPNs")
+    has_serials = db.query(SerialNumber).filter(SerialNumber.location_id == loc.id).first() is not None
+    if has_serials:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with serial number history")
+    has_movements = (
+        db.query(StockMovement)
+        .filter((StockMovement.from_location_id == loc.id) | (StockMovement.to_location_id == loc.id))
+        .first() is not None
+    )
+    if has_movements:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with stock movement history")
+    has_receipts = db.query(ReceiptItem).filter(ReceiptItem.location_id == loc.id).first() is not None
+    if has_receipts:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with receiving history")
+    has_asns = db.query(ASNItem).filter(ASNItem.location_id == loc.id).first() is not None
+    if has_asns:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with ASN history")
+    has_cycle_counts = db.query(CycleCount).filter(CycleCount.location_id == loc.id).first() is not None
+    if has_cycle_counts:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with cycle count history")
+    has_shipments = db.query(Shipment).filter(Shipment.staging_location_id == loc.id).first() is not None
+    if has_shipments:
+        raise HTTPException(status_code=400, detail="Cannot delete a location that is a shipment staging area")
+    has_shipment_items = db.query(ShipmentItem).filter(ShipmentItem.location_id == loc.id).first() is not None
+    if has_shipment_items:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with shipment history")
+    has_wip = db.query(WorkOrder).filter(WorkOrder.wip_location_id == loc.id).first() is not None
+    if has_wip:
+        raise HTTPException(status_code=400, detail="Cannot delete a location used as a work order WIP area")
+    has_qc = db.query(QualityCheck).filter(QualityCheck.location_id == loc.id).first() is not None
+    if has_qc:
+        raise HTTPException(status_code=400, detail="Cannot delete a location with quality check history")
+    db.delete(loc)
+
+
+register("location", Location, lambda l: l.path, _purge_location)
 
 LOCATION_TYPES = {"bin", "zone", "aisle", "shelf", "storage", "receiving", "wip", "quarantine", "shipping"}
 
@@ -143,7 +194,7 @@ def list_locations(
 ):
     if location_type and location_type not in LOCATION_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid location type '{location_type}'. Must be one of: {', '.join(sorted(LOCATION_TYPES))}")
-    q = db.query(Location).options(joinedload(Location.parent))
+    q = db.query(Location).options(joinedload(Location.parent)).filter(Location.is_deleted == False)  # noqa: E712
     if search:
         like = f"%{search}%"
         q = q.filter(Location.name.ilike(like) | Location.code.ilike(like))
@@ -159,7 +210,7 @@ def list_locations(
 
 @router.get("/tree")
 def location_tree(db: Session = Depends(get_db)):
-    locations = db.query(Location).options(joinedload(Location.parent)).all()
+    locations = db.query(Location).options(joinedload(Location.parent)).filter(Location.is_deleted == False).all()  # noqa: E712
     line_counts, qty, value, lpn_counts, serial_counts, serial_value, lot_counts = _stats_map(db)
     nodes = {l.id: {**dict(
         id=l.id, name=l.name, code=l.code, location_type=l.location_type,
@@ -467,53 +518,5 @@ def update_location(location_id: int, data: LocationUpdate, db: Session = Depend
 @router.delete("/{location_id}")
 def delete_location(location_id: int, db: Session = Depends(get_db), user=Depends(require_permission("locations.delete"))):
     loc = get_or_404(Location, location_id, db)
-    has_children = db.query(Location).filter(Location.parent_id == loc.id).first() is not None
-    if has_children:
-        raise HTTPException(status_code=400, detail="Cannot delete a location that has child locations")
-    has_stock = db.query(StockLine).filter(StockLine.location_id == loc.id).first() is not None
-    if has_stock:
-        raise HTTPException(status_code=400, detail="Cannot delete a location that has stock on hand")
-    has_products = db.query(Product).filter(Product.location_id == loc.id).first() is not None
-    if has_products:
-        raise HTTPException(status_code=400, detail="Cannot delete a location that is assigned to products")
-    has_lpns = db.query(LPN).filter(LPN.location_id == loc.id).first() is not None
-    if has_lpns:
-        raise HTTPException(status_code=400, detail="Cannot delete a location that has LPNs")
-    has_serials = db.query(SerialNumber).filter(SerialNumber.location_id == loc.id).first() is not None
-    if has_serials:
-        raise HTTPException(status_code=400, detail="Cannot delete a location with serial number history")
-    has_movements = (
-        db.query(StockMovement)
-        .filter((StockMovement.from_location_id == loc.id) | (StockMovement.to_location_id == loc.id))
-        .first() is not None
-    )
-    if has_movements:
-        raise HTTPException(status_code=400, detail="Cannot delete a location with stock movement history")
-    has_receipts = db.query(ReceiptItem).filter(ReceiptItem.location_id == loc.id).first() is not None
-    if has_receipts:
-        raise HTTPException(status_code=400, detail="Cannot delete a location with receiving history")
-    has_asns = db.query(ASNItem).filter(ASNItem.location_id == loc.id).first() is not None
-    if has_asns:
-        raise HTTPException(status_code=400, detail="Cannot delete a location with ASN history")
-    has_cycle_counts = db.query(CycleCount).filter(CycleCount.location_id == loc.id).first() is not None
-    if has_cycle_counts:
-        raise HTTPException(status_code=400, detail="Cannot delete a location with cycle count history")
-    has_shipments = db.query(Shipment).filter(Shipment.staging_location_id == loc.id).first() is not None
-    if has_shipments:
-        raise HTTPException(status_code=400, detail="Cannot delete a location that is a shipment staging area")
-    has_shipment_items = db.query(ShipmentItem).filter(ShipmentItem.location_id == loc.id).first() is not None
-    if has_shipment_items:
-        raise HTTPException(status_code=400, detail="Cannot delete a location with shipment history")
-    has_wip = db.query(WorkOrder).filter(WorkOrder.wip_location_id == loc.id).first() is not None
-    if has_wip:
-        raise HTTPException(status_code=400, detail="Cannot delete a location used as a work order WIP area")
-    has_qc = db.query(QualityCheck).filter(QualityCheck.location_id == loc.id).first() is not None
-    if has_qc:
-        raise HTTPException(status_code=400, detail="Cannot delete a location with quality check history")
-    path = loc.path
-    db.delete(loc)
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "location", location_id, f"Deleted location '{path}'")
-    db.commit()
-    broadcast_change("location", "deleted")
-    return {"deleted": location_id}
+    soft_delete(db, loc, user, "location")
+    return {"ok": True}

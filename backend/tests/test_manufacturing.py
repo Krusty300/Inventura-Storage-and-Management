@@ -96,7 +96,9 @@ def test_bom_delete_blocked_by_work_order(auth_headers):
     comp = _make_product(auth_headers, "BOM-WC")
     bom = _create_bom(auth_headers, fg["id"], [(comp["id"], 1)]).json()
     assert _create_wo(auth_headers, fg["id"], 1, bom_id=bom["id"]).status_code == 201
-    resp = client.delete(f"/api/boms/{bom['id']}", headers=auth_headers)
+    # Soft delete succeeds; the work-order guard fires on permanent delete.
+    assert client.delete(f"/api/boms/{bom['id']}", headers=auth_headers).status_code == 204
+    resp = client.delete(f"/api/trash/bom/{bom['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "work order" in resp.json()["detail"].lower()
 
@@ -307,10 +309,18 @@ def test_delete_failing_qc_releases_lot_when_none_remain(auth_headers):
     }, headers=auth_headers).json()
     assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "quarantined"
 
+    # Soft-deleting a failing QC no longer releases the lot by itself.
     assert client.delete(f"/api/quality-checks/{qc1['id']}", headers=auth_headers).status_code == 204
     assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "quarantined"
-
     assert client.delete(f"/api/quality-checks/{qc2['id']}", headers=auth_headers).status_code == 204
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "quarantined"
+
+    # Purging the first QC still leaves a failing check; the lot stays quarantined.
+    assert client.delete(f"/api/trash/quality_check/{qc1['id']}", headers=auth_headers).status_code == 200
+    assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "quarantined"
+
+    # Purging the last failing QC releases the lot back to stock.
+    assert client.delete(f"/api/trash/quality_check/{qc2['id']}", headers=auth_headers).status_code == 200
     assert client.get(f"/api/lots/{lot_id}", headers=auth_headers).json()["status"] == "in_stock"
 
 

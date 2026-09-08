@@ -41,13 +41,17 @@ def test_location_delete_blocked_with_stock(auth_headers):
         "items": [{"product_id": prod["id"], "quantity": 3, "location_id": loc["id"]}],
     }, headers=auth_headers).status_code == 201
 
-    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 400
+    # Soft delete succeeds; permanent delete is blocked while stock is present.
+    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 200
+    assert client.delete(f"/api/trash/location/{loc['id']}", headers=auth_headers).status_code == 400
 
 
 def test_location_delete_blocked_with_children(auth_headers):
     loc = _create_location(auth_headers, code="P-BLOCK").json()
     _create_location(auth_headers, name="Kid", code="P-BLOCK-1", parent_id=loc["id"])
-    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 400
+    # Soft delete succeeds; permanent delete is blocked while child locations exist.
+    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 200
+    assert client.delete(f"/api/trash/location/{loc['id']}", headers=auth_headers).status_code == 400
 
 
 def test_duplicate_location_code_rejected(auth_headers):
@@ -378,7 +382,9 @@ def test_location_products_unknown_location_404(auth_headers):
 def test_location_delete_blocked_with_serials(auth_headers):
     loc = _create_location(auth_headers, code="SERDEL-1").json()
     _serialized_at(auth_headers, loc, "SERDEL-P", ["S-DEL"])
-    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    # Soft delete succeeds; permanent delete is blocked with serial number history.
+    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 200
+    resp = client.delete(f"/api/trash/location/{loc['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "serial" in resp.json()["detail"].lower()
 
@@ -388,7 +394,9 @@ def test_location_delete_blocked_with_product_assigned(auth_headers):
     client.post("/api/products", json={
         "sku": "LOC-ASSIGN", "name": "Assigned Loc", "unit_price": 1.0, "quantity": 0, "location_id": loc["id"],
     }, headers=auth_headers)
-    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    # Soft delete succeeds; permanent delete is blocked with assigned products.
+    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 200
+    resp = client.delete(f"/api/trash/location/{loc['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "product" in resp.json()["detail"].lower()
 
@@ -405,7 +413,9 @@ def test_location_delete_blocked_with_movement_history(auth_headers):
     assert client.post("/api/stock-movements/transfer", json={
         "product_id": prod["id"], "quantity": 2, "from_location_id": src["id"], "to_location_id": dst["id"],
     }, headers=auth_headers).status_code == 201
-    resp = client.delete(f"/api/locations/{src['id']}", headers=auth_headers)
+    # Soft delete succeeds; permanent delete is blocked with movement history.
+    assert client.delete(f"/api/locations/{src['id']}", headers=auth_headers).status_code == 200
+    resp = client.delete(f"/api/trash/location/{src['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "movement" in resp.json()["detail"].lower()
 
@@ -422,7 +432,9 @@ def test_location_delete_blocked_with_scrapped_serials(auth_headers):
         db.commit()
     finally:
         db.close()
-    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    # Soft delete succeeds; permanent delete is blocked with serial number history.
+    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 200
+    resp = client.delete(f"/api/trash/location/{loc['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "serial" in resp.json()["detail"].lower()
 
@@ -435,7 +447,9 @@ def test_location_delete_blocked_with_asn_history(auth_headers):
     client.post("/api/asns", json={
         "items": [{"product_id": prod["id"], "expected_qty": 5, "location_id": loc["id"]}],
     }, headers=auth_headers)
-    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    # Soft delete succeeds; permanent delete is blocked with ASN history.
+    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 200
+    resp = client.delete(f"/api/trash/location/{loc['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "asn" in resp.json()["detail"].lower()
 
@@ -451,7 +465,9 @@ def test_location_delete_blocked_with_shipment_staging(auth_headers):
         db.commit()
     finally:
         db.close()
-    resp = client.delete(f"/api/locations/{loc['id']}", headers=auth_headers)
+    # Soft delete succeeds; permanent delete is blocked for a shipment staging area.
+    assert client.delete(f"/api/locations/{loc['id']}", headers=auth_headers).status_code == 200
+    resp = client.delete(f"/api/trash/location/{loc['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "staging" in resp.json()["detail"].lower()
 

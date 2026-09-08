@@ -10,6 +10,7 @@ from app.models.promotion import Promotion
 from app.schemas.promotion import PromotionCreate, PromotionListItem, PromotionOut, PromotionUpdate
 from app.services.auth import require_permission
 from app.services.pricing import validate_promotion, PromoError
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(
@@ -17,6 +18,13 @@ router = APIRouter(
     tags=["promotions"],
     dependencies=[Depends(require_permission("promotions.view"))],
 )
+
+
+def _purge_promotion(db: Session, promo: Promotion, user) -> None:
+    db.delete(promo)
+
+
+register("promotion", Promotion, lambda p: p.code, _purge_promotion)
 
 
 @router.get("")
@@ -27,7 +35,7 @@ def list_promotions(
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Promotion)
+    q = db.query(Promotion).filter(Promotion.is_deleted == False)  # noqa: E712
     if search:
         q = q.filter(Promotion.code.ilike(f"%{search}%"))
     if active_only:
@@ -50,7 +58,7 @@ def get_promotion(promo_id: int, db: Session = Depends(get_db)):
 @router.post("", response_model=PromotionOut, status_code=201)
 def create_promotion(data: PromotionCreate, db: Session = Depends(get_db), user=Depends(require_permission("promotions.create"))):
     code = data.code.strip().upper()
-    existing = db.query(Promotion).filter(Promotion.code == code).first()
+    existing = db.query(Promotion).filter(Promotion.code == code, Promotion.is_deleted == False).first()  # noqa: E712
     if existing:
         raise HTTPException(status_code=400, detail="A promotion with this code already exists")
     if data.discount_type == "percentage" and data.value > 100:
@@ -80,7 +88,7 @@ def update_promotion(promo_id: int, data: PromotionUpdate, db: Session = Depends
     promo = get_or_404(Promotion, promo_id, db)
     if data.code is not None:
         code = data.code.strip().upper()
-        dup = db.query(Promotion).filter(Promotion.code == code, Promotion.id != promo_id).first()
+        dup = db.query(Promotion).filter(Promotion.code == code, Promotion.id != promo_id, Promotion.is_deleted == False).first()  # noqa: E712
         if dup:
             raise HTTPException(status_code=400, detail="A promotion with this code already exists")
         promo.code = code
@@ -115,11 +123,8 @@ def update_promotion(promo_id: int, data: PromotionUpdate, db: Session = Depends
 @router.delete("/{promo_id}")
 def delete_promotion(promo_id: int, db: Session = Depends(get_db), user=Depends(require_permission("promotions.delete"))):
     promo = get_or_404(Promotion, promo_id, db)
-    log_activity(db, user.id, user.username, "delete", "promotion", promo.id, f"Deleted promotion '{promo.code}'")
-    db.delete(promo)
-    db.commit()
-    broadcast_change("promotion", "deleted")
-    return {"detail": "Deleted"}
+    soft_delete(db, promo, user, "promotion")
+    return {"ok": True}
 
 
 class PromoValidateRequest(BaseModel):

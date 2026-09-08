@@ -4,10 +4,11 @@ from sqlalchemy import ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.mixins import SoftDeleteMixin
 from app.models.types import UTCDateTime
 
 
-class SerialNumber(Base):
+class SerialNumber(SoftDeleteMixin, Base):
     __tablename__ = "serial_numbers"
     __table_args__ = (
         UniqueConstraint("product_id", "serial_number", name="uq_serial_numbers_product_serial"),

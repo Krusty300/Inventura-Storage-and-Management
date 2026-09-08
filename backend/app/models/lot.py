@@ -4,10 +4,11 @@ from sqlalchemy import Date, ForeignKey, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.mixins import SoftDeleteMixin
 from app.models.types import UTCDateTime
 
 
-class Lot(Base):
+class Lot(SoftDeleteMixin, Base):
     __tablename__ = "lots"
     __table_args__ = (UniqueConstraint("product_id", "lot_number", name="uq_lots_product_lot"),)
 

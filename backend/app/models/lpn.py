@@ -4,10 +4,11 @@ from sqlalchemy import ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.mixins import SoftDeleteMixin
 from app.models.types import UTCDateTime
 
 
-class LPN(Base):
+class LPN(SoftDeleteMixin, Base):
     __tablename__ = "lpns"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)

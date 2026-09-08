@@ -64,8 +64,8 @@ def test_delete_product(auth_headers):
     pid = create.json()["id"]
     resp = client.delete(f"/api/products/{pid}", headers=auth_headers)
     assert resp.status_code == 200
-    get_resp = client.get(f"/api/products/{pid}", headers=auth_headers)
-    assert get_resp.json()["is_active"] is False
+    # Soft-deleted products are hidden from normal get / list lookups.
+    assert client.get(f"/api/products/{pid}", headers=auth_headers).status_code == 404
 
 
 def _make_location(auth_headers, name, code):
@@ -220,7 +220,7 @@ def test_deleting_serialized_product_flags_serials_inactive(auth_headers):
     assert _receive_serials(auth_headers, prod["id"], loc["id"], ["DL-01"]).status_code == 201
 
     assert client.delete(f"/api/products/{prod['id']}", headers=auth_headers).status_code == 200
-    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["is_active"] is False
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).status_code == 404
 
     serials = client.get(f"/api/serial-numbers?product_id={prod['id']}&limit=10", headers=auth_headers).json()["items"]
     assert len(serials) == 1

@@ -52,6 +52,7 @@ const SalesChannels = lazy(() => import("./pages/SalesChannels"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Notifications = lazy(() => import("./pages/Notifications"));
+const Trash = lazy(() => import("./pages/Trash"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, loggingOut } = useAuth();
@@ -109,6 +110,7 @@ function AppRoutes() {
           <Route path="/settings" element={<PageBoundary><RequirePermission perm="settings.view"><Settings /></RequirePermission></PageBoundary>} />
           <Route path="/profile" element={<PageBoundary><RequirePermission perm="profile.view"><Profile /></RequirePermission></PageBoundary>} />
           <Route path="/notifications" element={<PageBoundary><RequirePermission perm="notifications.view"><Notifications /></RequirePermission></PageBoundary>} />
+          <Route path="/trash" element={<PageBoundary><RequirePermission perm="trash.view"><Trash /></RequirePermission></PageBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

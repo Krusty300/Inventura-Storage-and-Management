@@ -47,9 +47,13 @@ def test_delete_supplier(auth_headers):
 def test_delete_supplier_with_products(auth_headers):
     sup = client.post("/api/suppliers", json={"name": "Has Products"}, headers=auth_headers).json()
     client.post("/api/products", json={"location_id": 1, "sku": "SUPPPRD", "name": "Test", "supplier_id": sup["id"]}, headers=auth_headers)
+    # Soft delete is allowed even with referenced products.
     resp = client.delete(f"/api/suppliers/{sup['id']}", headers=auth_headers)
     assert resp.status_code == 200
-    assert client.get(f"/api/suppliers/{sup['id']}", headers=auth_headers).json()["is_active"] is False
+    assert client.get(f"/api/suppliers/{sup['id']}", headers=auth_headers).status_code == 404
+    # But permanent delete is blocked while products reference the supplier.
+    resp = client.delete(f"/api/trash/supplier/{sup['id']}", headers=auth_headers)
+    assert resp.status_code == 400
 
 
 def _received_order(auth_headers, supplier_id, sku, price=10.0, qty=2):
@@ -131,8 +135,11 @@ def test_suppliers_filtered_by_category(auth_headers):
     client.delete(f"/api/suppliers/{sup_c['id']}", headers=auth_headers)
     active = {i["name"] for i in client.get("/api/suppliers", params={"category_id": cat["id"], "limit": 50}, headers=auth_headers).json()["items"]}
     assert active == {"Cat Sup A"}
+    # Soft-deleted suppliers stay hidden even with include_inactive; they move to the Trash.
     with_inactive = {i["name"] for i in client.get("/api/suppliers", params={"category_id": cat["id"], "include_inactive": "true", "limit": 50}, headers=auth_headers).json()["items"]}
-    assert with_inactive == {"Cat Sup A", "Cat Sup C"}
+    assert with_inactive == {"Cat Sup A"}
+    trash = client.get("/api/trash", headers=auth_headers).json()
+    assert any(i["entity_type"] == "supplier" and i["id"] == sup_c["id"] for i in trash["items"])
 
 
 def test_duplicate_supplier_rejected(auth_headers):
@@ -153,10 +160,20 @@ def test_include_inactive_and_restore(auth_headers):
     s = client.post("/api/suppliers", json={"name": "Archived Supply"}, headers=auth_headers).json()
     client.delete(f"/api/suppliers/{s['id']}", headers=auth_headers)
     assert all(x["id"] != s["id"] for x in client.get("/api/suppliers", headers=auth_headers).json()["items"])
+    # Soft-deleted (trashed) suppliers no longer appear with include_inactive.
     incl = client.get("/api/suppliers", params={"include_inactive": "true"}, headers=auth_headers).json()
-    assert any(i["id"] == s["id"] for i in incl["items"])
-    resp = client.post(f"/api/suppliers/{s['id']}/restore", headers=auth_headers)
-    assert resp.status_code == 200 and resp.json()["is_active"] is True
+    assert all(i["id"] != s["id"] for i in incl["items"])
+    trash = client.get("/api/trash", headers=auth_headers).json()
+    assert any(i["entity_type"] == "supplier" and i["id"] == s["id"] for i in trash["items"])
+    # Restore through the Trash endpoint re-activates the supplier.
+    assert client.post(f"/api/trash/supplier/{s['id']}/restore", headers=auth_headers).status_code == 200
+    assert client.get(f"/api/suppliers/{s['id']}", headers=auth_headers).json()["is_active"] is True
+    # A deactivated-but-not-deleted supplier still shows up with include_inactive.
+    s2 = client.post("/api/suppliers", json={"name": "Deact Only Supply"}, headers=auth_headers).json()
+    client.patch("/api/suppliers/bulk-edit", json={"ids": [s2["id"]], "is_active": False}, headers=auth_headers)
+    incl2 = client.get("/api/suppliers", params={"include_inactive": "true"}, headers=auth_headers).json()
+    assert any(i["id"] == s2["id"] for i in incl2["items"])
+    assert all(i["id"] != s2["id"] for i in client.get("/api/suppliers", headers=auth_headers).json()["items"])
 
 
 def test_import_suppliers_csv(auth_headers):

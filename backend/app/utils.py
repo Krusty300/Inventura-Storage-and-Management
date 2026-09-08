@@ -5,8 +5,10 @@ from app.models.activity_log import ActivityLog
 from app.models.location import Location
 
 
-def get_or_404(model, id: int, db: Session, options=None):
+def get_or_404(model, id: int, db: Session, options=None, include_deleted: bool = False):
     query = db.query(model).filter(model.id == id)
+    if not include_deleted and hasattr(model, "is_deleted"):
+        query = query.filter(model.is_deleted == False)  # noqa: E712
     if options:
         query = query.options(*options)
     obj = query.first()

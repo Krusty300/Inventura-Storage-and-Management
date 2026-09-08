@@ -11,9 +11,21 @@ from app.schemas.quality_check import QC_RESULTS, QualityCheckCreate, QualityChe
 from app.services import inventory
 from app.services.auth import require_permission
 from app.services.sequences import next_document_number
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/quality-checks", tags=["quality-checks"], dependencies=[Depends(require_permission("quality_checks.view"))])
+
+
+def _purge_quality_check(db: Session, qc: QualityCheck, user) -> None:
+    lot = qc.lot
+    was_fail = qc.result == "fail" and qc.lot_id is not None
+    db.delete(qc)
+    if was_fail and lot is not None:
+        _release_lot_if_clear(db, lot, user.id)
+
+
+register("quality_check", QualityCheck, lambda q: q.qc_number, _purge_quality_check)
 
 
 def _load_qc(db: Session, qc_id: int) -> QualityCheck:
@@ -39,6 +51,7 @@ def _release_lot_if_clear(db: Session, lot: Lot, user_id: int) -> None:
     still references it (e.g. after its only failing check is updated to pass)."""
     if lot.status != "quarantined":
         return
+    db.flush()
     still_failing = db.query(QualityCheck.id).filter(
         QualityCheck.lot_id == lot.id, QualityCheck.result == "fail"
     ).first()
@@ -67,7 +80,7 @@ def list_quality_checks(
         joinedload(QualityCheck.product), joinedload(QualityCheck.lot),
         joinedload(QualityCheck.location), joinedload(QualityCheck.work_order),
         joinedload(QualityCheck.checker),
-    )
+    ).filter(QualityCheck.is_deleted == False)  # noqa: E712
     if product_id:
         q = q.filter(QualityCheck.product_id == product_id)
     if result:
@@ -163,13 +176,4 @@ def update_quality_check(qc_id: int, data: QualityCheckUpdate, db: Session = Dep
 @router.delete("/{qc_id}", status_code=204)
 def delete_quality_check(qc_id: int, db: Session = Depends(get_db), user=Depends(require_permission("quality_checks.delete"))):
     qc = _load_qc(db, qc_id)
-    lot = qc.lot
-    was_fail = qc.result == "fail" and qc.lot_id is not None
-    db.delete(qc)
-    db.commit()
-    if was_fail and lot is not None:
-        _release_lot_if_clear(db, lot, user.id)
-        db.commit()
-    log_activity(db, user.id, user.username, "delete", "quality_check", qc.id, f"Deleted quality check '{qc.qc_number}'")
-    db.commit()
-    broadcast_change("quality_check", "deleted")
+    soft_delete(db, qc, user, "quality_check")

@@ -4,10 +4,11 @@ from sqlalchemy import JSON, Date, ForeignKey, Integer, Numeric, String, Text, f
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.mixins import SoftDeleteMixin
 from app.models.types import UTCDateTime
 
 
-class Product(Base):
+class Product(SoftDeleteMixin, Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)

@@ -25,6 +25,7 @@ from app.schemas.note import (
 )
 from app.services.auth import get_current_user, require_permission
 from app.services.notify import create_notification, notify_note_assigned
+from app.services.soft_delete import register, soft_delete
 from app.models.notification import Notification
 from app.utils import broadcast_change, get_or_404, log_activity
 
@@ -37,6 +38,20 @@ router = APIRouter(
 VALID_CATEGORIES = {"note", "reminder", "todo"}
 VALID_PRIORITIES = {"low", "normal", "high", "urgent"}
 VALID_RECURRENCE = {"none", "daily", "weekly", "monthly"}
+
+
+def _purge_note(db: Session, note: Note, user) -> None:
+    if note.image_url:
+        old_path = UPLOAD_DIR / Path(note.image_url).name
+        try:
+            if old_path.exists():
+                old_path.unlink()
+        except Exception:
+            pass
+    db.delete(note)
+
+
+register("note", Note, lambda n: n.title, _purge_note)
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -123,6 +138,7 @@ def _serialize_note(note: Note) -> dict:
 
 
 def _apply_filters(q, search, category, priority, is_pinned, is_completed, assigned_to, tag_id, due_before, due_after, is_archived):
+    q = q.filter(Note.is_deleted == False)  # noqa: E712
     if is_archived is not None:
         q = q.filter(Note.is_archived == is_archived)
     else:
@@ -387,7 +403,7 @@ def get_note(note_id: int, db: Session = Depends(get_db)):
         joinedload(Note.assigned_to),
         joinedload(Note.tags),
         joinedload(Note.links),
-    ).filter(Note.id == note_id).first()
+    ).filter(Note.id == note_id, Note.is_deleted == False).first()  # noqa: E712
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
     return _serialize_note(note)
@@ -442,19 +458,7 @@ def update_note(note_id: int, data: NoteUpdate, db: Session = Depends(get_db), u
 @router.delete("/{note_id}")
 def delete_note(note_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("notes.delete"))):
     note = get_or_404(Note, note_id, db)
-    title = note.title
-    if note.image_url:
-        old_path = UPLOAD_DIR / Path(note.image_url).name
-        try:
-            if old_path.exists():
-                old_path.unlink()
-        except Exception:
-            pass
-    db.delete(note)
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "note", note_id, f"Deleted note '{title}'")
-    db.commit()
-    broadcast_change("note", "deleted")
+    soft_delete(db, note, user, "note")
     return {"ok": True}
 
 
@@ -556,9 +560,7 @@ def bulk_delete(data: BulkArchiveRequest, db: Session = Depends(get_db), user: U
     if not notes:
         raise HTTPException(status_code=404, detail="No notes found")
     for note in notes:
-        log_activity(db, user.id, user.username, "delete", "note", note.id, f"Deleted note '{note.title}'")
-        db.delete(note)
-    db.commit()
+        soft_delete(db, note, user, "note")
     broadcast_change("note", "deleted")
     return {"ok": True, "count": len(notes)}
 

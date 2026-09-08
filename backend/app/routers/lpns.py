@@ -13,9 +13,29 @@ from app.services import inventory
 from app.services.auth import require_permission
 from app.services.csv_export import csv_response
 from app.services.sequences import next_document_number
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/lpns", tags=["lpns"], dependencies=[Depends(require_permission("lpns.view"))])
+
+
+def _purge_lpn(db: Session, lpn: LPN, user) -> None:
+    if lpn.stock_lines:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete LPN '{lpn.lpn_number}' - it still has stock on hand. Move its contents out or sell them first.",
+        )
+    has_serials = db.query(SerialNumber).filter(SerialNumber.lpn_id == lpn.id).first() is not None
+    if has_serials:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete LPN '{lpn.lpn_number}' - it still has serial numbers assigned.",
+        )
+    db.query(StockMovement).filter(StockMovement.lpn_id == lpn.id).update({"lpn_id": None})
+    db.delete(lpn)
+
+
+register("lpn", LPN, lambda l: l.lpn_number, _purge_lpn)
 
 
 def _load_lpn(db: Session, lpn_id: int) -> LPN:
@@ -82,7 +102,7 @@ def list_lpns(
         joinedload(LPN.serial_numbers).joinedload(SerialNumber.product),
         joinedload(LPN.serial_numbers).joinedload(SerialNumber.lot),
         joinedload(LPN.serial_numbers).joinedload(SerialNumber.location),
-    )
+    ).filter(LPN.is_deleted == False)  # noqa: E712
     if search:
         like = f"%{search}%"
         q = q.filter(LPN.lpn_number.ilike(like))
@@ -108,7 +128,7 @@ def export_lpns(
         joinedload(LPN.serial_numbers).joinedload(SerialNumber.product),
         joinedload(LPN.serial_numbers).joinedload(SerialNumber.lot),
         joinedload(LPN.serial_numbers).joinedload(SerialNumber.location),
-    )
+    ).filter(LPN.is_deleted == False)  # noqa: E712
     if search:
         like = f"%{search}%"
         q = q.filter(LPN.lpn_number.ilike(like))
@@ -469,23 +489,5 @@ def unload_lpn(lpn_id: int, data: LPNUnloadIn, db: Session = Depends(get_db), us
 @router.delete("/{lpn_id}")
 def delete_lpn(lpn_id: int, db: Session = Depends(get_db), user=Depends(require_permission("lpns.delete"))):
     lpn = _load_lpn(db, lpn_id)
-    if lpn.stock_lines:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot delete LPN '{lpn.lpn_number}' - it still has stock on hand. Move its contents out or sell them first.",
-        )
-    has_serials = db.query(SerialNumber).filter(SerialNumber.lpn_id == lpn.id).first() is not None
-    if has_serials:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot delete LPN '{lpn.lpn_number}' - it still has serial numbers assigned.",
-        )
-    # Detach historical movements from the LPN so the ledger is preserved.
-    db.query(StockMovement).filter(StockMovement.lpn_id == lpn.id).update({"lpn_id": None})
-    number = lpn.lpn_number
-    db.delete(lpn)
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "lpn", lpn_id, f"Deleted LPN '{number}'")
-    db.commit()
-    broadcast_change("lpn", "deleted")
-    return {"deleted": lpn_id}
+    soft_delete(db, lpn, user, "lpn")
+    return {"ok": True}

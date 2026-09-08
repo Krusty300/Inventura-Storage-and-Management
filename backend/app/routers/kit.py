@@ -9,9 +9,17 @@ from app.models import Location, Product, Kit, KitItem
 from app.schemas.kit import KitAssemble, KitCreate, KitDisassemble, KitOut, KitUpdate
 from app.services import inventory
 from app.services.auth import require_permission
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/kits", tags=["kits"], dependencies=[Depends(require_permission("kit.view"))])
+
+
+def _purge_kit(db: Session, kit: Kit, user) -> None:
+    db.delete(kit)
+
+
+register("kit", Kit, lambda k: k.name, _purge_kit)
 
 
 def _load_kit(db: Session, kit_id: int) -> Kit:
@@ -110,7 +118,7 @@ def list_kits(
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Kit).options(joinedload(Kit.product), joinedload(Kit.items).joinedload(KitItem.product))
+    q = db.query(Kit).options(joinedload(Kit.product), joinedload(Kit.items).joinedload(KitItem.product)).filter(Kit.is_deleted == False)  # noqa: E712
     if product_id:
         q = q.filter(Kit.product_id == product_id)
     if is_active is not None:
@@ -183,11 +191,7 @@ def update_kit(kit_id: int, data: KitUpdate, db: Session = Depends(get_db), user
 @router.delete("/{kit_id}", status_code=204)
 def delete_kit(kit_id: int, db: Session = Depends(get_db), user=Depends(require_permission("kit.delete"))):
     kit = _load_kit(db, kit_id)
-    db.delete(kit)
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "kit", kit.id, f"Deleted kit '{kit.name}'")
-    db.commit()
-    broadcast_change("kit", "deleted")
+    soft_delete(db, kit, user, "kit")
 
 
 def _assemble_components(db: Session, kit: Kit, quantity: int, location_id: int | None, user_id: int, reference: str) -> None:

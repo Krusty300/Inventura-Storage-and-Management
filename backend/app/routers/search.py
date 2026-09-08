@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/search", tags=["search"], dependencies=[Depends(
 def _search_products(db: Session, like: str, limit: int):
     rows = (
         db.query(Product)
-        .filter(Product.parent_id.is_(None))
+        .filter(Product.parent_id.is_(None), Product.is_deleted == False)  # noqa: E712
         .filter(
             Product.name.ilike(like) | Product.sku.ilike(like) |
             Product.barcode.ilike(like) | Product.description.ilike(like) |
@@ -79,7 +79,7 @@ def _search_serials(db: Session, like: str, limit: int):
 
 
 def _search_lpns(db: Session, like: str, limit: int):
-    rows = db.query(LPN).filter(LPN.lpn_number.ilike(like)).order_by(LPN.lpn_number).limit(limit).all()
+    rows = db.query(LPN).filter(LPN.lpn_number.ilike(like), LPN.is_deleted == False).order_by(LPN.lpn_number).limit(limit).all()
     return [
         {"type": "lpn", "id": l.id, "label": l.lpn_number, "subtitle": l.location_name or "Unlocated", "route": "/lpns"}
         for l in rows
@@ -87,7 +87,7 @@ def _search_lpns(db: Session, like: str, limit: int):
 
 
 def _search_locations(db: Session, like: str, limit: int):
-    rows = db.query(Location).filter(Location.name.ilike(like) | Location.code.ilike(like)).order_by(Location.name).limit(limit).all()
+    rows = db.query(Location).filter(Location.name.ilike(like) | Location.code.ilike(like), Location.is_deleted == False).order_by(Location.name).limit(limit).all()
     return [
         {"type": "location", "id": l.id, "label": l.name, "subtitle": l.code or l.location_type or "", "route": "/locations"}
         for l in rows
@@ -95,7 +95,7 @@ def _search_locations(db: Session, like: str, limit: int):
 
 
 def _search_categories(db: Session, like: str, limit: int):
-    rows = db.query(Category).filter(Category.name.ilike(like)).order_by(Category.name).limit(limit).all()
+    rows = db.query(Category).filter(Category.name.ilike(like), Category.is_deleted == False).order_by(Category.name).limit(limit).all()
     return [
         {"type": "category", "id": c.id, "label": c.name, "subtitle": c.description or "", "route": "/categories"}
         for c in rows
@@ -105,7 +105,7 @@ def _search_categories(db: Session, like: str, limit: int):
 def _search_customers(db: Session, like: str, limit: int):
     rows = (
         db.query(Customer)
-        .filter(Customer.name.ilike(like) | Customer.email.ilike(like) | Customer.phone.ilike(like))
+        .filter(Customer.name.ilike(like) | Customer.email.ilike(like) | Customer.phone.ilike(like), Customer.is_deleted == False)  # noqa: E712
         .order_by(Customer.name)
         .limit(limit)
         .all()
@@ -121,7 +121,8 @@ def _search_suppliers(db: Session, like: str, limit: int):
         db.query(Supplier)
         .filter(
             Supplier.name.ilike(like) | Supplier.email.ilike(like) |
-            Supplier.phone.ilike(like) | Supplier.contact_person.ilike(like)
+            Supplier.phone.ilike(like) | Supplier.contact_person.ilike(like),
+            Supplier.is_deleted == False,  # noqa: E712
         )
         .order_by(Supplier.name)
         .limit(limit)
@@ -134,7 +135,7 @@ def _search_suppliers(db: Session, like: str, limit: int):
 
 
 def _search_users(db: Session, like: str, limit: int):
-    rows = db.query(User).filter(User.username.ilike(like) | User.email.ilike(like)).order_by(User.username).limit(limit).all()
+    rows = db.query(User).filter(User.username.ilike(like) | User.email.ilike(like), User.is_deleted == False).order_by(User.username).limit(limit).all()
     return [
         {"type": "user", "id": u.id, "label": u.username, "subtitle": f"{u.email} · {u.role}", "route": "/users"}
         for u in rows
@@ -236,7 +237,7 @@ def _search_cycle_counts(db: Session, like: str, limit: int):
 
 
 def _search_quality_checks(db: Session, like: str, limit: int):
-    rows = db.query(QualityCheck).filter(QualityCheck.qc_number.ilike(like)).order_by(QualityCheck.created_at.desc()).limit(limit).all()
+    rows = db.query(QualityCheck).filter(QualityCheck.qc_number.ilike(like), QualityCheck.is_deleted == False).order_by(QualityCheck.created_at.desc()).limit(limit).all()
     return [
         {
             "type": "quality_check",
@@ -250,7 +251,7 @@ def _search_quality_checks(db: Session, like: str, limit: int):
 
 
 def _search_boms(db: Session, like: str, limit: int):
-    rows = db.query(BOM).filter(BOM.name.ilike(like)).order_by(BOM.name).limit(limit).all()
+    rows = db.query(BOM).filter(BOM.name.ilike(like), BOM.is_deleted == False).order_by(BOM.name).limit(limit).all()
     return [
         {"type": "bom", "id": b.id, "label": b.name or b.product_name, "subtitle": b.product_name, "route": "/boms"}
         for b in rows
@@ -258,7 +259,7 @@ def _search_boms(db: Session, like: str, limit: int):
 
 
 def _search_sales_channels(db: Session, like: str, limit: int):
-    rows = db.query(SalesChannel).filter(SalesChannel.name.ilike(like)).order_by(SalesChannel.name).limit(limit).all()
+    rows = db.query(SalesChannel).filter(SalesChannel.name.ilike(like), SalesChannel.is_deleted == False).order_by(SalesChannel.name).limit(limit).all()
     return [
         {"type": "sales_channel", "id": c.id, "label": c.name, "subtitle": c.type, "route": "/sales-channels"}
         for c in rows

@@ -4,10 +4,11 @@ from sqlalchemy import Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.mixins import SoftDeleteMixin
 from app.models.types import UTCDateTime
 
 
-class Supplier(Base):
+class Supplier(SoftDeleteMixin, Base):
     __tablename__ = "suppliers"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)

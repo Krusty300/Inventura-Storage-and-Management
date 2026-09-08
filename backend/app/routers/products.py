@@ -32,6 +32,7 @@ from app.services import expiry as expiry_svc
 from app.services import inventory
 from app.services.auth import require_permission
 from app.services.notify import notify_expiring, notify_low_stock
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 from reportlab.graphics import renderPDF
@@ -47,6 +48,25 @@ UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 router = APIRouter(prefix="/api/products", tags=["products"], dependencies=[Depends(require_permission("products.view"))])
+
+
+def _purge_product(db: Session, p: Product, user) -> None:
+    has_stock = db.query(StockLine).filter(StockLine.product_id == p.id).first() is not None
+    if has_stock:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a product that has stock on hand")
+    has_lots = db.query(Lot).filter(Lot.product_id == p.id).first() is not None
+    if has_lots:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a product with lot history")
+    has_serials = db.query(SerialNumber).filter(SerialNumber.product_id == p.id).first() is not None
+    if has_serials:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a product with serial number history")
+    has_movements = db.query(StockMovement).filter(StockMovement.product_id == p.id).first() is not None
+    if has_movements:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a product with movement history")
+    db.delete(p)
+
+
+register("product", Product, lambda p: p.display_name, _purge_product)
 
 PRODUCT_SORT_COLUMNS = {"name", "sku", "unit_price", "cost_price", "quantity", "reorder_level", "created_at", "updated_at", "category_name", "supplier_name"}
 
@@ -145,7 +165,7 @@ def list_products(
     if include_variants:
         options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.location))
         options.append(joinedload(Product.variants).joinedload(Product.stock_lines).joinedload(StockLine.lot))
-    q = db.query(Product).options(*options).filter(Product.parent_id.is_(None))
+    q = db.query(Product).options(*options).filter(Product.parent_id.is_(None), Product.is_deleted == False)  # noqa: E712
     if active_only:
         q = q.filter(Product.is_active == True)
     if search:
@@ -756,10 +776,7 @@ def delete_product(product_id: int, db: Session = Depends(get_db), user=Depends(
                 reference=f"Variant deactivated via deleted parent '{name}'",
                 notes="Parent product deleted",
             )
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "product", product_id, f"Deleted product '{name}'")
-    db.commit()
-    broadcast_change("product", "deleted")
+    soft_delete(db, p, user, "product")
 
 
 @router.get("/{product_id}/movements", response_model=list[StockMovementOut])

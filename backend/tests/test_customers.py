@@ -42,7 +42,10 @@ def test_delete_customer_is_soft_and_hidden(auth_headers):
     assert resp.status_code == 200
     res = client.get("/api/customers", headers=auth_headers).json()
     assert all(x["id"] != c["id"] for x in res["items"])
-    assert client.get(f"/api/customers/{c['id']}", headers=auth_headers).json()["is_active"] is False
+    assert client.get(f"/api/customers/{c['id']}", headers=auth_headers).status_code == 404
+    # The deleted customer is recoverable from the Trash.
+    trash = client.get("/api/trash", headers=auth_headers).json()
+    assert any(i["entity_type"] == "customer" and i["id"] == c["id"] for i in trash["items"])
 
 
 def test_worker_cannot_create_customer(auth_headers):
@@ -120,10 +123,22 @@ def test_include_inactive_and_restore(auth_headers):
     c = client.post("/api/customers", json={"name": "Archived Co"}, headers=auth_headers).json()
     client.delete(f"/api/customers/{c['id']}", headers=auth_headers)
     assert client.get("/api/customers", headers=auth_headers).json()["total"] == 0
+    # Soft-deleted (trashed) customers no longer appear with include_inactive.
     incl = client.get("/api/customers", params={"include_inactive": "true"}, headers=auth_headers).json()
-    assert any(i["id"] == c["id"] for i in incl["items"])
-    resp = client.post(f"/api/customers/{c['id']}/restore", headers=auth_headers)
-    assert resp.status_code == 200 and resp.json()["is_active"] is True
+    assert all(i["id"] != c["id"] for i in incl["items"])
+    trash = client.get("/api/trash", headers=auth_headers).json()
+    assert any(i["entity_type"] == "customer" and i["id"] == c["id"] for i in trash["items"])
+    # Restore through the Trash endpoint re-activates the customer.
+    resp = client.post(f"/api/trash/customer/{c['id']}/restore", headers=auth_headers)
+    assert resp.status_code == 200
+    restored = client.get(f"/api/customers/{c['id']}", headers=auth_headers).json()
+    assert restored["is_active"] is True
+    # A deactivated-but-not-deleted customer still shows up with include_inactive.
+    c2 = client.post("/api/customers", json={"name": "Deact Only"}, headers=auth_headers).json()
+    client.patch("/api/customers/bulk-edit", json={"ids": [c2["id"]], "is_active": False}, headers=auth_headers)
+    incl2 = client.get("/api/customers", params={"include_inactive": "true"}, headers=auth_headers).json()
+    assert any(i["id"] == c2["id"] for i in incl2["items"])
+    assert all(i["id"] != c2["id"] for i in client.get("/api/customers", headers=auth_headers).json()["items"])
 
 
 def test_import_customers_csv(auth_headers):

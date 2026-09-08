@@ -1274,3 +1274,10 @@ export interface Promotion {
   created_at: string;
   updated_at: string;
 }
+
+export interface TrashItem {
+  id: number;
+  entity_type: string;
+  label: string;
+  deleted_at: string | null;
+}

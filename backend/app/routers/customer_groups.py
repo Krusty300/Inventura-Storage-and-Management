@@ -11,6 +11,7 @@ from app.models.customer_group import CustomerGroup
 from app.models.price_list import PriceList
 from app.schemas.customer_group import CustomerGroupCreate, CustomerGroupOut, CustomerGroupUpdate
 from app.services.auth import require_permission
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(
@@ -20,6 +21,16 @@ router = APIRouter(
 )
 
 
+def _purge_group(db: Session, g: CustomerGroup, user) -> None:
+    customer_count = db.query(func.count(Customer.id)).filter(Customer.group_id == g.id).scalar() or 0
+    if customer_count > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot delete: {customer_count} customer(s) still assigned to this group")
+    db.delete(g)
+
+
+register("customer_group", CustomerGroup, lambda g: g.name, _purge_group)
+
+
 @router.get("")
 def list_groups(
     search: str = Query(""),
@@ -27,7 +38,7 @@ def list_groups(
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
-    q = db.query(CustomerGroup)
+    q = db.query(CustomerGroup).filter(CustomerGroup.is_deleted == False)  # noqa: E712
     if search:
         q = q.filter(CustomerGroup.name.ilike(f"%{search}%"))
     total = q.count()
@@ -56,7 +67,7 @@ def get_group(group_id: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=CustomerGroupOut, status_code=201)
 def create_group(data: CustomerGroupCreate, db: Session = Depends(get_db), user=Depends(require_permission("customer_groups.create"))):
-    existing = db.query(CustomerGroup).filter(CustomerGroup.name == data.name.strip()).first()
+    existing = db.query(CustomerGroup).filter(CustomerGroup.name == data.name.strip(), CustomerGroup.is_deleted == False).first()  # noqa: E712
     if existing:
         raise HTTPException(status_code=400, detail="A customer group with this name already exists")
     if data.price_list_id is not None:
@@ -75,7 +86,7 @@ def create_group(data: CustomerGroupCreate, db: Session = Depends(get_db), user=
 def update_group(group_id: int, data: CustomerGroupUpdate, db: Session = Depends(get_db), user=Depends(require_permission("customer_groups.update"))):
     g = get_or_404(CustomerGroup, group_id, db)
     if data.name is not None:
-        dup = db.query(CustomerGroup).filter(CustomerGroup.name == data.name.strip(), CustomerGroup.id != group_id).first()
+        dup = db.query(CustomerGroup).filter(CustomerGroup.name == data.name.strip(), CustomerGroup.id != group_id, CustomerGroup.is_deleted == False).first()  # noqa: E712
         if dup:
             raise HTTPException(status_code=400, detail="A customer group with this name already exists")
         g.name = data.name.strip()
@@ -98,8 +109,5 @@ def delete_group(group_id: int, db: Session = Depends(get_db), user=Depends(requ
     customer_count = db.query(func.count(Customer.id)).filter(Customer.group_id == g.id).scalar() or 0
     if customer_count > 0:
         raise HTTPException(status_code=400, detail=f"Cannot delete: {customer_count} customer(s) still assigned to this group")
-    log_activity(db, user.id, user.username, "delete", "customer_group", g.id, f"Deleted customer group '{g.name}'")
-    db.delete(g)
-    db.commit()
-    broadcast_change("customer_group", "deleted")
-    return {"detail": "Deleted"}
+    soft_delete(db, g, user, "customer_group")
+    return {"ok": True}

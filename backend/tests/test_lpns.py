@@ -132,7 +132,7 @@ def test_delete_empty_lpn(auth_headers):
 
     resp = client.delete(f"/api/lpns/{lpn['id']}", headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json()["deleted"] == lpn["id"]
+    assert resp.json()["ok"] is True
 
     assert client.get(f"/api/lpns/{lpn['id']}", headers=auth_headers).status_code == 404
     lst = client.get("/api/lpns", headers=auth_headers).json()
@@ -149,7 +149,10 @@ def test_delete_lpn_with_stock_rejected(auth_headers):
         "items": [{"product_id": prod["id"], "quantity": 5, "location_id": loc["id"], "lpn_id": lpn["id"]}],
     }, headers=auth_headers).status_code == 201
 
+    # Soft delete succeeds even with stock on hand; permanent delete is blocked.
     resp = client.delete(f"/api/lpns/{lpn['id']}", headers=auth_headers)
+    assert resp.status_code == 200
+    resp = client.delete(f"/api/trash/lpn/{lpn['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "stock on hand" in resp.json()["detail"]
 
@@ -295,6 +298,12 @@ def test_delete_lpn_detaches_historical_movements(auth_headers):
     resp = client.delete(f"/api/lpns/{lpn['id']}", headers=auth_headers)
     assert resp.status_code == 200
 
+    # Historical movements keep the LPN reference while it is soft-deleted...
+    movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
+    assert len(movements) >= 1
+
+    # ...and purging detaches them.
+    assert client.delete(f"/api/trash/lpn/{lpn['id']}", headers=auth_headers).status_code == 200
     movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
     assert len(movements) >= 1
     assert all(m["lpn_id"] is None for m in movements)

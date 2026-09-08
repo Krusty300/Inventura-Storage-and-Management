@@ -112,6 +112,9 @@ export const ALL_PERMISSIONS = [
   "customer_groups.create",
   "customer_groups.update",
   "customer_groups.delete",
+  "trash.view",
+  "trash.restore",
+  "trash.delete",
   "profile.view",
 ];
 

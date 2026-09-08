@@ -33,6 +33,7 @@ import {
   UsersRound,
   Store,
   Bell,
+  Trash2,
 } from "lucide-react";
 
 export interface NavItem {
@@ -129,6 +130,7 @@ export const navGroups: NavGroup[] = [
       { to: "/users", icon: UsersIcon, label: "Users", perm: "users.view" },
       { to: "/reports", icon: BarChart3, label: "Reports", perm: "reports.view" },
       { to: "/activity-log", icon: History, label: "Activity", perm: "activity.view" },
+      { to: "/trash", icon: Trash2, label: "Trash", perm: "trash.view" },
     ],
   },
   {

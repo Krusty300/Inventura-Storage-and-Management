@@ -8,9 +8,20 @@ from app.database import get_db
 from app.models import BOM, BOMItem, Product, WorkOrder
 from app.schemas.bom import BOMCreate, BOMOut, BOMUpdate
 from app.services.auth import require_permission
+from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/boms", tags=["boms"], dependencies=[Depends(require_permission("bom.view"))])
+
+
+def _purge_bom(db: Session, bom: BOM, user) -> None:
+    has_work_orders = db.query(WorkOrder).filter(WorkOrder.bom_id == bom.id).first() is not None
+    if has_work_orders:
+        raise HTTPException(status_code=400, detail="Cannot delete a BOM that is referenced by work orders")
+    db.delete(bom)
+
+
+register("bom", BOM, lambda b: b.name or b.product_name, _purge_bom)
 
 
 def _load_bom(db: Session, bom_id: int) -> BOM:
@@ -104,7 +115,7 @@ def list_boms(
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
-    q = db.query(BOM).options(joinedload(BOM.product), joinedload(BOM.items).joinedload(BOMItem.product))
+    q = db.query(BOM).options(joinedload(BOM.product), joinedload(BOM.items).joinedload(BOMItem.product)).filter(BOM.is_deleted == False)  # noqa: E712
     if product_id:
         q = q.filter(BOM.product_id == product_id)
     if is_active is not None:
@@ -165,11 +176,4 @@ def update_bom(bom_id: int, data: BOMUpdate, db: Session = Depends(get_db), user
 @router.delete("/{bom_id}", status_code=204)
 def delete_bom(bom_id: int, db: Session = Depends(get_db), user=Depends(require_permission("bom.delete"))):
     bom = _load_bom(db, bom_id)
-    has_work_orders = db.query(WorkOrder).filter(WorkOrder.bom_id == bom.id).first() is not None
-    if has_work_orders:
-        raise HTTPException(status_code=400, detail="Cannot delete a BOM that is referenced by work orders")
-    db.delete(bom)
-    db.commit()
-    log_activity(db, user.id, user.username, "delete", "bom", bom.id, f"Deleted BOM for '{bom.product_name}'")
-    db.commit()
-    broadcast_change("bom", "deleted")
+    soft_delete(db, bom, user, "bom")
