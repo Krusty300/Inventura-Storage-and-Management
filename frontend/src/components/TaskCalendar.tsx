@@ -30,12 +30,11 @@ const CHIP_STYLES: Record<string, string> = {
 interface HoverCard {
   note: Note;
   left: number;
-  top?: number;
-  bottom?: number;
+  top: number;
 }
 
 const HOVER_CARD_WIDTH = 288;
-const HOVER_CARD_HEIGHT = 200;
+const HOVER_CARD_HEIGHT = 320;
 
 export default function TaskCalendar({
   notes,
@@ -81,8 +80,7 @@ export default function TaskCalendar({
     setHover({
       note,
       left,
-      top: roomBelow ? rect.bottom + 8 : undefined,
-      bottom: roomBelow ? undefined : vh - rect.top + 8,
+      top: roomBelow ? rect.bottom + 8 : Math.max(8, rect.top - HOVER_CARD_HEIGHT - 8),
     });
   };
 
@@ -243,11 +241,15 @@ export default function TaskCalendar({
               position: "fixed",
               left: hover.left,
               top: hover.top,
-              bottom: hover.bottom,
               width: HOVER_CARD_WIDTH,
             }}
             className="z-50 rounded-xl border border-border-strong bg-surface shadow-xl p-3 text-sm"
           >
+            {hover.note.image_url && (
+              <div className="-mx-3 -mt-3 mb-3 overflow-hidden rounded-t-xl">
+                <img src={hover.note.image_url} alt="" className="w-full h-28 object-cover" loading="lazy" draggable={false} />
+              </div>
+            )}
             <div className="flex items-center justify-between gap-2">
               <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${CHIP_STYLES[hover.note.priority] || CHIP_STYLES.normal}`}>
                 {hover.note.recurrence !== "none" && <Repeat size={10} />}

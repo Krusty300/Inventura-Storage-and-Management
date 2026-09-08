@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useState } from "react";
-import { AlertTriangle, Columns3, CheckCircle, Factory, Eye, List, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
+import { Columns3, CheckCircle, Factory, Eye, List, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
@@ -589,8 +589,6 @@ function WorkOrderDetail({ wo, onClose, onChanged, onEdit, onComplete }: {
   });
   const current = fresh ?? wo;
 
-  const shortfallItems = current.items.filter((i) => i.quantity_issued < i.quantity_required);
-
   const { data: genealogy } = useQuery({
     queryKey: ["work-order-genealogy", wo.id],
     queryFn: async () => {
@@ -649,10 +647,9 @@ function WorkOrderDetail({ wo, onClose, onChanged, onEdit, onComplete }: {
             </div>
             <div className="min-w-0">
               <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Issued / Required</p>
-              <p className={`font-semibold tabular-nums ${!current.fully_issued && current.status !== "planned" ? "text-amber-600 dark:text-amber-400" : "text-ink"}`}>
+              <p className="font-semibold tabular-nums text-ink">
                 {current.total_issued}<span className="text-faint text-sm font-medium"> / {current.total_required}</span>
               </p>
-              {!current.fully_issued && current.status !== "planned" && <p className="text-[11px] mt-0.5 text-amber-600 dark:text-amber-400">Components not fully issued</p>}
             </div>
             <div className="min-w-0">
               <p className="text-faint text-xs uppercase tracking-wide mb-0.5">BOM</p>
@@ -660,25 +657,6 @@ function WorkOrderDetail({ wo, onClose, onChanged, onEdit, onComplete }: {
             </div>
           </div>
         </div>
-
-        {!current.fully_issued && current.status !== "planned" && shortfallItems.length > 0 && (
-          <div role="status" className="flex items-start gap-3 rounded-lg bg-amber-500/10 border border-amber-500/30 px-4 py-3">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-            <div className="text-sm text-amber-800 dark:text-amber-200 min-w-0">
-              <p className="font-semibold">Components not fully issued</p>
-              <p className="text-xs mt-1 text-amber-700 dark:text-amber-300/80">
-                {current.total_required - current.total_issued} of {current.total_required} component unit(s) still short across {shortfallItems.length} {shortfallItems.length === 1 ? "item" : "items"}.
-              </p>
-              <ul className="mt-1.5 text-xs space-y-0.5">
-                {shortfallItems.map((it) => (
-                  <li key={it.id}>
-                    <span className="font-medium">{it.product_name}</span> — {it.quantity_issued} / {it.quantity_required} issued
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
 
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>

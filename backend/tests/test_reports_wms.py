@@ -29,6 +29,21 @@ def test_exceptions_low_stock_and_zero_stock(auth_headers):
     assert "EX-ZERO" in zero_names
 
 
+def test_exceptions_summary_does_not_double_count_zero_stock(auth_headers):
+    before = client.get("/api/reports/exceptions", headers=auth_headers).json()["summary"]
+    prod = _make_product(auth_headers, "EX-ZERO-SUM", reorder=5)
+    assert client.post("/api/receipts", json={
+        "items": [{"product_id": prod["id"], "quantity": 3}],
+    }, headers=auth_headers).status_code == 201
+    client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 3, "unit_price": 10.0}],
+    }, headers=auth_headers)
+
+    data = client.get("/api/reports/exceptions", headers=auth_headers).json()["summary"]
+    assert data["zero_stock"] == before["zero_stock"] + 1
+    assert data["low_stock"] == before["low_stock"]
+
+
 def test_exceptions_quarantined_lot_and_pending_asn(auth_headers):
     prod = _make_product(auth_headers, "EX-Q")
     assert client.post("/api/receipts", json={

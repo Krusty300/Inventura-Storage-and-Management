@@ -258,8 +258,8 @@ def restore_supplier(supplier_id: int, db: Session = Depends(get_db), user=Depen
 
 
 @router.get("/{supplier_id}", response_model=SupplierOut)
-def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
-    return get_or_404(Supplier, supplier_id, db)
+def get_supplier(supplier_id: int, include_inactive: bool = False, db: Session = Depends(get_db)):
+    return get_or_404(Supplier, supplier_id, db, include_deleted=include_inactive)
 
 
 @router.post("", response_model=SupplierOut, status_code=201)

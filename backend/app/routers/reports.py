@@ -568,6 +568,13 @@ def exception_dashboard(db: Session = Depends(get_db)):
         SerialNumber.status == "quarantined"
     ).scalar() or 0
 
+    low_stock_total = db.query(func.count(Product.id)).filter(
+        *sellable, sellable_qty > 0, sellable_qty <= Product.reorder_level
+    ).scalar() or 0
+    zero_stock_total = db.query(func.count(Product.id)).filter(
+        *sellable, sellable_qty <= 0
+    ).scalar() or 0
+
     return {
         "low_stock": low_stock,
         "zero_stock": zero_stock,
@@ -577,8 +584,8 @@ def exception_dashboard(db: Session = Depends(get_db)):
         "pending_asns": pending_asn_rows,
         "quality_checks": quality_check_rows,
         "summary": {
-            "low_stock": len(low_stock),
-            "zero_stock": len(zero_stock),
+            "low_stock": low_stock_total,
+            "zero_stock": zero_stock_total,
             "quarantined_lots": quarantined_lots_total,
             "quarantined_serials": quarantined_serials_total,
             "quarantined_units": bulk_quarantined_total + quarantined_serials_total,

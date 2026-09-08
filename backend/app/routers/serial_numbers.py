@@ -160,6 +160,8 @@ def update_serial_status(serial_id: int, data: SerialStatusUpdate, db: Session =
     ledger as a deactivate/activate/release movement.
     """
     serial = _load_serial(db, serial_id)
+    lot = serial.lot
+    lot_was_quarantined = lot is not None and lot.status == inventory.SERIAL_STATUS_QUARANTINED
     allowed = {inventory.SERIAL_STATUS_IN_STOCK, inventory.SERIAL_STATUS_INACTIVE}
     if data.status == inventory.SERIAL_STATUS_IN_STOCK and serial.status == inventory.SERIAL_STATUS_QUARANTINED:
         movement = inventory.release_serial_from_quarantine(
@@ -171,6 +173,9 @@ def update_serial_status(serial_id: int, data: SerialStatusUpdate, db: Session =
         serial = _load_serial(db, serial_id)
         log_activity(db, user.id, user.username, "update", "serial_number", serial.id,
                      f"Released serial '{serial.serial_number}' from quarantine (movement {movement.id})")
+        if lot_was_quarantined and serial.lot is not None and serial.lot.status == inventory.SERIAL_STATUS_IN_STOCK:
+            log_activity(db, user.id, user.username, "update", "lot", serial.lot.id,
+                         f"Lot '{serial.lot.lot_number}' released - last quarantined serial '{serial.serial_number}' released")
         db.commit()
         broadcast_change("product", "updated")
         broadcast_change("lot", "updated")
@@ -223,6 +228,8 @@ def release_serial(serial_id: int, db: Session = Depends(get_db),
     and ``quarantined`` serials can be released this way.
     """
     serial = _load_serial(db, serial_id)
+    lot = serial.lot
+    lot_was_quarantined = lot is not None and lot.status == inventory.SERIAL_STATUS_QUARANTINED
     if serial.status == inventory.SERIAL_STATUS_RESERVED:
         movement = inventory.release_serial_from_reserved(
             db, serial=serial, user_id=user.id,
@@ -241,6 +248,9 @@ def release_serial(serial_id: int, db: Session = Depends(get_db),
     serial = _load_serial(db, serial_id)
     log_activity(db, user.id, user.username, "update", "serial_number", serial.id,
                  f"Released serial '{serial.serial_number}' (movement {movement.id})")
+    if lot_was_quarantined and serial.lot is not None and serial.lot.status == inventory.SERIAL_STATUS_IN_STOCK:
+        log_activity(db, user.id, user.username, "update", "lot", serial.lot.id,
+                     f"Lot '{serial.lot.lot_number}' released - last quarantined serial '{serial.serial_number}' released")
     db.commit()
     broadcast_change("product", "updated")
     broadcast_change("lot", "updated")
