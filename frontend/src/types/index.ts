@@ -476,6 +476,9 @@ export interface Settings {
   fiscal_year_start_month: number;
   default_items_per_page: number;
   date_format: string;
+  show_product_hover_cards: boolean;
+  show_customer_hover_cards: boolean;
+  show_supplier_hover_cards: boolean;
   logo_url: string;
   tax_id: string;
   payment_terms: string;

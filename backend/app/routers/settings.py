@@ -58,6 +58,9 @@ class SettingsUpdate(BaseModel):
     fiscal_year_start_month: Optional[int] = None
     default_items_per_page: Optional[int] = None
     date_format: Optional[str] = None
+    show_product_hover_cards: Optional[bool] = None
+    show_customer_hover_cards: Optional[bool] = None
+    show_supplier_hover_cards: Optional[bool] = None
     tax_id: Optional[str] = None
     payment_terms: Optional[str] = None
     bank_details: Optional[str] = None
@@ -111,6 +114,7 @@ SETTING_FIELDS = [
     "require_qc_before_ship", "auto_allocate_stock", "enforce_fefo",
     "default_costing_method", "fiscal_year_start_month",
     "default_items_per_page", "date_format",
+    "show_product_hover_cards", "show_customer_hover_cards", "show_supplier_hover_cards",
     "logo_url", "tax_id", "payment_terms", "bank_details", "footer_note",
 ]
 

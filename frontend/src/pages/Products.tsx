@@ -1,12 +1,13 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, Package, PackagePlus, Search, Fingerprint } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, Package, PackagePlus, Search, Fingerprint, ExternalLink } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Category, PaginatedResponse, Product, StockMovement } from "../types";
 import ProductForm from "../components/ProductForm";
 import ProductDetail from "../components/ProductDetail";
+import HoverCard from "../components/HoverCard";
 import AdjustStockModal from "../components/AdjustStockModal";
 import BulkEditModal from "../components/BulkEditModal";
 import CsvImportModal from "../components/CsvImportModal";
@@ -33,6 +34,30 @@ import { usePageSize } from "../hooks/usePageSize";
 interface DisplayRow {
   kind: "parent" | "variant";
   product: Product;
+}
+
+function ProductHoverCard({ product, currencySymbol, onView }: { product: Product; currencySymbol: string; onView: () => void }) {
+  const imgSrc = product.images?.length > 0 ? product.images[0].url : product.image_url || getPlaceholder();
+  return (
+    <div className="p-3">
+      <div className="-mx-3 -mt-3 mb-3 overflow-hidden rounded-t-xl bg-app">
+        <img src={imgSrc} alt="" className="w-full h-28 object-cover" loading="lazy" onError={onImageError} draggable={false} />
+      </div>
+      <p className="font-semibold text-ink leading-snug break-words">{product.display_name || product.name}</p>
+      <p className="mt-1 text-xs text-muted line-clamp-3 break-words">{product.description || "No description available."}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+        <span className="rounded bg-app px-1.5 py-0.5 font-medium text-faint">{product.sku}</span>
+        <span className="font-semibold text-ink">{formatCurrency(product.unit_price, currencySymbol)}</span>
+        {product.supplier_name && <span className="truncate">{product.supplier_name}</span>}
+      </div>
+      <div className="mt-2.5 pt-2.5 border-t border-border flex justify-end">
+        <button type="button" onClick={onView} className="btn-primary inline-flex items-center gap-1.5 text-xs px-3 py-1.5">
+          View Product
+          <ExternalLink size={12} />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function Products() {
@@ -63,6 +88,7 @@ export default function Products() {
   const { can } = useAuth();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const showProductCards = settings?.show_product_hover_cards ?? true;
   const debouncedSearch = useDebounce(search, 300);
   const { exportCsv } = useExportCsv();
 
@@ -374,6 +400,7 @@ export default function Products() {
                 const reserved = reservedQtyOf(r);
                 const isLowStock = sellable <= p.reorder_level && !isGroup;
                 const isCollapsed = isGroup && collapsed.has(p.id);
+                const nameNode = r.kind === "variant" ? <span className="text-muted">{p.display_name}</span> : <span className="font-medium">{p.name}</span>;
                 return (
                   <tr key={`${r.kind}-${p.id}`} className={`${r.kind === "variant" ? "bg-app/60 hover:bg-subtle" : "hover:bg-app"} cursor-pointer`} onClick={(e) => { const t = e.target as HTMLElement; if (t instanceof HTMLInputElement || t instanceof HTMLButtonElement || t.closest("button") || t.closest("input")) return; setViewing(p); }}>
                     <td className="px-4 py-3">
@@ -400,11 +427,20 @@ export default function Products() {
                             {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
                           </button>
                         )}
-                        {r.kind === "variant" ? (
-                          <span className="text-muted">{p.display_name}</span>
-                        ) : (
-                          <span className="font-medium">{p.name}</span>
-                        )}
+                        {showProductCards ? (
+                          <HoverCard
+                            width={340}
+                            render={(close) => (
+                              <ProductHoverCard
+                                product={p}
+                                currencySymbol={currencySymbol}
+                                onView={() => { close(); setViewing(p); }}
+                              />
+                            )}
+                          >
+                            {nameNode}
+                          </HoverCard>
+                        ) : nameNode}
                         {isGroup && (
                           <span className="badge bg-primary-soft dark:bg-primary/10 text-primary-strong dark:text-primary border border-primary-soft dark:border-primary/30">{p.variants.filter((v) => v.is_active).length} variants</span>
                         )}

@@ -76,6 +76,9 @@ export default function Settings() {
       fiscal_year_start_month: String(settingsData.fiscal_year_start_month),
       default_items_per_page: String(settingsData.default_items_per_page),
       date_format: settingsData.date_format,
+      show_product_hover_cards: settingsData.show_product_hover_cards ?? true,
+      show_customer_hover_cards: settingsData.show_customer_hover_cards ?? true,
+      show_supplier_hover_cards: settingsData.show_supplier_hover_cards ?? true,
       logo_url: settingsData.logo_url || "",
       tax_id: settingsData.tax_id || "",
       payment_terms: settingsData.payment_terms || "",
@@ -359,6 +362,18 @@ export default function Settings() {
                   ]}
                   ariaLabel="Date Format"
                 />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-ink mb-2">Hover Cards</h3>
+              <p className="text-xs text-faint mb-2">Show rich preview cards when hovering over names in list tables.</p>
+              <div className="space-y-3">
+                <Toggle label="Product Hover Cards" checked={form.show_product_hover_cards} onChange={(v) => set("show_product_hover_cards", v)}
+                  description="Show the product image, description, and a View Product button when hovering over a product name" />
+                <Toggle label="Customer Hover Cards" checked={form.show_customer_hover_cards} onChange={(v) => set("show_customer_hover_cards", v)}
+                  description="Show customer contact details and a View Details button when hovering over a customer name" />
+                <Toggle label="Supplier Hover Cards" checked={form.show_supplier_hover_cards} onChange={(v) => set("show_supplier_hover_cards", v)}
+                  description="Show supplier contact person, contact number, and a View Details button when hovering over a supplier name" />
               </div>
             </div>
           </fieldset>

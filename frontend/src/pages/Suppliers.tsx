@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Trash2, Eye, RefreshCw, Search, Building2 } from "lucide-react";
+import { Pencil, Trash2, Eye, RefreshCw, Search, Building2, ExternalLink, Phone, Mail, MapPin } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse, Supplier } from "../types";
@@ -8,6 +8,7 @@ import { daysAgo } from "../utils/date";
 import SupplierForm from "../components/SupplierForm";
 import SupplierDetail from "../components/SupplierDetail";
 import SupplierImportModal from "../components/SupplierImportModal";
+import HoverCard from "../components/HoverCard";
 import ConfirmDialog from "../components/ConfirmDialog";
 import BulkActionBar from "../components/BulkActionBar";
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
@@ -25,10 +26,49 @@ import { useSettings } from "../hooks/useSettings";
 import { usePageSize } from "../hooks/usePageSize";
 import { errorMessage } from "../utils/errors";
 
+function SupplierHoverCard({ supplier, onView }: { supplier: Supplier; onView: () => void }) {
+  return (
+    <div className="p-3 min-w-0">
+      <p className="font-semibold text-ink leading-snug break-words">{supplier.name}</p>
+      {supplier.contact_person && (
+        <p className="mt-0.5 text-xs text-muted">Contact person: {supplier.contact_person}</p>
+      )}
+      <p className="mt-2 text-xs text-muted line-clamp-3 break-words">{supplier.notes || "No notes."}</p>
+      <div className="mt-2 space-y-1 text-xs">
+        {supplier.phone && (
+          <div className="flex items-center gap-1.5 text-muted">
+            <Phone size={12} className="text-faint shrink-0" />
+            <a href={`tel:${supplier.phone}`} className="hover:text-primary dark:hover:text-primary">{supplier.phone}</a>
+          </div>
+        )}
+        {supplier.email && (
+          <div className="flex items-center gap-1.5 text-muted">
+            <Mail size={12} className="text-faint shrink-0" />
+            <a href={`mailto:${supplier.email}`} className="hover:text-primary dark:hover:text-primary truncate">{supplier.email}</a>
+          </div>
+        )}
+        {supplier.address && (
+          <div className="flex items-center gap-1.5 text-muted">
+            <MapPin size={12} className="text-faint shrink-0" />
+            <span className="truncate">{supplier.address}</span>
+          </div>
+        )}
+      </div>
+      <div className="mt-2.5 pt-2.5 border-t border-border flex justify-end">
+        <button type="button" onClick={onView} className="btn-primary inline-flex items-center gap-1.5 text-xs px-3 py-1.5">
+          View Details
+          <ExternalLink size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Suppliers() {
   const formatDate = useDateFormat();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const showSupplierCards = settings?.show_supplier_hover_cards ?? true;
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [page, setPage] = useState(1);
@@ -191,7 +231,18 @@ export default function Suppliers() {
                   </td>
                   <td className="px-4 py-3 font-medium">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="truncate max-w-[180px]">{s.name}</span>
+                      {showSupplierCards ? (
+                        <HoverCard
+                          width={320}
+                          render={(close) => (
+                            <SupplierHoverCard supplier={s} onView={() => { close(); setViewing(s); }} />
+                          )}
+                        >
+                          <span className="truncate max-w-[180px]">{s.name}</span>
+                        </HoverCard>
+                      ) : (
+                        <span className="truncate max-w-[180px]">{s.name}</span>
+                      )}
                       {!s.is_active && <span className="badge badge-warning shrink-0">Inactive</span>}
                     </div>
                   </td>

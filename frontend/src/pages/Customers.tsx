@@ -1,12 +1,13 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Pencil, Trash2, Eye, RefreshCw, Search, Users } from "lucide-react";
+import { Pencil, Trash2, Eye, RefreshCw, Search, Users, ExternalLink, Phone, Mail, MapPin } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
 import CustomerDetail from "../components/CustomerDetail";
 import CustomerForm from "../components/CustomerForm";
 import CustomerImportModal from "../components/CustomerImportModal";
+import HoverCard from "../components/HoverCard";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FittedSelect from "../components/FittedSelect";
 import BulkActionBar from "../components/BulkActionBar";
@@ -26,10 +27,50 @@ import { errorMessage } from "../utils/errors";
 
 import { usePageSize } from "../hooks/usePageSize";
 
+function CustomerHoverCard({ customer, onView }: { customer: Customer; onView: () => void }) {
+  return (
+    <div className="p-3 min-w-0">
+      <p className="font-semibold text-ink leading-snug break-words">{customer.name}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <span className={`badge ${customer.customer_type === "frequent" ? "badge-success" : "badge-info"}`}>{customer.customer_type}</span>
+        {customer.group_name && <span className="badge bg-app text-muted border border-border-strong">{customer.group_name}</span>}
+      </div>
+      <p className="mt-2 text-xs text-muted line-clamp-3 break-words">{customer.notes || "No notes."}</p>
+      <div className="mt-2 space-y-1 text-xs">
+        {customer.phone && (
+          <div className="flex items-center gap-1.5 text-muted">
+            <Phone size={12} className="text-faint shrink-0" />
+            <a href={`tel:${customer.phone}`} className="hover:text-primary dark:hover:text-primary">{customer.phone}</a>
+          </div>
+        )}
+        {customer.email && (
+          <div className="flex items-center gap-1.5 text-muted">
+            <Mail size={12} className="text-faint shrink-0" />
+            <a href={`mailto:${customer.email}`} className="hover:text-primary dark:hover:text-primary truncate">{customer.email}</a>
+          </div>
+        )}
+        {customer.address && (
+          <div className="flex items-center gap-1.5 text-muted">
+            <MapPin size={12} className="text-faint shrink-0" />
+            <span className="truncate">{customer.address}</span>
+          </div>
+        )}
+      </div>
+      <div className="mt-2.5 pt-2.5 border-t border-border flex justify-end">
+        <button type="button" onClick={onView} className="btn-primary inline-flex items-center gap-1.5 text-xs px-3 py-1.5">
+          View Details
+          <ExternalLink size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Customers() {
   const formatDate = useDateFormat();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const showCustomerCards = settings?.show_customer_hover_cards ?? true;
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [typeFilter, setTypeFilter] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
@@ -246,7 +287,18 @@ export default function Customers() {
                   </td>
                   <td className="px-4 py-3 font-medium">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="truncate max-w-[180px]">{c.name}</span>
+                      {showCustomerCards ? (
+                        <HoverCard
+                          width={320}
+                          render={(close) => (
+                            <CustomerHoverCard customer={c} onView={() => { close(); setViewing(c); }} />
+                          )}
+                        >
+                          <span className="truncate max-w-[180px]">{c.name}</span>
+                        </HoverCard>
+                      ) : (
+                        <span className="truncate max-w-[180px]">{c.name}</span>
+                      )}
                       {!c.is_active && <span className="badge badge-warning shrink-0">Inactive</span>}
                     </div>
                   </td>

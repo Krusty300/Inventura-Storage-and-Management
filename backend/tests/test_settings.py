@@ -91,3 +91,22 @@ def test_update_settings_currency_code(auth_headers):
     assert data["currency_symbol"] == "KSh"
     get = client.get("/api/settings", headers=auth_headers).json()
     assert get["currency_code"] == "KES"
+
+
+def test_hover_card_toggles_default_on_and_roundtrip(auth_headers):
+    defaults = client.get("/api/settings", headers=auth_headers).json()
+    assert defaults["show_product_hover_cards"] is True
+    assert defaults["show_customer_hover_cards"] is True
+    assert defaults["show_supplier_hover_cards"] is True
+
+    resp = client.put("/api/settings", json={"show_product_hover_cards": False, "show_supplier_hover_cards": False}, headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["show_product_hover_cards"] is False
+    assert data["show_customer_hover_cards"] is True
+    assert data["show_supplier_hover_cards"] is False
+
+    get = client.get("/api/settings", headers=auth_headers).json()
+    assert get["show_product_hover_cards"] is False
+    assert get["show_customer_hover_cards"] is True
+    assert get["show_supplier_hover_cards"] is False
