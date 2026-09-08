@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Repeat, Download } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, Repeat, Download, CalendarDays, CheckCircle2, ExternalLink } from "lucide-react";
 import type { Note } from "../types";
 import {
   buildCalendarEvents,
@@ -26,6 +27,16 @@ const CHIP_STYLES: Record<string, string> = {
   low: "bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300",
 };
 
+interface HoverCard {
+  note: Note;
+  left: number;
+  top?: number;
+  bottom?: number;
+}
+
+const HOVER_CARD_WIDTH = 288;
+const HOVER_CARD_HEIGHT = 200;
+
 export default function TaskCalendar({
   notes,
   month,
@@ -36,6 +47,65 @@ export default function TaskCalendar({
   onExport,
 }: Props) {
   const [dragId, setDragId] = useState<number | null>(null);
+  const [hover, setHover] = useState<HoverCard | null>(null);
+  const hideTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!hover) return;
+    const hide = () => setHover(null);
+    window.addEventListener("resize", hide);
+    document.addEventListener("scroll", hide, true);
+    return () => {
+      window.removeEventListener("resize", hide);
+      document.removeEventListener("scroll", hide, true);
+    };
+  }, [hover]);
+
+  useEffect(
+    () => () => {
+      if (hideTimer.current != null) window.clearTimeout(hideTimer.current);
+    },
+    [],
+  );
+
+  const showHoverCard = (e: React.MouseEvent, note: Note) => {
+    if (hideTimer.current != null) {
+      window.clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const left = Math.max(8, Math.min(rect.left, vw - HOVER_CARD_WIDTH - 8));
+    const roomBelow = rect.bottom + 8 + HOVER_CARD_HEIGHT <= vh - 8;
+    setHover({
+      note,
+      left,
+      top: roomBelow ? rect.bottom + 8 : undefined,
+      bottom: roomBelow ? undefined : vh - rect.top + 8,
+    });
+  };
+
+  const hideHoverCard = () => {
+    if (hideTimer.current != null) {
+      window.clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+    setHover(null);
+  };
+
+  const scheduleHideHoverCard = () => {
+    if (hover == null) return;
+    if (hideTimer.current != null) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(hideHoverCard, 150);
+  };
+
+  const cancelHideHoverCard = () => {
+    if (hideTimer.current != null) {
+      window.clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  };
 
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
   const gridStart = new Date(first);
@@ -143,6 +213,8 @@ export default function TaskCalendar({
                         draggable
                         onDragStart={(e) => handleDragStart(e, note)}
                         onClick={() => onOpenNote(note)}
+                        onMouseEnter={(e) => showHoverCard(e, note)}
+                        onMouseLeave={scheduleHideHoverCard}
                         title={note.title}
                         className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium cursor-pointer select-none truncate transition-opacity ${CHIP_STYLES[note.priority] || CHIP_STYLES.normal} ${dragId === note.id ? "opacity-40" : ""} ${note.is_completed ? "line-through opacity-60" : ""}`}
                       >
@@ -160,6 +232,69 @@ export default function TaskCalendar({
           </div>
         )}
       </div>
+
+      {hover &&
+        createPortal(
+          <div
+            role="tooltip"
+            onMouseEnter={cancelHideHoverCard}
+            onMouseLeave={hideHoverCard}
+            style={{
+              position: "fixed",
+              left: hover.left,
+              top: hover.top,
+              bottom: hover.bottom,
+              width: HOVER_CARD_WIDTH,
+            }}
+            className="z-50 rounded-xl border border-border-strong bg-surface shadow-xl p-3 text-sm"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${CHIP_STYLES[hover.note.priority] || CHIP_STYLES.normal}`}>
+                {hover.note.recurrence !== "none" && <Repeat size={10} />}
+                <span className="capitalize">{hover.note.priority}</span>
+              </span>
+              {hover.note.is_completed && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
+                  <CheckCircle2 size={12} />
+                  Completed
+                </span>
+              )}
+            </div>
+            <p className="mt-2 font-semibold text-ink leading-snug break-words">{hover.note.title}</p>
+            {hover.note.body && <p className="mt-1 text-xs text-muted line-clamp-2 break-words">{hover.note.body}</p>}
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+              <CalendarDays size={12} className="text-faint shrink-0" />
+              <span>
+                {hover.note.due_date
+                  ? new Date(hover.note.due_date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+                  : "No due date"}
+              </span>
+            </div>
+            {hover.note.tags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {hover.note.tags.map((t) => (
+                  <span key={t.id} className="rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ backgroundColor: `${t.color}26`, color: t.color }}>
+                    {t.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="mt-2.5 pt-2.5 border-t border-border flex justify-end">
+              <button
+                type="button"
+                className="btn-primary inline-flex items-center gap-1.5 text-xs px-3 py-1.5"
+                onClick={() => {
+                  hideHoverCard();
+                  onOpenNote(hover.note);
+                }}
+              >
+                View note
+                <ExternalLink size={12} />
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

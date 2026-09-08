@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Package, MapPin, ClipboardList, PackageOpen, ShieldCheck, ShieldX } from "lucide-react";
 import api from "../api/client";
-import Modal from "./Modal";
+import SlideOver from "./SlideOver";
 import type { Location, PaginatedResponse } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { statusBadge } from "../utils/statusBadges";
@@ -177,7 +177,7 @@ export default function LocationDetail({ location, onClose }: Props) {
   const lotCount = new Set(stockLines.filter((sl) => sl.lot_id).map((sl) => sl.lot_id)).size;
 
   return (
-    <Modal open onClose={onClose} title={location.path} xwide>
+    <SlideOver open onClose={onClose} title={location.path} wide>
       <div className="space-y-4 text-sm">
         <div className="rounded-xl border border-border bg-app p-4">
           <div className="flex items-center gap-3">
@@ -483,7 +483,7 @@ export default function LocationDetail({ location, onClose }: Props) {
           </>
         )}
       </div>
-    </Modal>
+    </SlideOver>
   );
 }
 

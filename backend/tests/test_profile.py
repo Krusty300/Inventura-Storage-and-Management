@@ -1,6 +1,7 @@
 from tests.conftest import client
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\x00\x00\x00\x00\x00"
+JPG = b"\xff\xd8\xff\xe0" + b"\x00" * 16
 
 
 def _login(username, password="testpass123"):
@@ -21,6 +22,21 @@ def test_avatar_upload_and_remove(auth_headers):
     removed = client.delete("/api/auth/me/avatar", headers=auth_headers)
     assert removed.status_code == 200
     assert removed.json()["avatar_url"] == ""
+
+
+def test_avatar_accepts_jpg(auth_headers):
+    resp = client.post("/api/auth/me/avatar", files={"file": ("avatar.jpg", JPG, "image/jpeg")}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["avatar_url"].endswith(".jpg")
+
+    resp = client.post("/api/auth/me/avatar", files={"file": ("photo.jpeg", JPG, "image/jpeg")}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["avatar_url"].endswith(".jpg")
+
+
+def test_avatar_rejects_renamed_non_jpg(auth_headers):
+    resp = client.post("/api/auth/me/avatar", files={"file": ("fake.jpg", PNG, "image/jpeg")}, headers=auth_headers)
+    assert resp.status_code == 400
 
 
 def test_avatar_rejects_non_image(auth_headers):

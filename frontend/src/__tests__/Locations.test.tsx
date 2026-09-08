@@ -216,7 +216,7 @@ describe("Locations Page", () => {
     renderWithProviders(<Locations />);
     fireEvent.click(await screen.findByLabelText("View Aisle A"));
     expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
     await vi.waitFor(() => expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument());
   });
 
@@ -225,7 +225,7 @@ describe("Locations Page", () => {
     renderWithProviders(<Locations />);
     fireEvent.click(await screen.findByLabelText("View Aisle A"));
     expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
     await vi.waitFor(() => expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument());
     expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument();
   });
