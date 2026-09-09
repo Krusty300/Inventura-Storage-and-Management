@@ -24,12 +24,24 @@ import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { daysAgo } from "../utils/date";
 import { errorMessage } from "../utils/errors";
+import { entityImageUrl } from "../utils/images";
+import { onImageError } from "../utils/placeholders";
 
 import { usePageSize } from "../hooks/usePageSize";
 
 function CustomerHoverCard({ customer, onView }: { customer: Customer; onView: () => void }) {
   return (
     <div className="p-3 min-w-0">
+      <div className="-mx-3 -mt-3 mb-3 h-24 bg-subtle flex items-center justify-center overflow-hidden">
+        <img
+          src={entityImageUrl(customer.image_url)}
+          alt=""
+          className="w-full h-full object-contain p-2"
+          loading="lazy"
+          onError={onImageError}
+          draggable={false}
+        />
+      </div>
       <p className="font-semibold text-ink leading-snug break-words">{customer.name}</p>
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
         <span className={`badge ${customer.customer_type === "frequent" ? "badge-success" : "badge-info"}`}>{customer.customer_type}</span>
@@ -287,6 +299,13 @@ export default function Customers() {
                   </td>
                   <td className="px-4 py-3 font-medium">
                     <div className="flex items-center gap-2 min-w-0">
+                      <img
+                        src={entityImageUrl(c.image_url)}
+                        alt=""
+                        className="w-9 h-9 rounded-full object-cover border border-border bg-subtle shrink-0"
+                        loading="lazy"
+                        onError={onImageError}
+                      />
                       {showCustomerCards ? (
                         <HoverCard
                           width={320}

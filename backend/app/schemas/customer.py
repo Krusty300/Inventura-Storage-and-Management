@@ -22,6 +22,7 @@ class CustomerCreate(BaseModel):
     customer_type: str = "walk-in"
     group_id: Optional[int] = None
     notes: str = ""
+    image_url: str = ""
 
     @field_validator("email")
     @classmethod
@@ -37,6 +38,7 @@ class CustomerUpdate(BaseModel):
     customer_type: Optional[str] = None
     group_id: Optional[int] = None
     notes: Optional[str] = None
+    image_url: Optional[str] = None
 
     @field_validator("email")
     @classmethod
@@ -73,6 +75,7 @@ class CustomerOut(BaseModel):
     group_name: str = ""
     price_list_id: Optional[int] = None
     notes: str
+    image_url: str = ""
     is_active: bool
     created_at: datetime
     updated_at: datetime

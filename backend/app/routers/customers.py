@@ -1,6 +1,8 @@
 from io import StringIO
 import csv
 from math import ceil
+from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import func, or_
@@ -17,9 +19,14 @@ from app.schemas.customer import (
 )
 from app.services.auth import require_permission
 from app.services.soft_delete import register, soft_delete
-from app.utils import get_or_404, log_activity, broadcast_change
+from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/customers", tags=["customers"], dependencies=[Depends(require_permission("customers.view"))])
+
+UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+JPEG_EXTENSIONS = {".jpg", ".jpeg"}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 
 def _purge_customer(db: Session, c: Customer, user) -> None:
@@ -309,3 +316,68 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db), user=Depend
     c = get_or_404(Customer, customer_id, db)
     soft_delete(db, c, user, "customer")
     return {"ok": True}
+
+
+def _delete_uploaded_image(image_url: str) -> None:
+    if not image_url:
+        return
+    old_path = UPLOAD_DIR / Path(image_url).name
+    try:
+        if old_path.exists():
+            old_path.unlink()
+    except Exception:
+        pass
+
+
+@router.post("/{customer_id}/upload-image")
+def upload_customer_image(
+    customer_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("customers.update")),
+):
+    c = get_or_404(Customer, customer_id, db)
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+    detected = detect_image_ext(content)
+    if detected is None:
+        raise HTTPException(status_code=400, detail="File content is not a supported image")
+    matches = detected in JPEG_EXTENSIONS if ext in JPEG_EXTENSIONS else detected == ext
+    if not matches:
+        raise HTTPException(status_code=400, detail=f"File content does not match its extension ({ext})")
+    _delete_uploaded_image(c.image_url)
+    UPLOAD_DIR.mkdir(exist_ok=True)
+    filename = f"customer_{c.id}_{uuid4().hex}{detected}"
+    filepath = UPLOAD_DIR / filename
+    with open(filepath, "wb") as f:
+        f.write(content)
+    c.image_url = f"/uploads/{filename}"
+    db.commit()
+    db.refresh(c)
+    log_activity(db, user.id, user.username, "update", "customer", c.id, f"Uploaded profile image for customer '{c.name}'")
+    db.commit()
+    broadcast_change("customer", "updated")
+    return {"image_url": c.image_url}
+
+
+@router.delete("/{customer_id}/upload-image")
+def remove_customer_image(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("customers.update")),
+):
+    c = get_or_404(Customer, customer_id, db)
+    _delete_uploaded_image(c.image_url)
+    c.image_url = ""
+    db.commit()
+    db.refresh(c)
+    log_activity(db, user.id, user.username, "update", "customer", c.id, f"Removed profile image for customer '{c.name}'")
+    db.commit()
+    broadcast_change("customer", "updated")
+    return c

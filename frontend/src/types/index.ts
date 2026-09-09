@@ -91,6 +91,7 @@ export interface Supplier {
   address: string;
   notes: string;
   lead_time_days: number | null;
+  image_url: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -397,6 +398,7 @@ export interface Customer {
   group_name: string;
   price_list_id: number | null;
   notes: string;
+  image_url: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;

@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/receipts", tags=["receipts"], dependencies=[Depe
 
 def _load_receipt(db: Session, receipt_id: int) -> Receipt:
     return get_or_404(Receipt, receipt_id, db, options=[
-        joinedload(Receipt.items).joinedload(ReceiptItem.product),
+        joinedload(Receipt.items).joinedload(ReceiptItem.product).joinedload(Product.images),
         joinedload(Receipt.items).joinedload(ReceiptItem.location),
         joinedload(Receipt.items).joinedload(ReceiptItem.lot),
         joinedload(Receipt.supplier), joinedload(Receipt.user),
@@ -48,7 +48,7 @@ def list_receipts(
     db: Session = Depends(get_db),
 ):
     q = db.query(Receipt).options(
-        joinedload(Receipt.items).joinedload(ReceiptItem.product), joinedload(Receipt.supplier), joinedload(Receipt.user)
+        joinedload(Receipt.items).joinedload(ReceiptItem.product).joinedload(Product.images), joinedload(Receipt.supplier), joinedload(Receipt.user)
     )
     if search:
         like = f"%{search}%"

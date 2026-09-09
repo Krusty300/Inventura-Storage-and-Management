@@ -19,6 +19,7 @@ class Customer(SoftDeleteMixin, Base):
     customer_type: Mapped[str] = mapped_column(String(20), default="walk-in")
     group_id: Mapped[int | None] = mapped_column(ForeignKey("customer_groups.id"), nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    image_url: Mapped[str] = mapped_column(String(500), default="")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())

@@ -25,6 +25,7 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { formatCurrency } from "../utils/currency";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
+import { productImageUrl } from "../utils/images";
 import { daysUntil } from "../utils/date";
 import { hasVariants } from "../utils/variants";
 import { movementBadgeClass, movementLabel } from "../utils/movementTypes";
@@ -37,11 +38,10 @@ interface DisplayRow {
 }
 
 function ProductHoverCard({ product, currencySymbol, onView }: { product: Product; currencySymbol: string; onView: () => void }) {
-  const imgSrc = product.images?.length > 0 ? product.images[0].url : product.image_url || getPlaceholder();
   return (
     <div className="p-3">
-      <div className="-mx-3 -mt-3 mb-3 overflow-hidden rounded-t-xl bg-app">
-        <img src={imgSrc} alt="" className="w-full h-28 object-cover" loading="lazy" onError={onImageError} draggable={false} />
+      <div className="-mx-3 -mt-3 mb-3 h-32 bg-subtle flex items-center justify-center overflow-hidden rounded-t-xl">
+        <img src={productImageUrl(product)} alt="" className="w-full h-full object-contain p-2" loading="lazy" onError={onImageError} draggable={false} />
       </div>
       <p className="font-semibold text-ink leading-snug break-words">{product.display_name || product.name}</p>
       <p className="mt-1 text-xs text-muted line-clamp-3 break-words">{product.description || "No description available."}</p>

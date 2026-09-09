@@ -1,6 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useQuery } from "@tanstack/react-query";
-import { Users, Tag, Pencil } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { Users, Tag, Pencil, Camera, Trash2 } from "lucide-react";
 import SlideOver from "./SlideOver";
 import Skeleton from "./Skeleton";
 import AttachmentSection from "./AttachmentSection";
@@ -10,6 +11,10 @@ import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { paymentLabel } from "../utils/payments";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+import { errorMessage } from "../utils/errors";
+import { entityImageUrl } from "../utils/images";
+import { onImageError } from "../utils/placeholders";
 
 interface Props {
   customer: Customer;
@@ -20,8 +25,49 @@ interface Props {
 export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
   const formatDate = useDateFormat();
   const { can } = useAuth();
+  const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [imageUrl, setImageUrl] = useState(customer.image_url);
+  const [imageBusy, setImageBusy] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    setImageBusy(true);
+    try {
+      const { data } = await api.post(`/customers/${customer.id}/upload-image`, fd);
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        img.src = data.image_url;
+      });
+      setImageUrl(data.image_url);
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      addToast("Profile image updated", "success");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to upload profile image"), "error");
+    }
+    setImageBusy(false);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const handleImageRemove = async () => {
+    try {
+      await api.delete(`/customers/${customer.id}/upload-image`);
+      setImageUrl("");
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      addToast("Profile image removed", "success");
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to remove profile image"), "error");
+    }
+  };
+
   const { data: stats } = useQuery({
     queryKey: ["customer-stats", customer.id],
     queryFn: async () => (await api.get(`/customers/${customer.id}/stats`)).data as CustomerStats,
@@ -63,11 +109,35 @@ export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
       <div className="space-y-5 text-sm">
         <div className="border border-border rounded-lg overflow-hidden bg-white dark:bg-app">
           <div className="border-b border-border px-5 py-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-faint">Customer</p>
-              <h3 className="text-xl font-bold text-ink mt-1">{customer.name}</h3>
+            <div className="flex items-start gap-3 min-w-0">
+              <img
+                src={entityImageUrl(imageUrl)}
+                alt=""
+                className="h-16 w-16 rounded-full object-cover border border-border bg-subtle shrink-0"
+                loading="lazy"
+                onError={onImageError}
+              />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-widest text-faint">Customer</p>
+                <h3 className="text-xl font-bold text-ink mt-1">{customer.name}</h3>
+              </div>
             </div>
-            <span className="badge badge-info">{customer.customer_type}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {can("customers.update") && (
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => imageInputRef.current?.click()} disabled={imageBusy} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Upload profile image">
+                    <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
+                  </button>
+                  {imageUrl && (
+                    <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
+                      <Trash2 size={13} />Remove
+                    </button>
+                  )}
+                  <input ref={imageInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={handleImageUpload} />
+                </div>
+              )}
+              <span className="badge badge-info">{customer.customer_type}</span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4 px-5 py-4">

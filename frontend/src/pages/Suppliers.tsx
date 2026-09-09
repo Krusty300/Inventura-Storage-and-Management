@@ -25,10 +25,22 @@ import { useSettings } from "../hooks/useSettings";
 
 import { usePageSize } from "../hooks/usePageSize";
 import { errorMessage } from "../utils/errors";
+import { entityImageUrl } from "../utils/images";
+import { onImageError } from "../utils/placeholders";
 
 function SupplierHoverCard({ supplier, onView }: { supplier: Supplier; onView: () => void }) {
   return (
     <div className="p-3 min-w-0">
+      <div className="-mx-3 -mt-3 mb-3 h-24 bg-subtle flex items-center justify-center overflow-hidden">
+        <img
+          src={entityImageUrl(supplier.image_url)}
+          alt=""
+          className="w-full h-full object-contain p-2"
+          loading="lazy"
+          onError={onImageError}
+          draggable={false}
+        />
+      </div>
       <p className="font-semibold text-ink leading-snug break-words">{supplier.name}</p>
       {supplier.contact_person && (
         <p className="mt-0.5 text-xs text-muted">Contact person: {supplier.contact_person}</p>
@@ -231,6 +243,13 @@ export default function Suppliers() {
                   </td>
                   <td className="px-4 py-3 font-medium">
                     <div className="flex items-center gap-2 min-w-0">
+                      <img
+                        src={entityImageUrl(s.image_url)}
+                        alt=""
+                        className="w-9 h-9 rounded-full object-cover border border-border bg-subtle shrink-0"
+                        loading="lazy"
+                        onError={onImageError}
+                      />
                       {showSupplierCards ? (
                         <HoverCard
                           width={320}

@@ -22,6 +22,7 @@ class SupplierCreate(BaseModel):
     address: str = ""
     notes: str = ""
     lead_time_days: Optional[int] = None
+    image_url: str = ""
 
     @field_validator("email")
     @classmethod
@@ -44,6 +45,7 @@ class SupplierUpdate(BaseModel):
     address: Optional[str] = None
     notes: Optional[str] = None
     lead_time_days: Optional[int] = None
+    image_url: Optional[str] = None
 
     @field_validator("email")
     @classmethod
@@ -85,6 +87,7 @@ class SupplierOut(BaseModel):
     address: str
     notes: str
     lead_time_days: Optional[int] = None
+    image_url: str = ""
     is_active: bool
     created_at: datetime
     updated_at: datetime

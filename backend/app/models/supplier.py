@@ -18,6 +18,7 @@ class Supplier(SoftDeleteMixin, Base):
     phone: Mapped[str] = mapped_column(String(30), default="")
     address: Mapped[str] = mapped_column(Text, default="")
     notes: Mapped[str] = mapped_column(Text, default="")
+    image_url: Mapped[str] = mapped_column(String(500), default="")
     lead_time_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())

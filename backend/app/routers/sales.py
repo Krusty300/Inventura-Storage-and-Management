@@ -69,7 +69,7 @@ def get_currency_defaults(db: Session) -> tuple[str, str]:
 
 def load_sale(db: Session, sale_id: int) -> Sale:
     return get_or_404(Sale, sale_id, db, options=[
-        joinedload(Sale.items).joinedload(SaleItem.product),
+        joinedload(Sale.items).joinedload(SaleItem.product).joinedload(Product.images),
         joinedload(Sale.customer), joinedload(Sale.user),
     ])
 
@@ -290,7 +290,7 @@ def list_sales(
     db: Session = Depends(get_db),
 ):
     q = db.query(Sale).options(
-        joinedload(Sale.items).joinedload(SaleItem.product),
+        joinedload(Sale.items).joinedload(SaleItem.product).joinedload(Product.images),
         joinedload(Sale.customer), joinedload(Sale.user), joinedload(Sale.channel),
     )
     if search:
@@ -661,7 +661,7 @@ def cleanup_expired_pending_sales(db: Session = Depends(get_db)):
     payment status.  Returns the number of cancelled sales."""
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
     stale = db.query(Sale).options(
-        joinedload(Sale.items).joinedload(SaleItem.product),
+        joinedload(Sale.items).joinedload(SaleItem.product).joinedload(Product.images),
     ).filter(
         Sale.status == "pending",
         Sale.created_at < cutoff,

@@ -178,7 +178,7 @@ def list_orders(
     db: Session = Depends(get_db),
 ):
     q = db.query(Order).options(
-        joinedload(Order.items).joinedload(OrderItem.product), joinedload(Order.supplier), joinedload(Order.user)
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images), joinedload(Order.supplier), joinedload(Order.user)
     )
     if search:
         q = q.filter(Order.order_number.ilike(f"%{search}%"))
@@ -227,14 +227,14 @@ def bulk_edit_orders(data: OrderBulkEdit, db: Session = Depends(get_db), user=De
 @router.get("/{order_id}", response_model=OrderOut)
 def get_order(order_id: int, db: Session = Depends(get_db)):
     return get_or_404(Order, order_id, db, options=[
-        joinedload(Order.items).joinedload(OrderItem.product), joinedload(Order.supplier), joinedload(Order.user)
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images), joinedload(Order.supplier), joinedload(Order.user)
     ])
 
 
 @router.get("/{order_id}/pdf")
 def order_pdf(order_id: int, db: Session = Depends(get_db)):
     o = get_or_404(Order, order_id, db, options=[
-        joinedload(Order.items).joinedload(OrderItem.product),
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
         joinedload(Order.supplier), joinedload(Order.user),
     ])
     s = db.query(Settings).first()
@@ -385,7 +385,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
     received_now = status == "received" and prev_status != "received"
     if received_now:
         o = get_or_404(Order, order_id, db, options=[
-            joinedload(Order.items).joinedload(OrderItem.product),
+            joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
             joinedload(Order.supplier), joinedload(Order.user)
         ])
         serials_by_product = data.serial_numbers or {}
