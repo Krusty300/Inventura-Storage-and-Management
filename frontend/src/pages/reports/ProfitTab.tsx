@@ -3,6 +3,8 @@ import api from "../../api/client";
 import type { ProfitAnalysis } from "../../types";
 import { formatCurrency } from "../../utils/currency";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import EmptyState from "../../components/EmptyState";
+import { BarChart3 } from "lucide-react";
 
 export default function ProfitTab({ symbol }: { symbol: string }) {
   const { data, isLoading, isError } = useQuery<ProfitAnalysis>({
@@ -35,6 +37,9 @@ export default function ProfitTab({ symbol }: { symbol: string }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
+              {data.products.length === 0 && (
+                <EmptyState title="No product margins" message="Profit analysis will appear here once products are stocked." icon={<BarChart3 size={48} />} />
+              )}
               {data.products.map((p) => (
                 <tr key={p.id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">{p.name}</td>

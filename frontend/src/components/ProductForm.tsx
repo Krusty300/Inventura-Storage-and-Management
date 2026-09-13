@@ -8,6 +8,7 @@ import { useToast } from "../context/ToastContext";
 import { useSettings } from "../hooks/useSettings";
 import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
+import TextArea from "./TextArea";
 import LocationPicker from "./LocationPicker";
 import { hasVariants } from "../utils/variants";
 import { errorMessage } from "../utils/errors";
@@ -43,6 +44,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formInitRef = useRef(false);
+  const createdUrlsRef = useRef<string[]>([]);
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ["categories"],
     queryFn: async () => (await api.get("/categories")).data.items,
@@ -170,8 +172,12 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         if (imageFiles.length > 0) {
           const fd = new FormData();
           imageFiles.forEach((f) => fd.append("files", f));
-          await api.post(`/products/${productId}/images`, fd);
-          addToast(imageFiles.length > 1 ? "Images uploaded" : "Image uploaded", "success");
+          try {
+            await api.post(`/products/${productId}/images`, fd);
+            addToast(imageFiles.length > 1 ? "Images uploaded" : "Image uploaded", "success");
+          } catch {
+            addToast("Product saved, but the image upload failed. You can retry from the product page.", "error");
+          }
         }
       }
       onSaved();
@@ -216,7 +222,14 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
     if (arr.length === 0) return;
     setImageFiles((prev) => [...prev, ...arr]);
     const newPreviews = arr.map((f) => URL.createObjectURL(f));
+    createdUrlsRef.current.push(...newPreviews);
     setImagePreviews((prev) => [...prev, ...newPreviews]);
+  }, []);
+
+  // Release any preview object URLs left when the form unmounts.
+  useEffect(() => {
+    const urls = createdUrlsRef.current;
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, []);
 
   const removeImage = useCallback((idx: number) => {
@@ -272,7 +285,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
             {!isVariantMode && (
               <div className="mt-4">
                 <label className="block text-sm font-medium text-ink mb-1">Description</label>
-                <textarea className="input" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                <TextArea rows={2} value={form.description} onChange={(v) => setForm({ ...form, description: v })} />
               </div>
             )}
 

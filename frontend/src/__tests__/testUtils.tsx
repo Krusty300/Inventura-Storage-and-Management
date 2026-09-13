@@ -1,9 +1,10 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { AuthProvider } from "../context/AuthContext";
 import { ToastProvider } from "../context/ToastContext";
+import { MONTHS } from "../utils/calendar";
 import type { Product } from "../types";
 
 export function makeQueryClient() {
@@ -88,4 +89,32 @@ export function makeVariant(parent: Product, overrides: Partial<Product> = {}): 
     total_quantity: 5,
     ...overrides,
   });
+}
+
+/**
+ * Drives the project-wide DatePicker: clicks the trigger (by accessible name),
+ * navigates to the month containing the ISO date if needed, and selects the day.
+ */
+export function pickDate(ariaLabel: string, iso: string): void {
+  fireEvent.click(screen.getByRole("combobox", { name: ariaLabel }));
+  const [y, m, d] = iso.split("-").map(Number);
+  const label = `${MONTHS[m - 1]} ${d}, ${y}`;
+  for (let i = 0; i < 60; i += 1) {
+    const target = screen.queryByRole("button", { name: label });
+    if (target) {
+      fireEvent.click(target);
+      return;
+    }
+    const dialog = screen.getByRole("dialog", { name: `${ariaLabel} picker` });
+    const heading = within(dialog).getByText(/^[A-Za-z]+ \d{4}$/).textContent ?? "";
+    const [monthName, yearText] = heading.split(" ");
+    const current = (Number(yearText) - 1) * 12 + MONTHS.indexOf(monthName);
+    const desired = (y - 1) * 12 + (m - 1);
+    if (desired > current) {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Next month" }));
+    } else {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Previous month" }));
+    }
+  }
+  throw new Error(`pickDate: could not reach ${iso}`);
 }

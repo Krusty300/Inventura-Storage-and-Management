@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from math import ceil
 from pathlib import Path
 
@@ -25,6 +25,7 @@ from app.services.pdf_helpers import (
     BODY_RIGHT, MARGIN, money, draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
+from app.services.filters import apply_date_range, apply_numeric_range
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
 router = APIRouter(prefix="/api/orders", tags=["orders"], dependencies=[Depends(require_permission("orders.view"))])
@@ -173,6 +174,14 @@ def list_orders(
     search: str = Query(""),
     status: str | None = None,
     supplier_id: int | None = None,
+    created_after: str = Query(""),
+    created_before: str = Query(""),
+    expected_after: str = Query(""),
+    expected_before: str = Query(""),
+    received_after: str = Query(""),
+    received_before: str = Query(""),
+    total_min: str = Query(""),
+    total_max: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -188,6 +197,10 @@ def list_orders(
         q = q.filter(Order.status == status)
     if supplier_id:
         q = q.filter(Order.supplier_id == supplier_id)
+    q = apply_date_range(q, Order.created_at, created_after, created_before, "created_at")
+    q = apply_date_range(q, Order.expected_arrival, expected_after, expected_before, "expected_arrival")
+    q = apply_date_range(q, Order.received_at, received_after, received_before, "received_at")
+    q = apply_numeric_range(q, Order.total_amount, total_min, total_max, "total_amount")
     total = q.count()
     items = q.order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [OrderOut.model_validate(o) for o in items], "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
@@ -366,6 +379,8 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
         o.supplier_id = new_supplier_id
     if "notes" in updates:
         o.notes = data.notes
+    if "expected_arrival" in updates:
+        o.expected_arrival = data.expected_arrival
     if "items" in updates:
         if o.status != "pending":
             raise HTTPException(status_code=400, detail="Order items can only be changed while the order is pending")
@@ -384,6 +399,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
 
     received_now = status == "received" and prev_status != "received"
     if received_now:
+        o.received_at = datetime.now(timezone.utc)
         o = get_or_404(Order, order_id, db, options=[
             joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
             joinedload(Order.supplier), joinedload(Order.user)

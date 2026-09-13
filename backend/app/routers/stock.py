@@ -24,6 +24,7 @@ from app.schemas.stock_movement import (
 )
 from app.services import inventory
 from app.services.auth import require_permission
+from app.services.filters import apply_date_range, apply_numeric_range
 from app.services.notify import notify_expiring, notify_low_stock
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
@@ -32,7 +33,7 @@ router = APIRouter(prefix="/api/stock-movements", tags=["stock-movements"], depe
 
 
 @router.get("")
-def list_movements(search: str = Query(""), movement_type: str = Query(""), skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def list_movements(search: str = Query(""), movement_type: str = Query(""), created_after: str = Query(""), created_before: str = Query(""), quantity_min: str = Query(""), quantity_max: str = Query(""), skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     q = db.query(StockMovement).options(
         joinedload(StockMovement.product), joinedload(StockMovement.user),
         joinedload(StockMovement.from_location), joinedload(StockMovement.to_location),
@@ -44,6 +45,8 @@ def list_movements(search: str = Query(""), movement_type: str = Query(""), skip
         )
     if movement_type and movement_type != "all":
         q = q.filter(StockMovement.movement_type == movement_type)
+    q = apply_date_range(q, StockMovement.created_at, created_after, created_before, "created_at")
+    q = apply_numeric_range(q, StockMovement.quantity_change, quantity_min, quantity_max, "quantity_change")
     total = q.count()
     items = q.order_by(StockMovement.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [StockMovementOut.model_validate(m) for m in items], "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
@@ -948,6 +951,10 @@ def adjust_stock(data: StockMovementAdjust, db: Session = Depends(get_db), user=
     if qty_change == 0:
         raise HTTPException(status_code=400, detail="New quantity is the same as current quantity")
     try:
+        curr_qty = inventory.on_hand(db, product_id=product.id, location_id=loc_id)
+        qty_change = data.new_quantity - curr_qty
+        if qty_change == 0:
+            raise HTTPException(status_code=400, detail="New quantity is the same as current quantity")
         sm = inventory.post_journal_entry(
             db, product_id=product.id, user_id=user.id,
             quantity_change=qty_change, movement_type="adjustment",

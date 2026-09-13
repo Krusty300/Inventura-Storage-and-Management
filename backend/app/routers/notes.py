@@ -24,6 +24,7 @@ from app.schemas.note import (
     NoteUpdate,
 )
 from app.services.auth import get_current_user, require_permission
+from app.services.filters import apply_date_range
 from app.services.notify import create_notification, notify_note_assigned
 from app.services.soft_delete import register, soft_delete
 from app.models.notification import Notification
@@ -137,7 +138,7 @@ def _serialize_note(note: Note) -> dict:
     }
 
 
-def _apply_filters(q, search, category, priority, is_pinned, is_completed, assigned_to, tag_id, due_before, due_after, is_archived):
+def _apply_filters(q, search, category, priority, is_pinned, is_completed, assigned_to, tag_id, due_before, due_after, is_archived, created_before, created_after):
     q = q.filter(Note.is_deleted == False)  # noqa: E712
     if is_archived is not None:
         q = q.filter(Note.is_archived == is_archived)
@@ -158,18 +159,8 @@ def _apply_filters(q, search, category, priority, is_pinned, is_completed, assig
         q = q.filter(Note.assigned_to_id == assigned_to)
     if tag_id is not None:
         q = q.join(NoteTagLink).filter(NoteTagLink.tag_id == tag_id)
-    if due_before:
-        try:
-            dt = datetime.fromisoformat(due_before)
-            q = q.filter(Note.due_date <= dt)
-        except ValueError:
-            pass
-    if due_after:
-        try:
-            dt = datetime.fromisoformat(due_after)
-            q = q.filter(Note.due_date >= dt)
-        except ValueError:
-            pass
+    q = apply_date_range(q, Note.due_date, due_after, due_before, "due_date")
+    q = apply_date_range(q, Note.created_at, created_after, created_before, "created_at")
     return q
 
 
@@ -210,6 +201,8 @@ def list_notes(
     tag_id: int | None = Query(None),
     due_before: str = Query(""),
     due_after: str = Query(""),
+    created_before: str = Query(""),
+    created_after: str = Query(""),
     sort: str = Query("created_at"),
     order: str = Query("desc"),
     skip: int = Query(0, ge=0),
@@ -225,7 +218,7 @@ def list_notes(
         joinedload(Note.tags),
         joinedload(Note.links),
     )
-    q = _apply_filters(q, search, category, priority, is_pinned, is_completed, assigned_to, tag_id, due_before, due_after, is_archived)
+    q = _apply_filters(q, search, category, priority, is_pinned, is_completed, assigned_to, tag_id, due_before, due_after, is_archived, created_before, created_after)
 
     sort_col = {
         "created_at": Note.created_at,
@@ -240,7 +233,7 @@ def list_notes(
         q = q.order_by(sort_col.desc().nullslast())
 
     count_q = db.query(func.count(distinct(Note.id)))
-    count_q = _apply_filters(count_q, search, category, priority, is_pinned, is_completed, assigned_to, tag_id, due_before, due_after, is_archived)
+    count_q = _apply_filters(count_q, search, category, priority, is_pinned, is_completed, assigned_to, tag_id, due_before, due_after, is_archived, created_before, created_after)
     total = count_q.scalar() or 0
     items = q.offset(skip).limit(limit).all()
     return {

@@ -6,6 +6,7 @@ import SlideOver from "./SlideOver";
 import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
 import FittedSelect from "./FittedSelect";
+import TextArea from "./TextArea";
 
 interface Props {
   template?: NoteTemplate | null;
@@ -54,7 +55,7 @@ export default function NoteTemplateForm({ template, onClose, onSaved }: Props) 
         </div>
         <div>
           <label className="block text-sm font-medium text-muted mb-1">Body</label>
-          <textarea className="input w-full h-28 resize-y" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Default content when using this template..." />
+          <TextArea className="w-full h-28 resize-y" value={form.body} onChange={(v) => setForm({ ...form, body: v })} placeholder="Default content when using this template..." />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>

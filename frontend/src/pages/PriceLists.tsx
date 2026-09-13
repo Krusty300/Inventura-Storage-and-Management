@@ -8,8 +8,10 @@ import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
+import TextArea from "../components/TextArea";
 import EmptyState from "../components/EmptyState";
 import ProductPicker from "../components/ProductPicker";
+import DatePicker from "../components/DatePicker";
 import { useDebounce } from "../hooks/useDebounce";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -113,7 +115,7 @@ export default function PriceLists() {
               {isLoading ? (
                 <Skeleton rows={5} cols={6} />
               ) : priceLists.length === 0 ? (
-                <EmptyState title="No price lists" message="Create your first price list to manage product pricing." actionLabel="Add Price List" onAction={() => { setEditingId(null); setShowForm(true); }} />
+                <EmptyState title={search ? "No matching price lists" : "No price lists"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create your first price list to manage product pricing."} actionLabel={search ? undefined : "Add Price List"} onAction={search ? undefined : () => { setEditingId(null); setShowForm(true); }} />
               ) : priceLists.map((pl) => (
                 <tr key={pl.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(pl)}>
                   <td className="px-4 py-3">
@@ -147,7 +149,7 @@ export default function PriceLists() {
 
       {data && data.pages > 1 && <Pagination page={page} totalPages={data.pages} onPageChange={setPage} />}
 
-      {showForm && editingId && loadingEdit && <Modal open onClose={() => { setShowForm(false); setEditingId(null); }} title="Loading..." wide><Skeleton rows={3} cols={2} /></Modal>}
+      {showForm && editingId && loadingEdit && <Modal open onClose={() => { setShowForm(false); setEditingId(null); }} title="Loading..." breadcrumb="" wide><Skeleton rows={3} cols={2} /></Modal>}
       {showForm && editingId && editingPL && <PriceListForm priceList={editingPL} onClose={() => { setShowForm(false); setEditingId(null); }} onSaved={(fresh) => { setShowForm(false); setEditingId(null); setViewing(fresh); queryClient.invalidateQueries({ queryKey: ["price-lists"] }); }} />}
       {showForm && !editingId && <PriceListForm priceList={null} onClose={() => { setShowForm(false); setEditingId(null); }} onSaved={(fresh) => { setShowForm(false); setEditingId(null); setViewing(fresh); queryClient.invalidateQueries({ queryKey: ["price-lists"] }); }} />}
       {deleting && <ConfirmDialog open title="Delete Price List" message={`Delete "${deleting.name}"? This cannot be undone.`} onConfirm={() => { deleteMutation.mutate(deleting.id); setDeleting(null); }} onCancel={() => setDeleting(null)} />}
@@ -235,7 +237,7 @@ function PriceListForm({ priceList, onClose, onSaved }: { priceList: PriceList |
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Description</label>
-              <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional note about this price list" />
+              <TextArea rows={2} value={description} onChange={setDescription} placeholder="Optional note about this price list" />
             </div>
           </div>
         </section>
@@ -249,11 +251,11 @@ function PriceListForm({ priceList, onClose, onSaved }: { priceList: PriceList |
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Valid From</label>
-                <input type="date" className="input" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+                <DatePicker value={validFrom} onChange={setValidFrom} ariaLabel="Valid From" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Valid To</label>
-                <input type="date" className="input" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+                <DatePicker value={validTo} onChange={setValidTo} ariaLabel="Valid To" />
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
@@ -297,7 +299,7 @@ function PriceListForm({ priceList, onClose, onSaved }: { priceList: PriceList |
               ))}
             </div>
           ) : (
-            <div className="p-5 text-center text-sm text-muted border-t-0">No items yet. Add a product to start pricing.</div>
+            <EmptyState compact title="No items yet" message="Add a product to start pricing." />
           )}
         </section>
       </form>
@@ -388,10 +390,7 @@ function PriceListDetail({ priceList, currencySymbol, onClose, onEdit }: { price
           {isLoading ? (
             <Skeleton rows={3} cols={4} />
           ) : items.length === 0 ? (
-            <div className="text-center py-10 text-sm text-muted border-2 border-dashed border-border rounded-xl">
-              <Package size={24} className="mx-auto mb-2 text-faint" />
-              No products in this price list yet.
-            </div>
+            <EmptyState variant="block" icon={<Package size={48} />} title="No products in this price list yet" message="Add products to set their prices in this list." />
           ) : (
             <div className="border border-border rounded-xl overflow-hidden">
               <table className="w-full text-sm">

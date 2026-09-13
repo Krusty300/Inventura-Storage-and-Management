@@ -12,6 +12,7 @@ import {
   ReceiptText,
   ClipboardList,
   ShieldCheck,
+  CheckCircle2,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid, Legend } from "recharts";
@@ -42,6 +43,7 @@ import GlobalSearch from "../components/GlobalSearch";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ProgressBar from "../components/ProgressBar";
 import Skeleton from "../components/Skeleton";
+import EmptyState from "../components/EmptyState";
 import AttachmentSection from "../components/AttachmentSection";
 import { errorMessage } from "../utils/errors";
 import WidgetPanel from "../components/WidgetPanel";
@@ -468,7 +470,7 @@ export default function Dashboard() {
                 <div
                   key={card.label}
                   onClick={() => card.link && navigate(card.link)}
-                  className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""} ${card.highlight ? "border-l-4 border-l-red-500" : ""}`}
+                  className={`card ${card.link ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
                 >
                   <p className="text-sm text-muted">{card.label}</p>
                   <p className={`text-2xl font-bold mt-1 ${card.highlight ? "text-red-600 dark:text-red-400" : ""}`}>
@@ -516,7 +518,7 @@ export default function Dashboard() {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No stock movements in this period</p>
+            <EmptyState compact title="No stock movements in this period" message="Record receiving or stock moves to see trends here." />
           )}
         </div>
         )}
@@ -537,7 +539,7 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No category valuation data</p>
+            <EmptyState compact title="No category valuation data" message="Stocked products with categories will show here." />
           )}
         </div>
         )}
@@ -573,7 +575,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No sales in this period</p>
+            <EmptyState compact title="No sales in this period" message="Top-selling products will appear once you record sales." />
           )}
         </div>
         )}
@@ -612,7 +614,7 @@ export default function Dashboard() {
               )}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No profit data</p>
+            <EmptyState compact title="No profit data" message="Completed work orders will show profit analysis here." />
           )}
         </div>
         )}
@@ -643,7 +645,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No pending ASNs</p>
+            <EmptyState compact title="No pending ASNs" message="Advance shipping notices awaiting arrival will appear here." />
           )}
         </div>
         )}
@@ -678,7 +680,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No open cycle counts</p>
+            <EmptyState compact title="No open cycle counts" message="Start a cycle count to verify on-hand stock." />
           )}
         </div>
         )}
@@ -688,7 +690,7 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold mb-4">Recent Stock Movements</h2>
           <div className="space-y-3">
             {stats.recent_movements.length === 0 && (
-              <p className="text-muted text-sm">No recent movements</p>
+              <EmptyState compact title="No recent movements" message="Stock movements will appear here." />
             )}
             {stats.recent_movements.map((m) => (
               <div key={m.id} className="flex items-center justify-between text-sm">
@@ -718,7 +720,7 @@ export default function Dashboard() {
             {salesQuery.isPending ? (
             <ListRowsSkeleton />
           ) : !salesStats || salesStats.recent_sales.length === 0 ? (
-              <p className="text-muted text-sm">No sales recorded yet</p>
+              <EmptyState compact title="No sales recorded yet" message="Recent sales will appear here." />
             ) : (
               salesStats.recent_sales.map((s) => (
                 <div key={s.id} className="flex items-center justify-between text-sm">
@@ -746,7 +748,7 @@ export default function Dashboard() {
           </div>
           <div className="space-y-3">
             {stats.low_stock_products.length === 0 && (
-              <p className="text-muted text-sm">All products are well-stocked</p>
+              <EmptyState compact icon={<CheckCircle2 size={20} />} title="All products are well-stocked" message="Items below their reorder level will show here." />
             )}
             {stats.low_stock_products.map((p) => {
               const qty = p.sellable ?? p.quantity;
@@ -774,7 +776,7 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold mb-4">Expiring Soon</h2>
           <div className="space-y-3">
             {stats.expiring_products.length === 0 && (
-              <p className="text-muted text-sm">No products expiring in the next 30 days</p>
+              <EmptyState compact title="No products expiring in the next 30 days" message="When batch expiry dates approach, they'll show here." />
             )}
             {stats.expiring_products.map((p) => (
               <div key={p.id} className="flex items-center justify-between text-sm">
@@ -815,7 +817,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No receipts recorded yet</p>
+            <EmptyState compact title="No receipts recorded yet" message="Record receiving to bring stock into inventory." />
           )}
         </div>
         )}
@@ -846,7 +848,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No LPNs yet</p>
+            <EmptyState compact title="No LPNs yet" message="Create an LPN to track pallets and totes." />
           )}
         </div>
         )}
@@ -871,7 +873,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No orders yet</p>
+            <EmptyState compact title="No orders yet" message="Purchase orders will appear here once created." />
           )}
         </div>
         )}
@@ -900,7 +902,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No shipments to process</p>
+            <EmptyState compact title="No shipments to process" message="Shipments awaiting picking or packing will appear here." />
           )}
         </div>
         )}
@@ -927,7 +929,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No open work orders</p>
+            <EmptyState compact title="No open work orders" message="Work orders awaiting completion will appear here." />
           )}
         </div>
         )}
@@ -951,7 +953,7 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No pending or failed quality checks</p>
+            <EmptyState compact title="No pending or failed quality checks" message="Quality checks awaiting resolution will appear here." />
           )}
         </div>
         )}
@@ -994,7 +996,7 @@ export default function Dashboard() {
               )}
             </div>
           ) : (
-            <p className="text-muted text-sm py-16 text-center">No costing data</p>
+            <EmptyState compact title="No costing data" message="Completed work orders will show manufacturing cost here." />
           )}
         </div>
         )}

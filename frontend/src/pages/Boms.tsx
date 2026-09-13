@@ -7,6 +7,7 @@ import type { BOM, PaginatedResponse, ProductCost } from "../types";
 import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
+import TextArea from "../components/TextArea";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useDebounce } from "../hooks/useDebounce";
@@ -123,7 +124,7 @@ export default function Boms() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : boms.length === 0 ? (
-              <EmptyState title="No BOMs yet" message="Create a bill of materials to define how a product is manufactured." actionLabel="New BOM" onAction={openNew} />
+              <EmptyState title={search ? "No matching BOMs" : "No BOMs yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create a bill of materials to define how a product is manufactured."} actionLabel={search ? undefined : "New BOM"} onAction={search ? undefined : openNew} />
             ) : boms.map((b) => (
               <tr key={b.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(b)}>
                 <td className="px-4 py-3 font-medium">{b.name || b.product_name}</td>
@@ -250,7 +251,7 @@ function BomForm({ bom, onClose, onSaved }: { bom: BOM | null; onClose: () => vo
 
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Description</label>
-          <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          <TextArea rows={2} value={description} onChange={setDescription} />
         </div>
 
         <div className="border border-border rounded-xl overflow-hidden bg-app/50">
@@ -399,6 +400,9 @@ function BomDetail({ bom, onClose }: { bom: BOM; onClose: () => void }) {
                   </tr>
                 );
               })}
+              {bom.items.length === 0 && (
+                <EmptyState title="No components" message="This bill of materials has no components yet." icon={<Layers size={48} />} />
+              )}
             </tbody>
           </table>
         </div>

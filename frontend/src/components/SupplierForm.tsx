@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Camera, Trash2 } from "lucide-react";
 import api from "../api/client";
 import type { Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
 import SlideOver from "./SlideOver";
+import FileUploadButton from "./FileUploadButton";
+import TextArea from "./TextArea";
 import { errorMessage } from "../utils/errors";
 import { entityImageUrl } from "../utils/images";
 import { onImageError } from "../utils/placeholders";
@@ -28,7 +30,6 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const queryClient = useQueryClient();
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const [imageUrl, setImageUrl] = useState("");
   const [imageBusy, setImageBusy] = useState(false);
 
@@ -68,7 +69,6 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
       addToast(errorMessage(err, "Failed to upload profile image"), "error");
     }
     setImageBusy(false);
-    if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
   const handleImageRemove = async () => {
@@ -140,11 +140,11 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
         <div className="rounded-xl border border-border bg-app p-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Address</label>
-            <textarea className="input" rows={2} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+            <TextArea rows={2} value={form.address} onChange={(v) => setForm({ ...form, address: v })} />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-            <textarea className="input" rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+            <TextArea rows={2} value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} />
           </div>
         </div>
 
@@ -165,15 +165,20 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => imageInputRef.current?.click()} disabled={imageBusy} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Upload profile image">
+                <FileUploadButton
+                  onFileChange={handleImageUpload}
+                  accept=".png,.jpg,.jpeg,.gif,.webp"
+                  disabled={imageBusy}
+                  className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
+                  ariaLabel="Upload profile image"
+                >
                   <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
-                </button>
+                </FileUploadButton>
                 {imageUrl && (
                   <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
                     <Trash2 size={13} />Remove
                   </button>
                 )}
-                <input ref={imageInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={handleImageUpload} />
               </div>
             </div>
           </div>

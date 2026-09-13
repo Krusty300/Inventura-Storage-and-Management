@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Modal from "./Modal";
 import FittedSelect from "./FittedSelect";
+import TextArea from "./TextArea";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, Product } from "../types";
@@ -147,7 +148,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
 
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Notes (optional)</label>
-            <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <TextArea rows={2} value={notes} onChange={setNotes} />
           </div>
 
           {error && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{error}</div>}

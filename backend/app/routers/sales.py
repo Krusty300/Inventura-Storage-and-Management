@@ -29,13 +29,14 @@ from app.services.payment_methods import resolve_payment_details, validate_payme
 from app.services.pricing import apply_promotion, resolve_price, validate_promotion, PromoError
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    ACCENT, BODY_CENTER, BODY_RIGHT, FONT, MARGIN, MUTED, PAGE_H, money,
+    ACCENT, BODY_RIGHT, FONT, MARGIN, MUTED, money,
     draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals,
-    draw_watermark, new_canvas, render_pdf,
+    draw_watermark, new_canvas, render_pdf, truncate_to_width,
 )
 from app.utils import get_or_404, log_activity, broadcast_change
 from app.services.cache import settings_cache
+from app.services.filters import apply_date_range, apply_numeric_range
 
 router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(require_permission("sales.view"))])
 
@@ -285,6 +286,14 @@ def list_sales(
     channel_id: int | None = None,
     payment_method: str | None = Query(None),
     status: str | None = Query(None),
+    created_after: str = Query(""),
+    created_before: str = Query(""),
+    refunded_after: str = Query(""),
+    refunded_before: str = Query(""),
+    total_min: str = Query(""),
+    total_max: str = Query(""),
+    subtotal_min: str = Query(""),
+    subtotal_max: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -303,6 +312,10 @@ def list_sales(
         q = q.filter(Sale.payment_method == payment_method)
     if status:
         q = q.filter(Sale.status == status)
+    q = apply_date_range(q, Sale.created_at, created_after, created_before, "created_at")
+    q = apply_date_range(q, Sale.refunded_at, refunded_after, refunded_before, "refunded_at")
+    q = apply_numeric_range(q, Sale.total_amount, total_min, total_max, "total_amount")
+    q = apply_numeric_range(q, Sale.subtotal, subtotal_min, subtotal_max, "subtotal")
     total = q.count()
     items = q.order_by(Sale.created_at.desc()).offset(skip).limit(limit).all()
     outs = _apply_sale_locations_batch(db, [SaleOut.model_validate(s) for s in items])
@@ -329,6 +342,11 @@ def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depe
     new_payment_status = updates.get("payment_status")
     if new_payment_status is not None and new_payment_status not in ("pending", "completed", "failed", "cancelled"):
         raise HTTPException(status_code=400, detail="Invalid payment_status (allowed: pending, completed, failed, cancelled)")
+    if new_status == "refunded":
+        raise HTTPException(
+            status_code=400,
+            detail="Refunds must be processed via the sale's refund action so stock is restored",
+        )
     for s in sales:
         if new_status and s.status not in _VALID_STATUS_TRANSITIONS:
             raise HTTPException(status_code=400, detail=f"Cannot change status of sale '{s.invoice_number}' from '{s.status}'")
@@ -656,7 +674,7 @@ def delete_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(requir
 
 
 @router.post("/cleanup-expired", response_model=dict)
-def cleanup_expired_pending_sales(db: Session = Depends(get_db)):
+def cleanup_expired_pending_sales(db: Session = Depends(get_db), user=Depends(require_permission("sales.refund"))):
     """Auto-cancel pending sales older than 10 minutes with failed or null
     payment status.  Returns the number of cancelled sales."""
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
@@ -758,17 +776,14 @@ def sale_pdf(sale_id: int, db: Session = Depends(get_db)):
 
     info_y = min(bill_y, pay_y)
 
-    loc_map = _movement_location_map(db, [sale.invoice_number]).get(sale.invoice_number, {})
-    headers = ["Item", "Location", "Unit Price", "Qty", "Amount"]
-    aligns = ["l", "l", "r", "r", "r"]
-    col_widths = [210.0, 100.0, 70.0, 38.0, 88.0]
+    headers = ["Item", "Unit Price", "Qty", "Amount"]
+    aligns = ["l", "r", "r", "r"]
+    col_widths = [310.0, 72.0, 40.0, 84.0]
     rows = []
     for item in sale.items:
         name = item.product_name or f"Product #{item.product_id}"
-        locs = loc_map.get(item.product_id, [])
         rows.append([
-            (name[:44] + "\u2026") if len(name) > 44 else name,
-            (", ".join(locs)[:22] + "\u2026") if len(", ".join(locs)) > 22 else (", ".join(locs) or "\u2014"),
+            truncate_to_width(name, 306.0),
             money(currency, item.unit_price),
             str(item.quantity),
             money(currency, float(item.unit_price) * item.quantity),
@@ -840,15 +855,16 @@ def bulk_sales_pdf(ids: list[int], db: Session = Depends(get_db)):
     base_dir = Path(__file__).resolve().parent.parent
     sales = db.query(Sale).filter(Sale.id.in_(ids)).order_by(Sale.id).all()
 
+    s = db.query(Settings).first()
+    store_name = (s.store_name if s else None) or "My Store"
+    store_lines = [store_name] + [ln for ln in (
+        (s.address if s else None),
+        (s.phone if s else None),
+        (s.email if s else None),
+    ) if ln]
+
     for sale in sales:
-        s = db.query(Settings).first()
-        store_name = (s.store_name if s else None) or "My Store"
-        currency = sale.currency_symbol or (s.currency_symbol if s else "$") or "$"
-        store_lines = [store_name] + [ln for ln in (
-            (s.address if s else None),
-            (s.phone if s else None),
-            (s.email if s else None),
-        ) if ln]
+        currency = sale.currency_symbol or (s.currency_symbol if s else None) or "$"
 
         c, buf = new_canvas(f"Invoice {sale.invoice_number}")
 
@@ -894,17 +910,14 @@ def bulk_sales_pdf(ids: list[int], db: Session = Depends(get_db)):
 
         info_y = min(bill_y, pay_y)
 
-        loc_map = _movement_location_map(db, [sale.invoice_number]).get(sale.invoice_number, {})
-        headers = ["Item", "Location", "Unit Price", "Qty", "Amount"]
-        aligns = ["l", "l", "r", "r", "r"]
-        col_widths = [210.0, 100.0, 70.0, 38.0, 88.0]
+        headers = ["Item", "Unit Price", "Qty", "Amount"]
+        aligns = ["l", "r", "r", "r"]
+        col_widths = [310.0, 72.0, 40.0, 84.0]
         rows = []
         for item in sale.items:
             name = item.product_name or f"Product #{item.product_id}"
-            locs = loc_map.get(item.product_id, [])
             rows.append([
-                (name[:44] + "\u2026") if len(name) > 44 else name,
-                (", ".join(locs)[:22] + "\u2026") if len(", ".join(locs)) > 22 else (", ".join(locs) or "\u2014"),
+                truncate_to_width(name, 306.0),
                 money(currency, item.unit_price),
                 str(item.quantity),
                 money(currency, float(item.unit_price) * item.quantity),

@@ -21,6 +21,7 @@ const PASSWORD_HINT = "At least 8 characters.";
 import { usePageSize } from "../hooks/usePageSize";
 import { errorMessage } from "../utils/errors";
 import FittedSelect from "../components/FittedSelect";
+import PasswordInput from "../components/PasswordInput";
 
 export default function Users() {
   const formatDate = useDateFormat();
@@ -289,10 +290,10 @@ export default function Users() {
               <EmptyState title="Access denied" message="Only administrators can view and manage users." />
             ) : !users || users.length === 0 ? (
               <EmptyState
-                title="No users found"
-                message="Use Add User to create accounts for your team."
-                actionLabel={can("users.create") ? "Add User" : undefined}
-                onAction={can("users.create") ? () => setShowCreate(true) : undefined}
+                title={search ? "No matching users" : "No users found"}
+                message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Use Add User to create accounts for your team."}
+                actionLabel={search ? undefined : can("users.create") ? "Add User" : undefined}
+                onAction={search ? undefined : can("users.create") ? () => setShowCreate(true) : undefined}
               />
             ) : users.map((u) => (
               <tr key={u.id} className="hover:bg-app">
@@ -500,7 +501,7 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         {field("Email", "email", "create-email", "email")}
         <div>
           <label htmlFor="create-password" className="block text-sm font-medium text-ink mb-1">Password</label>
-          <input id="create-password" type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+          <PasswordInput id="create-password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
           <p className="text-xs text-muted mt-1">{PASSWORD_HINT}</p>
         </div>
         <div>
@@ -549,7 +550,7 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: User; onClose: (
         <p className="text-sm text-muted">Set a new password for <strong>{user.username}</strong>. The user will need to sign in with this new password.</p>
         <div>
           <label htmlFor="reset-password" className="block text-sm font-medium text-ink mb-1">New password</label>
-          <input id="reset-password" type="password" className="input" value={new_password} onChange={(e) => setNewPassword(e.target.value)} required />
+          <PasswordInput id="reset-password" value={new_password} onChange={setNewPassword} />
           <p className="text-xs text-muted mt-1">{PASSWORD_HINT}</p>
         </div>
         <div className="flex justify-end gap-3 pt-4">

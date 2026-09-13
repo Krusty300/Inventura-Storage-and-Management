@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, PackageX } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PRODUCTS } from "../utils/constants";
@@ -8,10 +8,13 @@ import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
+import TextArea from "./TextArea";
 import { isSelectable, selectableProducts, productLabel } from "../utils/variants";
 import { formatCurrency } from "../utils/currency";
 import { errorMessage } from "../utils/errors";
 import { useSettings } from "../hooks/useSettings";
+import DatePicker from "./DatePicker";
+import EmptyState from "./EmptyState";
 
 interface Props {
   order?: Order;
@@ -35,6 +38,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
   });
   const [supplierId, setSupplierId] = useState(order?.supplier_id?.toString() || "");
   const [notes, setNotes] = useState(order?.notes || "");
+  const [expectedArrival, setExpectedArrival] = useState(order?.expected_arrival?.slice(0, 16) ?? "");
   const [items, setItems] = useState(
     order?.items?.map((i) => ({ product_id: i.product_id.toString(), quantity: i.quantity.toString(), unit_price: i.unit_price.toString() })) || [{ product_id: "", quantity: "1", unit_price: "0" }]
   );
@@ -85,6 +89,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
       const payload = {
         supplier_id: supplierId ? parseInt(supplierId) : null,
         notes,
+        expected_arrival: expectedArrival || null,
         items: items.map((i) => ({
           product_id: parseInt(i.product_id),
           quantity: parseInt(i.quantity),
@@ -153,8 +158,24 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
         </div>
 
         {supplierId && supplierOrderable.length === 0 && !supplierProducts.length && (
-          <p className="text-faint text-sm">No orderable products found for this supplier.</p>
+          <div className="border border-dashed border-border rounded-lg px-4 py-6">
+            <EmptyState
+              title="No orderable products"
+              message="This supplier has no orderable products yet."
+              icon={<PackageX size={48} />}
+            />
+          </div>
         )}
+
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1">Expected Arrival</label>
+          <DatePicker
+            value={expectedArrival}
+            onChange={setExpectedArrival}
+            mode="datetime"
+            ariaLabel="Expected Arrival"
+          />
+        </div>
 
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -203,7 +224,7 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
 
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={2} aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <TextArea rows={2} ariaLabel="Notes" value={notes} onChange={setNotes} />
         </div>
 
         <div className="flex justify-end gap-3 pt-2 border-t border-border">

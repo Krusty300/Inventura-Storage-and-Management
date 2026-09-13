@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { renderWithProviders } from "./testUtils";
+import { renderWithProviders, pickDate } from "./testUtils";
 import api from "../api/client";
 
 vi.mock("../api/client", () => ({
@@ -120,7 +120,7 @@ describe("ASNs Page", () => {
     renderWithProviders(<ASNs />);
     fireEvent.click(await screen.findByLabelText("Edit ASN-0001"));
     const dialog = await screen.findByRole("dialog", { name: "Edit ASN-0001" });
-    fireEvent.change(within(dialog).getByLabelText("Expected Arrival"), { target: { value: "2026-02-15" } });
+    pickDate("Expected Arrival", "2026-02-15");
     fireEvent.change(within(dialog).getByLabelText("Notes"), { target: { value: "updated note" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
     await waitFor(() => {

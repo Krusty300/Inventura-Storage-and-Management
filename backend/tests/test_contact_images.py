@@ -85,3 +85,72 @@ def test_sale_item_image_falls_back_to_gallery(auth_headers):
     assert sale["items"][0]["product_image"] == first
     detail = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
     assert detail["items"][0]["product_image"] == first
+
+
+def _upload_two(auth_headers, product_id):
+    resp = client.post(
+        f"/api/products/{product_id}/images",
+        files=[("files", ("a.png", PNG, "image/png")), ("files", ("b.png", PNG, "image/png"))],
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def test_delete_product_image_advances_cover(auth_headers, monkeypatch, tmp_path):
+    from app.routers import products as products_module
+    monkeypatch.setattr(products_module, "UPLOAD_DIR", tmp_path)
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "IMG-PROD-A", "name": "Cover Advancer", "quantity": 10, "unit_price": 5.0}, headers=auth_headers).json()
+    gallery = _upload_two(auth_headers, prod["id"])
+    images = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["images"]
+    first, second = images[0], images[1]
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["image_url"] == first["url"]
+    assert gallery[1]["url"] != first["url"]
+
+    resp = client.delete(f"/api/products/{prod['id']}/images/{first['id']}", headers=auth_headers)
+    assert resp.status_code == 200
+    got = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert got["image_url"] == second["url"]
+    assert [i["url"] for i in got["images"]] == [second["url"]]
+
+
+def test_delete_last_product_image_clears_cover(auth_headers, monkeypatch, tmp_path):
+    from app.routers import products as products_module
+    monkeypatch.setattr(products_module, "UPLOAD_DIR", tmp_path)
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "IMG-PROD-B", "name": "Cover Clearer", "quantity": 10, "unit_price": 5.0}, headers=auth_headers).json()
+    row = client.post(f"/api/products/{prod['id']}/upload-image", files={"file": ("only.png", PNG, "image/png")}, headers=auth_headers).json()["image_url"]
+    image_id = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["images"][0]["id"]
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["image_url"] == row
+
+    client.delete(f"/api/products/{prod['id']}/images/{image_id}", headers=auth_headers)
+    got = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert got["image_url"] == ""
+    assert got["images"] == []
+
+
+def test_single_upload_replaces_previous_row(auth_headers, monkeypatch, tmp_path):
+    from app.routers import products as products_module
+    monkeypatch.setattr(products_module, "UPLOAD_DIR", tmp_path)
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "IMG-PROD-C", "name": "Single Replacer", "quantity": 10, "unit_price": 5.0}, headers=auth_headers).json()
+    first = client.post(f"/api/products/{prod['id']}/upload-image", files={"file": ("one.png", PNG, "image/png")}, headers=auth_headers).json()["image_url"]
+    second = client.post(f"/api/products/{prod['id']}/upload-image", files={"file": ("two.png", PNG, "image/png")}, headers=auth_headers).json()["image_url"]
+    assert first != second
+    got = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert got["image_url"] == second
+    assert [i["url"] for i in got["images"]] == [second]
+
+
+def test_reorder_updates_cover_image_url(auth_headers, monkeypatch, tmp_path):
+    from app.routers import products as products_module
+    monkeypatch.setattr(products_module, "UPLOAD_DIR", tmp_path)
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "IMG-PROD-D", "name": "Reorderer", "quantity": 10, "unit_price": 5.0}, headers=auth_headers).json()
+    gallery = _upload_two(auth_headers, prod["id"])
+    second_url = gallery[1]["url"]
+    images = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["images"]
+    order = [images[1]["id"], images[0]["id"]]
+
+    resp = client.put(f"/api/products/{prod['id']}/images/reorder", json={"image_ids": order}, headers=auth_headers)
+    assert resp.status_code == 200
+    got = client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()
+    assert got["image_url"] == second_url
+    assert [i["sort_order"] for i in got["images"]] == [0, 1]

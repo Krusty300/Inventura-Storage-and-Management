@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, CheckCheck, AlertTriangle, Info, PackageCheck, X, ArrowRight } from "lucide-react";
+import EmptyState from "./EmptyState";
 import api from "../api/client";
 import type { Notification } from "../types";
 import { useRealtime } from "../context/RealtimeContext";
@@ -167,7 +168,7 @@ export default function NotificationBell() {
               ))}
             </div>
           ) : items.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-muted text-center">No notifications</p>
+            <EmptyState compact icon={<Bell size={20} />} title="No notifications" message="Updates about your inventory will appear here." />
           ) : (
             <>
               <div className="divide-y divide-border">

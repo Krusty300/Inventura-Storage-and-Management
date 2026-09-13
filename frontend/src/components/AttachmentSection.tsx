@@ -389,7 +389,7 @@ export default function AttachmentSection({ entityType, entityId, canEdit = true
         onCancel={() => setToDelete(null)}
       />
 
-      <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.original_filename || "Preview"} wide>
+      <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.original_filename || "Preview"} breadcrumb="" wide>
         {preview && (
           <div>
             {previewKind(preview.content_type) === "image" && previewUrl && (

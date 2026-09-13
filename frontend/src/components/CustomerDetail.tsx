@@ -1,10 +1,12 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
-import { Users, Tag, Pencil, Camera, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Users, Tag, Pencil, Camera, Trash2, PackageSearch } from "lucide-react";
 import SlideOver from "./SlideOver";
 import Skeleton from "./Skeleton";
 import AttachmentSection from "./AttachmentSection";
+import EmptyState from "./EmptyState";
+import FileUploadButton from "./FileUploadButton";
 import api from "../api/client";
 import type { Customer, CustomerStats, FrequentProduct, PaginatedResponse, Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
@@ -29,7 +31,6 @@ export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
   const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const [imageUrl, setImageUrl] = useState(customer.image_url);
   const [imageBusy, setImageBusy] = useState(false);
 
@@ -54,7 +55,6 @@ export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
       addToast(errorMessage(err, "Failed to upload profile image"), "error");
     }
     setImageBusy(false);
-    if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
   const handleImageRemove = async () => {
@@ -125,15 +125,20 @@ export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
             <div className="flex items-center gap-2 flex-wrap">
               {can("customers.update") && (
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => imageInputRef.current?.click()} disabled={imageBusy} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Upload profile image">
+                  <FileUploadButton
+                    onFileChange={handleImageUpload}
+                    accept=".png,.jpg,.jpeg,.gif,.webp"
+                    disabled={imageBusy}
+                    className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
+                    ariaLabel="Upload profile image"
+                  >
                     <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
-                  </button>
+                  </FileUploadButton>
                   {imageUrl && (
                     <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
                       <Trash2 size={13} />Remove
                     </button>
                   )}
-                  <input ref={imageInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={handleImageUpload} />
                 </div>
               )}
               <span className="badge badge-info">{customer.customer_type}</span>
@@ -214,7 +219,12 @@ export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
           {frequentLoading ? (
             <Skeleton variant="rows" rows={3} cols={4} />
           ) : frequentProducts.length === 0 ? (
-            <p className="text-faint">No purchase history yet.</p>
+            <EmptyState
+              compact
+              icon={<PackageSearch size={20} />}
+              title="No purchase history yet"
+              message="Frequently purchased products will appear here once this customer places orders."
+            />
           ) : (
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm min-w-max">
@@ -246,7 +256,12 @@ export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
           {isLoading ? (
             <Skeleton variant="rows" rows={3} cols={5} />
           ) : history.length === 0 ? (
-            <p className="text-faint">No purchases recorded yet.</p>
+            <EmptyState
+              compact
+              icon={<PackageSearch size={20} />}
+              title="No purchases recorded yet"
+              message="Purchases will appear here once this customer places orders."
+            />
           ) : (
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm min-w-max">

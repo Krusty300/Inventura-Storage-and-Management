@@ -19,10 +19,11 @@ from app.models.supplier import Supplier
 from app.schemas.receipt import ReceiptCreate, ReceiptOut
 from app.services import inventory
 from app.services.auth import require_permission
+from app.services.filters import apply_date_range, apply_numeric_range
 from app.services.notify import notify_low_stock
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, FONT, MUTED, money, draw_banner_header, draw_info_block, draw_item_table,
+    BODY_RIGHT, MARGIN, money, draw_banner_header, draw_info_block, draw_item_table,
     draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
 )
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
@@ -43,6 +44,12 @@ def _load_receipt(db: Session, receipt_id: int) -> Receipt:
 def list_receipts(
     search: str = Query(""),
     supplier_id: int | None = None,
+    created_after: str = Query(""),
+    created_before: str = Query(""),
+    total_quantity_min: str = Query(""),
+    total_quantity_max: str = Query(""),
+    total_cost_min: str = Query(""),
+    total_cost_max: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -55,6 +62,9 @@ def list_receipts(
         q = q.filter(Receipt.receipt_number.ilike(like) | Receipt.reference.ilike(like))
     if supplier_id:
         q = q.filter(Receipt.supplier_id == supplier_id)
+    q = apply_date_range(q, Receipt.created_at, created_after, created_before, "created_at")
+    q = apply_numeric_range(q, Receipt.total_quantity, total_quantity_min, total_quantity_max, "total_quantity")
+    q = apply_numeric_range(q, Receipt.total_cost, total_cost_min, total_cost_max, "total_cost")
     total = q.count()
     items = q.order_by(Receipt.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [ReceiptOut.model_validate(r) for r in items], "total": total,

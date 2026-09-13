@@ -10,8 +10,9 @@ import TransferModal from "../components/TransferModal";
 import FittedSelect from "../components/FittedSelect";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
+
 import EmptyState from "../components/EmptyState";
+import Table from "../components/Table";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
@@ -123,27 +124,29 @@ export default function StockMovements() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Stock movements table">
-          <thead>
-            <tr className="bg-subtle text-left">
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Route</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Qty Change</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Reference</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">User</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Notes</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {isLoading ? (
-              <Skeleton rows={5} cols={9} />
-            ) : movements.length === 0 ? (
-              <EmptyState title="No movements recorded" message="Record a stock movement to start tracking inventory changes." actionLabel="Record Movement" onAction={() => setShowForm(true)} />
-            ) : movements.map((m) => (
+        <Table
+          ariaLabel="Stock movements table"
+          role="grid"
+          headClassName="bg-subtle text-left"
+          columns={[
+            { key: "date", header: "Date" },
+            { key: "product", header: "Product" },
+            { key: "type", header: "Type" },
+            { key: "route", header: "Route" },
+            { key: "qtyChange", header: "Qty Change" },
+            { key: "reference", header: "Reference" },
+            { key: "user", header: "User" },
+            { key: "notes", header: "Notes" },
+            { key: "actions", header: "Actions" },
+          ]}
+          loading={isLoading}
+          skeletonRows={5}
+          noData={movements.length === 0}
+          empty={
+              <EmptyState title={search || movementType !== "all" ? "No matching movements" : "No movements recorded"} message={search || movementType !== "all" ? "Nothing matched your search or filters. Try adjusting them." : "Record a stock movement to start tracking inventory changes."} actionLabel={search || movementType !== "all" ? undefined : "Record Movement"} onAction={search || movementType !== "all" ? undefined : () => setShowForm(true)} />
+          }
+        >
+          {movements.map((m) => (
               <tr key={m.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(m); }}>
                 <td className="px-4 py-3 text-muted">
                   {formatDate(m.created_at)}
@@ -209,9 +212,7 @@ export default function StockMovements() {
                 </td>
               </tr>
             ))}
-          </tbody>
-          </table>
-        </div>
+          </Table>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Shield, ShieldOff, ShieldCheck } from "lucide-react";
 import api from "../api/client";
 import Skeleton from "./Skeleton";
+import EmptyState from "./EmptyState";
 import SlideOver from "./SlideOver";
 import type { PaginatedResponse, User } from "../types";
 import { statusBadge } from "../utils/statusBadges";
@@ -100,7 +101,7 @@ export default function UserDetail({ user, onClose }: Props) {
           {isLoading ? (
             <Skeleton variant="rows" rows={3} cols={3} />
           ) : logs.length === 0 ? (
-            <p className="text-muted py-2">No activity recorded for this user.</p>
+            <EmptyState compact icon={<ShieldCheck size={20} />} title="No activity recorded for this user" message="Sign-in and permission changes will appear here." />
           ) : (
             <ul className="divide-y divide-border max-h-80 overflow-y-auto">
               {logs.map((log) => (

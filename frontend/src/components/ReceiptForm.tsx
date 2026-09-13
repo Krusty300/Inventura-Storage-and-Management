@@ -5,7 +5,9 @@ import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
+import DatePicker from "./DatePicker";
 import Skeleton from "./Skeleton";
+import TextArea from "./TextArea";
 import LocationPicker from "./LocationPicker";
 import StockLocationHints from "./StockLocationHints";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
@@ -133,7 +135,7 @@ function ReceiptItemRow({ row, idx, productList, rowProducts, locations, onChang
         </div>
         <div className="sm:col-span-5">
           <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
-          <input type="date" className="input" value={row.expiry_date} onChange={(e) => onChange(idx, "expiry_date", e.target.value)} />
+          <DatePicker value={row.expiry_date} onChange={(v) => onChange(idx, "expiry_date", v)} ariaLabel="Expiry" />
         </div>
         <div className="sm:col-span-4">
           <label className="block text-xs font-medium text-muted mb-1">Location</label>
@@ -166,11 +168,11 @@ function ReceiptItemRow({ row, idx, productList, rowProducts, locations, onChang
           <label className="block text-xs font-medium text-muted mb-1">
             Serial numbers (one per line, must match quantity)
           </label>
-          <textarea
-            className="input font-mono text-xs"
+          <TextArea
+            className="font-mono text-xs"
             rows={2}
             value={row.serial_numbers}
-            onChange={(e) => onChange(idx, "serial_numbers", e.target.value)}
+            onChange={(v) => onChange(idx, "serial_numbers", v)}
             placeholder={"SN-001\nSN-002"}
           />
         </div>

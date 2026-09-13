@@ -1,9 +1,11 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
-import { Pencil, Camera, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Pencil, Camera, Trash2, ClipboardList } from "lucide-react";
 import SlideOver from "./SlideOver";
 import Skeleton from "./Skeleton";
+import EmptyState from "./EmptyState";
+import FileUploadButton from "./FileUploadButton";
 import AttachmentSection from "./AttachmentSection";
 import api from "../api/client";
 import type { Order, PaginatedResponse, Product, Supplier, SupplierStats } from "../types";
@@ -28,7 +30,6 @@ export default function SupplierDetail({ supplier, onClose, onEdit }: Props) {
   const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const [imageUrl, setImageUrl] = useState(supplier.image_url);
   const [imageBusy, setImageBusy] = useState(false);
 
@@ -53,7 +54,6 @@ export default function SupplierDetail({ supplier, onClose, onEdit }: Props) {
       addToast(errorMessage(err, "Failed to upload profile image"), "error");
     }
     setImageBusy(false);
-    if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
   const handleImageRemove = async () => {
@@ -130,15 +130,20 @@ export default function SupplierDetail({ supplier, onClose, onEdit }: Props) {
             </div>
             {can("suppliers.update") && (
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => imageInputRef.current?.click()} disabled={imageBusy} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Upload profile image">
+                <FileUploadButton
+                  onFileChange={handleImageUpload}
+                  accept=".png,.jpg,.jpeg,.gif,.webp"
+                  disabled={imageBusy}
+                  className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
+                  ariaLabel="Upload profile image"
+                >
                   <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
-                </button>
+                </FileUploadButton>
                 {imageUrl && (
                   <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
                     <Trash2 size={13} />Remove
                   </button>
                 )}
-                <input ref={imageInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={handleImageUpload} />
               </div>
             )}
           </div>
@@ -197,7 +202,12 @@ export default function SupplierDetail({ supplier, onClose, onEdit }: Props) {
           {isLoading ? (
             <Skeleton variant="rows" rows={3} cols={4} />
           ) : history.length === 0 ? (
-            <p className="text-faint">No purchase orders yet.</p>
+            <EmptyState
+              compact
+              icon={<ClipboardList size={20} />}
+              title="No purchase orders yet"
+              message="Purchase orders will appear here once this supplier receives orders."
+            />
           ) : (
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm min-w-max">
@@ -233,7 +243,7 @@ export default function SupplierDetail({ supplier, onClose, onEdit }: Props) {
           {productsLoading ? (
             <Skeleton variant="rows" rows={3} cols={6} />
           ) : productRows.length === 0 ? (
-            <p className="text-faint">No products assigned to this supplier.</p>
+            <EmptyState variant="block" title="No products assigned to this supplier" message="Products you source from this supplier will appear here." />
           ) : (
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm min-w-max">

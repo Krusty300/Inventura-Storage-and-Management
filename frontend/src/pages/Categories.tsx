@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import Table from "../components/Table";
 import { Pencil, Trash2, Eye, ChevronDown, ChevronRight, FolderOpen, Folder, FolderTree, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -221,23 +222,21 @@ export default function Categories() {
       {view === "table" ? (
         <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Categories table">
-          <thead>
-            <tr className="bg-app text-left">
-              <th scope="col" className="px-4 py-3">
-                <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all categories" />
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Description</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {isLoading ? (
-              <Skeleton rows={5} cols={4} />
-            ) : categories.length === 0 ? (
-              <EmptyState title="No categories" message="Create your first category to organize products." actionLabel="Add Category" onAction={() => { setEditing(null); setShowForm(true); }} />
-            ) : categories.map((c) => (
+        <Table
+          columns={[
+            { key: 'select', header: <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all categories" />, className: 'px-4 py-3' },
+            { key: 'name', header: 'Name', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'description', header: 'Description', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'actions', header: 'Actions', className: 'px-4 py-3 font-medium text-muted' },
+          ]}
+          role="grid"
+          aria-label="Categories table"
+          loading={isLoading}
+          skeletonRows={5}
+          noData={categories.length === 0}
+          empty={<EmptyState title="No categories" message="Create your first category to organize products." actionLabel="Add Category" onAction={() => { setEditing(null); setShowForm(true); }} />}
+        >
+          {categories.map((c) => (
               <tr key={c.id} className="hover:bg-app">
                 <td className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} />
@@ -253,8 +252,7 @@ export default function Categories() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
+        </Table>
           </div>
         </div>
       ) : treeLoading ? (

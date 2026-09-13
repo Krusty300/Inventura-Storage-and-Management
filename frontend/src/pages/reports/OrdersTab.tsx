@@ -4,6 +4,8 @@ import api from "../../api/client";
 import type { OrderSummary } from "../../types";
 import { formatCurrency } from "../../utils/currency";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import EmptyState from "../../components/EmptyState";
+import { Truck } from "lucide-react";
 
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
 
@@ -26,7 +28,7 @@ export default function OrdersTab({ symbol }: { symbol: string }) {
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Orders by Status</h3>
           {data.by_status.length === 0 ? (
-            <p className="text-muted text-sm">No orders</p>
+            <EmptyState variant="block" title="No orders" message="Orders in this period will appear here." />
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -41,7 +43,7 @@ export default function OrdersTab({ symbol }: { symbol: string }) {
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Top Suppliers by Value</h3>
           {data.top_suppliers.length === 0 ? (
-            <p className="text-muted text-sm">No suppliers</p>
+            <EmptyState variant="block" icon={<Truck size={48} />} title="No suppliers" message="Top suppliers by spend will appear here once orders are placed." />
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={data.top_suppliers} layout="vertical">

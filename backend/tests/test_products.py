@@ -37,6 +37,86 @@ def test_search_products(auth_headers):
     assert any(p["name"] == "Searchable Item" for p in resp.json()["items"])
 
 
+def test_filter_products_by_date_range(auth_headers):
+    for i, (sku, name, days) in enumerate([("DR-OLD", "Old Item", 400), ("DR-NEW", "New Item", 1)]):
+        pid = client.post("/api/products", json={"location_id": 1, "sku": sku, "name": name}, headers=auth_headers).json()["id"]
+        # Punch the created_at timestamp to a known past/future date so the range query is deterministic.
+        from datetime import datetime, timezone
+        from tests.conftest import TestingSessionLocal
+        from app.models.product import Product
+        db = TestingSessionLocal()
+        p = db.get(Product, pid)
+        p.created_at = datetime(2026, 1, 1 if sku.startswith("DR-OLD") else 10, 12, 0, tzinfo=timezone.utc)
+        db.commit(); db.close()
+
+    before = client.get("/api/products?created_before=2026-01-05", headers=auth_headers).json()
+    assert any(p["name"] == "Old Item" for p in before["items"])
+    assert not any(p["name"] == "New Item" for p in before["items"])
+
+    range_ = client.get("/api/products?created_after=2026-01-05&created_before=2026-01-20", headers=auth_headers).json()
+    assert any(p["name"] == "New Item" for p in range_["items"])
+    assert not any(p["name"] == "Old Item" for p in range_["items"])
+
+
+def test_filter_products_by_numeric_ranges(auth_headers):
+    client.post("/api/products", json={"location_id": 1, "sku": "NR-CHEAP", "name": "Cheap", "unit_price": 5.0, "cost_price": 2.0, "quantity": 5}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "NR-PRICEY", "name": "Pricey", "unit_price": 50.0, "cost_price": 20.0, "quantity": 500}, headers=auth_headers)
+
+    pricey = client.get("/api/products?price_min=20", headers=auth_headers).json()
+    assert any(p["name"] == "Pricey" for p in pricey["items"])
+    assert not any(p["name"] == "Cheap" for p in pricey["items"])
+
+    band = client.get("/api/products?price_min=4&price_max=6", headers=auth_headers).json()
+    assert any(p["name"] == "Cheap" for p in band["items"])
+    assert not any(p["name"] == "Pricey" for p in band["items"])
+
+    heavy = client.get("/api/products?stock_min=100", headers=auth_headers).json()
+    assert any(p["name"] == "Pricey" for p in heavy["items"])
+    assert not any(p["name"] == "Cheap" for p in heavy["items"])
+
+
+def test_filter_products_rejects_invalid_dates(auth_headers):
+    resp = client.get("/api/products?created_before=not-a-date", headers=auth_headers)
+    assert resp.status_code == 400
+
+    resp = client.get("/api/products?expiry_after=not-a-date", headers=auth_headers)
+    assert resp.status_code == 400
+
+    resp = client.get("/api/products?stock_min=abc", headers=auth_headers)
+    assert resp.status_code == 400
+
+
+def test_filter_products_by_expiry_date_range(auth_headers):
+    """expiry_after/before must match the *effective* expiry the grid shows,
+    i.e. lot-tracked stock expiry counts even when Product.expiry_date is null."""
+    from datetime import date as _date
+    from tests.conftest import TestingSessionLocal
+    from app.models.lot import Lot
+    from app.models.stock_line import StockLine
+
+    pid_lot = client.post("/api/products", json={"location_id": 1, "sku": "EXP-LOT", "name": "Lot Expiry"}, headers=auth_headers).json()["id"]
+    db = TestingSessionLocal()
+    lot = Lot(product_id=pid_lot, lot_number="L-EXP-0915", expiry_date=_date(2026, 9, 15), status="in_stock")
+    db.add(lot)
+    db.flush()
+    db.add(StockLine(product_id=pid_lot, location_id=1, lot_id=lot.id, quantity=10))
+    db.commit(); db.close()
+
+    client.post("/api/products", json={"location_id": 1, "sku": "EXP-STATIC", "name": "Static Expiry", "expiry_date": "2026-10-01"}, headers=auth_headers)
+    client.post("/api/products", json={"location_id": 1, "sku": "EXP-OLD", "name": "Old Expiry", "expiry_date": "2025-01-01"}, headers=auth_headers)
+
+    in_range = client.get("/api/products?expiry_after=2026-09-01&expiry_before=2026-12-31", headers=auth_headers).json()
+    names = {p["name"] for p in in_range["items"]}
+    assert "Lot Expiry" in names      # lot-based expiry honored even without a static date
+    assert "Static Expiry" in names
+    assert "Old Expiry" not in names
+
+    out_of_range = client.get("/api/products?expiry_after=2026-10-02&expiry_before=2026-12-31", headers=auth_headers).json()
+    names = {p["name"] for p in out_of_range["items"]}
+    assert "Lot Expiry" not in names  # lot expired 09-15, before the "after" bound
+    assert "Static Expiry" not in names
+
+
 def test_get_product(auth_headers):
     create = client.post("/api/products", json={"location_id": 1, "sku": "SKU005", "name": "Get Me"}, headers=auth_headers)
     pid = create.json()["id"]

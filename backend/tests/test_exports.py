@@ -39,3 +39,16 @@ def test_lpns_export(auth_headers):
 def test_activity_logs_export(auth_headers):
     client.post("/api/products", json={"location_id": 1, "sku": "EXP-LOG", "name": "Log"}, headers=auth_headers)
     _assert_csv(client.get("/api/activity-logs/export", headers=auth_headers), "product")
+
+
+def test_products_export_respects_range_filters(auth_headers):
+    client.post("/api/products", json={"location_id": 1, "sku": "EXP-CHEAP", "name": "Cheap", "quantity": 0,
+                                       "unit_price": 5, "cost_price": 2}, headers=auth_headers).json()
+    client.post("/api/products", json={"location_id": 1, "sku": "EXP-DEAR", "name": "Dear", "quantity": 0,
+                                       "unit_price": 500, "cost_price": 2}, headers=auth_headers).json()
+
+    resp = client.get("/api/reports/export/products", params={"price_max": "100"}, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.content.decode()
+    assert "EXP-CHEAP" in body
+    assert "EXP-DEAR" not in body

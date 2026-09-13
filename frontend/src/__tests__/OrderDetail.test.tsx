@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
-import { renderWithProviders, makeQueryClient } from "./testUtils";
+import { renderWithProviders, pickDate, makeQueryClient } from "./testUtils";
 import api from "../api/client";
 import OrderDetail from "../components/OrderDetail";
 import type { Order } from "../types";
@@ -22,8 +22,10 @@ function makeOrder(overrides: Record<string, unknown> = {}): Order {
     status: "pending",
     total_amount: 250,
     notes: "",
+    expected_arrival: null,
     created_at: "2026-01-01T10:00:00",
     updated_at: "2026-01-01T10:00:00",
+    received_at: null,
     username: "tester",
     items: [],
     ...overrides,
@@ -125,7 +127,7 @@ describe("OrderDetail receive", () => {
     renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />);
     fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
     fireEvent.change(screen.getByLabelText("Lot number for Widget"), { target: { value: "LOT-9001" } });
-    fireEvent.change(screen.getByLabelText("Expiry date for Widget"), { target: { value: "2027-06-30" } });
+    pickDate("Expiry date for Widget", "2027-06-30");
     fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
     await vi.waitFor(() => {
       expect(putMock).toHaveBeenCalledWith("/orders/1", {

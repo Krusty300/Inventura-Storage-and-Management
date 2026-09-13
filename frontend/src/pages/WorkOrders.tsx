@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useState } from "react";
-import { Columns3, CheckCircle, Factory, Eye, List, Pencil, Play, Plus, Printer, Rocket, Search, XCircle } from "lucide-react";
+import { Columns3, CheckCircle, Factory, Eye, List, Pencil, Play, Plus, Printer, Rocket, Search, XCircle, ClipboardList } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
@@ -10,6 +10,7 @@ import Modal from "../components/Modal";
 import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
+import TextArea from "../components/TextArea";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
 import ProgressBar from "../components/ProgressBar";
@@ -297,7 +298,7 @@ export default function WorkOrders() {
         kanbanLoading ? (
           renderKanbanSkeleton()
         ) : kanbanWos.length === 0 ? (
-          <EmptyState title="No work orders yet" message="Plan a work order to build a product from a BOM or component list." actionLabel="New Work Order" onAction={openNew} />
+          <EmptyState title={search || statusFilter ? "No matching work orders" : "No work orders yet"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Plan a work order to build a product from a BOM or component list."} actionLabel={search || statusFilter ? undefined : "New Work Order"} onAction={search || statusFilter ? undefined : openNew} />
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted">{kanbanTotal} work {kanbanTotal === 1 ? "order" : "orders"} across the pipeline</p>
@@ -327,7 +328,7 @@ export default function WorkOrders() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : wos.length === 0 ? (
-              <EmptyState title="No work orders yet" message="Plan a work order to build a product from a BOM or component list." actionLabel="New Work Order" onAction={openNew} />
+              <EmptyState title={search || statusFilter ? "No matching work orders" : "No work orders yet"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Plan a work order to build a product from a BOM or component list."} actionLabel={search || statusFilter ? undefined : "New Work Order"} onAction={search || statusFilter ? undefined : openNew} />
             ) : wos.map((w) => (
               <tr key={w.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(w)}>
                 <td className="px-4 py-3 font-medium">{w.wo_number}</td>
@@ -369,8 +370,8 @@ export default function WorkOrders() {
                   </div>
                 </td>
               </tr>
-            ))}
-          </tbody>
+))}
+              </tbody>
         </table>
         </div>
       </div>
@@ -556,7 +557,7 @@ function WorkOrderForm({ wo, onClose, onSaved }: { wo: WorkOrder | null; onClose
 
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <TextArea rows={2} value={notes} onChange={setNotes} />
         </div>
 
         <div className="flex flex-wrap justify-end gap-3 pt-4 border-t border-border">
@@ -704,6 +705,9 @@ function WorkOrderDetail({ wo, onClose, onChanged, onEdit, onComplete }: {
                     <td className="px-4 py-2 text-right">{formatCurrency(item.unit_cost * item.quantity_required, currencySymbol)}</td>
                   </tr>
                 ))}
+                {current.items.length === 0 && (
+                  <EmptyState title="No item lines" message="No item lines have been added to this work order yet." icon={<ClipboardList size={48} />} />
+                )}
               </tbody>
             </table>
           </div>
@@ -903,7 +907,7 @@ function CompleteModal({ wo, onClose, onSaved }: { wo: WorkOrder; onClose: () =>
         {wo.is_serialized ? (
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Serial Numbers ({wo.quantity} required, one per line)</label>
-            <textarea className="input font-mono text-xs" rows={Math.max(3, wo.quantity)} value={serials} onChange={(e) => setSerials(e.target.value)} placeholder={"SN-0001\nSN-0002"} />
+            <TextArea className="font-mono text-xs" rows={Math.max(3, wo.quantity)} value={serials} onChange={setSerials} placeholder={"SN-0001\nSN-0002"} />
           </div>
         ) : (
           <div>

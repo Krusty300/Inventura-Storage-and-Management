@@ -13,6 +13,7 @@ from app.schemas.sale import SaleOut
 from app.schemas.shipment import ShipmentCreate, ShipmentOut, ShipmentPickRequest, ShipmentUpdate
 from app.services import inventory
 from app.services.auth import require_permission
+from app.services.filters import apply_date_range
 from app.services.payment_methods import resolve_payment_details
 from app.routers.sales import _apply_sale_locations, generate_invoice_number, get_tax_rate, get_currency_defaults
 from app.services.sequences import next_document_number
@@ -224,6 +225,10 @@ def _pick_shipment_items(db: Session, shipment: Shipment, user, serial_ids_by_pr
 def list_shipments(
     status: str | None = None,
     search: str = Query(""),
+    created_after: str = Query(""),
+    created_before: str = Query(""),
+    ship_after: str = Query(""),
+    ship_before: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -238,6 +243,8 @@ def list_shipments(
         q = q.filter(Shipment.status == status)
     if search:
         q = q.filter(Shipment.shipment_number.ilike(f"%{search}%"))
+    q = apply_date_range(q, Shipment.created_at, created_after, created_before, "created_at")
+    q = apply_date_range(q, Shipment.ship_date, ship_after, ship_before, "ship_date")
     total = q.count()
     items = q.order_by(Shipment.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [ShipmentOut.model_validate(s) for s in items], "total": total,

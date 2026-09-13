@@ -4,6 +4,8 @@ import api from "../../api/client";
 import type { CategoryBreakdownItem } from "../../types";
 import { formatCurrency } from "../../utils/currency";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import EmptyState from "../../components/EmptyState";
+import { FolderTree } from "lucide-react";
 
 export default function CategoriesTab({ symbol }: { symbol: string }) {
   const { data, isLoading, isError } = useQuery<CategoryBreakdownItem[]>({
@@ -19,7 +21,7 @@ export default function CategoriesTab({ symbol }: { symbol: string }) {
       <div className="card">
         <h3 className="text-lg font-semibold mb-4">Products by Category</h3>
         {data.length === 0 ? (
-          <p className="text-muted text-sm">No categories</p>
+          <EmptyState variant="block" icon={<FolderTree size={48} />} title="No categories" message="Category breakdowns will appear here once categories are created." />
         ) : (
           <>
             <ResponsiveContainer width="100%" height={300}>

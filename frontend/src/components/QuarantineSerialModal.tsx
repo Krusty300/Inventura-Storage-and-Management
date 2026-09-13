@@ -5,6 +5,8 @@ import { PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
 import FittedSelect from "./FittedSelect";
 import Skeleton from "./Skeleton";
+import EmptyState from "./EmptyState";
+import { ShieldAlert } from "lucide-react";
 import type { Location, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
 
@@ -67,7 +69,7 @@ export default function QuarantineSerialModal({ serial, onClose, onSaved }: Prop
         {isPending ? (
           <Skeleton variant="rows" rows={2} cols={2} />
         ) : quarantineAreas.length === 0 ? (
-          <p className="text-sm text-faint">No active quarantine areas exist. Create a location with type &quot;quarantine&quot; first.</p>
+          <EmptyState compact icon={<ShieldAlert size={20} />} title="No quarantine areas" message="Create a location with type &quot;quarantine&quot; first." />
         ) : (
           <>
             <div>

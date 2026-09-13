@@ -9,7 +9,9 @@ import { statusBadge } from "../utils/statusBadges";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
 import { useSettings } from "../hooks/useSettings";
 import SlideOver from "./SlideOver";
+import TextArea from "./TextArea";
 import AttachmentSection from "./AttachmentSection";
+import EmptyState from "./EmptyState";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
@@ -289,9 +291,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
                     </tr>
                   ))}
                   {sale.items.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-muted">No items on this invoice</td>
-                    </tr>
+                    <EmptyState title="No items on this invoice" message="Line items will appear here once this invoice is saved." />
                   )}
                 </tbody>
               </table>
@@ -349,11 +349,11 @@ export default function SaleDetail({ sale, onClose }: Props) {
             </div>
             {editingNote ? (
               <div className="space-y-2">
-                <textarea
-                  className="input text-sm w-full"
+                <TextArea
+                  className="text-sm w-full"
                   rows={3}
                   value={noteDraft}
-                  onChange={(e) => setNoteDraft(e.target.value)}
+                  onChange={setNoteDraft}
                   placeholder="Add a note for this sale..."
                 />
                 <div className="flex justify-end gap-2">

@@ -43,6 +43,18 @@ def test_low_stock_filter_includes_low_variants_only(auth_headers):
     assert next(v for v in row["variants"] if v["sku"] == "LS-VAR-LOW")["quantity"] == 2
 
 
+def test_low_stock_filter_excludes_variant_parents_when_variants_not_included(auth_headers):
+    parent = _make_parent(auth_headers)
+    client.post("/api/products", json={"location_id": 1,
+        "sku": "LS-VAR-EXCL", "parent_id": parent["id"], "quantity": 2, "reorder_level": 99,
+        "attributes": {"Color": "Red"},
+    }, headers=auth_headers).json()
+
+    data = client.get("/api/products", params={"low_stock": True, "limit": 100}, headers=auth_headers).json()
+    skus = {p["sku"] for p in data["items"]}
+    assert "VAR-PARENT" not in skus
+
+
 def test_create_variant_inherits_and_logs_initial_stock(auth_headers):
     parent = _make_parent(auth_headers)
     resp = _make_variant(auth_headers, parent["id"], "TS-RED-M", quantity=25, attributes={"Color": "Red", "Size": "M"})

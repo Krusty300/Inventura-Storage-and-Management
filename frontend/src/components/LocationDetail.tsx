@@ -12,6 +12,7 @@ import { useSettings } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import Skeleton from "./Skeleton";
+import EmptyState from "./EmptyState";
 import { errorMessage } from "../utils/errors";
 
 interface LocationDetailData {
@@ -425,7 +426,7 @@ export default function LocationDetail({ location, onClose }: Props) {
             </div>
           )
         ) : movements.length === 0 && logs.length === 0 ? (
-          <p className="text-muted py-4">No activity recorded for this location.</p>
+          <EmptyState variant="block" icon={<ClipboardList size={48} />} title="No activity recorded for this location" message="Stock movements and logs will appear here." />
         ) : (
           <>
             {movements.length > 0 && (

@@ -6,6 +6,9 @@ import type { SalesSummary, PaymentReconciliation } from "../../types";
 import { formatCurrency } from "../../utils/currency";
 import { paymentLabel } from "../../utils/payments";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import DatePicker from "../../components/DatePicker";
+import EmptyState from "../../components/EmptyState";
+import { Wallet, PackageSearch, Banknote } from "lucide-react";
 
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
 
@@ -36,9 +39,9 @@ export default function SalesTab({ symbol }: { symbol: string }) {
   if (isLoading) return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <input type="date" className="input text-sm py-1.5" value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Start date" />
+        <DatePicker value={startDate} onChange={setStartDate} ariaLabel="Start date" inputClassName="text-sm py-1.5" />
         <span className="text-faint text-sm">to</span>
-        <input type="date" className="input text-sm py-1.5" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="End date" />
+        <DatePicker value={endDate} onChange={setEndDate} ariaLabel="End date" inputClassName="text-sm py-1.5" />
       </div>
       <ReportSkeleton stats={4} chart table tableCols={3} />
     </div>
@@ -46,9 +49,9 @@ export default function SalesTab({ symbol }: { symbol: string }) {
   if (dateInvalid) return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <input type="date" className="input text-sm py-1.5" value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Start date" />
+        <DatePicker value={startDate} onChange={setStartDate} ariaLabel="Start date" inputClassName="text-sm py-1.5" />
         <span className="text-faint text-sm">to</span>
-        <input type="date" className="input text-sm py-1.5" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="End date" />
+        <DatePicker value={endDate} onChange={setEndDate} ariaLabel="End date" inputClassName="text-sm py-1.5" />
         <button onClick={() => { setStartDate(""); setEndDate(""); }} className="text-sm text-primary dark:text-primary hover:text-primary-strong underline" aria-label="Clear date range">Clear</button>
       </div>
       <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 px-4 py-3 rounded-lg text-sm" role="alert">Start date must be before end date.</div>
@@ -69,9 +72,9 @@ export default function SalesTab({ symbol }: { symbol: string }) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <input type="date" className="input text-sm py-1.5" value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Start date" />
+        <DatePicker value={startDate} onChange={setStartDate} ariaLabel="Start date" inputClassName="text-sm py-1.5" />
         <span className="text-faint text-sm">to</span>
-        <input type="date" className="input text-sm py-1.5" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="End date" />
+        <DatePicker value={endDate} onChange={setEndDate} ariaLabel="End date" inputClassName="text-sm py-1.5" />
         {(startDate || endDate) && (
           <button onClick={() => { setStartDate(""); setEndDate(""); }} className="text-sm text-primary dark:text-primary hover:text-primary-strong underline" aria-label="Clear date range">Clear</button>
         )}
@@ -88,7 +91,7 @@ export default function SalesTab({ symbol }: { symbol: string }) {
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Sales by Payment Method</h3>
           {data.by_payment_method.length === 0 ? (
-            <p className="text-muted text-sm">No sales in period</p>
+            <EmptyState variant="block" icon={<Wallet size={48} />} title="No sales in period" message="Payment method breakdowns will appear once sales are recorded in this date range." />
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
@@ -111,7 +114,9 @@ export default function SalesTab({ symbol }: { symbol: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {data.by_payment_method.map((m) => (
+                {data.by_payment_method.length === 0 ? (
+                  <EmptyState variant="table" icon={<Wallet size={40} />} title="No payment method rows" message="No sales have been recorded in this period." />
+                ) : data.by_payment_method.map((m) => (
                   <tr key={m.method}>
                     <td className="px-4 py-2">{paymentLabel(m.method)}</td>
                     <td className="px-4 py-2 text-right">{m.count}</td>
@@ -135,7 +140,7 @@ export default function SalesTab({ symbol }: { symbol: string }) {
               </thead>
               <tbody className="divide-y divide-border">
                 {data.top_products.length === 0 ? (
-                  <tr><td colSpan={3} className="px-4 py-6 text-center text-muted">No sales data</td></tr>
+                  <EmptyState variant="table" icon={<PackageSearch size={40} />} title="No sales data" message="Top products will appear once units are sold in this period." />
                 ) : data.top_products.map((p) => (
                   <tr key={p.name} className="hover:bg-app">
                     <td className="px-4 py-3 font-medium">{p.name}</td>
@@ -227,7 +232,7 @@ export default function SalesTab({ symbol }: { symbol: string }) {
               </thead>
               <tbody className="divide-y divide-border">
                 {reconciliation.rows.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">No payments in period</td></tr>
+                  <EmptyState variant="table" icon={<Banknote size={40} />} title="No payments in period" message="Payment reconciliation will appear once payments are recorded here." />
                 ) : reconciliation.rows.map((r) => (
                   <tr key={`${r.method}-${r.provider || ""}`} className="hover:bg-app">
                     <td className="px-4 py-3">{paymentLabel(r.method)}</td>

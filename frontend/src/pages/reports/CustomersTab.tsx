@@ -6,6 +6,8 @@ import { formatCurrency } from "../../utils/currency";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import ReportSkeleton from "../../components/ReportSkeleton";
 import FittedSelect from "../../components/FittedSelect";
+import EmptyState from "../../components/EmptyState";
+import { Users } from "lucide-react";
 
 export default function CustomersTab({ symbol }: { symbol: string }) {
   const formatDate = useDateFormat();
@@ -64,7 +66,7 @@ export default function CustomersTab({ symbol }: { symbol: string }) {
             </thead>
             <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-muted">No customer sales data</td></tr>
+                <EmptyState variant="table" icon={<Users size={40} />} title="No customer sales data" message="Customer sales will appear here once purchases are recorded in this period." />
               ) : data.items.map((c, i) => (
                 <tr key={c.customer_id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium text-faint">{i + 1}</td>

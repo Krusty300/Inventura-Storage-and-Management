@@ -5,6 +5,8 @@ import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
 import FittedSelect from "./FittedSelect";
 import Skeleton from "./Skeleton";
+import EmptyState from "./EmptyState";
+import { ShieldAlert } from "lucide-react";
 import type { Location, QuarantinedLocation, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
 
@@ -114,7 +116,7 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
         {isPending ? (
           <Skeleton variant="rows" rows={3} cols={2} />
         ) : quarantinedLocations.length === 0 ? (
-          <p className="text-sm text-faint">No quarantined stock at any location.</p>
+          <EmptyState compact icon={<ShieldAlert size={20} />} title="No quarantined stock" message="There is no quarantined stock at any location." />
         ) : (
           <>
             <div>
@@ -139,7 +141,7 @@ export default function MoveQuarantinedModal({ productId, productName, lotId, lo
                   Select serial numbers (available: {available})
                 </label>
                 {serials.length === 0 ? (
-                  <p className="text-sm text-faint">No quarantined serials at this location.</p>
+                  <EmptyState compact icon={<ShieldAlert size={20} />} title="No quarantined serials at this location" message="Every serial at this location is already released." />
                 ) : (
                   <>
                     <div className="border border-border rounded-lg divide-y divide-border max-h-48 overflow-y-auto">

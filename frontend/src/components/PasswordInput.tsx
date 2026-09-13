@@ -7,20 +7,25 @@ interface Props {
   onChange: (value: string) => void;
   autoComplete?: string;
   minLength?: number;
+  placeholder?: string;
+  className?: string;
+  ariaLabel?: string;
 }
 
-export default function PasswordInput({ id, value, onChange, autoComplete, minLength }: Props) {
+export default function PasswordInput({ id, value, onChange, autoComplete, minLength, placeholder, className, ariaLabel }: Props) {
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
       <input
         id={id}
         type={show ? "text" : "password"}
-        className="input pr-10"
+        className={`${className ?? ""} input pr-10`.trim()}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         autoComplete={autoComplete}
         minLength={minLength}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
         required
       />
       <button

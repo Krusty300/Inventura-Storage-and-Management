@@ -6,10 +6,12 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings as app_settings
 from app.database import Base, SessionLocal, backfill_stock_lines, engine, run_migrations
@@ -57,6 +59,19 @@ app = FastAPI(title="Inventory Management System", version="1.0.0", lifespan=lif
 
 app.state.limiter = limiter
 app.add_exception_handler(429, rate_limit_exceeded_handler)
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    """Never let a DB constraint violation bubble up as a bare 500.
+
+    Unique/foreign-key conflicts happen legitimately under concurrency (duplicate
+    SKUs, document-number collisions, username/email races) and deserve a clean
+    409 so the client can surface the message instead of 'internal error'."""
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Data conflicts with existing records. Check unique fields such as SKU, name, or code."},
+    )
 
 app.add_middleware(
     CORSMiddleware,

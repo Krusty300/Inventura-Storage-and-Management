@@ -460,6 +460,15 @@ button:disabled {
   animation: fade-in 0.15s ease-out;
 }
 
+@keyframes dt-pop {
+  from { transform: scale(0.94) translateY(6px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+.animate-dt-pop {
+  animation: dt-pop 0.18s ease-out;
+  transform-origin: top left;
+}
+
 .pagination-btn {
   padding: 0.375rem 0.75rem;
   border: 1px solid var(--t-border-strong);

@@ -41,19 +41,23 @@ BOLD = "BricolageGrotesque" if _USE_CUSTOM else "Helvetica-Bold"
 OBLIQUE = "MonaSans" if _USE_CUSTOM else "Helvetica-Oblique"
 MONO = "Courier"
 
-INK = Color(0.13, 0.16, 0.22)
-MUTED = Color(0.45, 0.48, 0.55)
-FAINT = Color(0.87, 0.88, 0.91)
-ACCENT = Color(0.08, 0.34, 0.61)
+# Design tokens mirroring frontend/src/style.css (--t-*), so printed PDFs share the
+# app's amber brand ramp and slate ink ramp regardless of which router renders them.
+INK = Color(0.067, 0.094, 0.153)        # --t-ink #111827 (near-black slate)
+MUTED = Color(0.294, 0.333, 0.388)      # --t-muted #4b5563
+FAINT = Color(0.820, 0.835, 0.859)      # --t-border-strong #d1d5db
+ACCENT = Color(0.851, 0.467, 0.024)     # --t-primary #d97706 (amber-600)
+ACCENT_HOVER = Color(0.706, 0.325, 0.035)   # --t-primary-solid-hover #b45309
+ACCENT_STRONG = Color(0.573, 0.251, 0.055)  # --t-primary-strong #92400e
 
-BANNER_BG = Color(0.11, 0.18, 0.29)
+BANNER_BG = Color(0.471, 0.208, 0.059)  # --t-brand-to #78350f (deep amber banner)
 STRIPE_BG = Color(0.96, 0.96, 0.97)
 WATERMARK_COLORS = {
-    "paid": Color(0.13, 0.55, 0.13, 0.10),
-    "pending": Color(0.85, 0.55, 0.05, 0.10),
-    "cancelled": Color(0.80, 0.15, 0.15, 0.10),
-    "refunded": Color(0.80, 0.15, 0.15, 0.10),
-    "draft": Color(0.45, 0.48, 0.55, 0.08),
+    "paid": Color(0.063, 0.725, 0.588, 0.10),      # emerald-500 #10b981
+    "pending": Color(0.961, 0.620, 0.043, 0.10),   # amber-500 #f59e0b
+    "cancelled": Color(0.937, 0.267, 0.267, 0.10), # red-500 #ef4444
+    "refunded": Color(0.937, 0.267, 0.267, 0.10),  # red-500 #ef4444
+    "draft": Color(0.294, 0.333, 0.388, 0.08),     # slate-500 #4b5563
 }
 
 _page_counter = 0
@@ -170,7 +174,6 @@ def draw_banner_header(c: canvas.Canvas, doc_label: str, meta: list[tuple[str, s
     c.setFont(FONT, 9.5)
     for label, value in meta:
         c.setFillColor(Color(0.75, 0.78, 0.85))
-        lw = stringWidth(label, FONT, 9.5)
         c.drawRightString(meta_x - stringWidth(value, FONT, 9.5) - 6, meta_y, label)
         c.setFillColor(Color(1, 1, 1))
         c.drawRightString(meta_x, meta_y, value)
@@ -266,6 +269,7 @@ def draw_item_table(c: canvas.Canvas, x: float, top_y: float, headers: list[str]
         y -= 18
 
     def draw_page_break():
+        global _page_counter
         nonlocal y, row_idx
         c.showPage()
         _page_counter += 1
@@ -348,6 +352,23 @@ def money(currency_symbol: str, amount: float | int | None) -> str:
     if amt < 0:
         return f"-{currency_symbol}{abs(amt):,.2f}"
     return f"{currency_symbol}{amt:,.2f}"
+
+
+def truncate_to_width(text: str, max_width: float, font: str = FONT, size: float = 10,
+                      ellipsis: str = "\u2026") -> str:
+    """Trim *text* so it fits within max_width pt at the given font/size, adding an ellipsis.
+
+    Falls back to character truncation if stringWidth is unavailable for *font*.
+    """
+    try:
+        if stringWidth(text, font, size) <= max_width:
+            return text
+    except Exception:
+        return text[: int(max_width / 5.5)] + ellipsis
+    fit = len(text)
+    while fit > 0 and stringWidth(text[:fit] + ellipsis, font, size) > max_width:
+        fit -= 1
+    return (text[:fit] + ellipsis) if fit > 0 else ellipsis
 
 
 def draw_notes(c: canvas.Canvas, x: float, y: float, text: str):

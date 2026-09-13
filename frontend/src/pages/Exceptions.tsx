@@ -9,6 +9,7 @@ import Skeleton from "../components/Skeleton";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ErrorState from "../components/ErrorState";
+import EmptyState from "../components/EmptyState";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
@@ -112,7 +113,7 @@ export default function Exceptions() {
 }
 
 function QualityCheckTable({ data }: { data: ExceptionsReport }) {
-  if (!data.quality_checks || data.quality_checks.length === 0) return <p className="text-sm text-muted">No pending or failed quality checks.</p>;
+  if (!data.quality_checks || data.quality_checks.length === 0) return <EmptyState compact title="No pending or failed quality checks" message="When a check needs attention it will appear here." />;
   return (
     <table className="w-full text-sm">
       <thead><tr className="text-left text-muted border-b"><th className="py-2">QC #</th><th className="py-2">Product</th><th className="py-2">Location</th><th className="py-2">Lot</th><th className="py-2">Result</th></tr></thead>
@@ -132,7 +133,7 @@ function QualityCheckTable({ data }: { data: ExceptionsReport }) {
 }
 
 function LowStockTable({ data }: { data: ExceptionsReport }) {
-  if (data.low_stock.length === 0) return <p className="text-sm text-muted">No low stock items.</p>;
+  if (data.low_stock.length === 0) return <EmptyState compact title="No low stock items" message="Products at or below their reorder level will appear here." />;
   return (
     <table className="w-full text-sm">
       <thead><tr className="text-left text-muted border-b"><th className="py-2">Product</th><th className="py-2">SKU</th><th className="py-2">On Hand</th><th className="py-2">Reorder</th><th className="py-2">Category</th><th className="py-2">Supplier</th></tr></thead>
@@ -153,7 +154,7 @@ function LowStockTable({ data }: { data: ExceptionsReport }) {
 }
 
 function ZeroStockTable({ data }: { data: ExceptionsReport }) {
-  if (data.zero_stock.length === 0) return <p className="text-sm text-muted">No out-of-stock items.</p>;
+  if (data.zero_stock.length === 0) return <EmptyState compact title="No out-of-stock items" message="Items with no sellable stock will appear here." />;
   return (
     <table className="w-full text-sm">
       <thead><tr className="text-left text-muted border-b"><th className="py-2">Product</th><th className="py-2">SKU</th></tr></thead>
@@ -177,7 +178,7 @@ function QuarantineTable({ data }: { data: ExceptionsReport }) {
   const { can } = useAuth();
   const { addToast } = useToast();
   const [releasing, setReleasing] = useState<number | null>(null);
-  if (data.quarantined_lots.length === 0) return <p className="text-sm text-muted">No quarantined lots.</p>;
+  if (data.quarantined_lots.length === 0) return <EmptyState compact title="No quarantined lots" message="Quarantined lots will appear here for review." />;
 
   const confirmRelease = async () => {
     if (!releaseTarget) return;
@@ -245,7 +246,7 @@ function QuarantineSerialTable({ data }: { data: ExceptionsReport }) {
   const { can } = useAuth();
   const { addToast } = useToast();
   const serials = data.quarantined_serials ?? [];
-  if (serials.length === 0) return <p className="text-sm text-muted">No quarantined serials.</p>;
+  if (serials.length === 0) return <EmptyState compact title="No quarantined serials" message="Quarantined serials will appear here for review." />;
 
   const confirmRelease = async () => {
     if (!releaseTarget) return;
@@ -374,7 +375,7 @@ function RecallModal({ lot, onClose }: { lot: { id: number; lot_number: string; 
 
 function CycleCountTable({ data }: { data: ExceptionsReport }) {
   const formatDate = useDateFormat();
-  if (data.open_cycle_counts.length === 0) return <p className="text-sm text-muted">No open cycle counts.</p>;
+  if (data.open_cycle_counts.length === 0) return <EmptyState compact title="No open cycle counts" message="Open cycle counts will appear here." />;
   return (
     <table className="w-full text-sm">
       <thead><tr className="text-left text-muted border-b"><th className="py-2">Count #</th><th className="py-2">Location</th><th className="py-2">Status</th><th className="py-2">Expected</th><th className="py-2">Variance</th><th className="py-2">Date</th></tr></thead>
@@ -396,7 +397,7 @@ function CycleCountTable({ data }: { data: ExceptionsReport }) {
 
 function AsnTable({ data }: { data: ExceptionsReport }) {
   const formatDate = useDateFormat();
-  if (data.pending_asns.length === 0) return <p className="text-sm text-muted">No pending ASNs.</p>;
+  if (data.pending_asns.length === 0) return <EmptyState compact title="No pending ASNs" message="ASNs arriving soon will appear here." />;
   return (
     <table className="w-full text-sm">
       <thead><tr className="text-left text-muted border-b"><th className="py-2">ASN #</th><th className="py-2">Supplier</th><th className="py-2">Expected Arrival</th><th className="py-2">Items Pending</th></tr></thead>

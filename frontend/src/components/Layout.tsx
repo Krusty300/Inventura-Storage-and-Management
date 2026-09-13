@@ -16,6 +16,7 @@ import NotificationBell from "./NotificationBell";
 import FloatingSidebar from "./FloatingSidebar";
 import ScrollArea from "./ScrollArea";
 import DateTimeDisplay from "./DateTimeDisplay";
+import Breadcrumbs from "./Breadcrumbs";
 import { navGroups } from "../utils/navItems";
 
 const MIN_SIDEBAR_WIDTH = 208;
@@ -322,9 +323,12 @@ export default function Layout() {
           id="main-content"
           tabIndex={-1}
           className="flex-1 outline-none"
-          viewportClassName="h-full p-6"
+          viewportClassName="h-full"
         >
-          <Outlet />
+          <div className="p-6">
+            <Breadcrumbs />
+            <Outlet />
+          </div>
         </ScrollArea>
       </div>
 

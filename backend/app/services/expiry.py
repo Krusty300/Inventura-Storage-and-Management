@@ -22,7 +22,7 @@ notifications). Bulk legs exclude WIP-held stock to stay aligned with
 
 from datetime import date
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, select, true
 from sqlalchemy.orm import Session
 
 from app.models import Location, Lot, Product, SerialNumber, StockLine
@@ -197,3 +197,106 @@ def effective_expiry(
         return None, None
     nearest = min(candidates)
     return nearest, (nearest - today).days
+
+
+def _lot_expiry_candidate(pid_col, cutoff: date, strict: bool):
+    """Exists: on-hand lot/serial stock of ``pid_col`` whose expiry is (strictly) before ``cutoff``.
+
+    Uses the same on-hand criteria as ``lot_expiry_dates_by_product`` so the
+    SQL filters and the ``effective_expiry`` badges stay in agreement.
+    """
+    cmp = Lot.expiry_date < cutoff if strict else Lot.expiry_date <= cutoff
+    bulk = exists(
+        select(StockLine.product_id)
+        .join(Lot, StockLine.lot_id == Lot.id)
+        .outerjoin(Location, StockLine.location_id == Location.id)
+        .where(
+            StockLine.product_id == pid_col,
+            StockLine.quantity > 0,
+            Lot.status.in_(("in_stock", "expired")),
+            Lot.expiry_date.isnot(None),
+            cmp,
+            (StockLine.location_id.is_(None))
+            | (Location.location_type.is_(None))
+            | (Location.location_type != "wip"),
+        )
+    )
+    serial = exists(
+        select(SerialNumber.product_id)
+        .join(Lot, SerialNumber.lot_id == Lot.id)
+        .where(
+            SerialNumber.product_id == pid_col,
+            SerialNumber.status == SERIAL_STATUS_IN_STOCK,
+            Lot.status.in_(("in_stock", "expired")),
+            Lot.expiry_date.isnot(None),
+            cmp,
+        )
+    )
+    return bulk | serial
+
+
+def has_expiry_candidate_before(pid_col, cutoff: date):
+    """True when the product has any expiry candidate strictly before ``cutoff`` (static or on-hand lots)."""
+    static = Product.expiry_date.isnot(None) & (Product.expiry_date < cutoff)
+    return static | _lot_expiry_candidate(pid_col, cutoff, strict=True)
+
+
+def has_expiry_candidate_at_or_before(pid_col, cutoff: date):
+    """True when the product has any expiry candidate at or before ``cutoff`` (static or on-hand lots)."""
+    static = Product.expiry_date.isnot(None) & (Product.expiry_date <= cutoff)
+    return static | _lot_expiry_candidate(pid_col, cutoff, strict=False)
+
+
+def _has_lot_expiry(pid_col):
+    """Exists: the product's on-hand lot/serial stock carries at least one non-null expiry date."""
+    bulk = exists(
+        select(StockLine.product_id)
+        .join(Lot, StockLine.lot_id == Lot.id)
+        .outerjoin(Location, StockLine.location_id == Location.id)
+        .where(
+            StockLine.product_id == pid_col,
+            StockLine.quantity > 0,
+            Lot.status.in_(("in_stock", "expired")),
+            Lot.expiry_date.isnot(None),
+            (StockLine.location_id.is_(None))
+            | (Location.location_type.is_(None))
+            | (Location.location_type != "wip"),
+        )
+    )
+    serial = exists(
+        select(SerialNumber.product_id)
+        .join(Lot, SerialNumber.lot_id == Lot.id)
+        .where(
+            SerialNumber.product_id == pid_col,
+            SerialNumber.status == SERIAL_STATUS_IN_STOCK,
+            Lot.status.in_(("in_stock", "expired")),
+            Lot.expiry_date.isnot(None),
+        )
+    )
+    return bulk | serial
+
+
+def expiry_range_condition(pid_col, after: date | None, before: date | None):
+    """SQL condition: a single product row's *effective* expiry falls in ``[after, before]``.
+
+    The effective expiry is the nearest of the static ``Product.expiry_date``
+    and the on-hand lot expiry dates, matching ``effective_expiry`` and what the
+    grid displays. "Nearest in range" is expressed as: no candidate strictly
+    before ``after`` AND at least one candidate at-or-before ``before``.
+
+    Callers that fold variant expiry dates into a parent row must OR in the
+    condition evaluated per-variant (see ``list_products``).
+    """
+    if after is not None and before is not None:
+        return (
+            ~has_expiry_candidate_before(pid_col, after)
+            & has_expiry_candidate_at_or_before(pid_col, before)
+        )
+    if after is not None:
+        return (
+            (Product.expiry_date.isnot(None) | _has_lot_expiry(pid_col))
+            & ~has_expiry_candidate_before(pid_col, after)
+        )
+    if before is not None:
+        return has_expiry_candidate_at_or_before(pid_col, before)
+    return true()

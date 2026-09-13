@@ -17,6 +17,7 @@ from app.schemas.stock_movement import StockMovementOut
 from app.services import inventory
 from app.services.auth import require_permission
 from app.services.csv_export import csv_response
+from app.services.filters import apply_date_range
 from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/lots", tags=["lots"], dependencies=[Depends(require_permission("lots.view"))])
@@ -46,6 +47,12 @@ def list_lots(
     product_id: int | None = None,
     status: str | None = None,
     search: str = Query(""),
+    expiry_after: str = Query(""),
+    expiry_before: str = Query(""),
+    received_after: str = Query(""),
+    received_before: str = Query(""),
+    created_after: str = Query(""),
+    created_before: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -67,6 +74,9 @@ def list_lots(
         q = q.join(Lot.product).filter(
             Lot.lot_number.ilike(like) | Product.name.ilike(like) | Product.sku.ilike(like)
         )
+    q = apply_date_range(q, Lot.expiry_date, expiry_after, expiry_before, "expiry_date")
+    q = apply_date_range(q, Lot.received_date, received_after, received_before, "received_date")
+    q = apply_date_range(q, Lot.created_at, created_after, created_before, "created_at")
     total = q.count()
     items = q.order_by(Lot.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [LotOut.model_validate(l) for l in items], "total": total,
@@ -78,6 +88,12 @@ def export_lots(
     product_id: int | None = None,
     status: str | None = None,
     search: str = Query(""),
+    expiry_after: str = Query(""),
+    expiry_before: str = Query(""),
+    received_after: str = Query(""),
+    received_before: str = Query(""),
+    created_after: str = Query(""),
+    created_before: str = Query(""),
     db: Session = Depends(get_db),
 ):
     q = db.query(Lot).options(
@@ -96,6 +112,9 @@ def export_lots(
         q = q.join(Lot.product).filter(
             Lot.lot_number.ilike(like) | Product.name.ilike(like) | Product.sku.ilike(like)
         )
+    q = apply_date_range(q, Lot.expiry_date, expiry_after, expiry_before, "expiry_date")
+    q = apply_date_range(q, Lot.received_date, received_after, received_before, "received_date")
+    q = apply_date_range(q, Lot.created_at, created_after, created_before, "created_at")
     lots = q.order_by(Lot.created_at.desc()).all()
     return csv_response(
         "lots_report",

@@ -18,8 +18,9 @@ from app.schemas.customer import (
     CustomerStats, CustomerUpdate, FrequentProduct,
 )
 from app.services.auth import require_permission
+from app.services.filters import apply_date_range
 from app.services.soft_delete import register, soft_delete
-from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change
+from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change, read_upload_text
 
 router = APIRouter(prefix="/api/customers", tags=["customers"], dependencies=[Depends(require_permission("customers.view"))])
 
@@ -87,6 +88,8 @@ def list_customers(
     customer_type: str = Query(""),
     group_id: int | None = Query(None),
     include_inactive: bool = False,
+    created_after: str = Query(""),
+    created_before: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
@@ -104,6 +107,7 @@ def list_customers(
         q = q.filter(Customer.customer_type == customer_type)
     if group_id is not None:
         q = q.filter(Customer.group_id == group_id)
+    q = apply_date_range(q, Customer.created_at, created_after, created_before, "created_at")
     total = q.count()
     rows = q.order_by(Customer.name).offset(skip).limit(limit).all()
     items = [_serialize_with_stats(c, ts, tp, lp) for c, ts, tp, lp in rows]
@@ -152,7 +156,7 @@ def import_customers_csv(
 ):
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV")
-    content = file.file.read().decode("utf-8-sig")
+    content = read_upload_text(file)
     reader = csv.DictReader(StringIO(content))
     result = CustomerImportResult()
     seen = set()
@@ -380,4 +384,4 @@ def remove_customer_image(
     log_activity(db, user.id, user.username, "update", "customer", c.id, f"Removed profile image for customer '{c.name}'")
     db.commit()
     broadcast_change("customer", "updated")
-    return c
+    return {"image_url": c.image_url}

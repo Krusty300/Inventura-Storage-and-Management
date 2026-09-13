@@ -1,5 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
+import Table from "../components/Table";
 import { Eye, RotateCcw, FileText, ReceiptText, XCircle, Trash2, Search } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -10,7 +11,6 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import BulkActionBar from "../components/BulkActionBar";
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import FittedSelect from "../components/FittedSelect";
 import PaymentMethodPicker from "../components/PaymentMethodPicker";
@@ -230,30 +230,28 @@ export default function Sales() {
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
-        <table className="w-full text-sm" role="grid" aria-label="Sales table">
-          <thead>
-            <tr className="bg-app text-left">
-              <th scope="col" className="px-4 py-3">
-                <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all sales" />
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Invoice #</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Customer</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Channel</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Sold By</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Payment</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Total</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {isLoading ? (
-              <Skeleton rows={5} cols={10} />
-            ) : sales.length === 0 ? (
-              <EmptyState title="No sales yet" message="Record your first sale to start tracking revenue." actionLabel="New Sale" onAction={() => setShowForm(true)} />
-            ) : sales.map((s) => (
+        <Table
+          columns={[
+            { key: 'select', header: <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all sales" />, className: 'px-4 py-3' },
+            { key: 'invoice', header: 'Invoice #', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'customer', header: 'Customer', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'channel', header: 'Channel', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'soldBy', header: 'Sold By', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'date', header: 'Date', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'status', header: 'Status', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'payment', header: 'Payment', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'location', header: 'Location', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'total', header: 'Total', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'actions', header: 'Actions', className: 'px-4 py-3 font-medium text-muted' },
+          ]}
+          role="grid"
+          aria-label="Sales table"
+          loading={isLoading}
+          skeletonRows={5}
+          noData={sales.length === 0}
+          empty={<EmptyState title={search || statusFilter || paymentFilter || channelFilter ? "No matching sales" : "No sales yet"} message={search || statusFilter || paymentFilter || channelFilter ? "Nothing matched your search or filters. Try adjusting them." : "Record your first sale to start tracking revenue."} actionLabel={search || statusFilter || paymentFilter || channelFilter ? undefined : "New Sale"} onAction={search || statusFilter || paymentFilter || channelFilter ? undefined : () => setShowForm(true)} />}
+        >
+          {sales.map((s) => (
               <tr key={s.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(s); }}>
                 <td className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(s.id)} onChange={() => toggleSelect(s.id)} aria-label={`Select invoice ${s.invoice_number}`} />
@@ -301,8 +299,7 @@ export default function Sales() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
+        </Table>
         </div>
       </div>
 
@@ -345,7 +342,11 @@ export default function Sales() {
         confirmLabel="Refund"
         confirmClass="btn-danger"
         onConfirm={() => {
-          if (refundMethod === "mobile_money" && refundPhone.trim()) {
+          if (refundMethod === "mobile_money" && !refundPhone.trim()) {
+            addToast("Enter the customer phone for the M-Pesa refund", "error");
+            return;
+          }
+          if (refundMethod === "mobile_money") {
             refundMutation.mutate({ id: refunding!.id, method: "mobile_money", provider: refundProvider }, {
               onSuccess: () => {
                 b2cRefundMutation.mutate({ sale: refunding!, phone: refundPhone.trim() });

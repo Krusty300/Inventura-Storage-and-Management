@@ -6,6 +6,7 @@ import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import type { Location, SerialNumber, StockLocation } from "../types";
 import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
+import TextArea from "./TextArea";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { productLabel } from "../utils/variants";
 import { useToast } from "../context/ToastContext";
@@ -225,11 +226,11 @@ export default function TransferModal({ onClose, onSaved }: Props) {
             {isSerialized ? (
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-ink mb-1">Serial Numbers *</label>
-                <textarea
-                  className="input min-h-16 font-mono text-sm"
+                <TextArea
+                  className="min-h-16 font-mono text-sm"
                   placeholder="Enter or scan one serial number per line"
                   value={serialNumbers}
-                  onChange={(e) => setSerialNumbers(e.target.value)}
+                  onChange={setSerialNumbers}
                 />
                 <p className="text-xs text-muted mt-1">Count: {serialCount}</p>
               </div>

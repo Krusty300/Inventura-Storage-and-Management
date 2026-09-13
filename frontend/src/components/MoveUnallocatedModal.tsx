@@ -4,6 +4,8 @@ import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_LOOKUP } from "../utils/constants";
 import Modal from "./Modal";
 import FittedSelect from "./FittedSelect";
+import EmptyState from "./EmptyState";
+import { Warehouse } from "lucide-react";
 import type { Location, SerialNumber } from "../types";
 import { useToast } from "../context/ToastContext";
 
@@ -90,7 +92,7 @@ export default function MoveUnallocatedModal({ productId, productName, available
               Select serial numbers (available: {available})
             </label>
             {serials.length === 0 ? (
-              <p className="text-sm text-faint">No unallocated serials found.</p>
+              <EmptyState compact icon={<Warehouse size={20} />} title="No unallocated serials found" message="Every serial for this product is already assigned to a location." />
             ) : (
               <>
                 <div className="border border-border rounded-lg divide-y divide-border max-h-48 overflow-y-auto">

@@ -10,6 +10,9 @@ import { useToast } from "../context/ToastContext";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { errorMessage } from "../utils/errors";
 import Skeleton from "../components/Skeleton";
+import EmptyState from "../components/EmptyState";
+import PasswordInput from "../components/PasswordInput";
+import FileUploadButton from "../components/FileUploadButton";
 
 interface ActivityEntry {
   id: number;
@@ -56,7 +59,6 @@ export default function Profile() {
   const formatDateTime = useDateTimeFormat();
   const { user, updateUser, logout, completeLogout } = useAuth();
   const { addToast } = useToast();
-  const fileRef = useRef<HTMLInputElement>(null);
   const editFormRef = useRef<HTMLFormElement>(null);
   const pwFormRef = useRef<HTMLFormElement>(null);
   const [form, setForm] = useState({ username: "", email: "" });
@@ -137,7 +139,6 @@ export default function Profile() {
     } catch (err: unknown) {
       addToast(errorMessage(err, "Failed to upload avatar"), "error");
     }
-    if (fileRef.current) fileRef.current.value = "";
   };
 
   const handleAvatarRemove = async () => {
@@ -221,18 +222,20 @@ export default function Profile() {
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary">
+                <FileUploadButton
+                  onFileChange={handleAvatarUpload}
+                  accept=".png,.jpg,.jpeg,.gif,.webp"
+                  className="btn-secondary"
+                >
                   <Camera size={15} className="inline mr-1" />
                   Upload Avatar
-                </button>
+                </FileUploadButton>
                 {user.avatar_url && (
                   <button type="button" onClick={handleAvatarRemove} className="btn-secondary">
                     <Trash2 size={15} className="inline mr-1" />
                     Remove
                   </button>
                 )}
-                <input ref={fileRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp" className="hidden"
-                  onChange={handleAvatarUpload} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -281,16 +284,16 @@ export default function Profile() {
               <form ref={pwFormRef} onSubmit={handlePassword} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Current Password</label>
-                  <input type="password" className="input" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />
+                  <PasswordInput id="pw-current" value={pw.current_password} onChange={(v) => setPw({ ...pw, current_password: v })} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-ink mb-1">New Password</label>
-                    <input type="password" className="input" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={6} />
+                    <PasswordInput id="pw-new" value={pw.new_password} onChange={(v) => setPw({ ...pw, new_password: v })} minLength={6} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-ink mb-1">Confirm New Password</label>
-                    <input type="password" className="input" value={pw.confirm_password} onChange={(e) => setPw({ ...pw, confirm_password: e.target.value })} required minLength={6} />
+                    <PasswordInput id="pw-confirm" value={pw.confirm_password} onChange={(v) => setPw({ ...pw, confirm_password: v })} minLength={6} />
                   </div>
                 </div>
                 {pw.new_password && pw.confirm_password && pw.new_password !== pw.confirm_password && (
@@ -322,9 +325,9 @@ export default function Profile() {
             {sessionsLoading ? (
               <Skeleton variant="rows" rows={3} cols={3} />
             ) : sessions.length === 0 ? (
-              <p className="text-sm text-muted">No session data.</p>
+              <EmptyState compact title="No session data" message="Sessions from devices you use to sign in will appear here." />
             ) : activeSessions.length === 0 ? (
-              <p className="text-sm text-muted">No active sessions.</p>
+              <EmptyState compact title="No active sessions" message="All sessions have been signed out." />
             ) : (
               <ul className="divide-y divide-border">
                 {activeSessions.map((s) => (
@@ -375,7 +378,7 @@ export default function Profile() {
             {activityLoading ? (
               <Skeleton variant="rows" rows={4} cols={3} />
             ) : activity.length === 0 ? (
-              <p className="text-sm text-muted">No recent activity found.</p>
+              <EmptyState compact title="No recent activity found" message="Actions you perform will appear here." />
             ) : (
               <ul className="space-y-3">
                 {activity.map((a) => (

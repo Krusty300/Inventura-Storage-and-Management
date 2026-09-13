@@ -61,6 +61,8 @@ class SettingsUpdate(BaseModel):
     show_product_hover_cards: Optional[bool] = None
     show_customer_hover_cards: Optional[bool] = None
     show_supplier_hover_cards: Optional[bool] = None
+    show_datetime_hover_cards: Optional[bool] = None
+    show_cart_summary_hover_cards: Optional[bool] = None
     tax_id: Optional[str] = None
     payment_terms: Optional[str] = None
     bank_details: Optional[str] = None
@@ -115,6 +117,7 @@ SETTING_FIELDS = [
     "default_costing_method", "fiscal_year_start_month",
     "default_items_per_page", "date_format",
     "show_product_hover_cards", "show_customer_hover_cards", "show_supplier_hover_cards",
+    "show_datetime_hover_cards", "show_cart_summary_hover_cards",
     "logo_url", "tax_id", "payment_terms", "bank_details", "footer_note",
 ]
 

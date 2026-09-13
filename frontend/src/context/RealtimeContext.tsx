@@ -18,7 +18,7 @@ const entityQueryMap: Record<string, string[]> = {
   product: ["products", "product", "product-cost", "product-movements", "product-stock-locations", "product-quarantined-lots", "product-quarantined-serials", "product-reserved-serials", "trace", "exceptions", "dashboard", "reports", "forecasting", "mrp", "stock-locations", "global-search", "entity-search"],
   category: ["categories", "category-products", "category-suppliers", "reports", "dashboard"],
   supplier: ["suppliers", "suppliers-lookup", "supplier-products", "supplier-stats", "supplier-orders", "reports", "global-search", "entity-search"],
-  stock_movement: ["stock-movements", "product-movements", "stock-locations", "quarantined-locations", "exceptions", "dashboard", "reports", "mrp"],
+  stock_movement: ["stock-movements", "product-movements", "trace", "stock-locations", "quarantined-locations", "exceptions", "dashboard", "reports", "mrp"],
   shipment: ["shipments", "shipment", "dashboard", "reports"],
   order: ["orders", "dashboard", "reports", "forecasting"],
   sale: ["sales", "dashboard", "reports", "forecasting"],
@@ -40,7 +40,7 @@ const entityQueryMap: Record<string, string[]> = {
   promotion: ["promotions"],
   sales_channel: ["sales-channels"],
   work_order: ["work-orders", "work-orders-kanban", "work-order-cost", "work-order-genealogy", "mrp"],
-  serial_number: ["serial-numbers", "serial-movements", "product-reserved-serials", "exceptions"],
+  serial_number: ["serial-numbers", "serial-movements", "product-reserved-serials", "trace", "exceptions"],
   settings: ["settings"],
   kit: ["kits", "mrp", "product-cost"],
 };
@@ -76,7 +76,13 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
       ws.onopen = () => {
         if (everConnectedRef.current) {
-          queryClient.invalidateQueries();
+          // We missed events while disconnected: refresh only data the user is
+          // actually looking at (active, successfully-loaded queries) instead of
+          // waking the entire query cache for every mounted screen.
+          queryClient.invalidateQueries({
+            predicate: (query) =>
+              query.state.status === "success" && query.isActive(),
+          });
         }
         everConnectedRef.current = true;
         setConnected(true);

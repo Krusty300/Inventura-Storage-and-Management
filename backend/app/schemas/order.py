@@ -13,6 +13,7 @@ class OrderItemCreate(BaseModel):
 class OrderCreate(BaseModel):
     supplier_id: Optional[int] = None
     notes: str = ""
+    expected_arrival: Optional[datetime] = None
     items: list[OrderItemCreate]
 
     @model_validator(mode="after")
@@ -26,6 +27,7 @@ class OrderUpdate(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
     supplier_id: Optional[int] = None
+    expected_arrival: Optional[datetime] = None
     items: Optional[list[OrderItemCreate]] = None
     serial_numbers: Optional[dict[int, list[str]]] = None
     receive_locations: Optional[dict[int, int]] = None
@@ -66,8 +68,10 @@ class OrderOut(BaseModel):
     status: str
     total_amount: float
     notes: str
+    expected_arrival: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    received_at: Optional[datetime] = None
     supplier_name: str = ""
     username: str = ""
     items: list[OrderItemOut] = []

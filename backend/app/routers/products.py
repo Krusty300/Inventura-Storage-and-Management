@@ -31,9 +31,10 @@ from app.schemas.stock_movement import StockMovementOut
 from app.services import expiry as expiry_svc
 from app.services import inventory
 from app.services.auth import require_permission
+from app.services.filters import apply_date_range, apply_numeric_range, parse_date
 from app.services.notify import notify_expiring, notify_low_stock
 from app.services.soft_delete import register, soft_delete
-from app.utils import get_or_404, log_activity, broadcast_change
+from app.utils import get_or_404, log_activity, broadcast_change, read_upload_text
 
 from reportlab.graphics import renderPDF
 from reportlab.lib.units import inch
@@ -135,6 +136,9 @@ def resolve_location(db: Session, location_id: Optional[int], location_text: Opt
     if not text:
         return None
     norm = _normalize_path(text)
+    # Location.path is a computed property (parent-name chain), so it cannot be
+    # matched in SQL; the in-Python path comparison below is the single source
+    # of truth.
     for loc in db.query(Location).all():
         if _normalize_path(loc.path) == norm:
             return loc.id
@@ -150,6 +154,16 @@ def list_products(
     expiry: Literal["", "expired", "expiring"] = "",
     low_stock: bool = False,
     include_variants: bool = False,
+    created_after: str | None = None,
+    created_before: str | None = None,
+    expiry_after: str | None = None,
+    expiry_before: str | None = None,
+    price_min: str | None = None,
+    price_max: str | None = None,
+    cost_min: str | None = None,
+    cost_max: str | None = None,
+    stock_min: str | None = None,
+    stock_max: str | None = None,
     db: Session = Depends(get_db),
 ):
     if sort_by not in PRODUCT_SORT_COLUMNS:
@@ -222,6 +236,26 @@ def list_products(
             )
         else:
             q = q.filter(sellable <= Product.reorder_level)
+            # Exclude parents whose stock lives on their variants
+            q = q.filter(Product.id.notin_(Product.variant_parent_id_subquery()))
+    q = apply_date_range(q, Product.created_at, created_after, created_before, label="created")
+    if expiry_after or expiry_before:
+        after = parse_date(expiry_after, "expiry after").date() if expiry_after else None
+        before = parse_date(expiry_before, "expiry before").date() if expiry_before else None
+        cond = expiry_svc.expiry_range_condition(Product.id, after, before)
+        if include_variants:
+            # A parent's displayed expiry folds in its active variants, so the
+            # parent also matches when any active variant is in range.
+            cond = cond | Product.id.in_(
+                select(Product.parent_id).where(
+                    Product.parent_id.isnot(None), Product.is_active == True,  # noqa: E712
+                    expiry_svc.expiry_range_condition(Product.id, after, before),
+                )
+            )
+        q = q.filter(cond)
+    q = apply_numeric_range(q, Product.unit_price, price_min, price_max, label="price")
+    q = apply_numeric_range(q, Product.cost_price, cost_min, cost_max, label="cost")
+    q = apply_numeric_range(q, Product.quantity, stock_min, stock_max, label="stock")
     total = q.count()
     if sort_by in ("category_name", "supplier_name"):
         relation = Product.category if sort_by == "category_name" else Product.supplier
@@ -293,7 +327,7 @@ class BulkEditRequest(BaseModel):
 @router.patch("/bulk-edit")
 def bulk_edit_products(data: BulkEditRequest, db: Session = Depends(get_db), user=Depends(require_permission("products.bulk"))):
     validate_refs(db, data.category_id, data.supplier_id)
-    products = db.query(Product).filter(Product.id.in_(data.ids)).all()
+    products = db.query(Product).filter(Product.id.in_(data.ids), Product.is_deleted == False).all()
     if not products:
         raise HTTPException(status_code=404, detail="No products found")
     updates = {}
@@ -615,6 +649,12 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     updates = data.model_dump(exclude_unset=True)
     validate_refs(db, updates.get("category_id"), updates.get("supplier_id"))
     validate_location_ref(db, updates.get("location_id"))
+    if updates.get("sku"):
+        existing_sku = db.query(Product).filter(
+            Product.sku == updates["sku"], Product.id != product_id
+        ).first()
+        if existing_sku:
+            raise HTTPException(status_code=400, detail="SKU already exists")
     if "location" in updates or "location_id" in updates:
         new_loc_id = resolve_location(db, updates.get("location_id"), updates.get("location"))
         if new_loc_id is None:
@@ -799,11 +839,13 @@ class CsvImportResult(BaseModel):
 def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_db), user=Depends(require_permission("products.import"))):
     if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV")
-    content = file.file.read().decode("utf-8-sig")
+    content = read_upload_text(file)
     reader = csv.DictReader(io.StringIO(content))
     result = CsvImportResult()
     _settings_row = db.query(Settings).first()
     default_reorder = _settings_row.default_reorder_level if _settings_row else 10
+    active_loc_ids = {loc.id for loc in db.query(Location).filter(Location.is_active == True)}  # noqa: E712
+    active_loc_by_norm = {_normalize_path(loc.path): loc.id for loc in db.query(Location).all() if loc.is_active}
     for row_idx, row in enumerate(reader, start=2):
         sku = (row.get("sku") or "").strip()
         name = (row.get("name") or "").strip()
@@ -871,18 +913,18 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
             if parent is not None:
                 loc_id = parent.location_id
             else:
-                loc_id = resolve_location(db, None, loc_text)
-            if loc_id is None:
-                result.errors.append(
-                    f"Row {row_idx} ({sku}): a location is required - set a 'location' column matching an active location"
-                )
+                loc_id = active_loc_by_norm.get(_normalize_path(loc_text))
+            if loc_id is None or loc_id not in active_loc_ids:
+                if not loc_text and parent is None:
+                    result.errors.append(
+                        f"Row {row_idx} ({sku}): a location is required - set a 'location' column matching an active location"
+                    )
+                else:
+                    result.errors.append(
+                        f"Row {row_idx} ({sku}): location '{loc_text or loc_id}' is not an active location"
+                    )
                 continue
-            loc_obj = db.get(Location, loc_id)
-            if loc_obj is None or not loc_obj.is_active:
-                result.errors.append(
-                    f"Row {row_idx} ({sku}): location '{loc_text or loc_id}' is not an active location"
-                )
-                continue
+            row_sp = db.begin_nested()
             p = Product(
                 sku=sku,
                 name=parent.name if parent else name,
@@ -924,7 +966,11 @@ def import_products_csv(file: UploadFile = File(...), db: Session = Depends(get_
                 )
             log_activity(db, user.id, user.username, "create", "product", p.id, f"Imported product '{p.display_name}' ({p.sku})")
             result.created += 1
+            row_sp.commit()
         except Exception as e:
+            _sp = locals().get("row_sp")
+            if _sp is not None:
+                _sp.rollback()
             result.errors.append(f"Row {row_idx} ({sku}): {e}")
     db.commit()
     broadcast_change("product", "created")
@@ -1030,6 +1076,7 @@ def upload_product_image(product_id: int, file: UploadFile = File(...), db: Sess
         matches = detected == ext
     if not matches:
         raise HTTPException(status_code=400, detail=f"File content does not match its extension ({ext})")
+    from app.models.product_image import ProductImage
     if p.image_url:
         old_path = UPLOAD_DIR / Path(p.image_url).name
         try:
@@ -1037,12 +1084,13 @@ def upload_product_image(product_id: int, file: UploadFile = File(...), db: Sess
                 old_path.unlink()
         except Exception:
             pass
+        stale = db.query(ProductImage).filter(ProductImage.product_id == product_id, ProductImage.url == p.image_url).first()
+        db.delete(stale) if stale else None
     filename = f"{uuid.uuid4().hex}{detected}"
     filepath = UPLOAD_DIR / filename
     with open(filepath, "wb") as f:
         f.write(content)
     p.image_url = f"/uploads/{filename}"
-    from app.models.product_image import ProductImage
     max_sort = db.query(func.coalesce(func.max(ProductImage.sort_order), 0)).filter(ProductImage.product_id == product_id).scalar()
     img = ProductImage(product_id=product_id, url=f"/uploads/{filename}", sort_order=max_sort + 1)
     db.add(img)
@@ -1081,8 +1129,12 @@ def upload_product_images(product_id: int, files: list[UploadFile] = File(...), 
         img = ProductImage(product_id=product_id, url=f"/uploads/{filename}", sort_order=max_sort)
         db.add(img)
         uploaded.append(img)
-    if uploaded and not p.image_url:
-        p.image_url = uploaded[0].url
+    if uploaded:
+        has_cover_row = bool(
+            db.query(ProductImage).filter(ProductImage.product_id == product_id, ProductImage.url == p.image_url).first()
+        ) if p.image_url else False
+        if not has_cover_row:
+            p.image_url = uploaded[0].url
     db.commit()
     for img in uploaded:
         db.refresh(img)
@@ -1104,6 +1156,7 @@ def delete_product_image(product_id: int, image_id: int, db: Session = Depends(g
         pass
     url = img.url
     db.delete(img)
+    db.flush()
     if p.image_url == url:
         remaining = db.query(ProductImage).filter(ProductImage.product_id == product_id).order_by(ProductImage.sort_order).first()
         p.image_url = remaining.url if remaining else ""
@@ -1121,6 +1174,10 @@ def reorder_product_images(product_id: int, body: dict, db: Session = Depends(ge
         img = db.query(ProductImage).filter(ProductImage.id == img_id, ProductImage.product_id == product_id).first()
         if img:
             img.sort_order = idx
+    if image_ids:
+        first = db.query(ProductImage).filter(ProductImage.id == image_ids[0], ProductImage.product_id == product_id).first()
+        if first:
+            p.image_url = first.url
     db.commit()
     broadcast_change("product", "updated")
     return {"ok": True}

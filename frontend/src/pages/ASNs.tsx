@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { statusBadge } from "../utils/statusBadges";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, PackagePlus, Pencil, Plus, Printer, Search, Trash2, Truck, XCircle } from "lucide-react";
+import { Eye, PackagePlus, Pencil, Plus, Printer, Search, Trash2, Truck, XCircle, PackageCheck } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
@@ -12,6 +12,7 @@ import LocationPicker from "../components/LocationPicker";
 import StockLocationHints from "../components/StockLocationHints";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
+import TextArea from "../components/TextArea";
 import EmptyState from "../components/EmptyState";
 import ProgressBar from "../components/ProgressBar";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -28,6 +29,7 @@ import { errorMessage } from "../utils/errors";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import FittedSelect from "../components/FittedSelect";
+import DatePicker from "../components/DatePicker";
 
 function supplierSelectableItems(items: Product[], supplierId: string): Product[] {
   const sid = Number(supplierId);
@@ -191,7 +193,7 @@ export default function ASNs() {
             {isLoading ? (
               <Skeleton rows={5} cols={6} />
             ) : asns.length === 0 ? (
-              <EmptyState title="No ASNs yet" message="Create an advance shipping notice for incoming supplier shipments." actionLabel="New ASN" onAction={() => setShowForm(true)} />
+              <EmptyState title={search || status || supplierFilter ? "No matching ASNs" : "No ASNs yet"} message={search || status || supplierFilter ? "Nothing matched your search or filters. Try adjusting them." : "Create an advance shipping notice for incoming supplier shipments."} actionLabel={search || status || supplierFilter ? undefined : "New ASN"} onAction={search || status || supplierFilter ? undefined : () => setShowForm(true)} />
             ) : asns.map((a) => (
               <tr key={a.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(a)}>
                 <td className="px-4 py-3 font-medium">{a.asn_number}</td>
@@ -485,7 +487,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Expected Arrival</label>
-            <input type="date" className="input" value={expected_arrival} onChange={(e) => setExpectedArrival(e.target.value)} />
+            <DatePicker value={expected_arrival} onChange={setExpectedArrival} ariaLabel="Expected Arrival" />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Notes</label>
@@ -588,9 +590,7 @@ function AsnDetail({ asn, onClose }: { asn: ASN; onClose: () => void }) {
                     </tr>
                   ))}
                   {asn.items.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="py-8 text-center text-muted">No items on this shipment</td>
-                    </tr>
+                    <EmptyState title="No items on this shipment" message="Line items will appear here once they are added to the ASN." icon={<PackageCheck size={48} />} />
                   )}
                 </tbody>
               </table>
@@ -649,11 +649,11 @@ function AsnEditModal({ asn, onClose, onSaved }: { asn: ASN; onClose: () => void
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Expected Arrival</label>
-          <input type="date" className="input" aria-label="Expected Arrival" value={expected_arrival} onChange={(e) => setExpectedArrival(e.target.value)} />
+          <DatePicker value={expected_arrival} onChange={setExpectedArrival} ariaLabel="Expected Arrival" />
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={3} aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <TextArea rows={3} ariaLabel="Notes" value={notes} onChange={setNotes} />
         </div>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
@@ -739,7 +739,7 @@ function AsnReceiveRow({ row, idx, productList, locations, onChange }: {
         </div>
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Expiry</label>
-          <input type="date" className="input" value={row.expiry_date} onChange={(e) => onChange(idx, "expiry_date", e.target.value)} />
+          <DatePicker value={row.expiry_date} onChange={(v) => onChange(idx, "expiry_date", v)} ariaLabel="Expiry" />
         </div>
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Location</label>
@@ -770,7 +770,7 @@ function AsnReceiveRow({ row, idx, productList, locations, onChange }: {
       {product?.is_serialized && (
         <div>
           <label className="block text-xs font-medium text-muted mb-1">Serial numbers (one per line)</label>
-          <textarea className="input font-mono text-xs" rows={2} value={row.serial_numbers} onChange={(e) => onChange(idx, "serial_numbers", e.target.value)} placeholder={"SN-001\nSN-002"} />
+          <TextArea className="font-mono text-xs" rows={2} value={row.serial_numbers} onChange={(v) => onChange(idx, "serial_numbers", v)} placeholder={"SN-001\nSN-002"} />
         </div>
       )}
     </div>

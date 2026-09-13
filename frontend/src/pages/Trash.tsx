@@ -4,8 +4,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { TrashItem } from "../types";
 import ConfirmDialog from "../components/ConfirmDialog";
-import Skeleton from "../components/Skeleton";
+
 import EmptyState from "../components/EmptyState";
+import Table from "../components/Table";
 import FittedSelect from "../components/FittedSelect";
 import { useDebounce } from "../hooks/useDebounce";
 import { useToast } from "../context/ToastContext";
@@ -136,27 +137,27 @@ export default function Trash() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Trash items">
-            <thead>
-              <tr className="bg-app text-left">
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Item</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Deleted</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <Skeleton rows={5} cols={4} />
-              ) : items.length === 0 ? (
+        <Table
+          ariaLabel="Trash items"
+          role="grid"
+          columns={[
+            { key: "type", header: "Type" },
+            { key: "item", header: "Item" },
+            { key: "deleted", header: "Deleted" },
+            { key: "actions", header: "Actions" },
+          ]}
+          loading={isLoading}
+          skeletonRows={5}
+          noData={items.length === 0}
+          empty={
                 <EmptyState
                   icon={<Trash2 size={48} />}
                   title={debouncedSearch || entityFilter ? "No matching items" : "Trash is empty"}
                   message={debouncedSearch || entityFilter ? "Try a different search or filter." : "Nothing in the trash yet."}
                 />
-              ) : (
-                items.map((item) => (
+          }
+        >
+          {items.map((item) => (
                   <tr key={`${item.entity_type}-${item.id}`} className="hover:bg-app">
                     <td className="px-4 py-3">
                       <span className="inline-block text-xs font-medium bg-app-alt px-2 py-0.5 rounded">
@@ -190,11 +191,8 @@ export default function Trash() {
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+        </Table>
       </div>
 
       {totalPages > 1 && (

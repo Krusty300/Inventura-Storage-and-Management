@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { BreadcrumbProvider } from "./context/BreadcrumbContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Layout from "./components/Layout";
 import RequirePermission from "./components/RequirePermission";
@@ -126,9 +127,11 @@ export default function App() {
           <AuthProvider>
             <ToastProvider>
               <RealtimeProvider>
-                <ErrorBoundary>
-                  <AppRoutes />
-                </ErrorBoundary>
+                <BreadcrumbProvider>
+                  <ErrorBoundary>
+                    <AppRoutes />
+                  </ErrorBoundary>
+                </BreadcrumbProvider>
               </RealtimeProvider>
             </ToastProvider>
           </AuthProvider>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search, Pin, PinOff, CheckCircle2, Circle, Trash2, Edit3, Clock,
@@ -17,11 +17,15 @@ import TaskCalendar from "../components/TaskCalendar";
 import ScrollArea from "../components/ScrollArea";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
+import Table from "../components/Table";
+import FileUploadButton from "../components/FileUploadButton";
+import TextArea from "../components/TextArea";
 import ErrorState from "../components/ErrorState";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
 import EntitySearchInput from "../components/EntitySearchInput";
 import FittedSelect from "../components/FittedSelect";
+import DatePicker from "../components/DatePicker";
 import { LINKABLE_ENTITIES, getEntityTypeLabel, getEntityTypeIcon } from "../utils/linkableEntities";
 import { buildCalendarEvents, buildIcsEvents, downloadIcs, googleCalUrl, outlookCalUrl, safeFilename } from "../utils/calendar";
 import { useDebounce } from "../hooks/useDebounce";
@@ -120,7 +124,6 @@ export default function Notes() {
   const { addToast } = useToast();
   const debouncedSearch = useDebounce(search, 300);
   const { pageSize, setPageSize } = usePageSize();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasFilters = !!debouncedSearch || !!category || !!priority || completedFilter !== "all" || !!tagFilter || !!assigneeFilter || !!dueDateFrom || !!dueDateTo;
 
@@ -506,40 +509,33 @@ export default function Notes() {
 
   const renderNoteTable = () => (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm" role="grid" aria-label="Notes table">
-        <thead>
-          <tr className="bg-app text-left">
-            <th scope="col" className="px-4 py-3 w-16">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all notes" title="Select all" />
-                <span className="text-muted sr-only">State</span>
-              </div>
-            </th>
-            <th scope="col" className="px-4 py-3 font-medium text-muted">Title</th>
-            <th scope="col" className="px-4 py-3 font-medium text-muted">Category</th>
-            <th scope="col" className="px-4 py-3 font-medium text-muted">Priority</th>
-            <th scope="col" className="px-4 py-3 font-medium text-muted">Due</th>
-            <th scope="col" className="px-4 py-3 font-medium text-muted">Tags</th>
-            <th scope="col" className="px-4 py-3 font-medium text-muted">Assigned</th>
-            <th scope="col" className="px-4 py-3 font-medium text-muted">Created</th>
-            <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {isLoading ? (
-            <Skeleton rows={6} cols={9} />
-          ) : isError ? (
-            <ErrorState title="Failed to load notes" message="Something went wrong while fetching notes." variant="table" onRetry={() => queryClient.invalidateQueries({ queryKey: ["notes"] })} />
-          ) : notes.length === 0 ? (
-            renderEmptyState()
-          ) : (
-            notes.map(renderNoteTableRow)
-          )}
-        </tbody>
-      </table>
+      <Table
+        columns={[
+          { key: 'select', header: <div className="flex items-center gap-2"><input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all notes" title="Select all" /><span className="text-muted sr-only">State</span></div>, className: 'px-4 py-3 w-16' },
+          { key: 'title', header: 'Title', className: 'px-4 py-3 font-medium text-muted' },
+          { key: 'category', header: 'Category', className: 'px-4 py-3 font-medium text-muted' },
+          { key: 'priority', header: 'Priority', className: 'px-4 py-3 font-medium text-muted' },
+          { key: 'due', header: 'Due', className: 'px-4 py-3 font-medium text-muted' },
+          { key: 'tags', header: 'Tags', className: 'px-4 py-3 font-medium text-muted' },
+          { key: 'assigned', header: 'Assigned', className: 'px-4 py-3 font-medium text-muted' },
+          { key: 'created', header: 'Created', className: 'px-4 py-3 font-medium text-muted' },
+          { key: 'actions', header: 'Actions', className: 'px-4 py-3 font-medium text-muted text-right' },
+        ]}
+        role="grid"
+        aria-label="Notes table"
+        loading={isLoading}
+        skeletonRows={6}
+        noData={!isError && notes.length === 0}
+        empty={renderEmptyState()}
+      >
+        {isError ? (
+          <ErrorState title="Failed to load notes" message="Something went wrong while fetching notes." variant="table" onRetry={() => queryClient.invalidateQueries({ queryKey: ["notes"] })} />
+        ) : (
+          notes.map(renderNoteTableRow)
+        )}
+      </Table>
     </div>
   );
-
   const renderNoteCard = (note: Note) => {
     const CatIcon = CATEGORY_ICONS[note.category] || StickyNote;
     const overdue = isOverdue(note.due_date, note.is_completed);
@@ -975,9 +971,9 @@ export default function Notes() {
           maxWidth={180}
         />
         <div role="group" aria-label="Filter by due date" className="sm:col-span-2 lg:col-span-2 flex items-center gap-2">
-          <input type="date" className="input flex-1 min-w-0" value={dueDateFrom} onChange={(e) => { setDueDateFrom(e.target.value); setPage(1); }} aria-label="Due after" title="Due after" />
+          <DatePicker value={dueDateFrom} onChange={(v) => { setDueDateFrom(v); setPage(1); }} ariaLabel="Due after" className="flex-1 min-w-0" />
           <span className="text-faint text-sm shrink-0 select-none" aria-hidden="true">to</span>
-          <input type="date" className="input flex-1 min-w-0" value={dueDateTo} onChange={(e) => { setDueDateTo(e.target.value); setPage(1); }} aria-label="Due before" title="Due before" />
+          <DatePicker value={dueDateTo} onChange={(v) => { setDueDateTo(v); setPage(1); }} ariaLabel="Due before" className="flex-1 min-w-0" />
         </div>
       </div>
 
@@ -1081,12 +1077,17 @@ export default function Notes() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Body</label>
-                <textarea className="input w-full h-28 resize-y" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="Add details..." />
+                <TextArea className="w-full h-28 resize-y" value={form.body} onChange={(v) => setForm({ ...form, body: v })} placeholder="Add details..." />
               </div>
               <div className="flex items-center gap-3">
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) setEditImageFile(f); }} />
                 <span className="text-sm font-medium text-ink">Image</span>
-                <button onClick={() => fileInputRef.current?.click()} className="btn-secondary text-sm flex items-center gap-1.5" type="button"><ImageIcon size={14} />{editImageFile || editingNote?.image_url ? "Change image" : "Choose image"}</button>
+                <FileUploadButton
+                  onFileChange={(e) => { const f = e.target.files?.[0]; if (f) setEditImageFile(f); }}
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="btn-secondary text-sm flex items-center gap-1.5"
+                >
+                  <ImageIcon size={14} />{editImageFile || editingNote?.image_url ? "Change image" : "Choose image"}
+                </FileUploadButton>
               </div>
             </div>
 
@@ -1120,7 +1121,7 @@ export default function Notes() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Due Date</label>
-                  <input type="datetime-local" className="input w-full" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+                  <DatePicker mode="datetime" value={form.due_date} onChange={(v) => setForm({ ...form, due_date: v })} ariaLabel="Due date" notes={notes} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Recurrence</label>
@@ -1220,7 +1221,9 @@ export default function Notes() {
                   <button onClick={() => setConfirmTagDelete(t)} className="p-1 text-muted hover:text-red-500 transition-colors" aria-label={`Delete tag ${t.name}`}><Trash2 size={14} /></button>
                 </div>
               ))}
-              {tags.length === 0 && <p className="text-sm text-muted text-center py-6">No tags yet. Create one above.</p>}
+              {tags.length === 0 && (
+                <EmptyState compact icon={<TagIcon size={20} />} title="No tags yet" message="Create one above to organize your notes." />
+              )}
             </div>
           </div>
         </Modal>
@@ -1252,7 +1255,9 @@ export default function Notes() {
                   </div>
                 </div>
               ))}
-              {templates.length === 0 && <p className="text-sm text-muted text-center py-6">No templates yet. Create one with the button above.</p>}
+              {templates.length === 0 && (
+                <EmptyState compact icon={<FileText size={20} />} title="No templates yet" message="Create one with the button above to reuse note structures." />
+              )}
             </div>
           </div>
         </Modal>

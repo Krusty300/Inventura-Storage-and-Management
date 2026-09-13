@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import { PackageSearch } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import SlideOver from "./SlideOver";
@@ -9,6 +10,7 @@ import type { Category, PaginatedResponse, Product, Supplier } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import Skeleton from "./Skeleton";
+import EmptyState from "./EmptyState";
 
 interface Props {
   category: Category;
@@ -73,7 +75,7 @@ export default function CategoryDetail({ category, onClose }: Props) {
           {productsLoading ? (
             <Skeleton variant="rows" rows={3} cols={4} />
           ) : productRows.length === 0 ? (
-            <p className="text-faint py-4 text-center">No products in this category.</p>
+            <EmptyState variant="block" icon={<PackageSearch size={48} />} title="No products in this category" message="Products assigned to this category will appear here." />
           ) : (
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm min-w-[500px]" aria-label="Products in this category">

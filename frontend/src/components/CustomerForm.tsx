@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Camera, Trash2 } from "lucide-react";
 import api from "../api/client";
@@ -6,6 +6,8 @@ import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
 import { useToast } from "../context/ToastContext";
 import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
+import FileUploadButton from "./FileUploadButton";
+import TextArea from "./TextArea";
 import { errorMessage } from "../utils/errors";
 import { entityImageUrl } from "../utils/images";
 import { onImageError } from "../utils/placeholders";
@@ -28,7 +30,6 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const queryClient = useQueryClient();
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const [imageUrl, setImageUrl] = useState(customer?.image_url || "");
   const [imageBusy, setImageBusy] = useState(false);
 
@@ -53,7 +54,6 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
       addToast(errorMessage(err, "Failed to upload profile image"), "error");
     }
     setImageBusy(false);
-    if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
   const handleImageRemove = async () => {
@@ -117,7 +117,7 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Address</label>
-            <textarea className="input" rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
+            <TextArea rows={2} value={address} onChange={setAddress} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -150,7 +150,7 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
         <div className="rounded-xl border border-border bg-app p-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-            <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <TextArea rows={2} value={notes} onChange={setNotes} />
           </div>
         </div>
 
@@ -170,17 +170,22 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
                   <p className="text-xs text-muted">Shown on this customer's page, detail view, and hover cards.</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={() => imageInputRef.current?.click()} disabled={imageBusy} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Upload profile image">
-                  <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
-                </button>
-                {imageUrl && (
-                  <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
-                    <Trash2 size={13} />Remove
-                  </button>
-                )}
-                <input ref={imageInputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp" className="hidden" onChange={handleImageUpload} />
-              </div>
+<div className="flex items-center gap-2">
+                  <FileUploadButton
+                    onFileChange={handleImageUpload}
+                    accept=".png,.jpg,.jpeg,.gif,.webp"
+                    disabled={imageBusy}
+                    className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
+                    ariaLabel="Upload profile image"
+                  >
+                    <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
+                  </FileUploadButton>
+                  {imageUrl && (
+                    <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
+                      <Trash2 size={13} />Remove
+                    </button>
+                  )}
+                </div>
             </div>
           </div>
         )}

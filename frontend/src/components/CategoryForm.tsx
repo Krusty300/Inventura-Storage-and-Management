@@ -3,6 +3,7 @@ import api from "../api/client";
 import type { Category } from "../types";
 import { useToast } from "../context/ToastContext";
 import Modal from "./Modal";
+import TextArea from "./TextArea";
 import { errorMessage } from "../utils/errors";
 
 interface Props {
@@ -51,7 +52,7 @@ export default function CategoryForm({ category, onClose, onSaved }: Props) {
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Description</label>
-          <textarea className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+          <TextArea rows={3} value={description} onChange={setDescription} />
         </div>
         <div className="flex justify-end gap-3 pt-2">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

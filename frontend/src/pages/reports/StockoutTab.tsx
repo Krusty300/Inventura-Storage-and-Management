@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { PackageSearch } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { StockoutRisk } from "../../types";
 import ReportSkeleton from "../../components/ReportSkeleton";
 import FittedSelect from "../../components/FittedSelect";
+import EmptyState from "../../components/EmptyState";
 
 export default function StockoutTab() {
   const [leadTime, setLeadTime] = useState(7);
@@ -53,7 +55,7 @@ export default function StockoutTab() {
             </thead>
             <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">No products</td></tr>
+                <tr><td colSpan={7} className="px-4 py-6"><EmptyState variant="table" icon={<PackageSearch size={48} />} title="No products" message="Products at stockout risk will appear here." /></td></tr>
               ) : data.items.map((p) => (
                 <tr key={p.product_id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">{p.product_name}</td>

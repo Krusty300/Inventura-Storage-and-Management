@@ -3,6 +3,7 @@ import { Download, ExternalLink, Eye, Printer, X } from "lucide-react";
 import type { Receipt } from "../types";
 import SlideOver from "./SlideOver";
 import AttachmentSection from "./AttachmentSection";
+import EmptyState from "./EmptyState";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useSettings } from "../hooks/useSettings";
 import { formatCurrency } from "../utils/currency";
@@ -146,9 +147,7 @@ export default function ReceiptDetail({ receipt, onClose }: Props) {
                       </tr>
                     ))}
                     {receipt.items.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="py-8 text-center text-muted">No items on this receipt</td>
-                      </tr>
+                      <EmptyState title="No items on this receipt" message="Line items will appear here once this receipt is saved." />
                     )}
                   </tbody>
                 </table>

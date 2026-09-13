@@ -7,6 +7,7 @@ interface Props {
   onAction?: () => void;
   icon?: React.ReactNode;
   variant?: "table" | "block";
+  compact?: boolean;
 }
 
 export default function EmptyState({
@@ -16,7 +17,26 @@ export default function EmptyState({
   onAction,
   icon,
   variant = "table",
+  compact = false,
 }: Props) {
+  if (compact) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center px-4 py-8">
+        <div className="text-faint mb-2">
+          {icon || <PackageOpen size={20} />}
+        </div>
+        <h3 className="text-sm font-medium text-muted mb-0.5">{title}</h3>
+        <p className="text-xs text-faint mb-3 max-w-xs">{message}</p>
+        {actionLabel && onAction && (
+          <button onClick={onAction} className="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1">
+            <Plus size={12} />
+            {actionLabel}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   const content = (
     <>
       <div className="text-faint mb-3">

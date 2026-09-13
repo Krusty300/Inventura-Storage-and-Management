@@ -14,6 +14,7 @@ from app.models.settings import Settings
 from app.schemas.work_order import WorkOrderComplete, WorkOrderCreate, WorkOrderOut, WorkOrderUpdate
 from app.services import inventory
 from app.services.auth import require_permission
+from app.services.filters import apply_date_range, apply_numeric_range
 from app.services.sequences import next_document_number
 from app.services.pdf_helpers import (
     BODY_RIGHT, MARGIN, money, draw_banner_header, draw_info_block, draw_item_table,
@@ -263,6 +264,10 @@ def list_work_orders(
     status: str | None = None,
     product_id: int | None = None,
     search: str = Query(""),
+    created_after: str = Query(""),
+    created_before: str = Query(""),
+    quantity_min: str = Query(""),
+    quantity_max: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -279,6 +284,8 @@ def list_work_orders(
         q = q.join(WorkOrder.product, isouter=True).filter(
             WorkOrder.wo_number.ilike(like) | Product.name.ilike(like) | Product.sku.ilike(like)
         )
+    q = apply_date_range(q, WorkOrder.created_at, created_after, created_before, "created_at")
+    q = apply_numeric_range(q, WorkOrder.quantity, quantity_min, quantity_max, "quantity")
     total = q.count()
     items = q.order_by(WorkOrder.created_at.desc()).offset(skip).limit(limit).all()
     return {"items": [WorkOrderOut.model_validate(w) for w in items], "total": total,

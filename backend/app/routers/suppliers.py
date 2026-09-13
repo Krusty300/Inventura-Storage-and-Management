@@ -20,8 +20,9 @@ from app.schemas.supplier import (
     SupplierStats, SupplierUpdate,
 )
 from app.services.auth import require_permission
+from app.services.filters import apply_date_range
 from app.services.soft_delete import register, soft_delete
-from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change
+from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change, read_upload_text
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"], dependencies=[Depends(require_permission("suppliers.view"))])
 
@@ -100,6 +101,8 @@ def list_suppliers(
     search: str = Query(""),
     include_inactive: bool = False,
     category_id: int | None = None,
+    created_after: str = Query(""),
+    created_before: str = Query(""),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_PICKER),
     db: Session = Depends(get_db),
@@ -122,6 +125,7 @@ def list_suppliers(
                 .where(Product.supplier_id.isnot(None), Product.category_id == category_id)
             )
         )
+    q = apply_date_range(q, Supplier.created_at, created_after, created_before, "created_at")
     total = q.count()
     rows = q.order_by(Supplier.name).offset(skip).limit(limit).all()
     items = [_serialize_with_stats(s, to, ts, lo, pc) for s, to, ts, lo, pc in rows]
@@ -164,7 +168,7 @@ def import_suppliers_csv(
 ):
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV")
-    content = file.file.read().decode("utf-8-sig")
+    content = read_upload_text(file)
     reader = csv.DictReader(StringIO(content))
     result = SupplierImportResult()
     seen = set()
@@ -375,4 +379,4 @@ def remove_supplier_image(
     log_activity(db, user.id, user.username, "update", "supplier", s.id, f"Removed profile image for supplier '{s.name}'")
     db.commit()
     broadcast_change("supplier", "updated")
-    return s
+    return {"image_url": s.image_url}

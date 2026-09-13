@@ -60,7 +60,7 @@ describe("Exceptions Page", () => {
     mockExceptions();
     renderWithProviders(<Exceptions />);
     expect(await screen.findByText("Exceptions Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("No pending or failed quality checks.")).toBeInTheDocument();
+    expect(screen.getByText("No pending or failed quality checks")).toBeInTheDocument();
   });
 
   it("renders pending and failed quality checks in the Quality Checks section", async () => {

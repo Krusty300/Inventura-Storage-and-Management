@@ -43,6 +43,19 @@ export function daysAgo(date: Date | string): number {
   return Math.floor((today.getTime() - target.getTime()) / 86_400_000);
 }
 
+export type OverdueStatus = "overdue" | "due" | null;
+
+/** Classifies an expected date: "overdue" once its day has passed, "due" within
+ * the next 3 days (inclusive of today), otherwise null. Date-boundary only, to
+ * match the ASN/Notes overdue behaviour regardless of time-of-day. */
+export function overdueStatus(value: Date | string | null | undefined): OverdueStatus {
+  if (value === null || value === undefined || value === "") return null;
+  const days = daysUntil(value);
+  if (days < 0) return "overdue";
+  if (days <= 3) return "due";
+  return null;
+}
+
 export function formatDateTime(value?: Date | string | null, format?: string, fallback = "—"): string {
   if (value === null || value === undefined || value === "") return fallback;
   const d = value instanceof Date ? value : parseLocalDate(value);

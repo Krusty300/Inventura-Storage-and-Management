@@ -155,8 +155,10 @@ export interface Order {
   status: string;
   total_amount: number;
   notes: string;
+  expected_arrival: string | null;
   created_at: string;
   updated_at: string;
+  received_at: string | null;
   supplier_name: string;
   username: string;
   items: OrderItem[];
@@ -481,6 +483,8 @@ export interface Settings {
   show_product_hover_cards: boolean;
   show_customer_hover_cards: boolean;
   show_supplier_hover_cards: boolean;
+  show_datetime_hover_cards: boolean;
+  show_cart_summary_hover_cards: boolean;
   logo_url: string;
   tax_id: string;
   payment_terms: string;

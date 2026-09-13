@@ -80,7 +80,7 @@ describe("Customers Page", () => {
     renderWithProviders(<Customers />);
     fireEvent.click(await screen.findByLabelText("View Bob"));
     expect(await screen.findByText("Frequently Purchased")).toBeInTheDocument();
-    expect(await screen.findByText("No purchase history yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No purchase history yet")).toBeInTheDocument();
   });
 
   it("uses the default items per page from settings", async () => {

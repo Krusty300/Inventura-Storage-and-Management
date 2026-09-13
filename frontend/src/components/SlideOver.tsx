@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { X, GripVertical } from "lucide-react";
 import ScrollArea from "./ScrollArea";
+import { useBreadcrumbExtension } from "../context/BreadcrumbContext";
 
 interface Props {
   open: boolean;
@@ -10,18 +11,21 @@ interface Props {
   wide?: boolean;
   ariaLabel?: string;
   actions?: ReactNode;
+  breadcrumb?: string;
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
 
 const CLOSE_THRESHOLD = 120;
 
-export default function SlideOver({ open, onClose, title, children, wide, ariaLabel, actions }: Props) {
+export default function SlideOver({ open, onClose, title, children, wide, ariaLabel, actions, breadcrumb }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const dragStartX = useRef(0);
   const [dragOffset, setDragOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
+
+  useBreadcrumbExtension(breadcrumb ?? (typeof title === "string" ? title : undefined), open);
 
   useEffect(() => {
     if (open) {

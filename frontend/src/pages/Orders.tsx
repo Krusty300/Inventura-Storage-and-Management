@@ -1,4 +1,4 @@
-import { useDateFormat } from "../hooks/useDateFormat";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
 import { Pencil, Eye, Trash2, Printer, Search, ShoppingCart, Fingerprint } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +11,7 @@ import FittedSelect from "../components/FittedSelect";
 import BulkActionBar from "../components/BulkActionBar";
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
+import Table from "../components/Table";
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
@@ -19,6 +19,7 @@ import { useSettings } from "../hooks/useSettings";
 import { useExportCsv } from "../hooks/useExportCsv";
 import { formatCurrency } from "../utils/currency";
 import { statusBadge } from "../utils/statusBadges";
+import { overdueStatus } from "../utils/date";
 import { errorMessage } from "../utils/errors";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -26,7 +27,7 @@ import { useAuth } from "../context/AuthContext";
 import { usePageSize } from "../hooks/usePageSize";
 
 export default function Orders() {
-  const formatDate = useDateFormat();
+  const formatDateTime = useDateTimeFormat();
   const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -113,6 +114,16 @@ export default function Orders() {
     }
   };
 
+  const arrivalBadge = (o: Order) => {
+    if (!o.expected_arrival) return <span className="text-muted">—</span>;
+    const text = formatDateTime(o.expected_arrival);
+    if (o.status !== "pending") return <span className="text-muted text-xs">{text}</span>;
+    const status = overdueStatus(o.expected_arrival);
+    if (status === "overdue") return <span className="badge badge-danger">Overdue {text}</span>;
+    if (status === "due") return <span className="badge badge-warning">Due {text}</span>;
+    return <span className="text-muted text-xs">{text}</span>;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -163,26 +174,26 @@ export default function Orders() {
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
-        <table className="w-full text-sm" role="grid" aria-label="Orders table">
-          <thead>
-            <tr className="bg-app text-left">
-              <th scope="col" className="px-4 py-3">
-                <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all orders" />
-              </th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Order #</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Total</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {isLoading ? (
-              <Skeleton rows={5} cols={7} />
-            ) : orders.length === 0 ? (
-              <EmptyState title="No orders" message="Create a purchase order to start tracking deliveries." actionLabel="New Order" onAction={() => setShowForm(true)} />
-            ) : orders.map((o) => (
+        <Table
+          columns={[
+            { key: 'select', header: <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all orders" />, className: 'px-4 py-3' },
+            { key: 'order', header: 'Order #', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'supplier', header: 'Supplier', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'placed', header: 'Placed', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'expectedArrival', header: 'Expected Arrival', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'received', header: 'Received', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'status', header: 'Status', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'total', header: 'Total', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'actions', header: 'Actions', className: 'px-4 py-3 font-medium text-muted' },
+          ]}
+          role="grid"
+          aria-label="Orders table"
+          loading={isLoading}
+          skeletonRows={5}
+          noData={orders.length === 0}
+          empty={<EmptyState title={search || statusFilter ? "No matching orders" : "No orders"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Create a purchase order to start tracking deliveries."} actionLabel={search || statusFilter ? undefined : "New Order"} onAction={search || statusFilter ? undefined : () => setShowForm(true)} />}
+        >
+          {orders.map((o) => (
               <tr key={o.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(o); }}>
                 <td className="px-4 py-3">
                   <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(o.id)} onChange={() => toggleSelect(o.id)} aria-label={`Select order ${o.order_number}`} />
@@ -197,8 +208,12 @@ export default function Orders() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-muted">{o.supplier_name || "—"}</td>
-                <td className="px-4 py-3 text-muted">
-                  {formatDate(o.created_at)}
+                <td className="px-4 py-3 text-muted whitespace-nowrap">
+                  {formatDateTime(o.created_at)}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">{arrivalBadge(o)}</td>
+                <td className="px-4 py-3 text-muted whitespace-nowrap">
+                  {o.received_at ? formatDateTime(o.received_at) : "—"}
                 </td>
                 <td className="px-4 py-3">
                   <span className={`badge ${statusBadge(o.status)}`}>{o.status}</span>
@@ -226,8 +241,7 @@ export default function Orders() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
+        </Table>
         </div>
       </div>
 

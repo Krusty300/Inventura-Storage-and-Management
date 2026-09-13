@@ -10,9 +10,11 @@ import type { Lot, PaginatedResponse, QualityCheck } from "../types";
 import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import AttachmentSection from "../components/AttachmentSection";
+import TextArea from "../components/TextArea";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
+import Table from "../components/Table";
 import ErrorState from "../components/ErrorState";
 import { useDebounce } from "../hooks/useDebounce";
 import FittedSelect from "../components/FittedSelect";
@@ -101,28 +103,27 @@ export default function QualityChecks() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm" role="grid" aria-label="Quality checks table">
-          <thead>
-            <tr className="bg-app text-left">
-              <th scope="col" className="px-4 py-3 font-medium text-muted">QC #</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Product</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Batch</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Lot</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Result</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Checked By</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+        <Table
+          ariaLabel="Quality checks table"
+          role="grid"
+          columns={[
+            { key: "qc", header: "QC #" },
+            { key: "product", header: "Product" },
+            { key: "batch", header: "Batch" },
+            { key: "lot", header: "Lot" },
+            { key: "location", header: "Location" },
+            { key: "result", header: "Result" },
+            { key: "checkedBy", header: "Checked By" },
+            { key: "date", header: "Date" },
+            { key: "actions", header: "Actions" },
+          ]}
+        >
             {isLoading ? (
               <Skeleton rows={5} cols={9} />
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : checks.length === 0 ? (
-              <EmptyState title="No quality checks yet" message="Record a QC result to keep stock quality controlled. Failing a check quarantines its lot when one is linked and blocks the affected stock until resolved." actionLabel={can("quality_checks.create") ? "New Check" : undefined} onAction={can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
+              <EmptyState title={search || result ? "No matching quality checks" : "No quality checks yet"} message={search || result ? "Nothing matched your search or filters. Try adjusting them." : "Record a QC result to keep stock quality controlled. Failing a check quarantines its lot when one is linked and blocks the affected stock until resolved."} actionLabel={search || result ? undefined : can("quality_checks.create") ? "New Check" : undefined} onAction={search || result ? undefined : can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
             ) : checks.map((qc) => (
               <tr key={qc.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{qc.qc_number}</td>
@@ -146,9 +147,7 @@ export default function QualityChecks() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
-        </div>
+        </Table>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
@@ -335,7 +334,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <TextArea rows={2} value={notes} onChange={setNotes} />
         </div>
         {result === "fail" && (
           <p className="text-xs text-orange-600 dark:text-orange-400">

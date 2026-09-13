@@ -12,6 +12,7 @@ import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { hasVariants } from "../utils/variants";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import EmptyState from "./EmptyState";
 import ConfirmDialog from "./ConfirmDialog";
 import MoveUnallocatedModal from "./MoveUnallocatedModal";
 import MoveQuarantinedModal from "./MoveQuarantinedModal";
@@ -181,6 +182,7 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
       onClose={onClose}
       wide
       ariaLabel={product.display_name}
+      breadcrumb={product.display_name}
       title={
         <span className="inline-flex flex-wrap items-center gap-2">
           {product.display_name}
@@ -567,7 +569,7 @@ function TraceSection({ product }: { product: Product }) {
       ) : isError ? (
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">Failed to load trace.</p>
       ) : !trace || (trace.incoming.length === 0 && trace.outgoing.length === 0 && trace.work_orders.length === 0) ? (
-        <p className="mt-2 text-sm text-muted">No movements or work orders recorded for this product yet.</p>
+        <EmptyState compact icon={<Fingerprint size={20} />} title="No trace data" message="Movements and work orders recorded for this product will appear here." />
       ) : (
         <div className="mt-2 space-y-4">
           {trace.work_orders.length > 0 && (

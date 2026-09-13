@@ -6,6 +6,8 @@ import { formatCurrency } from "../../utils/currency";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import ReportSkeleton from "../../components/ReportSkeleton";
 import FittedSelect from "../../components/FittedSelect";
+import EmptyState from "../../components/EmptyState";
+import { Truck } from "lucide-react";
 
 export default function SuppliersTab({ symbol }: { symbol: string }) {
   const formatDate = useDateFormat();
@@ -64,7 +66,7 @@ export default function SuppliersTab({ symbol }: { symbol: string }) {
             </thead>
             <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-muted">No supplier order data</td></tr>
+                <EmptyState variant="table" icon={<Truck size={40} />} title="No supplier order data" message="Supplier orders will appear here once purchase orders are placed in this period." />
               ) : data.items.map((s, i) => (
                 <tr key={s.supplier_id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium text-faint">{i + 1}</td>

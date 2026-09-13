@@ -102,6 +102,13 @@ class ProductOut(BaseModel):
     images: list[ImageOut] = []
     variants: list["ProductOut"] = []
 
+    @model_validator(mode="after")
+    def _sync_image_url(self):
+        """Keep image_url consistent with the gallery so all listings show images[0]."""
+        if self.images:
+            self.image_url = self.images[0].url
+        return self
+
     class Config:
         from_attributes = True
 

@@ -123,8 +123,7 @@ describe("Orders Page", () => {
     fireEvent.change(await screen.findByLabelText("Supplier"), { target: { value: "1" } });
     const getProductSelect = () =>
       within(dialog)
-        .getAllByRole("combobox")
-        .find((c) => c.getAttribute("aria-label") !== "Supplier")!;
+        .getAllByRole("combobox", { name: "Product" })[0];
     await vi.waitFor(() => {
       const allOptions = screen.getAllByRole("option");
       const labels = allOptions.map((o) => o.textContent || "");
@@ -138,6 +137,7 @@ describe("Orders Page", () => {
     await vi.waitFor(() =>
       expect(postMock).toHaveBeenCalledWith("/orders", expect.objectContaining({
         supplier_id: 1,
+        expected_arrival: null,
         items: [{ product_id: 10, quantity: 1, unit_price: 6 }],
       }))
     );
@@ -162,10 +162,10 @@ describe("Orders Page", () => {
     renderWithProviders(<Orders />);
     fireEvent.click(await screen.findByRole("button", { name: "New Order" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Item" }));
-    let selects = await screen.findAllByRole("combobox");
-    fireEvent.change(selects[selects.length - 2], { target: { value: "10" } });
-    selects = await screen.findAllByRole("combobox");
-    fireEvent.change(selects[selects.length - 1], { target: { value: "10" } });
+    await screen.findAllByText(/Widget/);
+    const productSelects = () => screen.getAllByRole("combobox", { name: "Product" });
+    fireEvent.change(productSelects()[0], { target: { value: "10" } });
+    fireEvent.change(productSelects()[1], { target: { value: "10" } });
     expect(await screen.findByText("Product already added to this order")).toBeInTheDocument();
   });
 
@@ -223,5 +223,30 @@ describe("Orders Page", () => {
     expect(await screen.findByRole("dialog", { name: "Order PO-1002" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit order PO-1002" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
+  });
+
+  it("shows placed and received date+time in the order table", async () => {
+    mockOrders([
+      mockOrder(),
+      mockOrder({
+        id: 2,
+        order_number: "PO-1002",
+        status: "received",
+        created_at: "2026-01-03T09:00:00",
+        received_at: "2026-01-05T14:30:00",
+      }),
+    ]);
+    renderWithProviders(<Orders />);
+    expect(await screen.findByText("PO-1001")).toBeInTheDocument();
+    expect(screen.getByText("2026-01-01 10:00")).toBeInTheDocument();
+    expect(screen.getByText("2026-01-03 09:00")).toBeInTheDocument();
+    expect(screen.getByText("2026-01-05 14:30")).toBeInTheDocument();
+  });
+
+  it("flags pending orders past their expected arrival as overdue", async () => {
+    mockOrders([mockOrder({ expected_arrival: "2020-01-01T00:00:00" })]);
+    renderWithProviders(<Orders />);
+    expect(await screen.findByText("PO-1001")).toBeInTheDocument();
+    expect(screen.getByText(/Overdue 2020-01-01 00:00/)).toBeInTheDocument();
   });
 });

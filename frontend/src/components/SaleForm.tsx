@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, GripVertical, KeyRound, Loader2, Lock, Minus, Plus, Search, Send, Trash2, Unlock, X } from "lucide-react";
+import { AlertTriangle, GripVertical, KeyRound, Loader2, Lock, Minus, PackageOpen, Plus, Search, Send, Trash2, Unlock, X } from "lucide-react";
+import EmptyState from "./EmptyState";
 import api from "../api/client";
 import { PAGE_SIZE, PAGE_SIZE_PRODUCTS } from "../utils/constants";
 import type { Customer, Product, Promotion, QualityCheck, SalesChannel, Settings } from "../types";
@@ -12,10 +13,14 @@ import type { Sale } from "../types";
 import { isSelectable, selectableProducts } from "../utils/variants";
 import { MOBILE_MONEY_PROVIDERS, paymentLabel } from "../utils/payments";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
+import { productImageUrl } from "../utils/images";
 import FittedSelect from "./FittedSelect";
+import PasswordInput from "./PasswordInput";
+import TextArea from "./TextArea";
 import PaymentMethodPicker from "./PaymentMethodPicker";
 import CartSwitcher from "./CartSwitcher";
 import ScrollArea from "./ScrollArea";
+import HoverCard from "./HoverCard";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { loadCartWidth, saveCartWidth } from "../hooks/useSaleDraft";
 import {
@@ -88,11 +93,7 @@ function CartLine({
     <div className="border border-border rounded-lg bg-surface p-3 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0">
-          {product?.image_url ? (
-            <img src={product.image_url} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" onError={onImageError} />
-          ) : (
-            <img src={getPlaceholder()} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" />
-          )}
+          <img src={productImageUrl(product)} alt="" className="w-10 h-10 rounded object-cover shrink-0" loading="lazy" onError={onImageError} />
           <div className="min-w-0">
             <p className="font-medium text-sm text-ink truncate" title={product?.display_name}>
               {product?.display_name || `Product #${item.product_id}`}
@@ -166,6 +167,101 @@ function CartLine({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+interface CartSummaryCardProps {
+  items: LineItem[];
+  productById: Map<number, Product>;
+  subtotal: number;
+  discountAmount: number;
+  effectivePromoDiscount: number;
+  promoCode: string;
+  tax: number;
+  total: number;
+  currency: string;
+  payment: string;
+}
+
+function CartSummaryCard({
+  items,
+  productById,
+  subtotal,
+  discountAmount,
+  effectivePromoDiscount,
+  promoCode,
+  tax,
+  total,
+  currency,
+  payment,
+}: CartSummaryCardProps) {
+  const totalQty = items.reduce((sum, i) => sum + (parseInt(i.quantity) || 0), 0);
+  const visible = items.slice(0, 6);
+  const remaining = items.length - visible.length;
+
+  return (
+    <div className="animate-dt-pop w-full space-y-3 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500">Cart Summary</p>
+        <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">
+          {items.length} {items.length === 1 ? "line" : "lines"} · {totalQty} qty
+        </span>
+      </div>
+
+      <div className={`space-y-1.5 ${items.length > 6 ? "max-h-44 overflow-y-auto pr-0.5" : ""}`}>
+        {visible.map((item) => {
+          const product = productById.get(parseInt(item.product_id));
+          const qty = parseInt(item.quantity) || 0;
+          const unitPrice = parseFloat(item.unit_price) || 0;
+          return (
+            <div key={item.product_id} className="flex items-center gap-2 min-w-0">
+              <img src={productImageUrl(product)} alt="" className="h-7 w-7 shrink-0 rounded object-cover" loading="lazy" onError={onImageError} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-200" title={product?.display_name}>
+                  {product?.display_name || `Product #${item.product_id}`}
+                </p>
+                <p className="truncate text-[11px] text-slate-400 dark:text-slate-500">
+                  {qty} × {formatCurrency(unitPrice, currency)}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold tabular-nums">{formatCurrency(qty * unitPrice, currency)}</span>
+            </div>
+          );
+        })}
+        {remaining > 0 && <p className="text-[11px] text-slate-400 dark:text-slate-500">+ {remaining} more {remaining === 1 ? "line" : "lines"}</p>}
+      </div>
+
+      <div className="space-y-1 border-t border-slate-200 pt-2 text-xs dark:border-slate-700">
+        <div className="flex justify-between">
+          <span className="text-slate-500 dark:text-slate-400">Subtotal</span>
+          <span className="tabular-nums">{formatCurrency(subtotal, currency)}</span>
+        </div>
+        {discountAmount > 0 && (
+          <div className="flex justify-between">
+            <span className="text-slate-500 dark:text-slate-400">Discount</span>
+            <span className="tabular-nums text-red-600 dark:text-red-400">-{formatCurrency(discountAmount, currency)}</span>
+          </div>
+        )}
+        {effectivePromoDiscount > 0 && (
+          <div className="flex justify-between">
+            <span className="text-slate-500 dark:text-slate-400">Promo ({promoCode.trim().toUpperCase()})</span>
+            <span className="tabular-nums text-emerald-600 dark:text-emerald-400">-{formatCurrency(effectivePromoDiscount, currency)}</span>
+          </div>
+        )}
+        <div className="flex justify-between">
+          <span className="text-slate-500 dark:text-slate-400">Tax</span>
+          <span className="tabular-nums">{formatCurrency(tax, currency)}</span>
+        </div>
+        <div className="flex items-baseline justify-between pt-1">
+          <span className="font-semibold text-slate-900 dark:text-slate-100">Total</span>
+          <span className="text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">{formatCurrency(total, currency)}</span>
+        </div>
+        <div className="flex items-center justify-between border-t border-slate-200 pt-1.5 text-[11px] text-slate-400 dark:border-slate-700 dark:text-slate-500">
+          <span>Payment</span>
+          <span className="font-medium">{payment}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -270,7 +366,12 @@ export default function SaleForm({ onClose, onSaved }: Props) {
 
   useEffect(() => {
     scheduleSave();
-  }, [customerId, channelId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, scheduleSave]);
+  }, [customerId, channelId, paymentMethod, paymentProvider, paymentPhone, paymentReference, paymentProviderAmount, notes, discount, amountReceived, items, promoCode, promoDiscount, scheduleSave]);
+
+  const handleClose = useCallback(() => {
+    flushSave();
+    onClose();
+  }, [flushSave, onClose]);
 
   const activeDraftRef = useRef<MultiCartDraft | null>(activeCart.draft);
   useEffect(() => {
@@ -352,15 +453,20 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   }, [cartWidth]);
 
   useEffect(() => {
-    api.get("/customers", { params: { limit: PAGE_SIZE_PRODUCTS } }).then(({ data }) => setCustomers(data.items));
-    api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } }).then(({ data }) => setProducts(data.items));
-    api.get("/sales-channels/all").then(({ data }) => setChannels(data));
-    api.get("/settings").then(({ data }) => setSettings(data));
+    let cancelled = false;
+    const fail = () => {
+      if (!cancelled) addToast("Could not load store data. Check your connection and reopen the register.", "error");
+    };
+    api.get("/customers", { params: { limit: PAGE_SIZE_PRODUCTS } }).then(({ data }) => { if (!cancelled) setCustomers(data.items); }).catch(fail);
+    api.get("/products", { params: { active_only: true, limit: PAGE_SIZE_PRODUCTS, include_variants: 1 } }).then(({ data }) => { if (!cancelled) setProducts(data.items); }).catch(fail);
+    api.get("/sales-channels/all").then(({ data }) => { if (!cancelled) setChannels(data); }).catch(fail);
+    api.get("/settings").then(({ data }) => { if (!cancelled) setSettings(data); }).catch(fail);
     Promise.all([
       api.get("/quality-checks", { params: { result: "pending", limit: PAGE_SIZE } }),
       api.get("/quality-checks", { params: { result: "fail", limit: PAGE_SIZE } }),
-    ]).then(([pending, failed]) => setPendingQcs([...pending.data.items, ...failed.data.items]));
-    api.get("/promotions", { params: { active_only: true, limit: 50 } }).then(({ data }) => setActivePromos(data.items));
+    ]).then(([pending, failed]) => { if (!cancelled) setPendingQcs([...pending.data.items, ...failed.data.items]); }).catch(fail);
+    api.get("/promotions", { params: { active_only: true, limit: 50 } }).then(({ data }) => { if (!cancelled) setActivePromos(data.items); }).catch(fail);
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -376,13 +482,14 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   }, [isDraftRestored, isLocked]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [handleClose]);
 
   const selectable = useMemo(() => selectableProducts(products), [products]);
   const sellable = useMemo(() => selectable.filter((p) => !p.is_serialized), [selectable]);
+  const productById = useMemo(() => new Map(sellable.map((p) => [p.id, p])), [sellable]);
 
   const blockedProductIds = useMemo(() => {
     const set = new Set<number>();
@@ -807,18 +914,18 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   aria-label="Locked form username"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Password</label>
-                <input
-                  className="input text-sm"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={lockPassword}
-                  onChange={(e) => setLockPassword(e.target.value)}
-                  autoComplete="current-password"
-                  aria-label="Locked form password"
-                />
-              </div>
+<div>
+                  <label className="block text-xs font-medium text-muted mb-1.5">Password</label>
+                  <PasswordInput
+                    id="sale-lock-password"
+                    className="text-sm"
+                    placeholder="Enter your password"
+                    value={lockPassword}
+                    onChange={setLockPassword}
+                    autoComplete="current-password"
+                    ariaLabel="Locked form password"
+                  />
+                </div>
               {lockError && (
                 <p className="text-xs text-red-600 dark:text-red-400">{lockError}</p>
               )}
@@ -861,12 +968,12 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Password</label>
-                  <input
-                    className="input text-sm"
-                    type="password"
+                  <PasswordInput
+                    id="sale-lock-password-2"
+                    className="text-sm"
                     placeholder="Enter your password"
                     value={lockPassword}
-                    onChange={(e) => setLockPassword(e.target.value)}
+                    onChange={setLockPassword}
                     autoComplete="current-password"
                   />
                 </div>
@@ -917,7 +1024,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
           >
             {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
           </button>
-          <button type="button" onClick={onClose} className="btn-secondary flex items-center gap-1.5" aria-label="Close register">
+          <button type="button" onClick={handleClose} className="btn-secondary flex items-center gap-1.5" aria-label="Close register">
             <X size={16} />
             <span className="hidden sm:inline">Close</span>
           </button>
@@ -957,9 +1064,9 @@ export default function SaleForm({ onClose, onSaved }: Props) {
 
           <ScrollArea className="flex-1 min-h-0" viewportClassName="h-full p-6 sa-viewport-contain">
             {sellable.length === 0 ? (
-              <p className="text-muted text-sm py-16 text-center">No sellable products found</p>
+              <EmptyState variant="block" icon={<PackageOpen size={48} />} title="No sellable products found" message="Mark a product as active to add it to a sale." />
             ) : visibleProducts.length === 0 ? (
-              <p className="text-muted text-sm py-16 text-center">No products match your search</p>
+              <EmptyState variant="block" icon={<Search size={48} />} title="No products match your search" message="Try a different product name or SKU." />
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                 {visibleProducts.map((p) => {
@@ -989,7 +1096,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                         </span>
                       )}
                       <div className="h-28 mb-2 rounded-lg overflow-hidden bg-subtle flex items-center justify-center">
-                        <img src={p.image_url || getPlaceholder()} alt={p.display_name} className="w-full h-full object-cover" loading="lazy" onError={onImageError} />
+                        <img src={productImageUrl(p)} alt={p.display_name} className="w-full h-full object-cover" loading="lazy" onError={onImageError} />
                       </div>
                       <p className="font-semibold text-sm text-ink line-clamp-2">{p.display_name}</p>
                       <p className="text-xs text-faint mt-0.5">{p.sku}</p>
@@ -1097,18 +1204,18 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   <input className="input text-sm" placeholder={paymentMethod === "mobile_money" ? "Provider confirmation code" : "Reference (optional)"} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} disabled={formDisabled} aria-label="Payment reference" />
                 </div>
               )}
-              <textarea className="input text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={formDisabled} aria-label="Sale notes" />
+              <TextArea className="text-sm" rows={1} placeholder="Notes (optional)" value={notes} onChange={setNotes} disabled={formDisabled} ariaLabel="Sale notes" />
             </div>
 
             <ScrollArea className="flex-1 min-h-[8rem] lg:min-h-0" viewportClassName="h-full px-5 py-4 space-y-3 sa-viewport-contain">
               {items.length === 0 ? (
-                <p className="text-muted text-sm text-center py-10">Cart is empty — tap a product to add it</p>
+                <EmptyState variant="block" icon={<PackageOpen size={48} />} title="Cart is empty" message="Tap a product on the left to add it." />
               ) : (
                 items.map((item, idx) => (
                   <CartLine
                     key={item.product_id}
                     item={item}
-                    product={sellable.find((p) => p.id === parseInt(item.product_id))}
+                    product={productById.get(parseInt(item.product_id))}
                     currency={currency}
                     blocked={isBlocked(item)}
                     disabled={formDisabled}
@@ -1206,7 +1313,29 @@ export default function SaleForm({ onClose, onSaved }: Props) {
               </div>
               <div className="flex justify-between items-baseline border-t border-border pt-2">
                 <span className="font-semibold">Total</span>
-                <span className="text-2xl font-bold text-ink">{formatCurrency(total, currency)}</span>
+                {settings?.show_cart_summary_hover_cards !== false && items.length > 0 ? (
+                  <HoverCard
+                    width={300}
+                    render={() => (
+                      <CartSummaryCard
+                        items={items}
+                        productById={productById}
+                        subtotal={subtotal}
+                        discountAmount={discountAmount}
+                        effectivePromoDiscount={effectivePromoDiscount}
+                        promoCode={promoCode}
+                        tax={tax}
+                        total={total}
+                        currency={currency}
+                        payment={paymentLabel(paymentMethod, paymentProvider)}
+                      />
+                    )}
+                  >
+                    <span className="text-2xl font-bold text-ink">{formatCurrency(total, currency)}</span>
+                  </HoverCard>
+                ) : (
+                  <span className="text-2xl font-bold text-ink">{formatCurrency(total, currency)}</span>
+                )}
               </div>
             </div>
 

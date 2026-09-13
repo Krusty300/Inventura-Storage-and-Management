@@ -56,6 +56,14 @@ def mrp(
     bom_components = _active_bom_components(db)
     scheduled = _scheduled_receipts(db)
 
+    # Batch-load every product the plan can reference instead of N individual
+    # db.get() calls: BOM owners, the demand product, and all components.
+    referenced_ids = set(bom_components.keys()) | {demand.id}
+    product_cache = {p.id: p for p in db.query(Product).filter(Product.id.in_(referenced_ids)).all()}
+    for entry in bom_components.values():
+        for component, _qty in entry[1]:
+            product_cache.setdefault(component.id, component)
+
     gross: dict[int, int] = {}
     levels: dict[int, int] = {}
     via: dict[int, str] = {}
@@ -66,7 +74,7 @@ def mrp(
         via[pid] = via_name
         entry = bom_components.get(pid)
         if entry is not None:
-            parent = db.get(Product, pid)
+            parent = product_cache.get(pid)
             parent_name = parent.display_name if parent else via_name
             for component, cqty in entry[1]:
                 explode(component.id, qty * cqty, level + 1, parent_name)
@@ -77,7 +85,7 @@ def mrp(
 
     items = []
     for pid in sorted(gross, key=lambda p: (levels[p], p)):
-        product = db.get(Product, pid)
+        product = product_cache.get(pid)
         gross_qty = gross[pid]
         on_hand = inventory.on_hand(db, product_id=pid)
         recv = scheduled.get(pid, 0)

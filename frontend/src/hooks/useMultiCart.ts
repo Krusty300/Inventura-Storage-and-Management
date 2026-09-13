@@ -194,15 +194,45 @@ export function useMultiCart(enabled: boolean) {
   // drop the last debounced save. A mount that starts locked never writes.
   const hadEnabled = useRef(false);
 
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef(state);
+  useEffect(() => {
+    latest.current = state;
+  });
+
   useEffect(() => {
     if (enabled) {
       hadEnabled.current = true;
-      persist(state);
-    } else if (hadEnabled.current) {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+      persistTimer.current = setTimeout(() => {
+        persist(latest.current);
+        persistTimer.current = null;
+      }, 500);
+      return () => {
+        if (persistTimer.current) clearTimeout(persistTimer.current);
+      };
+    }
+    if (hadEnabled.current) {
+      if (persistTimer.current) {
+        clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+      }
       persist(state);
       hadEnabled.current = false;
     }
   }, [state, enabled]);
+
+  // Flush any pending debounced write when the provider unmounts. The timer is
+  // only cleared (not nulled) in the effect cleanup above, so this still sees it.
+  useEffect(
+    () => () => {
+      if (hadEnabled.current && persistTimer.current !== null) {
+        clearTimeout(persistTimer.current);
+        persist(latest.current);
+      }
+    },
+    [],
+  );
 
   const activeCart: MultiCart =
     state.carts.find((c) => c.id === state.activeId) ?? state.carts[0];

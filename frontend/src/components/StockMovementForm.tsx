@@ -8,6 +8,7 @@ import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
+import TextArea from "./TextArea";
 import { useSelectableProducts } from "../hooks/useSelectableProducts";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import { isSelectable, productLabel } from "../utils/variants";
@@ -183,7 +184,7 @@ export default function StockMovementForm({ movement, onClose, onSaved }: Props)
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-              <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <TextArea rows={2} value={notes} onChange={setNotes} />
             </div>
           </div>
         </section>

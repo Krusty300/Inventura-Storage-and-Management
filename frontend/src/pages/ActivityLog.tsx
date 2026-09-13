@@ -4,9 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import type { PaginatedResponse } from "../types";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import FittedSelect from "../components/FittedSelect";
+import Table from "../components/Table";
 import { useDebounce } from "../hooks/useDebounce";
 import { useExportCsv } from "../hooks/useExportCsv";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
@@ -95,23 +95,24 @@ export default function ActivityLog() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Activity log table">
-            <thead>
-              <tr className="bg-app text-left">
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">User</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Action</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Entity</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Description</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <Skeleton rows={5} cols={5} />
-              ) : logs.length === 0 ? (
-                <EmptyState title="No activity recorded" message="Actions performed in the system will appear here." />
-              ) : logs.map((log) => (
+        <Table
+          ariaLabel="Activity log table"
+          role="grid"
+          columns={[
+            { key: "date", header: "Date" },
+            { key: "user", header: "User" },
+            { key: "action", header: "Action" },
+            { key: "entity", header: "Entity" },
+            { key: "description", header: "Description" },
+          ]}
+          loading={isLoading}
+          skeletonRows={5}
+          noData={logs.length === 0}
+          empty={
+            <EmptyState title={search || entityFilter || actionFilter ? "No matching activity" : "No activity recorded"} message={search || entityFilter || actionFilter ? "Nothing matched your search or filters. Try adjusting them." : "Actions performed in the system will appear here."} />
+          }
+        >
+          {logs.map((log) => (
                 <tr key={log.id} className="hover:bg-app">
                   <td className="px-4 py-3 text-muted whitespace-nowrap">
                     {formatDateTime(log.created_at)}
@@ -124,9 +125,7 @@ export default function ActivityLog() {
                   <td className="px-4 py-3 text-ink">{log.description}</td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
+        </Table>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />

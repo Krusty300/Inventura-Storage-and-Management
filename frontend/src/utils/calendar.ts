@@ -22,6 +22,66 @@ export function dateKey(date: Date): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
+export interface ParsedDateTime {
+  date: Date;
+  hasTime: boolean;
+  hour: number;
+  minute: number;
+}
+
+/**
+ * Parses the ISO-ish values used by date/datetime fields across the app:
+ * "YYYY-MM-DD", "YYYY-MM-DDTHH:MM", "YYYY-MM-DDTHH:MM:SS", with an optional
+ * trailing timezone ("Z" or "+HH:MM") or "".
+ *
+ * Naive values are interpreted as local wall-clock components. Values carrying
+ * an explicit offset are converted to the local wall-clock so the picker edits
+ * what the user actually sees elsewhere in the app.
+ */
+export function splitDateTime(value: string): ParsedDateTime | null {
+  const raw = value || "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::\d{2})?)?/.exec(raw);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const hour = m[4] !== undefined ? Math.min(23, Math.max(0, Number(m[4]))) : 0;
+  const minute = m[5] !== undefined ? Math.min(59, Math.max(0, Number(m[5]))) : 0;
+  if (m[4] !== undefined && /(Z|[+-]\d{2}:?\d{2})$/.test(raw)) {
+    const inst = new Date(raw);
+    if (Number.isNaN(inst.getTime())) return null;
+    return {
+      date: new Date(inst.getFullYear(), inst.getMonth(), inst.getDate()),
+      hasTime: true,
+      hour: inst.getHours(),
+      minute: inst.getMinutes(),
+    };
+  }
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return {
+    date,
+    hasTime: m[4] !== undefined,
+    hour,
+    minute,
+  };
+}
+
+/**
+ * Builds the compact value emitted by datetime fields:
+ * "YYYY-MM-DDTHH:MM" plus the runtime UTC offset ("+HH:MM") so a naive
+ * backend that stores values as UTC preserves the chosen local wall-clock
+ * as the same instant.
+ */
+export function toDateTimeInput(date: Date, hour?: number, minute?: number): string {
+  const local = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour ?? 0, minute ?? 0, 0, 0);
+  const offMin = -local.getTimezoneOffset();
+  const sign = offMin < 0 ? "-" : "+";
+  const abs = Math.abs(offMin);
+  return `${dateKey(local)}T${pad2(hour ?? 0)}:${pad2(minute ?? 0)}${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+}
+
 export function parseDueDate(value: string | null): Date | null {
   if (!value) return null;
   const d = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);

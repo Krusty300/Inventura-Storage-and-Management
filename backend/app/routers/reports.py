@@ -29,6 +29,7 @@ from app.services.auth import require_permission
 from app.services import expiry as expiry_svc
 from app.services import inventory
 from app.services.inventory import BACKFLUSH, CONSUME, ISSUE, NON_ACTIVITY_MOVEMENT_TYPES, SHIP, TRANSFER_OUT, sellable_qty_by_product, sellable_qty_subquery
+from app.services.filters import apply_date_range, apply_numeric_range, parse_date
 from app.services.pdf_helpers import (
     MARGIN,
     draw_header,
@@ -808,6 +809,16 @@ def export_products(
     category_id: int | None = None,
     expiry: str = "",
     low_stock: bool = False,
+    created_after: str | None = None,
+    created_before: str | None = None,
+    expiry_after: str | None = None,
+    expiry_before: str | None = None,
+    price_min: str | None = None,
+    price_max: str | None = None,
+    cost_min: str | None = None,
+    cost_max: str | None = None,
+    stock_min: str | None = None,
+    stock_max: str | None = None,
     db: Session = Depends(get_db),
 ):
     inventory.expire_overdue_lots(db)
@@ -842,6 +853,14 @@ def export_products(
     if low_stock:
         sellable = sellable_qty_subquery()
         q = q.filter(Product.is_active == True, Product.id.notin_(Product.variant_parent_id_subquery()), sellable <= Product.reorder_level)  # noqa: E712
+    q = apply_date_range(q, Product.created_at, created_after, created_before, label="created")
+    if expiry_after or expiry_before:
+        after = parse_date(expiry_after, "expiry after").date() if expiry_after else None
+        before = parse_date(expiry_before, "expiry before").date() if expiry_before else None
+        q = q.filter(expiry_svc.expiry_range_condition(Product.id, after, before))
+    q = apply_numeric_range(q, Product.unit_price, price_min, price_max, label="price")
+    q = apply_numeric_range(q, Product.cost_price, cost_min, cost_max, label="cost")
+    q = apply_numeric_range(q, Product.quantity, stock_min, stock_max, label="stock")
     products = q.order_by(Product.name).all()
     return _csv_response(
         "products_report",

@@ -17,6 +17,25 @@ def test_create_order(auth_headers):
     assert len(data["items"]) == 1
 
 
+def test_order_expected_arrival_and_received_at(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-EXP", "name": "Expected Item", "cost_price": 5.00}, headers=auth_headers).json()
+    created = client.post("/api/orders", json={
+        "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.00}],
+        "expected_arrival": "2026-02-15T10:00:00",
+    }, headers=auth_headers).json()
+    assert created["expected_arrival"] is not None
+    assert created["received_at"] is None
+
+    cleared = client.put(f"/api/orders/{created['id']}", json={"expected_arrival": None}, headers=auth_headers).json()
+    assert cleared["expected_arrival"] is None
+
+    client.put(f"/api/orders/{created['id']}", json={"expected_arrival": "2026-02-20T09:30:00"}, headers=auth_headers)
+    received = client.put(f"/api/orders/{created['id']}", json={"status": "received"}, headers=auth_headers).json()
+    assert received["status"] == "received"
+    assert received["received_at"] is not None
+    assert received["expected_arrival"] is not None
+
+
 def test_list_orders(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD002", "name": "Order Item 2", "cost_price": 10.00}, headers=auth_headers).json()
     client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 10.00}]}, headers=auth_headers)

@@ -1,7 +1,8 @@
+import type { SavedSearchEntry } from "../components/SavedSearches";
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, Package, PackagePlus, Search, Fingerprint, ExternalLink } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, Package, PackagePlus, Search, Fingerprint, ExternalLink, PanelRightOpen } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Category, PaginatedResponse, Product, StockMovement } from "../types";
@@ -10,9 +11,14 @@ import ProductDetail from "../components/ProductDetail";
 import HoverCard from "../components/HoverCard";
 import AdjustStockModal from "../components/AdjustStockModal";
 import BulkEditModal from "../components/BulkEditModal";
+import DateRangePicker from "../components/DateRangePicker";
+import NumericRangeInput from "../components/NumericRangeInput";
+import SavedSearches from "../components/SavedSearches";
+import { useRecentSearches } from "../hooks/useRecentSearches";
 import CsvImportModal from "../components/CsvImportModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import SlideOver from "../components/SlideOver";
+import Drawer from "../components/Drawer";
 import BarcodeScanner from "../components/BarcodeScanner";
 import FittedSelect from "../components/FittedSelect";
 import Skeleton from "../components/Skeleton";
@@ -60,6 +66,57 @@ function ProductHoverCard({ product, currencySymbol, onView }: { product: Produc
   );
 }
 
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-border/60 py-3 last:border-0">
+      <dt className="text-sm text-muted shrink-0">{label}</dt>
+      <dd className="text-sm font-medium text-ink break-words text-right">{value}</dd>
+    </div>
+  );
+}
+
+function ProductQuickView({ product, currencySymbol, onFullView }: { product: Product; currencySymbol: string; onFullView?: () => void }) {
+  const formatDate = useDateFormat();
+  const stock = product.total_quantity ?? product.quantity ?? 0;
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start gap-4">
+        <div className="h-24 w-24 shrink-0 rounded-xl bg-subtle flex items-center justify-center overflow-hidden">
+          <img
+            src={productImageUrl(product)}
+            alt=""
+            className="w-full h-full object-contain p-2"
+            loading="lazy"
+            onError={onImageError}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-lg font-bold leading-snug break-words">{product.display_name || product.name}</p>
+          {product.sku && (<p className="mt-0.5 text-sm text-faint font-mono">{product.sku}</p>)}
+          <p className="mt-1.5 text-sm text-muted line-clamp-3 break-words">{product.description || "No description available."}</p>
+        </div>
+      </div>
+
+      <dl className="mt-4">
+        <DetailRow label="Stock" value={`${stock} unit${stock === 1 ? "" : "s"}`} />
+        <DetailRow label="Unit Price" value={formatCurrency(product.unit_price, currencySymbol)} />
+        <DetailRow label="Unit Cost" value={formatCurrency(product.cost_price, currencySymbol)} />
+        <DetailRow label="Category" value={product.category_name || "—"} />
+        <DetailRow label="Supplier" value={product.supplier_name || "—"} />
+        <DetailRow label="Created" value={formatDate(product.created_at)} />
+        <DetailRow label="Expiry" value={formatDate(product.effective_expiry_date ?? product.expiry_date)} />
+      </dl>
+
+      <div className="flex justify-end">
+        <button onClick={onFullView} className="btn-secondary flex items-center gap-1.5 text-sm">
+          View full details
+          <ExternalLink size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Products() {
   const formatDate = useDateFormat();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,6 +124,17 @@ export default function Products() {
   const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") ?? "");
   const [expiryFilter, setExpiryFilter] = useState(() => searchParams.get("expiry") ?? "");
   const [lowStock, setLowStock] = useState(searchParams.get("low_stock") === "1");
+  const { recent, addRecent, clearRecent } = useRecentSearches("products");
+  const [stockMin, setStockMin] = useState(() => searchParams.get("stock_min") ?? "");
+  const [stockMax, setStockMax] = useState(() => searchParams.get("stock_max") ?? "");
+  const [priceMin, setPriceMin] = useState(() => searchParams.get("price_min") ?? "");
+  const [priceMax, setPriceMax] = useState(() => searchParams.get("price_max") ?? "");
+  const [costMin, setCostMin] = useState(() => searchParams.get("cost_min") ?? "");
+  const [costMax, setCostMax] = useState(() => searchParams.get("cost_max") ?? "");
+  const [createdAfter, setCreatedAfter] = useState(() => searchParams.get("created_after") ?? "");
+  const [createdBefore, setCreatedBefore] = useState(() => searchParams.get("created_before") ?? "");
+  const [expiryAfter, setExpiryAfter] = useState(() => searchParams.get("expiry_after") ?? "");
+  const [expiryBefore, setExpiryBefore] = useState(() => searchParams.get("expiry_before") ?? "");
   const [sortKey, setSortKey] = useState<string>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
@@ -79,6 +147,7 @@ export default function Products() {
   const [deleting, setDeleting] = useState<Product | null>(null);
   const [adjusting, setAdjusting] = useState<Product | null>(null);
   const [movementProduct, setMovementProduct] = useState<Product | null>(null);
+  const [quickView, setQuickView] = useState<Product | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
@@ -131,13 +200,23 @@ export default function Products() {
   });
 
   const { data: productsRaw, isLoading } = useQuery({
-    queryKey: ["products", debouncedSearch, categoryFilter, expiryFilter, lowStock, page, pageSize, sortKey, sortDir],
+    queryKey: ["products", debouncedSearch, categoryFilter, expiryFilter, lowStock, stockMin, stockMax, priceMin, priceMax, costMin, costMax, createdAfter, createdBefore, expiryAfter, expiryBefore, page, pageSize, sortKey, sortDir],
     queryFn: async () => {
       const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString(), include_variants: "1" };
       if (debouncedSearch) params.search = debouncedSearch;
       if (categoryFilter) params.category_id = categoryFilter;
       if (expiryFilter) params.expiry = expiryFilter;
       if (lowStock) params.low_stock = "1";
+      if (stockMin) params.stock_min = stockMin;
+      if (stockMax) params.stock_max = stockMax;
+      if (priceMin) params.price_min = priceMin;
+      if (priceMax) params.price_max = priceMax;
+      if (costMin) params.cost_min = costMin;
+      if (costMax) params.cost_max = costMax;
+      if (createdAfter) params.created_after = createdAfter;
+      if (createdBefore) params.created_before = createdBefore;
+      if (expiryAfter) params.expiry_after = expiryAfter;
+      if (expiryBefore) params.expiry_before = expiryBefore;
       if (sortKey) {
         params.sort_by = sortKey;
         params.sort_dir = sortDir;
@@ -146,6 +225,11 @@ export default function Products() {
       return data as PaginatedResponse<Product>;
     },
   });
+
+  useEffect(() => {
+    const pages = productsRaw?.pages;
+    if (pages && page > pages) setPage(pages);
+  }, [productsRaw?.pages, page]);
 
   const { data: movements, isLoading: movementsLoading, isError: movementsError } = useQuery({
     queryKey: ["product-movements", movementProduct?.id],
@@ -202,6 +286,16 @@ export default function Products() {
     if (categoryFilter) params.category_id = categoryFilter;
     if (expiryFilter) params.expiry = expiryFilter;
     if (lowStock) params.low_stock = "1";
+    if (stockMin) params.stock_min = stockMin;
+    if (stockMax) params.stock_max = stockMax;
+    if (priceMin) params.price_min = priceMin;
+    if (priceMax) params.price_max = priceMax;
+    if (costMin) params.cost_min = costMin;
+    if (costMax) params.cost_max = costMax;
+    if (createdAfter) params.created_after = createdAfter;
+    if (createdBefore) params.created_before = createdBefore;
+    if (expiryAfter) params.expiry_after = expiryAfter;
+    if (expiryBefore) params.expiry_before = expiryBefore;
     exportCsv("/reports/export/products", "products_report.csv", "Products report", params);
   };
 
@@ -273,6 +367,22 @@ export default function Products() {
     return r.product.reserved_qty || 0;
   };
 
+  const applySavedParams = (params: SavedSearchEntry["params"]) => {
+    setSearch(params.search ?? "");
+    setCategoryFilter(params.category ?? "");
+    setExpiryFilter(params.expiry ?? "");
+    setLowStock(params.low_stock === "1");
+    setStockMin(params.stock_min ?? ""); setStockMax(params.stock_max ?? "");
+    setPriceMin(params.price_min ?? ""); setPriceMax(params.price_max ?? "");
+    setCostMin(params.cost_min ?? ""); setCostMax(params.cost_max ?? "");
+    setCreatedAfter(params.created_after ?? ""); setCreatedBefore(params.created_before ?? "");
+    setExpiryAfter(params.expiry_after ?? ""); setExpiryBefore(params.expiry_before ?? "");
+    setPage(1);
+    for (const [k, v] of Object.entries(params)) updateSearchParam(k, v);
+  };
+  const hasActiveFilters = !!(search || categoryFilter || expiryFilter || lowStock || stockMin || stockMax || priceMin || priceMax || costMin || costMax || createdAfter || createdBefore || expiryAfter || expiryBefore);
+  const savedSearchParams = (): Record<string, string> => Object.fromEntries([...searchParams.entries()]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -309,6 +419,7 @@ export default function Products() {
             placeholder="Search by Product Name and SKU ..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && search.trim()) addRecent(search.trim()); }}
             aria-label="Search products"
           />
         </div>
@@ -352,6 +463,86 @@ export default function Products() {
         )}
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+        <NumericRangeInput
+          label="Stock"
+          ariaLabel="Stock quantity range"
+          min={stockMin}
+          max={stockMax}
+          placeholder="Qty"
+          onChange={(min, max) => { setStockMin(min); setStockMax(max); setPage(1); }}
+        />
+        <NumericRangeInput
+          label="Unit Price"
+          ariaLabel="Unit price range"
+          min={priceMin}
+          max={priceMax}
+          placeholder="Price"
+          onChange={(min, max) => { setPriceMin(min); setPriceMax(max); setPage(1); }}
+        />
+        <NumericRangeInput
+          label="Unit Cost"
+          ariaLabel="Unit cost range"
+          min={costMin}
+          max={costMax}
+          placeholder="Cost"
+          onChange={(min, max) => { setCostMin(min); setCostMax(max); setPage(1); }}
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-start">
+        <DateRangePicker
+          label="Created"
+          ariaLabel="Created date range"
+          from={createdAfter}
+          to={createdBefore}
+          fromPlaceholder="From"
+          toPlaceholder="To"
+          onChange={(from, to) => { setCreatedAfter(from); setCreatedBefore(to); setPage(1); }}
+        />
+        <DateRangePicker
+          label="Expiry"
+          ariaLabel="Expiry date range"
+          from={expiryAfter}
+          to={expiryBefore}
+          fromPlaceholder="From"
+          toPlaceholder="To"
+          onChange={(from, to) => { setExpiryAfter(from); setExpiryBefore(to); setPage(1); }}
+        />
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <SavedSearches
+          scope="products"
+          entityLabel="Products"
+          currentParams={savedSearchParams()}
+          active={hasActiveFilters}
+          onApply={applySavedParams}
+          className=""
+        />
+        {recent.length > 0 && (
+          <span className="text-sm font-medium text-muted">Recent:</span>
+        )}
+        {recent.map((term) => (
+          <button
+            key={term}
+            onClick={() => { setSearch(term); setPage(1); }}
+            className="badge badge-ghost cursor-pointer"
+            aria-label={`Use recent search ${term}`}
+          >
+            {term}
+          </button>
+        ))}
+        {recent.length > 0 && (
+          <button
+            onClick={clearRecent}
+            className="text-sm text-muted hover:text-danger"
+            aria-label="Clear recent searches"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-3 bg-primary-soft dark:bg-primary/10 rounded-lg border border-primary-soft dark:border-primary/30">
           <span className="text-sm font-medium text-primary-strong dark:text-primary">{selectedIds.size} selected</span>
@@ -389,7 +580,7 @@ export default function Products() {
               {isLoading ? (
                 <Skeleton rows={5} cols={14} />
               ) : rows.length === 0 ? (
-                <EmptyState title="No products found" message="Add your first product to start building inventory." actionLabel="Add Product" onAction={() => { setEditing(null); setVariantParent(null); setShowForm(true); }} />
+                <EmptyState title={search || categoryFilter || expiryFilter || lowStock ? "No matching products" : "No products found"} message={search || categoryFilter || expiryFilter || lowStock ? "Nothing matched your search or filters. Try adjusting them." : "Add your first product to start building inventory."} actionLabel={search || categoryFilter || expiryFilter || lowStock ? undefined : "Add Product"} onAction={search || categoryFilter || expiryFilter || lowStock ? undefined : () => { setEditing(null); setVariantParent(null); setShowForm(true); }} />
               ) : rows.map((r) => {
                 const p = r.product;
                 const isGroup = r.kind === "parent" && hasVariants(p);
@@ -510,6 +701,10 @@ export default function Products() {
                             <PackagePlus size={16} />
                           </button>
                         )}
+                        <button onClick={() => setQuickView(p)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Quick view ${p.display_name}`}>
+                          <PanelRightOpen size={16} />
+                        </button>
+
                         <button onClick={() => setViewing(p)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${p.display_name}`}>
                           <Eye size={16} />
                         </button>
@@ -595,10 +790,25 @@ export default function Products() {
         onCancel={() => setToggling(null)}
       />
 
+      <Drawer
+        open={!!quickView}
+        onClose={() => setQuickView(null)}
+        title={quickView ? `Quick view: ${quickView.display_name}` : "Quick view"}
+        breadcrumb={quickView ? `${quickView.display_name} (quick view)` : undefined}
+        ariaLabel="Quick view product"
+        actions={
+          <button onClick={() => { if (quickView) { setViewing(quickView); setQuickView(null); } }} className="text-faint hover:text-primary" aria-label="Open full view">
+            <ExternalLink size={16} />
+          </button>
+        }
+      >
+        {quickView && <ProductQuickView product={quickView} currencySymbol={currencySymbol} />}
+      </Drawer>
+
       <SlideOver open={!!movementProduct} onClose={() => setMovementProduct(null)} title={`Movements: ${movementProduct?.display_name || ""}`} wide ariaLabel={`Movements for ${movementProduct?.display_name || ""}`}>
         {movementsLoading && <Skeleton variant="rows" rows={3} cols={5} />}
         {movementsError && <p className="text-red-600 dark:text-red-400 text-sm">Failed to load movements.</p>}
-        {!movementsLoading && !movementsError && movements && movements.length === 0 && <p className="text-muted text-sm">No movements recorded for this product.</p>}
+        {!movementsLoading && !movementsError && movements && movements.length === 0 && <EmptyState compact title="No movements recorded for this product" message="Receipts, transfers, and adjustments will appear here." />}
         {!movementsLoading && !movementsError && movements && movements.length > 0 && (
           <table className="w-full text-sm">
             <thead>

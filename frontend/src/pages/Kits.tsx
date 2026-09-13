@@ -8,6 +8,7 @@ import Modal from "../components/Modal";
 import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
+import TextArea from "../components/TextArea";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useDebounce } from "../hooks/useDebounce";
@@ -127,7 +128,7 @@ export default function Kits() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : kits.length === 0 ? (
-              <EmptyState title="No kits yet" message="Create a kit to bundle products into a sellable collection." actionLabel="New Kit" onAction={openNew} />
+              <EmptyState title={search ? "No matching kits" : "No kits yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create a kit to bundle products into a sellable collection."} actionLabel={search ? undefined : "New Kit"} onAction={search ? undefined : openNew} />
             ) : kits.map((k) => (
               <tr key={k.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(k)}>
                 <td className="px-4 py-3 font-medium">{k.name}</td>
@@ -304,7 +305,7 @@ function KitForm({ kit, onClose, onSaved }: { kit: Kit | null; onClose: () => vo
 
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Description</label>
-          <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+          <TextArea rows={2} value={description} onChange={setDescription} />
         </div>
 
         <div className="border border-border rounded-xl overflow-hidden bg-app/50">
@@ -533,6 +534,9 @@ function KitDetail({ kit, onClose, onEdited, onEdit }: { kit: Kit; onClose: () =
                     </tr>
                   );
                 })}
+                {kit.items.length === 0 && (
+                  <EmptyState title="No kit components" message="This kit has no included products yet." icon={<Layers size={48} />} />
+                )}
               </tbody>
             </table>
           </div>

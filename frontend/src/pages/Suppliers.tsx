@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Table from "../components/Table";
 import { Pencil, Trash2, Eye, RefreshCw, Search, Building2, ExternalLink, Phone, Mail, MapPin } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -13,7 +14,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import BulkActionBar from "../components/BulkActionBar";
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
+
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
@@ -214,29 +215,26 @@ export default function Suppliers() {
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[700px]" aria-label="Suppliers table">
-            <thead>
-              <tr className="bg-app text-left">
-                <th scope="col" className="px-4 py-3">
-                  <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all suppliers" />
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted hidden md:table-cell">Contact</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted hidden lg:table-cell">Email</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted hidden lg:table-cell">Phone</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Products</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted text-right hidden md:table-cell">Orders</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Total Spent</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted hidden sm:table-cell">Last Order</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <Skeleton rows={5} cols={10} />
-              ) : suppliers.length === 0 ? (
-                <EmptyState title="No suppliers" message="Add your first supplier to start managing purchases." actionLabel="Add Supplier" onAction={() => { setEditing(null); setShowForm(true); }} />
-              ) : suppliers.map((s) => (
+        <Table
+          columns={[
+            { key: 'select', header: <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all suppliers" />, className: 'px-4 py-3' },
+            { key: 'name', header: 'Name', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'contact', header: 'Contact', className: 'px-4 py-3 font-medium text-muted hidden md:table-cell' },
+            { key: 'email', header: 'Email', className: 'px-4 py-3 font-medium text-muted hidden lg:table-cell' },
+            { key: 'phone', header: 'Phone', className: 'px-4 py-3 font-medium text-muted hidden lg:table-cell' },
+            { key: 'products', header: 'Products', className: 'px-4 py-3 font-medium text-muted text-right' },
+            { key: 'orders', header: 'Orders', className: 'px-4 py-3 font-medium text-muted text-right hidden md:table-cell' },
+            { key: 'totalSpent', header: 'Total Spent', className: 'px-4 py-3 font-medium text-muted text-right' },
+            { key: 'lastOrder', header: 'Last Order', className: 'px-4 py-3 font-medium text-muted hidden sm:table-cell' },
+            { key: 'actions', header: 'Actions', className: 'px-4 py-3 font-medium text-muted' },
+          ]}
+          aria-label="Suppliers table"
+          loading={isLoading}
+          skeletonRows={5}
+          noData={suppliers.length === 0}
+          empty={<EmptyState title={search ? "No matching suppliers" : "No suppliers"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Add your first supplier to start managing purchases."} actionLabel={search ? undefined : "Add Supplier"} onAction={search ? undefined : () => { setEditing(null); setShowForm(true); }} />}
+        >
+            {suppliers.map((s) => (
                 <tr key={s.id} className="hover:bg-app cursor-pointer" onClick={(e) => { const t = e.target as HTMLElement; if (t.closest("button") || t.closest("input") || t.closest("a")) return; setViewing(s); }}>
                   <td className="px-4 py-3">
                     <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(s.id)} onChange={() => toggleSelect(s.id)} aria-label={`Select ${s.name}`} />
@@ -296,8 +294,7 @@ export default function Suppliers() {
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
+          </Table>
         </div>
       </div>
 

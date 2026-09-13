@@ -4,6 +4,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import api from "../../api/client";
 import type { StockMovementTrends } from "../../types";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import DatePicker from "../../components/DatePicker";
+import EmptyState from "../../components/EmptyState";
 
 export default function MovementsTab() {
   const [startDate, setStartDate] = useState("");
@@ -26,9 +28,9 @@ export default function MovementsTab() {
   if (isLoading) return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <input type="date" className="input text-sm py-1.5" value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Start date" />
+        <DatePicker value={startDate} onChange={setStartDate} ariaLabel="Start date" inputClassName="text-sm py-1.5" />
         <span className="text-faint text-sm">to</span>
-        <input type="date" className="input text-sm py-1.5" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="End date" />
+        <DatePicker value={endDate} onChange={setEndDate} ariaLabel="End date" inputClassName="text-sm py-1.5" />
       </div>
       <ReportSkeleton stats={3} chart chartHeight={350} />
     </div>
@@ -41,9 +43,9 @@ export default function MovementsTab() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <input type="date" className="input text-sm py-1.5" value={startDate} onChange={(e) => setStartDate(e.target.value)} aria-label="Start date" />
+        <DatePicker value={startDate} onChange={setStartDate} ariaLabel="Start date" inputClassName="text-sm py-1.5" />
         <span className="text-faint text-sm">to</span>
-        <input type="date" className="input text-sm py-1.5" value={endDate} onChange={(e) => setEndDate(e.target.value)} aria-label="End date" />
+        <DatePicker value={endDate} onChange={setEndDate} ariaLabel="End date" inputClassName="text-sm py-1.5" />
         {(startDate || endDate) && (
           <button onClick={() => { setStartDate(""); setEndDate(""); }} className="text-sm text-primary dark:text-primary hover:text-primary-strong underline" aria-label="Clear date range">Clear</button>
         )}
@@ -56,7 +58,7 @@ export default function MovementsTab() {
       <div className="card">
         <h3 className="text-lg font-semibold mb-4">Daily Stock Movement Trends</h3>
         {data.daily_trends.length === 0 ? (
-          <p className="text-muted text-sm">No movements in the selected period</p>
+          <EmptyState variant="block" title="No movements in the selected period" message="Try widening the date range." />
         ) : (
           <ResponsiveContainer width="100%" height={350}>
             <LineChart data={data.daily_trends}>

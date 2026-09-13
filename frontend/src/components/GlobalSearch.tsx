@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CornerDownLeft, Search } from "lucide-react";
+import EmptyState from "./EmptyState";
 import api from "../api/client";
 import type { GlobalSearchResponse, GlobalSearchResult } from "../types";
 import { useDebounce } from "../hooks/useDebounce";
@@ -68,8 +69,9 @@ export default function GlobalSearch() {
     enabled: debounced.trim().length >= 2,
   });
 
-  const results = data?.results ?? [];
-  const groups = groupResults(results);
+  const results = useMemo(() => data?.results ?? [], [data]);
+  const groups = useMemo(() => groupResults(results), [results]);
+  const resultIndex = useMemo(() => new Map(results.map((r, i) => [r, i])), [results]);
   const searching = debounced.trim().length >= 2;
   const showPanel = open && searching;
 
@@ -151,9 +153,7 @@ export default function GlobalSearch() {
               ))}
             </div>
           ) : results.length === 0 ? (
-            <p className="text-sm text-muted px-4 py-6 text-center">
-              No matches for "{debounced}"
-            </p>
+            <EmptyState compact icon={<Search size={20} />} title={`No matches for "${debounced}"`} message="Try a different product, customer, or order number." />
           ) : (
             <div>
               {groups.map((g) => (
@@ -162,7 +162,7 @@ export default function GlobalSearch() {
                     {g.label} ({g.results.length})
                   </div>
                   {g.results.map((r) => {
-                    const idx = results.indexOf(r);
+                    const idx = resultIndex.get(r) ?? 0;
                     return (
                       <button
                         key={`${r.type}-${r.id}`}

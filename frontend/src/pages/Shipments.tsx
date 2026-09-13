@@ -10,6 +10,7 @@ import Modal from "../components/Modal";
 import SlideOver from "../components/SlideOver";
 import Pagination from "../components/Pagination";
 import Skeleton from "../components/Skeleton";
+import TextArea from "../components/TextArea";
 import EmptyState from "../components/EmptyState";
 import ConfirmDialog from "../components/ConfirmDialog";
 import FittedSelect from "../components/FittedSelect";
@@ -132,7 +133,7 @@ export default function Shipments() {
       {isLoading ? (
         <Skeleton variant="rows" rows={8} cols={5} />
       ) : shipments.length === 0 ? (
-        <EmptyState variant="block" title="No shipments" message="Create a shipment to start the picking workflow." />
+        <EmptyState variant="block" title={search || statusFilter ? "No matching shipments" : "No shipments"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Create a shipment to start the picking workflow."} />
       ) : (
         <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">
@@ -307,7 +308,7 @@ function ShipmentForm({ shipment, onClose, onSaved }: { shipment?: Shipment; onC
 
         <div>
           <label className="block text-sm font-medium text-ink mb-1">Notes</label>
-          <textarea className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <TextArea rows={2} value={notes} onChange={setNotes} />
         </div>
 
         <div className="flex justify-end gap-3 pt-4">
@@ -541,6 +542,9 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
                   <td className="px-4 py-2">{item.quantity_shipped}</td>
                 </tr>
               ))}
+              {current.items.length === 0 && (
+                <EmptyState title="No items on this shipment" message="Line items will appear here once they are added to the shipment." icon={<PackageCheck size={48} />} />
+              )}
             </tbody>
           </table>
         </div>

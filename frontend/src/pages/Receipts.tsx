@@ -7,8 +7,9 @@ import type { PaginatedResponse, Receipt } from "../types";
 import ReceiptForm from "../components/ReceiptForm";
 import ReceiptDetail from "../components/ReceiptDetail";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
+
 import EmptyState from "../components/EmptyState";
+import Table from "../components/Table";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { exportCSV } from "../utils/csv";
@@ -103,25 +104,27 @@ export default function Receipts() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm" role="grid" aria-label="Receipts table">
-          <thead>
-            <tr className="bg-subtle text-left">
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Receipt #</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Supplier</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Date</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Items</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Qty</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Total Cost</th>
-              <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {isLoading ? (
-              <Skeleton rows={5} cols={7} />
-            ) : receipts.length === 0 ? (
-              <EmptyState title="No receipts yet" message="Record receiving to bring stock into inventory." actionLabel="Record Receipt" onAction={() => setShowForm(true)} />
-            ) : receipts.map((r) => (
+        <Table
+          ariaLabel="Receipts table"
+          role="grid"
+          headClassName="bg-subtle text-left"
+          columns={[
+            { key: "receipt", header: "Receipt #" },
+            { key: "supplier", header: "Supplier" },
+            { key: "date", header: "Date" },
+            { key: "items", header: "Items" },
+            { key: "qty", header: "Qty" },
+            { key: "totalCost", header: "Total Cost" },
+            { key: "actions", header: "Actions" },
+          ]}
+          loading={isLoading}
+          skeletonRows={5}
+          noData={receipts.length === 0}
+          empty={
+              <EmptyState title={search ? "No matching receipts" : "No receipts yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Record receiving to bring stock into inventory."} actionLabel={search ? undefined : "Record Receipt"} onAction={search ? undefined : () => setShowForm(true)} />
+          }
+        >
+          {receipts.map((r) => (
               <tr key={r.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if ((e.target as HTMLElement).closest("button, input, select, a")) return; setViewing(r); }}>
                 <td className="px-4 py-3 font-medium">{r.receipt_number}</td>
                 <td className="px-4 py-3 text-muted">{r.supplier_name || "—"}</td>
@@ -141,9 +144,7 @@ export default function Receipts() {
                 </td>
               </tr>
             ))}
-          </tbody>
-        </table>
-        </div>
+          </Table>
       </div>
 
       <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />

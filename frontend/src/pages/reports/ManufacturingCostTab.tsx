@@ -4,6 +4,8 @@ import type { ManufacturingCostReport } from "../../types";
 import { formatCurrency } from "../../utils/currency";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import EmptyState from "../../components/EmptyState";
+import { Factory } from "lucide-react";
 
 export default function ManufacturingCostTab({ symbol }: { symbol: string }) {
   const formatDate = useDateFormat();
@@ -43,7 +45,7 @@ export default function ManufacturingCostTab({ symbol }: { symbol: string }) {
             </thead>
             <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-6 text-center text-muted">No completed work orders</td></tr>
+                <EmptyState variant="table" icon={<Factory size={40} />} title="No completed work orders" message="Manufacturing cost analysis will appear here once work orders are completed." />
               ) : data.items.map((row) => (
                 <tr key={row.wo_id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">{row.wo_number}</td>

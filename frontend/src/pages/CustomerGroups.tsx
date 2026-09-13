@@ -6,9 +6,11 @@ import type { PaginatedResponse, CustomerGroup } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
+
 import EmptyState from "../components/EmptyState";
 import FittedSelect from "../components/FittedSelect";
+import TextArea from "../components/TextArea";
+import Table from "../components/Table";
 import { useDebounce } from "../hooks/useDebounce";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -91,21 +93,20 @@ export default function CustomerGroups() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Customer groups table">
-            <thead>
-              <tr className="bg-app text-left">
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Description</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Customer Count</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Created</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <Skeleton rows={5} cols={5} />
-              ) : groups.length === 0 ? (
+        <Table
+          ariaLabel="Customer groups table"
+          role="grid"
+          columns={[
+            { key: "name", header: "Name" },
+            { key: "description", header: "Description" },
+            { key: "count", header: "Customer Count" },
+            { key: "created", header: "Created" },
+            { key: "actions", header: "Actions" },
+          ]}
+          loading={isLoading}
+          skeletonRows={5}
+          noData={groups.length === 0}
+          empty={
                 <EmptyState
                   icon={<UsersRound size={48} />}
                   title={debouncedSearch ? "No matching groups" : "No customer groups"}
@@ -113,8 +114,9 @@ export default function CustomerGroups() {
                   actionLabel={!debouncedSearch && can("customer_groups.create") ? "Add Group" : undefined}
                   onAction={() => { setEditing(null); setShowForm(true); }}
                 />
-              ) : (
-                groups.map((g) => (
+          }
+        >
+          {groups.map((g) => (
                   <tr key={g.id} className="hover:bg-app">
                     <td className="px-4 py-3 font-medium">{g.name}</td>
                     <td className="px-4 py-3 text-muted">{g.description || "—"}</td>
@@ -143,11 +145,8 @@ export default function CustomerGroups() {
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+        </Table>
       </div>
 
       <Pagination
@@ -240,12 +239,11 @@ function CustomerGroupForm({ group, onClose, onSaved }: { group: CustomerGroup |
         </div>
         <div>
           <label htmlFor="cg-description" className="block text-sm font-medium text-ink mb-1">Description</label>
-          <textarea
+          <TextArea
             id="cg-description"
-            className="input"
             rows={2}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={setDescription}
             placeholder="Optional description of this group..."
           />
         </div>

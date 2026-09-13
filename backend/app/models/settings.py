@@ -58,6 +58,8 @@ class Settings(Base):
     show_product_hover_cards: Mapped[bool] = mapped_column(Boolean, default=True)
     show_customer_hover_cards: Mapped[bool] = mapped_column(Boolean, default=True)
     show_supplier_hover_cards: Mapped[bool] = mapped_column(Boolean, default=True)
+    show_datetime_hover_cards: Mapped[bool] = mapped_column(Boolean, default=True)
+    show_cart_summary_hover_cards: Mapped[bool] = mapped_column(Boolean, default=True)
 
     logo_url: Mapped[str] = mapped_column(String(500), default="")
     tax_id: Mapped[str] = mapped_column(String(100), default="")

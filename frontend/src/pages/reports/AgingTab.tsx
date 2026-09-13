@@ -3,6 +3,8 @@ import api from "../../api/client";
 import type { InventoryAging } from "../../types";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import EmptyState from "../../components/EmptyState";
+import { Clock } from "lucide-react";
 
 export default function AgingTab() {
   const formatDate = useDateFormat();
@@ -53,7 +55,7 @@ export default function AgingTab() {
             </thead>
             <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">No lot-level stock</td></tr>
+                <EmptyState variant="table" icon={<Clock size={40} />} title="No lot-level stock" message="Stock aging will appear here once lot-tracked inventory is on hand." />
               ) : data.items.map((row) => {
                 const pct = maxAge > 0 ? (row.age_days / maxAge) * 100 : 0;
                 const color = row.age_days >= 180 ? "bg-red-500" : row.age_days >= 90 ? "bg-amber-500" : row.age_days >= 30 ? "bg-yellow-400" : "bg-green-500";

@@ -182,7 +182,7 @@ export default function SerialNumbers() {
             {isLoading ? (
               <Skeleton rows={5} cols={9} />
             ) : serials.length === 0 ? (
-              <EmptyState title="No serial numbers yet" message="Serialized products are tracked individually. Record a receipt for a serialized product to create serial numbers." />
+              <EmptyState title={search || status ? "No matching serial numbers" : "No serial numbers yet"} message={search || status ? "Nothing matched your search or filters. Try adjusting them." : "Serialized products are tracked individually. Record a receipt for a serialized product to create serial numbers."} />
             ) : serials.map((s) => (
               <tr key={s.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium font-mono">{s.serial_number}</td>
@@ -337,7 +337,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
           {isLoading ? (
             <Skeleton variant="rows" rows={3} cols={5} />
           ) : !movements || movements.length === 0 ? (
-            <p className="text-sm text-muted px-4 py-3">No movements recorded for this serial number.</p>
+            <EmptyState compact title="No movements recorded for this serial number" message="Receipts, transfers, and adjustments will appear here." />
           ) : (
             <table className="w-full text-sm">
               <thead>

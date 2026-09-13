@@ -14,7 +14,7 @@ interface Props {
 
 export default function ConfirmDialog({ open, title, message, confirmLabel = "Delete", confirmClass = "btn-danger", onConfirm, onCancel, children }: Props) {
   return (
-    <Modal open={open} onClose={onCancel} title={title}>
+    <Modal open={open} onClose={onCancel} title={title} breadcrumb="">
       <div className="space-y-4">
         <p className="text-sm text-muted whitespace-pre-line">{message}</p>
         {children}

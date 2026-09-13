@@ -158,7 +158,7 @@ export default function LPNs() {
             ) : isError ? (
               <ErrorState onRetry={() => queryClient.invalidateQueries({ queryKey: ["lpns"] })} />
             ) : lpns.length === 0 ? (
-              <EmptyState title="No LPNs yet" message="Create LPNs to track pallets and totes through the warehouse." actionLabel="Create LPN" onAction={() => setShowForm(true)} />
+              <EmptyState title={search ? "No matching LPNs" : "No LPNs yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create LPNs to track pallets and totes through the warehouse."} actionLabel={search ? undefined : "Create LPN"} onAction={search ? undefined : () => setShowForm(true)} />
             ) : lpns.map((l) => (
               <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(l); }}>
                 <td className="px-4 py-3">
@@ -501,7 +501,7 @@ function LpnActivity({ lpnId, onClose }: { lpnId: number; onClose: () => void })
       {isLoading ? (
         <Skeleton variant="rows" rows={3} cols={4} />
       ) : movements.length === 0 ? (
-        <p className="text-sm text-muted">No movements recorded for this LPN yet.</p>
+        <EmptyState compact title="No movements recorded for this LPN yet" message="Receipts, transfers, and picks for this LPN will appear here." />
       ) : (
         <div className="border border-border rounded-xl overflow-hidden">
           <div className="max-h-[50vh] overflow-y-auto">

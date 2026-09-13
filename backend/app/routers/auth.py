@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 import logging
@@ -370,52 +370,55 @@ def logout(
 @router.get("/me/export")
 def export_my_data(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     uid = current_user.id
+    # Cap exports to the last 12 months and a bounded row count per table so a
+    # long-tenured user cannot force the app to load unbounded history.
+    cutoff = datetime.now(timezone.utc) - timedelta(days=365)
     activity = [
         {"id": l.id, "action": l.action, "entity_type": l.entity_type, "entity_id": l.entity_id,
          "description": l.description, "created_at": l.created_at}
-        for l in db.query(ActivityLog).filter(ActivityLog.user_id == uid).order_by(ActivityLog.created_at.desc()).all()
+        for l in db.query(ActivityLog).filter(ActivityLog.user_id == uid, ActivityLog.created_at >= cutoff).order_by(ActivityLog.created_at.desc()).limit(5000).all()
     ]
     notifications = [
         {"id": n.id, "type": n.type, "title": n.title, "message": n.message, "is_read": n.is_read, "created_at": n.created_at}
-        for n in db.query(Notification).filter(Notification.user_id == uid).order_by(Notification.created_at.desc()).all()
+        for n in db.query(Notification).filter(Notification.user_id == uid, Notification.created_at >= cutoff).order_by(Notification.created_at.desc()).limit(5000).all()
     ]
     orders = [
         {"id": o.id, "order_number": o.order_number, "status": o.status, "total_amount": o.total_amount, "created_at": o.created_at}
-        for o in db.query(Order).filter(Order.user_id == uid).all()
+        for o in db.query(Order).filter(Order.user_id == uid, Order.created_at >= cutoff).limit(5000).all()
     ]
     sales = [
         {"id": s.id, "invoice_number": s.invoice_number, "status": s.status, "total_amount": s.total_amount, "created_at": s.created_at}
-        for s in db.query(Sale).filter(Sale.user_id == uid).all()
+        for s in db.query(Sale).filter(Sale.user_id == uid, Sale.created_at >= cutoff).limit(5000).all()
     ]
     receipts = [
         {"id": r.id, "receipt_number": r.receipt_number, "status": r.status, "created_at": r.created_at}
-        for r in db.query(Receipt).filter(Receipt.user_id == uid).all()
+        for r in db.query(Receipt).filter(Receipt.user_id == uid, Receipt.created_at >= cutoff).limit(5000).all()
     ]
     movements = [
         {"id": m.id, "product_id": m.product_id, "product_name": m.product_name, "quantity_change": m.quantity_change,
          "movement_type": m.movement_type, "reference_type": m.reference_type, "reference": m.reference,
          "created_at": m.created_at}
-        for m in db.query(StockMovement).filter(StockMovement.user_id == uid).order_by(StockMovement.created_at.desc()).all()
+        for m in db.query(StockMovement).filter(StockMovement.user_id == uid, StockMovement.created_at >= cutoff).order_by(StockMovement.created_at.desc()).limit(5000).all()
     ]
     shipments = [
         {"id": s.id, "shipment_number": s.shipment_number, "status": s.status, "created_at": s.created_at}
-        for s in db.query(Shipment).filter(Shipment.created_by == uid).all()
+        for s in db.query(Shipment).filter(Shipment.created_by == uid, Shipment.created_at >= cutoff).limit(5000).all()
     ]
     quality_checks = [
         {"id": q.id, "qc_number": q.qc_number, "product_id": q.product_id, "result": q.result, "checked_at": q.checked_at}
-        for q in db.query(QualityCheck).filter(QualityCheck.checked_by == uid).all()
+        for q in db.query(QualityCheck).filter(QualityCheck.checked_by == uid, QualityCheck.created_at >= cutoff).limit(5000).all()
     ]
     asns = [
         {"id": a.id, "asn_number": a.asn_number, "status": a.status, "expected_arrival": a.expected_arrival, "created_at": a.created_at}
-        for a in db.query(ASN).filter(ASN.user_id == uid).all()
+        for a in db.query(ASN).filter(ASN.user_id == uid, ASN.created_at >= cutoff).limit(5000).all()
     ]
     cycle_counts = [
         {"id": c.id, "cc_number": c.cc_number, "status": c.status, "created_at": c.created_at}
-        for c in db.query(CycleCount).filter(CycleCount.created_by == uid).all()
+        for c in db.query(CycleCount).filter(CycleCount.created_by == uid, CycleCount.created_at >= cutoff).limit(5000).all()
     ]
     work_orders = [
         {"id": w.id, "wo_number": w.wo_number, "status": w.status, "created_at": w.created_at}
-        for w in db.query(WorkOrder).filter(WorkOrder.created_by == uid).all()
+        for w in db.query(WorkOrder).filter(WorkOrder.created_by == uid, WorkOrder.created_at >= cutoff).limit(5000).all()
     ]
     return {
         "exported_at": datetime.now(timezone.utc),

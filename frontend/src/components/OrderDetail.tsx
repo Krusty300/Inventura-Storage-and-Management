@@ -1,4 +1,3 @@
-import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, ExternalLink, Eye, Fingerprint, Printer, Pencil, X } from "lucide-react";
@@ -7,15 +6,20 @@ import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import type { LPN, Order, OrderItem } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
+import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
 import Skeleton from "./Skeleton";
+import TextArea from "./TextArea";
 import AttachmentSection from "./AttachmentSection";
 import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
+import { overdueStatus } from "../utils/date";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
 import LocationPicker from "./LocationPicker";
 import SlideOver from "./SlideOver";
+import DatePicker from "./DatePicker";
 import StockLocationHints from "./StockLocationHints";
+import EmptyState from "./EmptyState";
 import { useAuth } from "../context/AuthContext";
 
 interface Props {
@@ -150,22 +154,20 @@ function ReceiveRow({
           onChange={(e) => onChange({ lot_number: e.target.value })}
           aria-label={`Lot number for ${item.product_name}`}
         />
-        <input
-          type="date"
-          className="input"
+        <DatePicker
           value={entry.expiry_date}
-          onChange={(e) => onChange({ expiry_date: e.target.value })}
-          aria-label={`Expiry date for ${item.product_name}`}
+          onChange={(v) => onChange({ expiry_date: v })}
+          ariaLabel={`Expiry date for ${item.product_name}`}
         />
       </div>
       {item.is_serialized && (
-        <textarea
-          className="input font-mono text-xs"
+        <TextArea
+          className="font-mono text-xs"
           rows={3}
           value={entry.serials}
-          onChange={(e) => onChange({ serials: e.target.value })}
+          onChange={(v) => onChange({ serials: v })}
           placeholder={`Enter ${item.quantity} serial number(s), one per line`}
-          aria-label={`Serial numbers for ${item.product_name}`}
+          ariaLabel={`Serial numbers for ${item.product_name}`}
         />
       )}
     </div>
@@ -173,13 +175,13 @@ function ReceiveRow({
 }
 
 export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props) {
-  const formatDate = useDateFormat();
   const [confirming, setConfirming] = useState<string | null>(null);
   const [receiving, setReceiving] = useState(false);
   const [receiveEntries, setReceiveEntries] = useState<Record<number, ReceiveEntry>>({});
   const { addToast } = useToast();
   const { can } = useAuth();
   const { data: settings } = useSettings();
+  const formatDateTime = useDateTimeFormat();
   const currencySymbol = settings?.currency_symbol || "$";
 
   const { data: locationOptions } = useQuery({
@@ -200,6 +202,7 @@ export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props
 
   const serializedItems = order.items.filter((i) => i.is_serialized);
   const needsSerials = serializedItems.length > 0;
+  const expectedStatus = order.status === "pending" ? overdueStatus(order.expected_arrival) : null;
 
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -355,11 +358,31 @@ actions={
               <h3 className="text-2xl font-bold text-ink mt-1 tracking-tight">{order.order_number}</h3>
               <div className="mt-2"><span className={`badge ${order.status === "received" ? "badge-success" : order.status === "cancelled" ? "badge-danger" : order.status === "pending" ? "badge-warning" : "badge-info"}`}>{order.status}</span></div>
             </div>
-            <div className="text-right text-sm">
-              <p className="text-muted">Date</p>
-              <p className="font-medium text-ink">{formatDate(order.created_at)}</p>
+            <div className="text-right text-sm space-y-1">
+              <div>
+                <p className="text-muted">Placed</p>
+                <p className="font-medium text-ink">{formatDateTime(order.created_at)}</p>
+              </div>
+              <div>
+                <p className="text-muted">Expected Arrival</p>
+                {order.expected_arrival ? (
+                  <p className="font-medium text-ink">
+                    {formatDateTime(order.expected_arrival)}
+                    {expectedStatus === "overdue" && <span className="badge badge-danger ml-1.5">Overdue</span>}
+                    {expectedStatus === "due" && <span className="badge badge-warning ml-1.5">Due</span>}
+                  </p>
+                ) : (
+                  <p className="text-muted">—</p>
+                )}
+              </div>
+              {order.received_at && (
+                <div>
+                  <p className="text-muted">Received</p>
+                  <p className="font-medium text-ink">{formatDateTime(order.received_at)}</p>
+                </div>
+              )}
               {order.username && (
-                <p className="text-muted mt-2">Created by <span className="font-medium text-ink">{order.username}</span></p>
+                <p className="text-muted">Created by <span className="font-medium text-ink">{order.username}</span></p>
               )}
             </div>
           </div>
@@ -421,9 +444,7 @@ actions={
                     </tr>
                   ))}
                   {order.items.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-muted">No items on this order</td>
-                    </tr>
+                    <EmptyState title="No items on this order" message="Line items will appear here once this order is saved." />
                   )}
                 </tbody>
               </table>
@@ -470,19 +491,19 @@ actions={
           </div>
         )}
 
-        <div className="flex gap-3 pt-2">
+        <div className="flex flex-wrap gap-3 pt-2">
           {order.status !== "pending" && (
-            <button onClick={previewOrder} disabled={pdfLoading} className="btn-primary flex-1 inline-flex items-center justify-center gap-2">
+            <button onClick={previewOrder} disabled={pdfLoading} className="btn-primary flex-1 min-w-[120px] inline-flex items-center justify-center gap-2">
               <Eye size={16} />{pdfLoading ? "Generating..." : "Preview"}
             </button>
           )}
-          <button onClick={printPdf} className="btn-secondary flex-1 inline-flex items-center justify-center gap-2">
+          <button onClick={printPdf} className="btn-secondary flex-1 min-w-[120px] inline-flex items-center justify-center gap-2">
             <Printer size={16} /> Print PDF
           </button>
           {order.status === "pending" && !confirming && !receiving && (
             <>
-              <button onClick={() => setReceiving(true)} className="btn-primary flex-1">Mark Received</button>
-              <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1">Cancel Order</button>
+              <button onClick={() => setReceiving(true)} className="btn-primary flex-1 min-w-[120px]">Mark Received</button>
+              <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1 min-w-[120px]">Cancel Order</button>
             </>
           )}
         </div>

@@ -8,6 +8,9 @@ import Skeleton from "../components/Skeleton";
 import { CURRENCIES, symbolFor } from "../utils/currencies";
 import { errorMessage } from "../utils/errors";
 import FittedSelect from "../components/FittedSelect";
+import PasswordInput from "../components/PasswordInput";
+import FileUploadButton from "../components/FileUploadButton";
+import TextArea from "../components/TextArea";
 
 type Tab = "store" | "notifications" | "documents" | "workflow" | "financial" | "display" | "invoice" | "password";
 
@@ -45,7 +48,6 @@ export default function Settings() {
   const [logoUploading, setLogoUploading] = useState(false);
   const [pw, setPw] = useState({ current_password: "", new_password: "" });
   const [pwSaving, setPwSaving] = useState(false);
-  const logoInputRef = useRef<HTMLInputElement>(null);
   const canUpdateSettings = can("settings.update");
   const readOnly = !canUpdateSettings;
   const { data: settingsData, isLoading: loading } = useSettingsQuery();
@@ -79,6 +81,7 @@ export default function Settings() {
       show_product_hover_cards: settingsData.show_product_hover_cards ?? true,
       show_customer_hover_cards: settingsData.show_customer_hover_cards ?? true,
       show_supplier_hover_cards: settingsData.show_supplier_hover_cards ?? true,
+      show_cart_summary_hover_cards: settingsData.show_cart_summary_hover_cards ?? true,
       logo_url: settingsData.logo_url || "",
       tax_id: settingsData.tax_id || "",
       payment_terms: settingsData.payment_terms || "",
@@ -138,7 +141,6 @@ export default function Settings() {
       addToast(errorMessage(err, "Failed to upload logo"), "error");
     }
     setLogoUploading(false);
-    if (logoInputRef.current) logoInputRef.current.value = "";
   };
 
   const handleLogoRemove = async () => {
@@ -215,7 +217,7 @@ export default function Settings() {
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Address</label>
-              <textarea className="input" rows={2} value={form.address || ""} onChange={(e) => set("address", e.target.value)} />
+              <TextArea rows={2} value={form.address || ""} onChange={(v) => set("address", v)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Phone" value={form.phone} onChange={(v) => set("phone", v)} />
@@ -374,6 +376,8 @@ export default function Settings() {
                   description="Show customer contact details and a View Details button when hovering over a customer name" />
                 <Toggle label="Supplier Hover Cards" checked={form.show_supplier_hover_cards} onChange={(v) => set("show_supplier_hover_cards", v)}
                   description="Show supplier contact person, contact number, and a View Details button when hovering over a supplier name" />
+                <Toggle label="Cart Summary Hover Card" checked={form.show_cart_summary_hover_cards} onChange={(v) => set("show_cart_summary_hover_cards", v)}
+                  description="Show a product and money summary card when hovering over the order Total in the sale cart" />
               </div>
             </div>
           </fieldset>
@@ -396,9 +400,14 @@ export default function Settings() {
                   </div>
                   {!readOnly && (
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => logoInputRef.current?.click()} className="btn-secondary text-sm flex items-center gap-1.5">
+                      <FileUploadButton
+                        onFileChange={handleLogoUpload}
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        disabled={readOnly}
+                        className="btn-secondary text-sm flex items-center gap-1.5"
+                      >
                         <Upload size={14} />Replace
-                      </button>
+                      </FileUploadButton>
                       <button type="button" onClick={handleLogoRemove} className="btn-secondary text-sm flex items-center gap-1.5 text-red-600 dark:text-red-400">
                         <X size={14} />Remove
                       </button>
@@ -406,8 +415,10 @@ export default function Settings() {
                   )}
                 </div>
               ) : (
-                <div
-                  onClick={() => !readOnly && logoInputRef.current?.click()}
+                <FileUploadButton
+                  onFileChange={handleLogoUpload}
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  disabled={readOnly}
                   className={`w-40 h-20 rounded-lg border-2 border-dashed border-border bg-app flex flex-col items-center justify-center gap-1 text-faint ${readOnly ? "" : "hover:border-primary hover:text-primary cursor-pointer transition-colors"}`}
                 >
                   {logoUploading ? (
@@ -418,9 +429,8 @@ export default function Settings() {
                       <span className="text-xs">Upload logo</span>
                     </>
                   )}
-                </div>
+                </FileUploadButton>
               )}
-              <input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={handleLogoUpload} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Tax ID / VAT Number" value={form.tax_id} onChange={(v) => set("tax_id", v)} placeholder="e.g. GB123456789" />
@@ -428,11 +438,11 @@ export default function Settings() {
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Bank Details</label>
-              <textarea className="input" rows={3} value={form.bank_details || ""} onChange={(e) => set("bank_details", e.target.value)} placeholder="Bank name, Account number, Sort code / IBAN&#10;Displayed on invoices for wire transfer payments" />
+              <TextArea rows={3} value={form.bank_details || ""} onChange={(v) => set("bank_details", v)} placeholder="Bank name, Account number, Sort code / IBAN&#10;Displayed on invoices for wire transfer payments" />
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Invoice Footer Note</label>
-              <textarea className="input" rows={2} value={form.footer_note || ""} onChange={(e) => set("footer_note", e.target.value)} placeholder="e.g. Thank you for your business! Terms and conditions apply." />
+              <TextArea rows={2} value={form.footer_note || ""} onChange={(v) => set("footer_note", v)} placeholder="e.g. Thank you for your business! Terms and conditions apply." />
             </div>
           </fieldset>
           {!readOnly && <SaveButton loading={saving} />}
@@ -449,11 +459,11 @@ export default function Settings() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Current Password</label>
-                <input type="password" className="input" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} required />
+                <PasswordInput id="pw-current" value={pw.current_password} onChange={(v) => setPw({ ...pw, current_password: v })} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">New Password</label>
-                <input type="password" className="input" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} required minLength={6} />
+                <PasswordInput id="pw-new" value={pw.new_password} onChange={(v) => setPw({ ...pw, new_password: v })} minLength={6} />
               </div>
             </div>
             <div className="flex justify-end">

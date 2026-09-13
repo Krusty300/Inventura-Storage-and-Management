@@ -6,10 +6,11 @@ import type { PaginatedResponse, SalesChannel } from "../types";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
+
 import EmptyState from "../components/EmptyState";
 import { useDebounce } from "../hooks/useDebounce";
 import FittedSelect from "../components/FittedSelect";
+import Table from "../components/Table";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { usePageSize } from "../hooks/usePageSize";
@@ -99,20 +100,19 @@ export default function SalesChannels() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Sales channels table">
-            <thead>
-              <tr className="bg-app text-left">
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <Skeleton rows={5} cols={4} />
-              ) : channels.length === 0 ? (
+        <Table
+          ariaLabel="Sales channels table"
+          role="grid"
+          columns={[
+            { key: "name", header: "Name" },
+            { key: "type", header: "Type" },
+            { key: "status", header: "Status" },
+            { key: "actions", header: "Actions" },
+          ]}
+          loading={isLoading}
+          skeletonRows={5}
+          noData={channels.length === 0}
+          empty={
                 <EmptyState
                   icon={<Store size={48} />}
                   title={debouncedSearch ? "No matching channels" : "No sales channels"}
@@ -120,8 +120,9 @@ export default function SalesChannels() {
                   actionLabel={!debouncedSearch && can("sales.create") ? "Add Channel" : undefined}
                   onAction={() => { setEditing(null); setShowForm(true); }}
                 />
-              ) : (
-                channels.map((ch) => (
+          }
+        >
+          {channels.map((ch) => (
                   <tr key={ch.id} className="hover:bg-app">
                     <td className="px-4 py-3 font-medium">{ch.name}</td>
                     <td className="px-4 py-3 text-muted">{typeLabel(ch.type)}</td>
@@ -145,11 +146,8 @@ export default function SalesChannels() {
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+        </Table>
       </div>
 
       <Pagination

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import ScrollArea from "./ScrollArea";
+import { useBreadcrumbExtension } from "../context/BreadcrumbContext";
 
 interface Props {
   open: boolean;
@@ -10,14 +11,17 @@ interface Props {
   wide?: boolean;
   xwide?: boolean;
   ariaLabel?: string;
+  breadcrumb?: string;
 }
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
 
-export default function Modal({ open, onClose, title, children, wide, xwide, ariaLabel }: Props) {
+export default function Modal({ open, onClose, title, children, wide, xwide, ariaLabel, breadcrumb }: Props) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useBreadcrumbExtension(breadcrumb ?? (typeof title === "string" ? title : undefined), open);
 
   useEffect(() => {
     if (open) {

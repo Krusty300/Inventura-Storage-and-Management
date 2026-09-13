@@ -6,8 +6,11 @@ import type { PaginatedResponse, Promotion } from "../types";
 import SlideOver from "../components/SlideOver";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Pagination from "../components/Pagination";
-import Skeleton from "../components/Skeleton";
+
+import TextArea from "../components/TextArea";
 import EmptyState from "../components/EmptyState";
+import Table from "../components/Table";
+import DatePicker from "../components/DatePicker";
 import { useDebounce } from "../hooks/useDebounce";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
@@ -75,27 +78,28 @@ export default function Promotions() {
       </div>
 
       <div className="card overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" role="grid" aria-label="Promotions table">
-            <thead>
-              <tr className="bg-app text-left">
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Code</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Discount</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Min Qty</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Min Amount</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Valid From</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Valid To</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Uses</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <Skeleton rows={5} cols={9} />
-              ) : promotions.length === 0 ? (
-                <EmptyState title="No promotions" message="Create your first promotion to offer discounts." actionLabel="Add Promotion" onAction={() => { setEditing(null); setShowForm(true); }} />
-              ) : promotions.map((p) => (
+        <Table
+          ariaLabel="Promotions table"
+          role="grid"
+          columns={[
+            { key: "code", header: "Code" },
+            { key: "discount", header: "Discount" },
+            { key: "minQty", header: "Min Qty" },
+            { key: "minAmount", header: "Min Amount" },
+            { key: "validFrom", header: "Valid From" },
+            { key: "validTo", header: "Valid To" },
+            { key: "uses", header: "Uses" },
+            { key: "status", header: "Status" },
+            { key: "actions", header: "Actions" },
+          ]}
+          loading={isLoading}
+          skeletonRows={5}
+          noData={promotions.length === 0}
+          empty={
+                <EmptyState title={search ? "No matching promotions" : "No promotions"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create your first promotion to offer discounts."} actionLabel={search ? undefined : "Add Promotion"} onAction={search ? undefined : () => { setEditing(null); setShowForm(true); }} />
+          }
+        >
+          {promotions.map((p) => (
                 <tr key={p.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(p)}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -125,9 +129,7 @@ export default function Promotions() {
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
+          </Table>
       </div>
 
       {data && data.pages > 1 && <Pagination page={page} totalPages={data.pages} onPageChange={setPage} />}
@@ -220,7 +222,7 @@ function PromotionForm({ promotion, currencySymbol, onClose, onSaved }: { promot
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Description</label>
-            <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this promotion offers" />
+            <TextArea rows={2} value={description} onChange={setDescription} placeholder="What this promotion offers" />
           </div>
         </FormCard>
 
@@ -259,11 +261,11 @@ function PromotionForm({ promotion, currencySymbol, onClose, onSaved }: { promot
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Valid From</label>
-              <input type="date" className="input" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+              <DatePicker value={validFrom} onChange={setValidFrom} ariaLabel="Valid From" />
             </div>
             <div>
               <label className="block text-sm font-medium text-ink mb-1">Valid To</label>
-              <input type="date" className="input" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+              <DatePicker value={validTo} onChange={setValidTo} ariaLabel="Valid To" />
             </div>
           </div>
           <div>

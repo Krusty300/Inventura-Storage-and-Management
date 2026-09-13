@@ -4,6 +4,8 @@ import api from "../../api/client";
 import type { InventoryValuation } from "../../types";
 import { formatCurrency } from "../../utils/currency";
 import ReportSkeleton from "../../components/ReportSkeleton";
+import EmptyState from "../../components/EmptyState";
+import { Boxes, Truck } from "lucide-react";
 
 export default function ValuationTab({ symbol }: { symbol: string }) {
   const { data, isLoading, isError } = useQuery<InventoryValuation>({
@@ -34,7 +36,7 @@ export default function ValuationTab({ symbol }: { symbol: string }) {
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Value by Category</h3>
           {data.by_category.length === 0 ? (
-            <p className="text-muted text-sm">No data</p>
+            <EmptyState variant="block" icon={<Boxes size={48} />} title="No category value" message="Inventory value per category will appear here once stock exists." />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={data.by_category}>
@@ -50,7 +52,7 @@ export default function ValuationTab({ symbol }: { symbol: string }) {
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Value by Supplier</h3>
           {data.by_supplier.length === 0 ? (
-            <p className="text-muted text-sm">No data</p>
+            <EmptyState variant="block" icon={<Truck size={48} />} title="No supplier value" message="Inventory value per supplier will appear here once stock exists." />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={data.by_supplier}>

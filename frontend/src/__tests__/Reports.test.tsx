@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { renderWithProviders } from "./testUtils";
+import { renderWithProviders, pickDate } from "./testUtils";
 import api from "../api/client";
 
 vi.mock("../api/client", () => ({
@@ -56,9 +56,9 @@ describe("Reports Page", () => {
     mockReports();
     renderWithProviders(<Reports />);
     fireEvent.click(await screen.findByRole("button", { name: "Sales" }));
-    const start = await screen.findByLabelText("Start date", {}, { timeout: 15000 });
-    fireEvent.change(start, { target: { value: "2026-02-01" } });
-    fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-01-01" } });
+    await screen.findByLabelText("Start date", {}, { timeout: 15000 });
+    pickDate("Start date", "2026-02-01");
+    pickDate("End date", "2026-01-01");
     expect(await screen.findByRole("alert")).toHaveTextContent("Start date must be before end date");
   });
 

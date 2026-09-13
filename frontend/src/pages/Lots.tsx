@@ -118,7 +118,7 @@ export default function Lots() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input className="input pl-10" placeholder="Search by lot number, product, or SKU..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search lots" />
         </div>
-        <FittedSelect ariaLabel="Filter by status" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={[{ value: "", label: "All Statuses" }, { value: "active", label: "Active" }, { value: "expired", label: "Expired" }, { value: "quarantined", label: "Quarantined" }, { value: "depleted", label: "Depleted" }, { value: "sold", label: "Sold" }]} />
+        <FittedSelect ariaLabel="Filter by status" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={[{ value: "", label: "All Statuses" }, { value: "in_stock", label: "In stock" }, { value: "expired", label: "Expired" }, { value: "quarantined", label: "Quarantined" }, { value: "sold", label: "Sold" }]} />
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -142,7 +142,7 @@ export default function Lots() {
             {isLoading ? (
               <Skeleton rows={5} cols={10} />
             ) : lots.length === 0 ? (
-              <EmptyState title="No lots yet" message="Lots are created automatically when you record a receipt or finish a work order with a lot number." />
+              <EmptyState title={search || status ? "No matching lots" : "No lots yet"} message={search || status ? "Nothing matched your search or filters. Try adjusting them." : "Lots are created automatically when you record a receipt or finish a work order with a lot number."} />
             ) : lots.map((l) => (
               <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(l); }}>
                 <td className="px-4 py-3 font-medium">{l.lot_number}</td>
@@ -262,7 +262,7 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
             {serialsLoading ? (
               <Skeleton variant="rows" rows={3} cols={3} />
             ) : !serials || serials.length === 0 ? (
-              <p className="text-sm text-muted px-4 py-3">No in-stock serials for this lot.</p>
+              <EmptyState compact title="No in-stock serials for this lot" message="Serials on hand at this lot will appear here once received." />
             ) : (
               <table className="w-full text-sm">
                 <thead>
@@ -294,7 +294,7 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
           {isLoading ? (
             <Skeleton variant="rows" rows={3} cols={4} />
           ) : !movements || movements.length === 0 ? (
-            <p className="text-sm text-muted px-4 py-3">No movements recorded for this lot.</p>
+            <EmptyState compact title="No movements recorded for this lot" message="Receipts, transfers, and adjustments for this lot will appear here." />
           ) : (
             <table className="w-full text-sm">
               <thead>

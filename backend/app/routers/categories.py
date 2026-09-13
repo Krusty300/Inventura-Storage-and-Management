@@ -19,7 +19,6 @@ def _purge_category(db: Session, cat: Category, user) -> None:
         raise HTTPException(status_code=400, detail="Cannot delete category with existing products")
     if cat.subcategories:
         raise HTTPException(status_code=400, detail="Cannot delete category with subcategories")
-    name = cat.name
     db.delete(cat)
 
 

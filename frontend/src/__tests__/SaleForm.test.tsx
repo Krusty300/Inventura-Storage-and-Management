@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { renderWithProviders, makeProduct, makeVariant } from "./testUtils";
 import api from "../api/client";
 
@@ -379,5 +379,76 @@ describe("SaleForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await screen.findByText(/Cart is empty/);
     expect(screen.getByRole("tab", { name: /Cart 1/ })).toBeInTheDocument();
+  });
+
+  it("shows a cart summary hover card over the Total with products and totals", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    const hammer = makeProduct({ id: 9, name: "Hammer", sku: "SKU-9", unit_price: 15, image_url: "http://example.com/h.png" });
+    mockCatalog([widget, hammer]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    // 2 Widgets + 1 Hammer → subtotal $35, tax 10% → total $38.50
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Increase quantity" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Hammer/ }));
+    await screen.findByText(/Tax \(10%\)/);
+
+    const total = screen.getByText("$38.50");
+    fireEvent.mouseEnter(total);
+
+    const card = await screen.findByRole("tooltip");
+    expect(within(card).getByText("Cart Summary")).toBeInTheDocument();
+    expect(within(card).getByText("2 lines · 3 qty")).toBeInTheDocument();
+    expect(within(card).getByText("Widget")).toBeInTheDocument();
+    expect(within(card).getByText("Hammer")).toBeInTheDocument();
+    expect(within(card).getByText("2 × $10.00")).toBeInTheDocument();
+    expect(within(card).getByText("1 × $15.00")).toBeInTheDocument();
+    expect(within(card).getByText("Subtotal")).toBeInTheDocument();
+    expect(within(card).getByText("$35.00")).toBeInTheDocument();
+    expect(within(card).getByText("Total")).toBeInTheDocument();
+    expect(within(card).getByText("Payment")).toBeInTheDocument();
+    expect(within(card).getByText("Cash")).toBeInTheDocument();
+  });
+
+  it("shows the first gallery image even when image_url is empty", async () => {
+    const widget = makeProduct({
+      id: 7, name: "Widget", sku: "SKU-7", unit_price: 10,
+      image_url: "",
+      images: [
+        { id: 11, url: "http://example.com/gallery1.png", sort_order: 0 },
+        { id: 12, url: "http://example.com/gallery2.png", sort_order: 1 },
+      ],
+    });
+    mockCatalog([widget]);
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    const tile = await screen.findByRole("button", { name: /Widget/ });
+    expect(tile.querySelector("img")).toHaveAttribute("src", "http://example.com/gallery1.png");
+    fireEvent.click(tile);
+    const total = await screen.findByText("$11.00");
+    fireEvent.mouseEnter(total);
+    const card = await screen.findByRole("tooltip");
+    expect(card.querySelector("img")).toHaveAttribute("src", "http://example.com/gallery1.png");
+  });
+
+  it("does not show the cart summary hover card when disabled via settings", async () => {
+    const widget = makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 });
+    getMock.mockImplementation((url: string) => {
+      if (url === "/customers") return Promise.resolve({ data: { items: [] } });
+      if (url === "/products") return Promise.resolve({ data: { items: [widget] } });
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD", tax_rate: 10, show_cart_summary_hover_cards: false } });
+      if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/stock-movements/locations") return Promise.resolve({ data: { locations: LOCATIONS, unallocated: 0 } });
+      if (url === "/promotions") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
+      if (url === "/sales-channels/all") return Promise.resolve({ data: [] });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    await screen.findByText(/Tax \(10%\)/);
+
+    const total = screen.getByText("$11.00");
+    fireEvent.mouseEnter(total);
+
+    expect(screen.queryByText("Cart Summary")).not.toBeInTheDocument();
+    expect(screen.getByText("$11.00")).toBeInTheDocument();
   });
 });

@@ -5,6 +5,7 @@ import api from "../api/client";
 import { useDebounce } from "../hooks/useDebounce";
 import { getLinkableEntity } from "../utils/linkableEntities";
 import ScrollArea from "./ScrollArea";
+import EmptyState from "./EmptyState";
 
 interface Props {
   entityType: string;
@@ -125,8 +126,8 @@ export default function EntitySearchInput({ entityType, onSelect, excludeIds = [
         </div>
       )}
       {open && query.trim().length >= 2 && !isFetching && results.length === 0 && (
-        <div ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 card p-3 text-sm text-muted text-center shadow-lg">
-          No {label.toLowerCase()}s found
+        <div ref={listRef} className="absolute left-0 right-0 top-full mt-1 z-50 card shadow-lg">
+          <EmptyState compact icon={<Search size={20} />} title={`No ${label.toLowerCase()}s found`} message="Try a different search." />
         </div>
       )}
     </div>

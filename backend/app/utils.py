@@ -1,8 +1,20 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.models.activity_log import ActivityLog
 from app.models.location import Location
+
+
+MAX_CSV_IMPORT_SIZE = 10 * 1024 * 1024
+
+
+def read_upload_text(file: UploadFile, max_bytes: int = MAX_CSV_IMPORT_SIZE) -> str:
+    """Read an uploaded text file with a hard size cap so oversized uploads cannot
+    exhaust memory. Raises 400 for files larger than `max_bytes`."""
+    content = file.file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=400, detail="File too large (max 10 MB)")
+    return content.decode("utf-8-sig")
 
 
 def get_or_404(model, id: int, db: Session, options=None, include_deleted: bool = False):

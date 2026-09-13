@@ -106,12 +106,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateUser = (updates: Partial<User>) => {
-    setUser((prev) => {
-      if (!prev) return prev;
-      const next = { ...prev, ...updates };
-      localStorage.setItem("user", JSON.stringify(next));
-      return next;
-    });
+    if (!user) return;
+    const next = { ...user, ...updates };
+    setUser(next);
+    localStorage.setItem("user", JSON.stringify(next));
   };
 
   const can = (permission: string) => canUser(user, permission);

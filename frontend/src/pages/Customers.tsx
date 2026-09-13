@@ -1,4 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
+import Table from "../components/Table";
 import { useState } from "react";
 import { Pencil, Trash2, Eye, RefreshCw, Search, Users, ExternalLink, Phone, Mail, MapPin } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +13,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import FittedSelect from "../components/FittedSelect";
 import BulkActionBar from "../components/BulkActionBar";
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
-import Skeleton from "../components/Skeleton";
+
 import EmptyState from "../components/EmptyState";
 import Pagination from "../components/Pagination";
 import { useDebounce } from "../hooks/useDebounce";
@@ -269,30 +270,27 @@ export default function Customers() {
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[700px]" aria-label="Customers table">
-            <thead>
-              <tr className="bg-app text-left">
-                <th scope="col" className="px-4 py-3">
-                  <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all customers" />
-                </th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Name</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Phone</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted hidden lg:table-cell">Email</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Type</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted hidden md:table-cell">Group</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Orders</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Total Spent</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted text-right hidden lg:table-cell">Avg Order</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted hidden sm:table-cell">Last Purchase</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {isLoading ? (
-                <Skeleton rows={5} cols={11} />
-              ) : customers.length === 0 ? (
-                <EmptyState title="No customers found" message="Add your first customer to get started." actionLabel="Add Customer" onAction={() => { setEditing(null); setShowForm(true); }} />
-              ) : customers.map((c) => (
+        <Table
+          columns={[
+            { key: 'select', header: <input type="checkbox" className="rounded border-border-strong" checked={allSelected} onChange={toggleSelectAll} aria-label="Select all customers" />, className: 'px-4 py-3' },
+            { key: 'name', header: 'Name', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'phone', header: 'Phone', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'email', header: 'Email', className: 'px-4 py-3 font-medium text-muted hidden lg:table-cell' },
+            { key: 'type', header: 'Type', className: 'px-4 py-3 font-medium text-muted' },
+            { key: 'group', header: 'Group', className: 'px-4 py-3 font-medium text-muted hidden md:table-cell' },
+            { key: 'orders', header: 'Orders', className: 'px-4 py-3 font-medium text-muted text-right' },
+            { key: 'totalSpent', header: 'Total Spent', className: 'px-4 py-3 font-medium text-muted text-right' },
+            { key: 'avgOrder', header: 'Avg Order', className: 'px-4 py-3 font-medium text-muted text-right hidden lg:table-cell' },
+            { key: 'lastPurchase', header: 'Last Purchase', className: 'px-4 py-3 font-medium text-muted hidden sm:table-cell' },
+            { key: 'actions', header: 'Actions', className: 'px-4 py-3 font-medium text-muted' },
+          ]}
+          aria-label="Customers table"
+          loading={isLoading}
+          skeletonRows={5}
+          noData={customers.length === 0}
+          empty={<EmptyState title="No customers found" message="Add your first customer to get started." actionLabel="Add Customer" onAction={() => { setEditing(null); setShowForm(true); }} />}
+        >
+            {customers.map((c) => (
                 <tr key={c.id} className="hover:bg-app cursor-pointer" onClick={(e) => { const t = e.target as HTMLElement; if (t.closest("button") || t.closest("input")) return; setViewing(c); }}>
                   <td className="px-4 py-3">
                     <input type="checkbox" className="rounded border-border-strong" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} aria-label={`Select ${c.name}`} />
@@ -363,8 +361,7 @@ export default function Customers() {
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
+          </Table>
         </div>
       </div>
 
