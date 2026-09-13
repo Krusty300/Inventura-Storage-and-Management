@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import FittedSelect from "./FittedSelect";
 
@@ -25,7 +26,7 @@ function pageWindow(current: number, total: number): (number | "...")[] {
   return out;
 }
 
-export default function Pagination({ page, totalPages, onPageChange, pageSize, onPageSizeChange }: Props) {
+const Pagination = memo(function Pagination({ page, totalPages, onPageChange, pageSize, onPageSizeChange }: Props) {
   if (totalPages <= 1 && !onPageSizeChange) return null;
   const pages = pageWindow(page, totalPages);
   return (
@@ -63,4 +64,6 @@ export default function Pagination({ page, totalPages, onPageChange, pageSize, o
       )}
     </div>
   );
-}
+});
+
+export default Pagination;

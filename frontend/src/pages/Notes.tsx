@@ -162,7 +162,7 @@ export default function Notes() {
     queryFn: async () => { const { data } = await api.get("/notes/templates"); return data as NoteTemplate[]; },
   });
 
-  const notes = data?.items || [];
+  const notes = useMemo(() => data?.items ?? [], [data]);
   const pinnedNotes = notes.filter((n) => n.is_pinned && !n.is_completed);
   const unpinnedNotes = notes.filter((n) => !n.is_pinned && !n.is_completed);
   const completedNotes = notes.filter((n) => n.is_completed);
@@ -229,16 +229,46 @@ export default function Notes() {
     onError: (err) => addToast(errorMessage(err, "Failed to update note"), "error"),
   });
 
+  const updateNotesCache = useCallback(
+    (id: number, updater: (n: Note) => Note) => {
+      queryClient.setQueriesData<PaginatedResponse<Note>>({ queryKey: ["notes"] }, (old) => {
+        if (!old || !Array.isArray(old.items)) return old;
+        return { ...old, items: old.items.map((n) => (n.id === id ? updater(n) : n)) };
+      });
+      queryClient.setQueriesData<Note[]>({ queryKey: ["notes-kanban"] }, (old) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((n) => (n.id === id ? updater(n) : n));
+      });
+    },
+    [queryClient],
+  );
+
   const completeMutation = useMutation({
     mutationFn: (id: number) => api.patch(`/notes/${id}/complete`),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["notes"] });
+      await queryClient.cancelQueries({ queryKey: ["notes-kanban"] });
+      updateNotesCache(id, (n) => ({ ...n, is_completed: !n.is_completed }));
+    },
+    onError: (err, id) => {
+      updateNotesCache(id, (n) => ({ ...n, is_completed: !n.is_completed }));
+      addToast(errorMessage(err, "Failed to update note"), "error");
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); },
-    onError: (err) => addToast(errorMessage(err, "Failed to update note"), "error"),
   });
 
   const pinMutation = useMutation({
     mutationFn: (id: number) => api.patch(`/notes/${id}/pin`),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ["notes"] });
+      await queryClient.cancelQueries({ queryKey: ["notes-kanban"] });
+      updateNotesCache(id, (n) => ({ ...n, is_pinned: !n.is_pinned }));
+    },
+    onError: (err, id) => {
+      updateNotesCache(id, (n) => ({ ...n, is_pinned: !n.is_pinned }));
+      addToast(errorMessage(err, "Failed to update note"), "error");
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); },
-    onError: (err) => addToast(errorMessage(err, "Failed to update note"), "error"),
   });
 
   const deleteMutation = useMutation({
@@ -369,7 +399,7 @@ export default function Notes() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [openCreate, viewingNote]);
+  }, [openCreate, viewingNote, duplicateMutation]);
 
   const handleFormSubmit = async () => {
     if (!form.title.trim()) { addToast("Title is required", "error"); return; }

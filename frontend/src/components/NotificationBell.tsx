@@ -46,8 +46,16 @@ export default function NotificationBell() {
 
   useEffect(() => {
     load(false);
-    const t = setInterval(() => load(false), 30000);
-    return () => clearInterval(t);
+    const onFocus = () => load(false);
+    const onVisibility = () => {
+      if (!document.hidden) load(false);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [load]);
 
   useEffect(() => {

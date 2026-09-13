@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface Props {
@@ -7,7 +8,7 @@ interface Props {
   variant?: "table" | "block";
 }
 
-export default function ErrorState({
+const ErrorState = memo(function ErrorState({
   title = "Failed to load data",
   message = "Something went wrong while fetching this data. Please try again.",
   onRetry,
@@ -40,4 +41,6 @@ export default function ErrorState({
       </td>
     </tr>
   );
-}
+});
+
+export default ErrorState;

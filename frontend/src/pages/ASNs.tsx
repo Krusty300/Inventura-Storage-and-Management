@@ -399,7 +399,7 @@ function AsnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
     } else {
       addToast(`${supplierName} has no linked products - add items manually`, "info");
     }
-  }, [supplier_id, rawSupplierProducts]);
+  }, [supplier_id, rawSupplierProducts, suppliers, supplierProducts.length, addToast]);
 
   const selectableProducts = useMemo(() => {
     if (!supplier_id) return productList;

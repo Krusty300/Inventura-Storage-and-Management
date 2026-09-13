@@ -467,7 +467,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     ]).then(([pending, failed]) => { if (!cancelled) setPendingQcs([...pending.data.items, ...failed.data.items]); }).catch(fail);
     api.get("/promotions", { params: { active_only: true, limit: 50 } }).then(({ data }) => { if (!cancelled) setActivePromos(data.items); }).catch(fail);
     return () => { cancelled = true; };
-  }, []);
+  }, [addToast]);
 
   useEffect(() => {
     if (isLocked) {

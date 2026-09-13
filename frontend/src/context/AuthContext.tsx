@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import queryClient from "../api/queryClient";
 import api from "../api/client";
 import { canUser } from "../utils/permissions";
@@ -68,16 +68,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = async (username: string, password: string, remember = false) => {
+  const login = useCallback(async (username: string, password: string, remember = false) => {
     setLoggingOut(false);
     const { data } = await api.post("/auth/login", { username, password, remember });
     localStorage.setItem("token", data.access_token);
     localStorage.setItem("user", JSON.stringify(data.user));
     setToken(data.access_token);
     setUser(data.user);
-  };
+  }, []);
 
-  const register = async (username: string, email: string, password: string, role = "worker"): Promise<{ pending?: boolean }> => {
+  const register = useCallback(async (username: string, email: string, password: string, role = "worker"): Promise<{ pending?: boolean }> => {
     setLoggingOut(false);
     const resp = await api.post("/auth/register", { username, email, password, role });
     if (resp.status === 201 || resp.data?.message) {
@@ -89,38 +89,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(data.access_token);
     setUser(data.user);
     return {};
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setLoggingOut(true);
     api.post("/auth/logout").catch(() => {});
-  };
+  }, []);
 
-  const completeLogout = () => {
+  const completeLogout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     queryClient.clear();
     setToken(null);
     setUser(null);
     setLoggingOut(false);
-  };
+  }, []);
 
-  const updateUser = (updates: Partial<User>) => {
-    if (!user) return;
-    const next = { ...user, ...updates };
-    setUser(next);
-    localStorage.setItem("user", JSON.stringify(next));
-  };
+  const updateUser = useCallback(
+    (updates: Partial<User>) => {
+      if (!user) return;
+      const next = { ...user, ...updates };
+      setUser(next);
+      localStorage.setItem("user", JSON.stringify(next));
+    },
+    [user],
+  );
 
-  const can = (permission: string) => canUser(user, permission);
+  const can = useCallback((permission: string) => canUser(user, permission), [user]);
+
+  const value = useMemo(
+    () => ({ user, token, login, register, logout, completeLogout, updateUser, loading, loggingOut, can }),
+    [user, token, login, register, logout, completeLogout, updateUser, loading, loggingOut, can],
+  );
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, completeLogout, updateUser, loading, loggingOut, can }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");

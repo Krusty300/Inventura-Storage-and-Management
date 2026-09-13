@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface Props {
   value: number;
   max: number;
@@ -6,7 +8,7 @@ interface Props {
   tone?: "success" | "warning" | "danger";
 }
 
-export default function ProgressBar({ value, max, label, showPercent = true, tone }: Props) {
+const ProgressBar = memo(function ProgressBar({ value, max, label, showPercent = true, tone }: Props) {
   const pct = max > 0 ? Math.min(Math.max((value / max) * 100, 0), 100) : 0;
   const toneClass = tone === "danger" ? "bg-red-500" : tone === "warning" ? "bg-amber-500" : pct >= 100 ? "bg-emerald-500" : pct >= 50 ? "bg-primary" : "bg-amber-500";
   return (
@@ -17,4 +19,6 @@ export default function ProgressBar({ value, max, label, showPercent = true, ton
       {showPercent && <span className="text-xs text-muted tabular-nums">{Math.round(pct)}%</span>}
     </span>
   );
-}
+});
+
+export default ProgressBar;

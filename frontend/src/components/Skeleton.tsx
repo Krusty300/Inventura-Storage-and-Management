@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface Props {
   variant?: "table" | "card" | "text" | "rows";
   rows?: number;
@@ -48,9 +50,11 @@ function RowsSkeleton({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) 
   );
 }
 
-export default function Skeleton({ variant = "table", rows, cols, className = "" }: Props) {
+const Skeleton = memo(function Skeleton({ variant = "table", rows, cols, className = "" }: Props) {
   if (variant === "card") return <CardSkeleton count={rows} />;
   if (variant === "rows") return <RowsSkeleton rows={rows} cols={cols} />;
   if (variant === "table") return <TableSkeleton rows={rows} cols={cols} />;
   return <div className={`h-4 bg-subtle-strong rounded animate-pulse ${className}`} />;
-}
+});
+
+export default Skeleton;

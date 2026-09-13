@@ -1,3 +1,4 @@
+import { memo } from "react";
 import HoverCard from "./HoverCard";
 import DateTimeHoverCard from "./DateTimeHoverCard";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
@@ -10,7 +11,7 @@ interface Props {
   className?: string;
 }
 
-export default function FormattedDateTime({ value, label, fallback = "—", className }: Props) {
+const FormattedDateTime = memo(function FormattedDateTime({ value, label, fallback = "—", className }: Props) {
   const { data: settings } = useSettings();
   const formatDateTime = useDateTimeFormat();
   const showCards = settings?.show_datetime_hover_cards ?? true;
@@ -27,4 +28,6 @@ export default function FormattedDateTime({ value, label, fallback = "—", clas
       {node}
     </HoverCard>
   );
-}
+});
+
+export default FormattedDateTime;

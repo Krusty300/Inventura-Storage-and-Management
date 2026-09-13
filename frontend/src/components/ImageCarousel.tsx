@@ -22,6 +22,8 @@ export default function ImageCarousel({ images, imageUrl, alt, className = "" }:
         <img
           src={allImages[current].url}
           alt={alt}
+          loading="lazy"
+          decoding="async"
           className="w-full max-w-md h-64 rounded-lg object-cover border border-border"
           onError={onImageError}
         />
@@ -49,7 +51,7 @@ export default function ImageCarousel({ images, imageUrl, alt, className = "" }:
                 onClick={() => setCurrent(i)}
                 className={`w-8 h-8 rounded border-2 overflow-hidden ${i === current ? "border-primary" : "border-border opacity-60 hover:opacity-100"}`}
               >
-                <img src={img.url} alt="" className="w-full h-full object-cover" onError={onImageError} />
+                <img src={img.url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" onError={onImageError} />
               </button>
             ))}
           </div>

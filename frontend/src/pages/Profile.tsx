@@ -87,7 +87,7 @@ export default function Profile() {
     if (!user || formInitRef.current) return;
     formInitRef.current = true;
     setForm({ username: user.username, email: user.email });
-  }, [user?.id, user?.username, user?.email]);
+  }, [user]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

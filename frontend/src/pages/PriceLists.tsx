@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { Pencil, Trash2, Search, Tag, Star, BadgePercent, CalendarRange, Layers, Package } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
@@ -61,7 +61,7 @@ export default function PriceLists() {
     onError: (err: unknown) => { addToast(errorMessage(err, "Cannot delete"), "error"); },
   });
 
-  const priceLists = data?.items || [];
+  const priceLists = useMemo(() => data?.items ?? [], [data]);
 
   useEffect(() => {
     if (!viewing) return;

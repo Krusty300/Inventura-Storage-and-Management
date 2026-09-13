@@ -216,7 +216,7 @@ function QualityCheckForm({ qc, onClose, onSaved }: { qc: QualityCheck | null; o
       return;
     }
     if (!qc) setLocationId("");
-  }, [productId]);
+  }, [productId, qc]);
 
   const selectedLocation = stockLocations.locations.find((l) => l.location_id === Number(locationId));
   const visibleLots = selectedLocation ? lots.filter((l) => l.locations?.includes(selectedLocation.path)) : lots;

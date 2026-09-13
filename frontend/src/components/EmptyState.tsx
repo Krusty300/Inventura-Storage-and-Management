@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { PackageOpen, Plus } from "lucide-react";
 
 interface Props {
@@ -10,7 +11,7 @@ interface Props {
   compact?: boolean;
 }
 
-export default function EmptyState({
+const EmptyState = memo(function EmptyState({
   title = "No data found",
   message = "Get started by creating your first entry.",
   actionLabel,
@@ -70,4 +71,6 @@ export default function EmptyState({
       </td>
     </tr>
   );
-}
+});
+
+export default EmptyState;

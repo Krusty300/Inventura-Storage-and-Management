@@ -51,6 +51,7 @@ import WidgetPanel from "../components/WidgetPanel";
 const TREND_OPTIONS = [7, 30, 90];
 
 const stale1m = 60 * 1000;
+const backstopPoll = 5 * 60 * 1000;
 
 async function safeGet<T>(url: string, params?: Record<string, string | number>): Promise<T | null> {
   try {
@@ -103,70 +104,70 @@ export default function Dashboard() {
   const statsQuery = useQuery({
     queryKey: ["dashboard", "stats"],
     queryFn: async () => (await api.get("/dashboard/stats")).data as DashboardStats,
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const stats = statsQuery.data;
 
   const salesQuery = useQuery({
     queryKey: ["dashboard", "sales"],
     queryFn: () => safeGet<SalesStats>("/sales/stats"),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const salesStats = salesQuery.data;
 
   const valuationQuery = useQuery({
     queryKey: ["dashboard", "valuation"],
     queryFn: () => safeGet<InventoryValuation>("/reports/inventory-valuation"),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const valuation = valuationQuery.data;
 
   const exceptionsQuery = useQuery({
     queryKey: ["dashboard", "exceptions"],
     queryFn: () => safeGet<ExceptionsReport>("/reports/exceptions"),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const exceptions = exceptionsQuery.data;
 
   const lpnsQuery = useQuery({
     queryKey: ["dashboard", "lpns"],
     queryFn: () => safeGet<PaginatedResponse<LPN>>("/lpns", { limit: 20 }),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const lpns = lpnsQuery.data;
 
   const receiptsQuery = useQuery({
     queryKey: ["dashboard", "receipts"],
     queryFn: () => safeGet<PaginatedResponse<Receipt>>("/receipts", { limit: 20 }),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const receipts = receiptsQuery.data;
 
   const orderQuery = useQuery({
     queryKey: ["dashboard", "orderSummary"],
     queryFn: () => safeGet<OrderSummary>("/reports/order-summary"),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const orderSummary = orderQuery.data;
 
   const profitQuery = useQuery({
     queryKey: ["dashboard", "profit"],
     queryFn: () => safeGet<ProfitAnalysis>("/reports/profit-analysis"),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const profit = profitQuery.data;
 
   const costQuery = useQuery({
     queryKey: ["dashboard", "costReport"],
     queryFn: () => safeGet<ManufacturingCostReport>("/costing/report"),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const costReport = costQuery.data;
 
   const overdueQuery = useQuery({
     queryKey: ["dashboard", "overdueNotes"],
     queryFn: () => safeGet<number>("/notes/overdue-count"),
-    refetchInterval: stale1m,
+    refetchInterval: backstopPoll,
   });
   const overdueNotesCount = overdueQuery.data ?? 0;
 

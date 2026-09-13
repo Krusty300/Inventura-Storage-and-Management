@@ -36,11 +36,13 @@ export function BreadcrumbProvider({ children }: { children: ReactNode }) {
   return <BreadcrumbContext.Provider value={value}>{children}</BreadcrumbContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useBreadcrumbs() {
   return useContext(BreadcrumbContext);
 }
 
 /** Registers a contextual crumb (e.g. the open entity) while the caller is mounted and enabled. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useBreadcrumbExtension(label: string | null | undefined, enabled = true) {
   const { register, unregister } = useBreadcrumbs();
   const id = useId();

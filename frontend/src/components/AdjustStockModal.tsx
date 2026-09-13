@@ -49,7 +49,7 @@ export default function AdjustStockModal({ product, onClose, onAdjusted }: Props
     const id = String(top.location_id);
     setLocationId(id);
     setNewQty(String(top.count));
-  }, [stockLocations.locations, locationId, locationTouched]);
+  }, [stockLocations.locations, locationId, locationTouched, newQtyTouched]);
 
   const locationOptions = [...activeLocations].sort((a, b) => a.path.localeCompare(b.path));
   const currentQty = locationId ? stockCountByLoc.get(parseInt(locationId)) ?? 0 : product.quantity;
