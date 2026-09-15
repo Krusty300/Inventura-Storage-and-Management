@@ -21,9 +21,12 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
     received_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    approved_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     supplier = relationship("Supplier", back_populates="orders")
-    user = relationship("User", back_populates="orders")
+    user = relationship("User", foreign_keys=[user_id], back_populates="orders")
+    approver = relationship("User", foreign_keys=[approved_by])
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
     @property
@@ -34,6 +37,10 @@ class Order(Base):
     def username(self) -> str:
         return self.user.username if self.user else ""
 
+    @property
+    def approver_name(self) -> str:
+        return self.approver.username if self.approver else ""
+
 
 class OrderItem(Base):
     __tablename__ = "order_items"
@@ -42,6 +49,7 @@ class OrderItem(Base):
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    received_qty: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
 
     order = relationship("Order", back_populates="items")

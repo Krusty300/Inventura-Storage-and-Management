@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { X, GripVertical } from "lucide-react";
 import ScrollArea from "./ScrollArea";
 import { useBreadcrumbExtension } from "../context/BreadcrumbContext";
+import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
+import { useTrapFocus } from "../hooks/useTrapFocus";
 
 interface DrawerProps {
   open: boolean;
@@ -15,7 +17,6 @@ interface DrawerProps {
   breadcrumb?: string;
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const CLOSE_THRESHOLD = 120;
 
 interface DrawerPortalProps {
@@ -51,10 +52,12 @@ interface DrawerPopupProps {
 /** DrawerPopup - the actual vertical drawer panel (right side, full width on mobile). */
 export function DrawerPopup({ children, onClose, open, wide }: DrawerPopupProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
   const dragStartClientX = useRef(0);
   const [dragging, setDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
+
+  useLockBodyScroll(open);
+  useTrapFocus(panelRef, open, onClose);
 
   useEffect(() => {
     if (!dragging) setDragOffset(0);
@@ -63,30 +66,6 @@ export function DrawerPopup({ children, onClose, open, wide }: DrawerPopupProps)
   useEffect(() => {
     if (!open) setDragOffset(0);
   }, [open]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab" || !panelRef.current) return;
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else if (document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    },
-    [onClose],
-  );
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
@@ -124,16 +103,6 @@ export function DrawerPopup({ children, onClose, open, wide }: DrawerPopupProps)
     setDragOffset(0);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    previousFocus.current = document.activeElement as HTMLElement;
-    panelRef.current?.focus();
-    return () => {
-      previousFocus.current?.focus();
-      previousFocus.current = null;
-    };
-  }, [open]);
-
   return (
     <div
       ref={panelRef}
@@ -144,7 +113,6 @@ export function DrawerPopup({ children, onClose, open, wide }: DrawerPopupProps)
         transition: dragging ? "none" : "transform 0.25s ease",
       }}
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={handleKeyDown}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

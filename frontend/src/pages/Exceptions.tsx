@@ -63,7 +63,7 @@ export default function Exceptions() {
           <ShieldAlert size={22} strokeWidth={2} />
         </div>
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-ink">Exceptions Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-ink">Exceptions Dashboard</h1>
           <p className="text-sm text-muted mt-0.5">Quarantined, expired, and blocked stock that needs attention.</p>
         </div>
       </div>

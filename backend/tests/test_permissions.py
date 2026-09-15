@@ -1,4 +1,4 @@
-from tests.conftest import client, create_test_user
+from tests.conftest import client, create_test_user, flow_order
 
 
 def _register(auth_headers, username, email, password="testpass123"):
@@ -158,6 +158,10 @@ def test_worker_can_create_and_update_order(auth_headers):
         "items": [{"product_id": prod["id"], "quantity": 2, "unit_price": 5.0}],
     }, headers=worker)
     assert order.status_code == 201
+    resp = client.put(f"/api/orders/{order.json()['id']}", json={"status": "submitted"}, headers=worker)
+    assert resp.status_code == 200
+    assert client.put(f"/api/orders/{order.json()['id']}", json={"status": "approved"}, headers=worker).status_code == 403
+    flow_order(client, auth_headers, order.json()["id"], "approved")
     resp = client.put(f"/api/orders/{order.json()['id']}", json={"status": "received"}, headers=worker)
     assert resp.status_code == 200
 

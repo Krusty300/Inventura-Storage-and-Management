@@ -249,13 +249,13 @@ export default function WorkOrders() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
             <Factory size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink tracking-tight">Work Orders</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink tracking-tight">Work Orders</h1>
             <p className="text-sm text-muted mt-0.5">Plan and track production through completion.</p>
           </div>
         </div>

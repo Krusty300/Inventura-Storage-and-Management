@@ -102,3 +102,38 @@ def auth_headers(test_client):
     })
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
+
+def create_test_order(client, headers, product_id, quantity=1, unit_price=10.0, supplier_id=None, **extra):
+    """Create a purchase order via the API and return it."""
+    payload = {
+        "items": [{"product_id": product_id, "quantity": quantity, "unit_price": unit_price}],
+    }
+    if supplier_id is not None:
+        payload["supplier_id"] = supplier_id
+    payload.update(extra)
+    resp = client.post("/api/orders", json=payload, headers=headers)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def flow_order(client, headers, order_id, *statuses):
+    """Transition an order through statuses in order, asserting each succeeds."""
+    for st in statuses:
+        r = client.put(f"/api/orders/{order_id}", json={"status": st}, headers=headers)
+        assert r.status_code == 200, f"transition to '{st}' failed: {r.text}"
+    return client.get(f"/api/orders/{order_id}", headers=headers).json()
+
+
+def submit_approve(client, headers, order_id):
+    """Push a pending order through submitted -> approved."""
+    return flow_order(client, headers, order_id, "submitted", "approved")
+
+
+def receive_order(client, headers, order_id):
+    """Push a pending order through submit -> approve -> receive, using each
+    product's default location. Returns the order dict from the receive call."""
+    submit_approve(client, headers, order_id)
+    r = client.put(f"/api/orders/{order_id}", json={"status": "received"}, headers=headers)
+    assert r.status_code == 200, r.text
+    return r.json()

@@ -42,6 +42,8 @@ class UserOut(BaseModel):
     is_active: bool = True
     is_approved: bool = False
     avatar_url: str = ""
+    supplier_id: int | None = None
+    supplier_name: str = ""
     last_login_at: datetime | None = None
     created_at: datetime
 

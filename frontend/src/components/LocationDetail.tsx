@@ -238,7 +238,7 @@ export default function LocationDetail({ location, onClose }: Props) {
           </div>
         </div>
 
-        <div className="flex gap-1 p-1 bg-subtle rounded-lg border border-border w-fit">
+        <div className="flex flex-wrap gap-1 p-1 bg-subtle rounded-lg border border-border w-fit">
           <TabButton active={tab === "stock"} onClick={() => setTab("stock")}>
             <Package size={14} /> Stock ({stockLines.length + serials.length})
           </TabButton>

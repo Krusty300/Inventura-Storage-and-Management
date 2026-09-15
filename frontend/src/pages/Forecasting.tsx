@@ -61,7 +61,8 @@ export default function Forecasting() {
       const orders = res.data as { order_number: string; items: unknown[] }[];
       const totalProducts = orders.reduce((n, o) => n + o.items.length, 0);
       const numbers = orders.map((o) => `#${o.order_number}`).join(", ");
-      addToast(`Reorder PO ${numbers} created for ${totalProducts} product(s)`, "success");
+      const noun = orders.length === 1 ? "PO" : "POs";
+      addToast(`Reorder ${noun} ${numbers} created for ${totalProducts} product(s)`, "success");
       queryClient.invalidateQueries({ queryKey: ["forecasting"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
@@ -89,7 +90,7 @@ export default function Forecasting() {
             <TrendingUp size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Forecasting &amp; Replenishment</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Forecasting &amp; Replenishment</h1>
             <p className="text-sm text-muted">Weighted moving-average demand forecasts with safety stock and reorder suggestions.</p>
           </div>
         </div>
@@ -228,7 +229,13 @@ export default function Forecasting() {
       <ConfirmDialog
         open={confirmReorder}
         title="Auto-Reorder Stock"
-        message={`Generate a purchase order for all ${data?.summary.to_reorder ?? 0} product(s) the forecast says need replenishing?`}
+        message={(() => {
+          const reorderCount = data?.summary.to_reorder ?? 0;
+          const reorderRows = (data?.items ?? []).filter((r) => r.suggested_order_qty > 0);
+          const supplierCount = new Set(reorderRows.map((r) => r.supplier_id)).size;
+          if (supplierCount > 1) return `Generate ${supplierCount} purchase orders (one per supplier) for all ${reorderCount} product(s) the forecast says need replenishing?`;
+          return `Generate a purchase order for all ${reorderCount} product(s) the forecast says need replenishing?`;
+        })()}
         confirmLabel="Generate PO"
         confirmClass="btn-primary"
         onConfirm={() => { setConfirmReorder(false); reorderMutation.mutate(); }}

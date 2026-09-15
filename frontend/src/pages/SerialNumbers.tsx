@@ -117,13 +117,13 @@ export default function SerialNumbers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
             <Fingerprint size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Serial Numbers</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Serial Numbers</h1>
             <p className="text-sm text-muted mt-1">Track individual units with unique serial numbers.</p>
           </div>
         </div>
@@ -306,7 +306,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
   return (
     <SlideOver open onClose={onClose} title={`Serial ${serial.serial_number}`} wide ariaLabel={`Serial ${serial.serial_number} details`}>
       <div className="space-y-4">
-        <div className="grid grid-cols-5 gap-4 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-sm">
           <div>
             <p className="text-muted">Product</p>
             <p className="font-medium">{serial.product_name}</p>
@@ -366,7 +366,7 @@ function SerialDetail({ serial, onClose }: { serial: SerialNumber; onClose: () =
           )}
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-wrap justify-end gap-2 pt-2">
           {canToggle && status === "reserved" && (
             <button onClick={() => releaseFromWorkOrderMutation.mutate()} disabled={releaseFromWorkOrderMutation.isPending} className="btn-primary inline-flex items-center gap-1">
               <ShieldCheck size={14} /> Release from Work Order

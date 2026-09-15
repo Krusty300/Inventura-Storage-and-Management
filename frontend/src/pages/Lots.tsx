@@ -94,13 +94,13 @@ export default function Lots() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
             <FlaskConical size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Lots</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Lots</h1>
             <p className="text-sm text-muted mt-1">Track batches of stock by lot number, expiry, and status.</p>
           </div>
         </div>
@@ -218,7 +218,7 @@ function LotDetail({ lot, onClose }: { lot: Lot; onClose: () => void }) {
   return (
     <SlideOver open onClose={onClose} title={`Lot ${lot.lot_number}`} wide ariaLabel={`Lot ${lot.lot_number} details`}>
       <div className="space-y-4">
-        <div className="grid grid-cols-4 gap-4 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-muted">Product</p>
             <p className="font-medium">{lot.product_name}</p>

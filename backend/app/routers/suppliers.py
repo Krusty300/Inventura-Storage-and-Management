@@ -22,6 +22,7 @@ from app.schemas.supplier import (
 from app.services.auth import require_permission
 from app.services.filters import apply_date_range
 from app.services.soft_delete import register, soft_delete
+from app.services.supplier_performance import supplier_performance, supplier_performance_list
 from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change, read_upload_text
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"], dependencies=[Depends(require_permission("suppliers.view"))])
@@ -39,6 +40,10 @@ def _purge_supplier(db: Session, s: Supplier, user) -> None:
     has_orders = db.query(Order).filter(Order.supplier_id == s.id).first() is not None
     if has_orders:
         raise HTTPException(status_code=400, detail="Cannot permanently delete a supplier with order history")
+    from app.models.user import User
+    has_portal_users = db.query(User).filter(User.supplier_id == s.id).first() is not None
+    if has_portal_users:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a supplier with linked portal accounts")
     db.delete(s)
 
 
@@ -130,6 +135,24 @@ def list_suppliers(
     rows = q.order_by(Supplier.name).offset(skip).limit(limit).all()
     items = [_serialize_with_stats(s, to, ts, lo, pc) for s, to, ts, lo, pc in rows]
     return {"items": items, "total": total, "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.get("/performance")
+def list_supplier_performance(
+    search: str = Query(""),
+    sort_by: str = Query("score"),
+    order: str = Query("desc"),
+    db: Session = Depends(get_db),
+):
+    """Aggregate supplier performance report (on-time, quality, lead-time, score)."""
+    return supplier_performance_list(db, search=search, sort_by=sort_by, order=order)
+
+
+@router.get("/{supplier_id}/performance")
+def get_supplier_performance(supplier_id: int, db: Session = Depends(get_db)):
+    """Full supplier performance detail including price trend and recent orders."""
+    s = get_or_404(Supplier, supplier_id, db)
+    return supplier_performance(db, s)
 
 
 @router.patch("/bulk-edit")

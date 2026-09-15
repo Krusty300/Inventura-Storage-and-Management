@@ -24,3 +24,9 @@ frontend/dist/
 # Environment files
 .env
 .env.local
+
+# Build artifacts
+*.tsbuildinfo
+
+# Dev helper scripts
+frontend/src/pages/convert_batch3.ps1

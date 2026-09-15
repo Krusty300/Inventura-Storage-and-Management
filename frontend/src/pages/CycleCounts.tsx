@@ -67,7 +67,7 @@ export default function CycleCounts() {
             <ClipboardCheck size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Cycle Counts</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Cycle Counts</h1>
             <p className="text-sm text-muted mt-1">Verify on-hand stock against the system and reconcile any variances.</p>
           </div>
         </div>

@@ -34,6 +34,7 @@ class OrderUpdate(BaseModel):
     lot_numbers: Optional[dict[int, str]] = None
     expiry_dates: Optional[dict[int, str]] = None
     lpn_ids: Optional[dict[int, int]] = None
+    receive_quantities: Optional[dict[int, int]] = None
 
 
 class OrderBulkEdit(BaseModel):
@@ -50,6 +51,7 @@ class OrderItemOut(BaseModel):
     id: int
     product_id: int
     quantity: int
+    received_qty: int = 0
     unit_price: float
     product_name: str = ""
     product_image: str = ""
@@ -72,8 +74,11 @@ class OrderOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     received_at: Optional[datetime] = None
+    approved_by: Optional[int] = None
+    approved_at: Optional[datetime] = None
     supplier_name: str = ""
     username: str = ""
+    approver_name: str = ""
     items: list[OrderItemOut] = []
 
     class Config:

@@ -1,5 +1,5 @@
 from app.models import Product
-from tests.conftest import TestingSessionLocal, client
+from tests.conftest import TestingSessionLocal, client, submit_approve
 
 
 def _make_location(auth_headers, name="Rule Bin", code="RULE-1"):
@@ -85,6 +85,7 @@ def test_receive_order_requires_active_location(auth_headers):
         "items": [{"product_id": prod["id"], "quantity": 3, "unit_price": 5.0}],
     }, headers=auth_headers).json()
     client.put(f"/api/locations/{loc['id']}", json={"is_active": False}, headers=auth_headers)
+    submit_approve(client, auth_headers, order["id"])
     resp = client.put(f"/api/orders/{order['id']}", json={"status": "received"}, headers=auth_headers)
     assert resp.status_code == 400
     assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 0

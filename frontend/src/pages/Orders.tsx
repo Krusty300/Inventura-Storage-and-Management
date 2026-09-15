@@ -63,7 +63,8 @@ export default function Orders() {
       const orders = res.data as { order_number: string; items: unknown[] }[];
       const totalProducts = orders.reduce((n, o) => n + o.items.length, 0);
       const numbers = orders.map((o) => `#${o.order_number}`).join(", ");
-      addToast(`Reorder PO ${numbers} created for ${totalProducts} product(s)`, "success");
+      const noun = orders.length === 1 ? "PO" : "POs";
+      addToast(`Reorder ${noun} ${numbers} created for ${totalProducts} product(s)`, "success");
       queryClient.invalidateQueries({ queryKey: ["orders"] });
     },
     onError: (err: unknown) => {
@@ -117,7 +118,8 @@ export default function Orders() {
   const arrivalBadge = (o: Order) => {
     if (!o.expected_arrival) return <span className="text-muted">—</span>;
     const text = formatDateTime(o.expected_arrival);
-    if (o.status !== "pending") return <span className="text-muted text-xs">{text}</span>;
+    const isOpen = ["pending", "submitted", "approved", "acknowledged", "in_transit"].includes(o.status);
+    if (!isOpen) return <span className="text-muted text-xs">{text}</span>;
     const status = overdueStatus(o.expected_arrival);
     if (status === "overdue") return <span className="badge badge-danger">Overdue {text}</span>;
     if (status === "due") return <span className="badge badge-warning">Due {text}</span>;
@@ -126,17 +128,17 @@ export default function Orders() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
             <ShoppingCart size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Orders / Purchase Orders</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Orders / Purchase Orders</h1>
             <p className="text-sm text-muted mt-1">Place and receive orders with your suppliers.</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={handleExport} className="btn-secondary" aria-label="Export orders to CSV">
             Export
           </button>
@@ -164,6 +166,10 @@ export default function Orders() {
           options={[
             { value: "", label: "All statuses" },
             { value: "pending", label: "Pending" },
+            { value: "submitted", label: "Submitted" },
+            { value: "approved", label: "Approved" },
+            { value: "acknowledged", label: "Acknowledged" },
+            { value: "in_transit", label: "In Transit" },
             { value: "received", label: "Received" },
             { value: "cancelled", label: "Cancelled" },
           ]}
@@ -232,7 +238,7 @@ export default function Orders() {
                     <button onClick={() => printPdf(o)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Print order ${o.order_number}`}>
                       <Printer size={16} />
                     </button>
-                    {o.status !== "received" && (
+                    {!["received", "approved", "acknowledged", "in_transit"].includes(o.status) && (
                       <button onClick={() => setDeleting(o)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete order ${o.order_number}`}>
                         <Trash2 size={16} />
                       </button>
@@ -291,7 +297,7 @@ export default function Orders() {
       <ConfirmDialog
         open={confirmAutoReorder}
         title="Auto-Reorder Stock"
-        message="Generate a purchase order for all products that are at or below their reorder level?"
+        message="Generate purchase order(s) for all products the forecast says need replenishing?"
         confirmLabel="Generate PO"
         confirmClass="btn-primary"
         onConfirm={() => { setConfirmAutoReorder(false); reorderMutation.mutate(); }}

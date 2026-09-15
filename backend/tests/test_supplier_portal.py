@@ -1,0 +1,292 @@
+"""Supplier portal: account provisioning, auth scoping, and PO transitions."""
+
+from tests.conftest import client, create_test_order, create_test_user, submit_approve
+
+PASSWORD = "portalpass123"
+
+
+def _make_product(auth_headers, sku):
+    resp = client.post("/api/products", json={
+        "location_id": 1, "sku": sku, "name": sku, "cost_price": 5.0,
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def _make_supplier(auth_headers, name):
+    resp = client.post("/api/suppliers", json={"name": name}, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def _make_supplier_account(auth_headers, username, supplier_id=None, role="supplier"):
+    payload = {"username": username, "email": f"{username}@example.com", "password": PASSWORD, "role": role}
+    if supplier_id is not None:
+        payload["supplier_id"] = supplier_id
+    return client.post("/api/users", json=payload, headers=auth_headers)
+
+
+def _login(username, password=PASSWORD):
+    resp = client.post("/api/auth/login", json={"username": username, "password": password})
+    assert resp.status_code == 200, resp.text
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _approved_order(auth_headers, supplier_id, product_sku, quantity=2):
+    prod = _make_product(auth_headers, product_sku)
+    order = create_test_order(client, auth_headers, prod["id"], quantity=quantity, supplier_id=supplier_id)
+    submit_approve(client, auth_headers, order["id"])
+    return order
+
+
+# ---------------------------------------------------------------- provisioning
+
+def test_admin_creates_supplier_account(auth_headers):
+    supplier = _make_supplier(auth_headers, "Portal Supplier")
+    resp = _make_supplier_account(auth_headers, "portalsup", supplier_id=supplier["id"])
+    assert resp.status_code == 201, resp.text
+    user = resp.json()
+    assert user["role"] == "supplier"
+    assert user["supplier_id"] == supplier["id"]
+    assert user["supplier_name"] == "Portal Supplier"
+
+
+def test_supplier_role_requires_supplier_link(auth_headers):
+    resp = _make_supplier_account(auth_headers, "portalless")
+    assert resp.status_code == 400
+    assert "linked to a supplier" in resp.json()["detail"]
+
+
+def test_supplier_link_rejected_for_non_supplier_roles(auth_headers):
+    supplier = _make_supplier(auth_headers, "Not A Portal Supplier")
+    for role in ("admin", "manager", "worker"):
+        resp = _make_supplier_account(auth_headers, f"plain_{role}", supplier_id=supplier["id"], role=role)
+        assert resp.status_code == 400, role
+        assert "Only supplier accounts" in resp.json()["detail"]
+
+
+def test_supplier_link_requires_existing_supplier(auth_headers):
+    resp = _make_supplier_account(auth_headers, "ghostlink", supplier_id=999999)
+    assert resp.status_code == 400
+    assert "Supplier not found or inactive" in resp.json()["detail"]
+
+
+def test_update_supplier_link_validations(auth_headers):
+    sup_a = _make_supplier(auth_headers, "Upd Supplier A")
+    sup_b = _make_supplier(auth_headers, "Upd Supplier B")
+    created = _make_supplier_account(auth_headers, "updsup", supplier_id=sup_a["id"]).json()
+    # Reassign to another supplier.
+    resp = client.put(f"/api/users/{created['id']}", json={"supplier_id": sup_b["id"]}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["supplier_id"] == sup_b["id"]
+    # Unlinking a supplier account is not allowed.
+    resp = client.put(f"/api/users/{created['id']}", json={"supplier_id": None}, headers=auth_headers)
+    assert resp.status_code == 400
+    # Linking a non-supplier role is not allowed.
+    worker = client.post("/api/users", json={
+        "username": "plainworker", "email": "plainworker@example.com",
+        "password": PASSWORD, "role": "worker",
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/users/{worker['id']}", json={"supplier_id": sup_b["id"]}, headers=auth_headers)
+    assert resp.status_code == 400
+    # Demoting a supplier clears the link automatically.
+    resp = client.put(f"/api/users/{created['id']}", json={"role": "worker"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["supplier_id"] is None
+
+
+def test_supplier_account_cannot_hold_custom_permissions(auth_headers):
+    supplier = _make_supplier(auth_headers, "Perm Supplier")
+    resp = client.post("/api/users", json={
+        "username": "permsup", "email": "permsup@example.com", "password": PASSWORD,
+        "role": "supplier", "supplier_id": supplier["id"], "permissions": ["orders.view"],
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "custom permissions" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------- portal auth
+
+def test_portal_requires_supplier_account(auth_headers):
+    assert client.get("/api/portal/me", headers=auth_headers).status_code == 403
+
+
+def test_supplier_without_link_blocked(auth_headers):
+    create_test_user("nolinksup", "nolinksup@example.com", PASSWORD, role="supplier")
+    headers = _login("nolinksup")
+    resp = client.get("/api/portal/me", headers=headers)
+    assert resp.status_code == 403
+    assert "not linked" in resp.json()["detail"]
+
+
+def test_supplier_blocked_when_supplier_soft_deleted(auth_headers):
+    supplier = _make_supplier(auth_headers, "Doomed Supplier")
+    _make_supplier_account(auth_headers, "doomedsup", supplier_id=supplier["id"]).json()
+    headers = _login("doomedsup")
+    assert client.get("/api/portal/me", headers=headers).status_code == 200
+    resp = client.delete(f"/api/suppliers/{supplier['id']}", headers=auth_headers)
+    assert resp.status_code == 200
+    resp = client.get("/api/portal/me", headers=headers)
+    assert resp.status_code == 403
+    assert "unavailable" in resp.json()["detail"]
+
+
+def test_supplier_user_deactivated_cannot_login(auth_headers):
+    supplier = _make_supplier(auth_headers, "Gone Supplier")
+    user = _make_supplier_account(auth_headers, "gonessup", supplier_id=supplier["id"]).json()
+    client.put(f"/api/users/{user['id']}", json={"is_active": False}, headers=auth_headers)
+    resp = client.post("/api/auth/login", json={"username": "gonessup", "password": PASSWORD})
+    assert resp.status_code == 401
+
+
+def test_supplier_login_and_portal_me(auth_headers):
+    supplier = _make_supplier(auth_headers, "Portal Me Supplier")
+    _make_supplier_account(auth_headers, "mesup", supplier_id=supplier["id"]).json()
+    headers = _login("mesup")
+    data = client.get("/api/portal/me", headers=headers).json()
+    assert data["user"]["role"] == "supplier"
+    assert data["user"]["supplier_id"] == supplier["id"]
+    assert data["supplier"]["name"] == "Portal Me Supplier"
+
+
+def test_supplier_cannot_use_internal_endpoints(auth_headers):
+    supplier = _make_supplier(auth_headers, "Fenced Supplier")
+    _make_supplier_account(auth_headers, "fencedsup", supplier_id=supplier["id"]).json()
+    headers = _login("fencedsup")
+    assert client.get("/api/orders", headers=headers).status_code == 403
+    assert client.get("/api/suppliers", headers=headers).status_code == 403
+    assert client.get("/api/products", headers=headers).status_code == 403
+    assert client.get("/api/dashboard/stats", headers=headers).status_code == 403
+
+
+# ---------------------------------------------------------------- order scoping
+
+def test_portal_lists_only_own_orders(auth_headers):
+    sup_a = _make_supplier(auth_headers, "Scoped Supplier A")
+    sup_b = _make_supplier(auth_headers, "Scoped Supplier B")
+    _make_supplier_account(auth_headers, "scoped_a", supplier_id=sup_a["id"]).json()
+    order_a = _approved_order(auth_headers, sup_a["id"], "SCOPE-A")
+    _approved_order(auth_headers, sup_b["id"], "SCOPE-B")
+    headers = _login("scoped_a")
+    data = client.get("/api/portal/orders", headers=headers).json()
+    assert data["total"] == 1
+    assert data["items"][0]["id"] == order_a["id"]
+    assert data["items"][0]["supplier_id"] == sup_a["id"]
+
+
+def test_portal_hides_pending_and_submitted(auth_headers):
+    supplier = _make_supplier(auth_headers, "Hide Drafts Supplier")
+    _make_supplier_account(auth_headers, "draftsup", supplier_id=supplier["id"]).json()
+    _approved_order(auth_headers, supplier["id"], "DRAFT-OK")
+    create_test_order(client, auth_headers, _make_product(auth_headers, "DRAFT-PEND")["id"], supplier_id=supplier["id"])
+    headers = _login("draftsup")
+    data = client.get("/api/portal/orders", headers=headers).json()
+    assert data["total"] == 1
+    resp = client.get("/api/portal/orders", params={"status": "pending"}, headers=headers)
+    assert resp.status_code == 400
+    summary = client.get("/api/portal/summary", headers=headers).json()
+    assert summary["total_orders"] == 1
+
+
+def test_portal_order_detail_scoped(auth_headers):
+    sup_a = _make_supplier(auth_headers, "Detail Supplier A")
+    sup_b = _make_supplier(auth_headers, "Detail Supplier B")
+    order_b = _approved_order(auth_headers, sup_b["id"], "DETAIL-B")
+    _make_supplier_account(auth_headers, "detail_a", supplier_id=sup_a["id"]).json()
+    headers = _login("detail_a")
+    resp = client.get(f"/api/portal/orders/{order_b['id']}", headers=headers)
+    assert resp.status_code == 404
+    resp = client.get("/api/portal/orders/999999", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_portal_summary_counts_and_recent(auth_headers):
+    supplier = _make_supplier(auth_headers, "Summary Supplier")
+    _approved_order(auth_headers, supplier["id"], "SUM-ONE", quantity=2)
+    _make_supplier_account(auth_headers, "sumsup", supplier_id=supplier["id"]).json()
+    headers = _login("sumsup")
+    data = client.get("/api/portal/summary", headers=headers).json()
+    assert data["total_orders"] == 1
+    assert data["open_orders"] == 1
+    assert data["status_counts"]["approved"] == 1
+    assert data["open_value"] > 0
+    assert len(data["recent_orders"]) == 1
+
+
+# ---------------------------------------------------------------- transitions
+
+def test_portal_acknowledge_and_in_transit(auth_headers):
+    supplier = _make_supplier(auth_headers, "Transit Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "TRANSIT-1")
+    _make_supplier_account(auth_headers, "transitsup", supplier_id=supplier["id"]).json()
+    headers = _login("transitsup")
+    resp = client.patch(f"/api/portal/orders/{order['id']}", json={"status": "acknowledged"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "acknowledged"
+    resp = client.patch(f"/api/portal/orders/{order['id']}", json={"status": "in_transit"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "in_transit"
+
+
+def test_portal_illegal_transitions_rejected(auth_headers):
+    supplier = _make_supplier(auth_headers, "Strict Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "STRICT-1")
+    _make_supplier_account(auth_headers, "strictsup", supplier_id=supplier["id"]).json()
+    headers = _login("strictsup")
+    # A supplier cannot skip to in_transit, receive, cancel, or revert.
+    for st in ("in_transit", "received", "cancelled", "approved", "submitted", "pending"):
+        resp = client.patch(f"/api/portal/orders/{order['id']}", json={"status": st}, headers=headers)
+        assert resp.status_code == 400, st
+    assert "Cannot change order status" in resp.json()["detail"]
+    # Re-acknowledging or reverting an acknowledged order is also rejected.
+    client.patch(f"/api/portal/orders/{order['id']}", json={"status": "acknowledged"}, headers=headers)
+    for st in ("acknowledged", "approved"):
+        resp = client.patch(f"/api/portal/orders/{order['id']}", json={"status": st}, headers=headers)
+        assert resp.status_code == 400, st
+
+
+def test_portal_cannot_move_received_order(auth_headers):
+    supplier = _make_supplier(auth_headers, "Done Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "DONE-1")
+    resp = client.put(f"/api/orders/{order['id']}", json={"status": "received"}, headers=auth_headers)
+    assert resp.status_code == 200
+    _make_supplier_account(auth_headers, "donesup", supplier_id=supplier["id"]).json()
+    headers = _login("donesup")
+    resp = client.patch(f"/api/portal/orders/{order['id']}", json={"status": "acknowledged"}, headers=headers)
+    assert resp.status_code == 400
+
+
+def test_portal_transition_notifies_admins(auth_headers):
+    supplier = _make_supplier(auth_headers, "Notifying Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "NOTIFY-1")
+    _make_supplier_account(auth_headers, "notifysup", supplier_id=supplier["id"]).json()
+    headers = _login("notifysup")
+    client.patch(f"/api/portal/orders/{order['id']}", json={"status": "acknowledged"}, headers=headers)
+    notifications = client.get("/api/notifications", headers=auth_headers).json()
+    assert any(
+        "acknowledged" in n["title"].lower() and order["order_number"] in n["title"]
+        for n in notifications["items"]
+    )
+
+
+# ---------------------------------------------------------------- misc
+
+def test_portal_order_pdf(auth_headers):
+    supplier = _make_supplier(auth_headers, "Pdf Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "PPDF-1")
+    _make_supplier_account(auth_headers, "pdfsup", supplier_id=supplier["id"]).json()
+    headers = _login("pdfsup")
+    resp = client.get(f"/api/portal/orders/{order['id']}/pdf", headers=headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content.startswith(b"%PDF")
+
+
+def test_purge_supplier_blocked_with_linked_accounts(auth_headers):
+    supplier = _make_supplier(auth_headers, "Purge Supplier")
+    _make_supplier_account(auth_headers, "purgesup", supplier_id=supplier["id"]).json()
+    client.delete(f"/api/suppliers/{supplier['id']}", headers=auth_headers)
+    resp = client.delete(f"/api/trash/supplier/{supplier['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "linked portal accounts" in resp.json()["detail"]

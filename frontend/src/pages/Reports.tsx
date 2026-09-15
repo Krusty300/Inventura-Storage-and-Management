@@ -48,7 +48,7 @@ export default function Reports() {
             <BarChart3 size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Reports & Analytics</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Reports &amp; Analytics</h1>
             <p className="text-sm text-muted mt-1">Sales, inventory, and valuation insights at a glance.</p>
           </div>
         </div>

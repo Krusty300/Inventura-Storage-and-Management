@@ -385,17 +385,17 @@ export default function Products() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
             <Package size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Products</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Products</h1>
             <p className="text-sm text-muted mt-1">Manage the items you stock, sell, and manufacture.</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import products from CSV">
             Import
           </button>
@@ -564,14 +564,14 @@ export default function Products() {
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Image</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("sku")} aria-label="Sort by SKU">SKU{sortIndicator("sku")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("name")} aria-label="Sort by name">Name{sortIndicator("name")}</th>
-                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("category_name")} aria-label="Sort by category">Category{sortIndicator("category_name")}</th>
-                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("supplier_name")} aria-label="Sort by supplier">Supplier{sortIndicator("supplier_name")}</th>
-                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("unit_price")} aria-label="Sort by price">Price{sortIndicator("unit_price")}</th>
-                <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("cost_price")} aria-label="Sort by cost">Cost{sortIndicator("cost_price")}</th>
+                <th className="hidden md:table-cell px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("category_name")} aria-label="Sort by category">Category{sortIndicator("category_name")}</th>
+                <th className="hidden md:table-cell px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("supplier_name")} aria-label="Sort by supplier">Supplier{sortIndicator("supplier_name")}</th>
+                <th className="hidden sm:table-cell px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("unit_price")} aria-label="Sort by price">Price{sortIndicator("unit_price")}</th>
+                <th className="hidden md:table-cell px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("cost_price")} aria-label="Sort by cost">Cost{sortIndicator("cost_price")}</th>
                 <th className="px-4 py-3 font-medium text-muted cursor-pointer select-none" onClick={() => toggleSort("quantity")} aria-label="Sort by quantity">Qty{sortIndicator("quantity")}</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Location</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Batch</th>
-                <th scope="col" className="px-4 py-3 font-medium text-muted">Expiry</th>
+                <th scope="col" className="hidden sm:table-cell px-4 py-3 font-medium text-muted">Location</th>
+                <th scope="col" className="hidden sm:table-cell px-4 py-3 font-medium text-muted">Batch</th>
+                <th scope="col" className="hidden sm:table-cell px-4 py-3 font-medium text-muted">Expiry</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Status</th>
                 <th scope="col" className="px-4 py-3 font-medium text-muted">Actions</th>
               </tr>
@@ -646,10 +646,10 @@ export default function Products() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted">{p.category_name}</td>
-                    <td className="px-4 py-3 text-muted">{p.supplier_name || "—"}</td>
-                    <td className="px-4 py-3">{formatCurrency(p.unit_price, currencySymbol)}</td>
-                    <td className="px-4 py-3">{formatCurrency(p.cost_price, currencySymbol)}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-muted">{p.category_name}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-muted">{p.supplier_name || "—"}</td>
+                    <td className="hidden sm:table-cell px-4 py-3">{formatCurrency(p.unit_price, currencySymbol)}</td>
+                    <td className="hidden md:table-cell px-4 py-3">{formatCurrency(p.cost_price, currencySymbol)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className={isLowStock ? "text-red-600 dark:text-red-400 font-medium" : ""}>
@@ -677,9 +677,9 @@ export default function Products() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted">{p.location}</td>
-                    <td className="px-4 py-3 text-muted">{p.batch_number || "—"}</td>
-                    <td className="px-4 py-3">{expiryBadge(p, sellable)}</td>
+                    <td className="hidden sm:table-cell px-4 py-3 text-muted">{p.location}</td>
+                    <td className="hidden sm:table-cell px-4 py-3 text-muted">{p.batch_number || "—"}</td>
+                    <td className="hidden sm:table-cell px-4 py-3">{expiryBadge(p, sellable)}</td>
                     <td className="px-4 py-3">
                       {can("products.update") ? (
                         <button

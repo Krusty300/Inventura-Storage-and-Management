@@ -12,7 +12,7 @@ interface Props {
 export default function BulkActionBar({ count, onEdit, onClear, canEdit = true, onPrintSelected, printLoading }: Props) {
   if (count === 0) return null;
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-primary-soft dark:bg-primary/10 rounded-lg border border-primary-soft dark:border-primary/30">
+    <div className="flex items-center gap-3 flex-wrap px-4 py-3 bg-primary-soft dark:bg-primary/10 rounded-lg border border-primary-soft dark:border-primary/30">
       <span className="text-sm font-medium text-primary-strong dark:text-primary">{count} selected</span>
       {canEdit && (
         <button onClick={onEdit} className="btn-primary text-sm px-3 py-1.5">

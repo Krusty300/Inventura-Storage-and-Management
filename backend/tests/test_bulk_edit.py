@@ -120,6 +120,15 @@ def test_bulk_edit_orders_rejects_received(auth_headers):
     assert resp.status_code == 400
 
 
+def test_bulk_edit_orders_rejects_acknowledged_and_in_transit(auth_headers):
+    o = _make_order(auth_headers, "ORD-B5")
+    resp = client.patch("/api/orders/bulk-edit", json={"ids": [o["id"]], "status": "acknowledged"}, headers=auth_headers)
+    assert resp.status_code == 400
+    assert client.get(f"/api/orders/{o['id']}", headers=auth_headers).json()["status"] == "pending"
+    resp = client.patch("/api/orders/bulk-edit", json={"ids": [o["id"]], "status": "in_transit"}, headers=auth_headers)
+    assert resp.status_code == 400
+
+
 def test_bulk_edit_orders_rejects_invalid_transition(auth_headers):
     o = _make_order(auth_headers, "ORD-B4")
     client.put(f"/api/orders/{o['id']}", json={"status": "cancelled"}, headers=auth_headers)

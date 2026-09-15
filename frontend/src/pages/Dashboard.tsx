@@ -233,7 +233,7 @@ export default function Dashboard() {
   if (!stats) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-ink">Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-ink">Dashboard</h1>
         <p className="text-sm text-muted mt-0.5">A live overview of stock, sales, and warehouse health.</p>
         {[10, 6, 2, 3].map((count, i) => (
           <div key={i} className="space-y-3">
@@ -354,7 +354,7 @@ export default function Dashboard() {
             </span>
           )}
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink truncate">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink truncate">{isWorker ? `Welcome Back, ${greetingName}` : `Good to see you, ${greetingName}`}</h1>
             <p className="text-sm text-muted mt-1">A live overview of stock, sales, and warehouse health.</p>
           </div>
         </div>
@@ -588,7 +588,7 @@ export default function Dashboard() {
             <ListRowsSkeleton rows={4} />
           ) : profit ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <p className="text-sm text-muted">Total Cost</p>
                   <p className="text-lg font-bold">{formatCurrency(profit.total_cost_value, currencySymbol, 0)}</p>
@@ -967,7 +967,7 @@ export default function Dashboard() {
           </div>
           {costReport ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <p className="text-sm text-muted">Material Cost</p>
                   <p className="text-lg font-bold">{formatCurrency(costReport.total_material_cost, currencySymbol, 0)}</p>

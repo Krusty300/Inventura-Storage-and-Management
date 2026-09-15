@@ -174,7 +174,7 @@ export default function Suppliers() {
             <Building2 size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Suppliers</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Suppliers</h1>
             <p className="text-sm text-muted mt-1">Manage the companies you buy from.</p>
           </div>
         </div>

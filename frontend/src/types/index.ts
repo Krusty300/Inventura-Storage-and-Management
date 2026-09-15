@@ -126,6 +126,79 @@ export interface TopSuppliersReport {
   days: number | null;
 }
 
+export interface OnTimeDimension {
+  orders: number;
+  on_time: number;
+  late: number;
+  rate: number | null;
+  avg_deviation_days: number | null;
+}
+
+export interface LeadTimeDimension {
+  promised_days: number | null;
+  actual_avg_days: number | null;
+  adherence: number | null;
+}
+
+export interface QualityDimension {
+  checks: number;
+  passed: number;
+  failed: number;
+  pass_rate: number | null;
+}
+
+export interface PerformanceVolume {
+  total_orders: number;
+  total_spent: number;
+  avg_order_value: number;
+  open_orders: number;
+  last_order_at: string | null;
+}
+
+export interface PriceTrendPoint {
+  month: string;
+  avg_unit_price: number;
+  items: number;
+}
+
+export interface RecentOrderPerformance {
+  order_id: number;
+  order_number: string;
+  created_at: string;
+  expected_arrival: string | null;
+  received_at: string | null;
+  on_time: boolean | null;
+}
+
+export interface SupplierPerformance {
+  supplier_id: number;
+  name: string;
+  is_active: boolean;
+  score: number | null;
+  rating: string | null;
+  on_time_rate: number | null;
+  quality_pass_rate: number | null;
+  lead_adherence: number | null;
+  total_orders: number;
+  total_spent: number;
+  avg_order_value: number;
+  open_orders: number;
+  last_order_at: string | null;
+}
+
+export interface SupplierPerformanceDetail {
+  supplier_id: number;
+  name: string;
+  score: number | null;
+  rating: string | null;
+  on_time: OnTimeDimension;
+  lead_time: LeadTimeDimension;
+  quality: QualityDimension;
+  volume: PerformanceVolume;
+  price_trend: PriceTrendPoint[];
+  recent_orders: RecentOrderPerformance[];
+}
+
 export interface StockMovement {
   id: number;
   product_id: number;
@@ -159,8 +232,11 @@ export interface Order {
   created_at: string;
   updated_at: string;
   received_at: string | null;
+  approved_by: number | null;
+  approved_at: string | null;
   supplier_name: string;
   username: string;
+  approver_name: string;
   items: OrderItem[];
 }
 
@@ -168,6 +244,7 @@ export interface OrderItem {
   id: number;
   product_id: number;
   quantity: number;
+  received_qty: number;
   unit_price: number;
   product_name: string;
   product_image: string;
@@ -515,6 +592,8 @@ export interface User {
   avatar_url?: string;
   last_login_at?: string | null;
   created_at?: string;
+  supplier_id?: number | null;
+  supplier_name?: string | null;
 }
 
 export interface Sale {
@@ -1289,4 +1368,19 @@ export interface TrashItem {
   entity_type: string;
   label: string;
   deleted_at: string | null;
+}
+
+export interface PortalMe {
+  user: User;
+  supplier: Supplier;
+  store_name: string;
+  currency_symbol: string;
+}
+
+export interface PortalSummary {
+  status_counts: Record<string, number>;
+  total_orders: number;
+  open_orders: number;
+  open_value: number;
+  recent_orders: Order[];
 }

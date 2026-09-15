@@ -32,10 +32,21 @@ function mockLocationTree(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockLocations(tree: ReturnType<typeof mockLocationTree>[], summary: Record<string, unknown> = {}, detail: Record<string, unknown> = {}) {
+function flattenTree(tree: ReturnType<typeof mockLocationTree>[]): Omit<ReturnType<typeof mockLocationTree>, "children">[] {
+  const flat: Omit<ReturnType<typeof mockLocationTree>, "children">[] = [];
+  const walk = (nodes: ReturnType<typeof mockLocationTree>[]) => nodes.forEach((n) => {
+    const { children, ...rest } = n;
+    flat.push(rest);
+    walk((children ?? []) as ReturnType<typeof mockLocationTree>[]);
+  });
+  walk(tree);
+  return flat;
+}
+
+function mockLocations(tree: ReturnType<typeof mockLocationTree>[], summary: Record<string, unknown> = {}, detail: Record<string, unknown> = {}, flatItems?: Record<string, unknown>[]) {
   getMock.mockImplementation((url: string) => {
     if (url === "/locations/tree") return Promise.resolve({ data: tree });
-    if (url === "/locations") return Promise.resolve({ data: { items: tree, total: tree.length, page: 1, pages: 1 } });
+    if (url === "/locations") return Promise.resolve({ data: { items: flatItems ?? tree, total: tree.length, page: 1, pages: 1 } });
     if (url === "/locations/summary") {
       return Promise.resolve({
         data: { total: 3, active: 3, inactive: 0, total_stock_lines: 5, total_lpns: 2, total_lots: 1, total_quantity: 40, total_value: 100, ...summary },
@@ -209,6 +220,50 @@ describe("Locations Page", () => {
     renderWithProviders(<Locations />, { route: "/locations?location=2" });
     expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
     expect(screen.getByText("Widget")).toBeInTheDocument();
+  });
+
+  it("expands the tree ancestors when the detail opens from a deep link", async () => {
+    mockLocations([
+      mockLocationTree({
+        children: [
+          mockLocationTree({ id: 3, code: "C-01", name: "Shelf C", path: "Aisle A / Shelf C", parent_id: 1, location_type: "shelf", children: [
+            mockLocationTree({ id: 4, code: "C-01-01", name: "Bin C-01", path: "Aisle A / Shelf C / Bin C-01", parent_id: 3, location_type: "bin", children: [] }),
+          ] }),
+        ],
+      }),
+    ], {}, {}, flattenTree([
+      mockLocationTree({
+        children: [
+          mockLocationTree({ id: 3, code: "C-01", name: "Shelf C", path: "Aisle A / Shelf C", parent_id: 1, location_type: "shelf", children: [
+            mockLocationTree({ id: 4, code: "C-01-01", name: "Bin C-01", path: "Aisle A / Shelf C / Bin C-01", parent_id: 3, location_type: "bin", children: [] }),
+          ] }),
+        ],
+      }),
+    ]));
+    renderWithProviders(<Locations />, { route: "/locations?location=4" });
+    expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
+    expect(screen.getAllByText("Aisle A / Shelf C / Bin C-01").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps the deep-linked location visible after the detail closes", async () => {
+    mockLocations([
+      mockLocationTree({
+        children: [
+          mockLocationTree({ id: 3, code: "C-01", name: "Shelf C", path: "Aisle A / Shelf C", parent_id: 1, location_type: "shelf", children: [] }),
+        ],
+      }),
+    ], {}, {}, flattenTree([
+      mockLocationTree({
+        children: [
+          mockLocationTree({ id: 3, code: "C-01", name: "Shelf C", path: "Aisle A / Shelf C", parent_id: 1, location_type: "shelf", children: [] }),
+        ],
+      }),
+    ]));
+    renderWithProviders(<Locations />, { route: "/locations?location=3" });
+    expect(await screen.findByText("Stock (1)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    await vi.waitFor(() => expect(screen.queryByText("Stock (1)")).not.toBeInTheDocument());
+    expect(screen.getByText("Aisle A / Shelf C")).toBeInTheDocument();
   });
 
   it("closes the detail modal with a single click on the X", async () => {

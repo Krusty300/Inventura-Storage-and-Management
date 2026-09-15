@@ -50,7 +50,7 @@ export default function Planning() {
             <Calculator size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">MRP Planning</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">MRP Planning</h1>
             <p className="text-sm text-muted">Explode the BOM and net demand against stock and open work orders.</p>
           </div>
         </div>

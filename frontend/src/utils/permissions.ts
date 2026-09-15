@@ -34,6 +34,7 @@ export const ALL_PERMISSIONS = [
   "orders.update",
   "orders.delete",
   "orders.bulk",
+  "orders.approve",
   "sales.view",
   "sales.create",
   "sales.refund",
@@ -172,10 +173,15 @@ const MANAGER_PERMISSIONS = ALL_PERMISSIONS.filter(
   (p) => p !== "users.delete" && p !== "users.assign_admin_role"
 );
 
+const SUPPLIER_ROLE_PERMISSIONS = [
+  "notifications.view",
+];
+
 const ROLE_PERMISSIONS: Record<string, ReadonlySet<string>> = {
   admin: new Set(ALL_PERMISSIONS),
   manager: new Set(MANAGER_PERMISSIONS),
   worker: new Set(WORKER_PERMISSIONS),
+  supplier: new Set(SUPPLIER_ROLE_PERMISSIONS),
 };
 
 export function can(role: string | undefined, permission: string): boolean {

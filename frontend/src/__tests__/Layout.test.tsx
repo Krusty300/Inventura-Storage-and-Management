@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Layout from "../components/Layout";
 import { AuthProvider } from "../context/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
+import { FontSizeProvider } from "../context/FontSizeContext";
 import { ToastProvider } from "../context/ToastContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -32,11 +33,13 @@ function renderLayout() {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <ThemeProvider>
-          <ToastProvider>
-            <AuthProvider>
-              <Layout />
-            </AuthProvider>
-          </ToastProvider>
+          <FontSizeProvider>
+            <ToastProvider>
+              <AuthProvider>
+                <Layout />
+              </AuthProvider>
+            </ToastProvider>
+          </FontSizeProvider>
         </ThemeProvider>
       </MemoryRouter>
     </QueryClientProvider>
@@ -56,6 +59,8 @@ describe("Layout", () => {
     localStorage.removeItem("sidebarCollapsed");
     localStorage.removeItem("floatingSidebarWidth");
     localStorage.removeItem("collapsedNavGroups");
+    localStorage.removeItem("inventura_font_scale");
+    document.documentElement.style.fontSize = "";
   });
 
   it("renders app name", () => {
@@ -221,5 +226,47 @@ describe("Layout", () => {
     expect(screen.queryByText("Reports")).not.toBeInTheDocument();
     expect(screen.queryByText("Orders")).not.toBeInTheDocument();
     expect(screen.queryByText("Users")).not.toBeInTheDocument();
+  });
+
+  it("increases the root font size with the increase control", () => {
+    renderLayout();
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Increase font size"));
+    expect(document.documentElement.style.fontSize).toBe("17.6px");
+    expect(screen.getByText("110%")).toBeInTheDocument();
+    expect(localStorage.getItem("inventura_font_scale")).toBe("1.1");
+  });
+
+  it("decreases the root font size with the decrease control", () => {
+    renderLayout();
+    fireEvent.click(screen.getByTitle("Decrease font size"));
+    expect(document.documentElement.style.fontSize).toBe("14.4px");
+    expect(screen.getByText("90%")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Decrease font size"));
+    expect(document.documentElement.style.fontSize).toBe("12.8px");
+    expect(screen.getByText("80%")).toBeInTheDocument();
+  });
+
+  it("resets the root font size with the percent control", () => {
+    renderLayout();
+    fireEvent.click(screen.getByTitle("Increase font size"));
+    fireEvent.click(screen.getByTitle("Reset font size"));
+    expect(document.documentElement.style.fontSize).toBe("16px");
+    expect(screen.getByText("100%")).toBeInTheDocument();
+  });
+
+  it("disables the increase control at the largest step", () => {
+    localStorage.setItem("inventura_font_scale", "1.5");
+    renderLayout();
+    const increase = screen.getByTitle("Increase font size");
+    expect(increase).toBeDisabled();
+    expect(document.documentElement.style.fontSize).toBe("24px");
+  });
+
+  it("restores the saved font scale from localStorage", () => {
+    localStorage.setItem("inventura_font_scale", "1.2");
+    renderLayout();
+    expect(document.documentElement.style.fontSize).toBe("19.2px");
+    expect(screen.getByText("120%")).toBeInTheDocument();
   });
 });

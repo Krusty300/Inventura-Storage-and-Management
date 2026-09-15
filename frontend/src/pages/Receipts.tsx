@@ -74,7 +74,7 @@ export default function Receipts() {
             <PackagePlus size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Receiving</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Receiving</h1>
             <p className="text-sm text-muted mt-1">Record inbound shipments and bring stock into inventory.</p>
           </div>
         </div>

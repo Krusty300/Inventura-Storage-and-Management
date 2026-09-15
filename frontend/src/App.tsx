@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { FontSizeProvider } from "./context/FontSizeContext";
 import { BreadcrumbProvider } from "./context/BreadcrumbContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Layout from "./components/Layout";
@@ -54,11 +55,28 @@ const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const Trash = lazy(() => import("./pages/Trash"));
+const SupplierPerformance = lazy(() => import("./pages/SupplierPerformance"));
+const PortalLayout = lazy(() => import("./pages/portal/PortalLayout"));
+const PortalOverview = lazy(() => import("./pages/portal/PortalOverview"));
+const PortalOrders = lazy(() => import("./pages/portal/PortalOrders"));
+const PortalOrderDetail = lazy(() => import("./pages/portal/PortalOrderDetail"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, loggingOut } = useAuth();
   if (loading) return <PageLoader />;
   if (!user && !loggingOut) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function SupplierRedirect({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role === "supplier") return <Navigate to="/portal" replace />;
+  return <>{children}</>;
+}
+
+function SupplierPortalRoute({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role !== "supplier") return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -68,16 +86,18 @@ function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
-        <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
+        <Route path="/login" element={user ? <Navigate to={user.role === "supplier" ? "/portal" : "/"} replace /> : <Login />} />
+        <Route path="/register" element={user ? <Navigate to={user.role === "supplier" ? "/portal" : "/"} replace /> : <Register />} />
         <Route
           element={
             <ProtectedRoute>
-              <Layout />
+              <SupplierRedirect>
+                <Layout />
+              </SupplierRedirect>
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={<PageBoundary><RequirePermission perm="dashboard.view"><Dashboard /></RequirePermission></PageBoundary>} />
+          <Route path="/" element={user?.role === "supplier" ? <Navigate to="/portal" replace /> : <PageBoundary><RequirePermission perm="dashboard.view"><Dashboard /></RequirePermission></PageBoundary>} />
           <Route path="/products" element={<PageBoundary><RequirePermission perm="products.view"><Products /></RequirePermission></PageBoundary>} />
           <Route path="/categories" element={<PageBoundary><RequirePermission perm="categories.view"><Categories /></RequirePermission></PageBoundary>} />
           <Route path="/customers" element={<PageBoundary><RequirePermission perm="customers.view"><Customers /></RequirePermission></PageBoundary>} />
@@ -112,6 +132,20 @@ function AppRoutes() {
           <Route path="/profile" element={<PageBoundary><RequirePermission perm="profile.view"><Profile /></RequirePermission></PageBoundary>} />
           <Route path="/notifications" element={<PageBoundary><RequirePermission perm="notifications.view"><Notifications /></RequirePermission></PageBoundary>} />
           <Route path="/trash" element={<PageBoundary><RequirePermission perm="trash.view"><Trash /></RequirePermission></PageBoundary>} />
+          <Route path="/supplier-performance" element={<PageBoundary><RequirePermission perm="reports.view"><SupplierPerformance /></RequirePermission></PageBoundary>} />
+        </Route>
+        <Route
+          element={
+            <ProtectedRoute>
+              <SupplierPortalRoute>
+                <PortalLayout />
+              </SupplierPortalRoute>
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/portal" element={<PageBoundary><PortalOverview /></PageBoundary>} />
+          <Route path="/portal/orders" element={<PageBoundary><PortalOrders /></PageBoundary>} />
+          <Route path="/portal/orders/:id" element={<PageBoundary><PortalOrderDetail /></PageBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -124,7 +158,8 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <ThemeProvider>
-          <AuthProvider>
+          <FontSizeProvider>
+            <AuthProvider>
             <ToastProvider>
               <RealtimeProvider>
                 <BreadcrumbProvider>
@@ -135,6 +170,7 @@ export default function App() {
               </RealtimeProvider>
             </ToastProvider>
           </AuthProvider>
+          </FontSizeProvider>
         </ThemeProvider>
       </BrowserRouter>
     </QueryClientProvider>

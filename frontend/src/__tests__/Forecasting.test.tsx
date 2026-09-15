@@ -135,4 +135,40 @@ describe("Forecasting", () => {
     await waitFor(() => expect(postMock).toHaveBeenCalledWith("/orders/auto-reorder", null, expect.anything()));
     expect(await screen.findByText(/Reorder PO #PO-1001/)).toBeInTheDocument();
   });
+
+  it("mentions one purchase order per supplier in the confirm dialog", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "/forecasting/replenishment") {
+        return Promise.resolve({
+          data: {
+            items: [
+              row,
+              { ...row, product_id: 2, product_name: "Bolt", sku: "BOLT-1", supplier: "Beta Supplies", supplier_id: 2 },
+            ],
+            summary: { products: 2, to_reorder: 2, total_suggested_qty: 34, avg_lead_time: 7 },
+            service_level: 0.95,
+            days: 90,
+          },
+        });
+      }
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    renderWithProviders(<Forecasting />);
+    fireEvent.click(await screen.findByLabelText("Auto-reorder based on forecast"));
+    expect(await screen.findByText("Generate 2 purchase orders (one per supplier) for all 2 product(s) the forecast says need replenishing?")).toBeInTheDocument();
+  });
+
+  it("reports multiple per-supplier purchase orders in the success toast", async () => {
+    mockReplenishment();
+    postMock.mockResolvedValue({
+      data: [
+        { order_number: "PO-1001", items: [1] },
+        { order_number: "PO-1002", items: [1] },
+      ],
+    });
+    renderWithProviders(<Forecasting />);
+    fireEvent.click(await screen.findByLabelText("Auto-reorder based on forecast"));
+    fireEvent.click(screen.getByText("Generate PO"));
+    expect(await screen.findByText(/Reorder POs #PO-1001, #PO-1002 created for 2 product\(s\)/)).toBeInTheDocument();
+  });
 });

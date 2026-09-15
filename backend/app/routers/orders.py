@@ -1,9 +1,7 @@
 from datetime import date, datetime, timezone
 from math import ceil
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
@@ -19,12 +17,10 @@ from app.models.supplier import Supplier
 from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate, ReorderLowStockRequest
 from app.services import forecasting, inventory
 from app.services.auth import require_permission
+from app.services.order_pdf import load_order_for_pdf, render_order_pdf
+from app.services.permissions import permissions_for_user
 from app.services.notify import notify_admins
 from app.services.sequences import next_document_number
-from app.services.pdf_helpers import (
-    BODY_RIGHT, MARGIN, money, draw_banner_header, draw_info_block, draw_item_table,
-    draw_notes, draw_page_footer, draw_signoff, draw_totals, new_canvas, render_pdf,
-)
 from app.services.filters import apply_date_range, apply_numeric_range
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
 
@@ -41,12 +37,21 @@ def _parse_expiry_date(value: str | None) -> date | None:
         raise HTTPException(status_code=400, detail=f"Invalid expiry date '{value}' - use YYYY-MM-DD")
 
 
-ORDER_STATUSES = ("pending", "received", "cancelled")
+ORDER_STATUSES = ("pending", "submitted", "approved", "acknowledged", "in_transit", "received", "cancelled")
 ORDER_TRANSITIONS = {
-    "pending": ("received", "cancelled"),
+    "pending": ("submitted", "cancelled"),
+    "submitted": ("approved", "pending", "cancelled"),
+    "approved": ("acknowledged", "in_transit", "received", "cancelled"),
+    "acknowledged": ("in_transit", "received", "cancelled"),
+    "in_transit": ("received", "cancelled"),
     "received": (),
     "cancelled": (),
 }
+
+# Bulk edits are a coarse tool: they may only nudge the source order (notes)
+# or pull it back/close it. Statuses that carry real fulfilment state require
+# the individual order flow (approval gate, per-line receive quantities).
+BULK_BLOCKED_STATUSES = ("approved", "acknowledged", "in_transit", "received")
 
 ALLOWED_ORDER_BULK_FIELDS = {"status", "notes"}
 
@@ -151,7 +156,7 @@ def _create_reorder_orders(db: Session, user, groups: dict[int | None, list[dict
         order.total_amount = total
         db.commit()
         o = get_or_404(Order, order.id, db, options=[
-            joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
+            joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user), joinedload(Order.approver)
         ])
         supplier_tag = f" for {supplier.name}" if supplier else ""
         log_activity(db, user.id, user.username, "create", "order", order.id,
@@ -187,7 +192,7 @@ def list_orders(
     db: Session = Depends(get_db),
 ):
     q = db.query(Order).options(
-        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images), joinedload(Order.supplier), joinedload(Order.user)
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images), joinedload(Order.supplier), joinedload(Order.user), joinedload(Order.approver)
     )
     if search:
         q = q.filter(Order.order_number.ilike(f"%{search}%"))
@@ -219,12 +224,16 @@ def bulk_edit_orders(data: OrderBulkEdit, db: Session = Depends(get_db), user=De
     if status is not None:
         if status not in ORDER_STATUSES:
             raise HTTPException(status_code=400, detail=f"Invalid order status '{status}'")
-        if status == "received":
-            raise HTTPException(status_code=400, detail="Cannot bulk-change orders to 'received'; receive each order individually to handle serial numbers")
+        if status in BULK_BLOCKED_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Cannot bulk-change orders to '{status}'; update each order individually")
     if status is not None:
         for o in orders:
             if status != o.status and status not in ORDER_TRANSITIONS.get(o.status, ()):
                 raise HTTPException(status_code=400, detail=f"Cannot change order status from '{o.status}' to '{status}'")
+        if status == "approved":
+            for o in orders:
+                o.approved_by = user.id
+                o.approved_at = datetime.now(timezone.utc)
     for o in orders:
         for k, v in updates.items():
             if k in ALLOWED_ORDER_BULK_FIELDS:
@@ -240,77 +249,14 @@ def bulk_edit_orders(data: OrderBulkEdit, db: Session = Depends(get_db), user=De
 @router.get("/{order_id}", response_model=OrderOut)
 def get_order(order_id: int, db: Session = Depends(get_db)):
     return get_or_404(Order, order_id, db, options=[
-        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images), joinedload(Order.supplier), joinedload(Order.user)
+        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images), joinedload(Order.supplier), joinedload(Order.user), joinedload(Order.approver)
     ])
 
 
 @router.get("/{order_id}/pdf")
 def order_pdf(order_id: int, db: Session = Depends(get_db)):
-    o = get_or_404(Order, order_id, db, options=[
-        joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
-        joinedload(Order.supplier), joinedload(Order.user),
-    ])
-    s = db.query(Settings).first()
-    base_dir = Path(__file__).resolve().parent.parent
-
-    store_name = (s.store_name if s else None) or "My Store"
-    currency = (s.currency_symbol if s else "$") or "$"
-    store_lines = [store_name] + [ln for ln in (
-        (s.address if s else None),
-        (s.phone if s else None),
-        (s.email if s else None),
-    ) if ln]
-
-    c, buf = new_canvas(f"Purchase Order {o.order_number}")
-    meta = [
-        ("Order #:", o.order_number),
-        ("Date:", o.created_at.strftime("%b %d, %Y")),
-        ("Status:", o.status),
-        ("Created by:", o.username or "\u2014"),
-    ]
-    body_y = draw_banner_header(c, "PURCHASE ORDER", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir)
-
-    supplier_lines = [o.supplier_name or "\u2014"]
-    if o.supplier:
-        if o.supplier.contact_person:
-            supplier_lines.append(f"Contact: {o.supplier.contact_person}")
-        if o.supplier.phone:
-            supplier_lines.append(f"Phone: {o.supplier.phone}")
-        if o.supplier.address:
-            supplier_lines.append(f"Address: {o.supplier.address}")
-    info_y = draw_info_block(c, MARGIN, body_y, "Supplier", supplier_lines)
-
-    headers = ["Item", "SKU", "Price", "Qty", "Amount"]
-    aligns = ["l", "l", "r", "r", "r"]
-    col_widths = [210.0, 82.0, 70.0, 44.0, 90.0]
-    rows = []
-    for item in o.items:
-        name = item.product_name or f"Product #{item.product_id}"
-        sku = item.product.sku if item.product else ""
-        rows.append([
-            (name[:42] + "\u2026") if len(name) > 42 else name,
-            sku,
-            money(currency, item.unit_price),
-            str(item.quantity),
-            money(currency, float(item.unit_price) * item.quantity),
-        ])
-
-    y = draw_item_table(
-        c, MARGIN, info_y, headers, aligns, col_widths, rows,
-        on_page_break=lambda c: draw_banner_header(c, "PURCHASE ORDER", meta, store_lines, logo_url=(s.logo_url if s else ""), base_dir=base_dir),
-    )
-
-    y = draw_totals(c, BODY_RIGHT, y, [], "Total", money(currency, o.total_amount))
-
-    if o.notes:
-        draw_notes(c, MARGIN, y, o.notes)
-        y -= 18
-
-    draw_signoff(c, y, "Thank you for your order!")
-    draw_page_footer(c, 1, tax_id=(s.tax_id if s else ""))
-    return Response(render_pdf(c, buf), media_type="application/pdf", headers={
-        "Content-Disposition": f"inline; filename={o.order_number}.pdf"
-    })
+    o = load_order_for_pdf(db, order_id)
+    return render_order_pdf(db, o)
 
 
 def generate_po_number(db: Session) -> str:
@@ -356,7 +302,7 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(
     order.total_amount = total
     db.commit()
     o = get_or_404(Order, order.id, db, options=[
-        joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
+        joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user), joinedload(Order.approver)
     ])
     log_activity(db, user.id, user.username, "create", "order", order.id, f"Created order '{o.order_number}' ({currency}{total:,.2f})")
     db.commit()
@@ -367,7 +313,7 @@ def create_order(data: OrderCreate, db: Session = Depends(get_db), user=Depends(
 @router.put("/{order_id}", response_model=OrderOut)
 def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db), user=Depends(require_permission("orders.update"))):
     o = get_or_404(Order, order_id, db, options=[
-        joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user)
+        joinedload(Order.items), joinedload(Order.supplier), joinedload(Order.user), joinedload(Order.approver)
     ])
     prev_status = o.status
     updates = data.model_fields_set
@@ -395,6 +341,11 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
             raise HTTPException(status_code=400, detail=f"Invalid order status '{status}'")
         if status != prev_status and status not in ORDER_TRANSITIONS.get(prev_status, ()):
             raise HTTPException(status_code=400, detail=f"Cannot change order status from '{prev_status}' to '{status}'")
+        if status == "approved":
+            if "orders.approve" not in permissions_for_user(user):
+                raise HTTPException(status_code=403, detail="You do not have permission to approve orders")
+            o.approved_by = user.id
+            o.approved_at = datetime.now(timezone.utc)
         o.status = status
 
     received_now = status == "received" and prev_status != "received"
@@ -402,19 +353,29 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
         o.received_at = datetime.now(timezone.utc)
         o = get_or_404(Order, order_id, db, options=[
             joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.images),
-            joinedload(Order.supplier), joinedload(Order.user)
+            joinedload(Order.supplier), joinedload(Order.user), joinedload(Order.approver)
         ])
         serials_by_product = data.serial_numbers or {}
         receive_locations = data.receive_locations or {}
         lot_numbers = data.lot_numbers or {}
         expiry_dates = data.expiry_dates or {}
         lpn_ids = data.lpn_ids or {}
+        receive_quantities = data.receive_quantities or {}
+        order_products = {item.product_id for item in o.items}
+        extra = set(receive_quantities) - order_products
+        if extra:
+            raise HTTPException(status_code=400, detail=f"Receive quantity provided for product(s) not on this order: {', '.join(map(str, sorted(extra)))}")
         movements_by_location: dict[int, list[StockMovement]] = {}
         try:
             for item in o.items:
                 product = item.product
                 if not product:
                     continue
+                qty = receive_quantities.get(product.id, item.quantity)
+                if qty < 1 or qty > item.quantity:
+                    raise inventory.InventoryError(
+                        f"Receive quantity for '{product.display_name}' must be between 1 and {item.quantity}, got {qty}"
+                    )
                 loc_id = receive_locations.get(product.id)
                 if loc_id is not None:
                     loc = db.get(Location, loc_id)
@@ -469,11 +430,11 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                     serials = [s.strip() for s in serials_by_product.get(product.id, []) if s and s.strip()]
                     if not serials:
                         raise inventory.InventoryError(
-                            f"'{product.display_name}' is serialized - enter {item.quantity} serial number(s) to receive"
+                            f"'{product.display_name}' is serialized - enter {qty} serial number(s) to receive"
                         )
-                    if len(serials) != item.quantity:
+                    if len(serials) != qty:
                         raise inventory.InventoryError(
-                            f"'{product.display_name}' requires exactly {item.quantity} serial number(s), got {len(serials)}"
+                            f"'{product.display_name}' requires exactly {qty} serial number(s), got {len(serials)}"
                         )
                     seen: set[str] = set()
                     for sn in serials:
@@ -508,13 +469,14 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                         )
                     movement = inventory.post_journal_entry(
                         db, product_id=product.id, user_id=user.id,
-                        quantity_change=item.quantity, movement_type="in",
+                        quantity_change=qty, movement_type="in",
                         lot_id=lot_id, lpn_id=lpn_id,
                         to_location_id=loc_id,
                         reference_type="purchase_order",
                         reference=o.order_number,
                     )
                     movements_by_location.setdefault(loc_id, []).append(movement)
+                item.received_qty = qty
         except inventory.InventoryError as exc:
             db.rollback()
             raise HTTPException(status_code=400, detail=str(exc))
@@ -548,6 +510,8 @@ def delete_order(order_id: int, db: Session = Depends(get_db), user=Depends(requ
     o = get_or_404(Order, order_id, db)
     if o.status == "received":
         raise HTTPException(status_code=400, detail="Received orders cannot be deleted - stock was already added to inventory")
+    if o.status in ("approved", "acknowledged", "in_transit"):
+        raise HTTPException(status_code=400, detail="Confirmed orders cannot be deleted - cancel the order instead")
     if o.status == "pending":
         movements = db.query(StockMovement).filter(
             StockMovement.reference_type == "purchase_order",

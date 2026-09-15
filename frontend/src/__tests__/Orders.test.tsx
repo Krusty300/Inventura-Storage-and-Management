@@ -89,7 +89,7 @@ describe("Orders Page", () => {
     postMock.mockResolvedValue({ data: [{ order_number: "PO-2000", items: [{ product_id: 1 }] }] });
     renderWithProviders(<Orders />);
     fireEvent.click(await screen.findByRole("button", { name: "Auto-reorder low stock" }));
-    expect(screen.getByText(/Generate a purchase order for all products/)).toBeInTheDocument();
+    expect(screen.getByText(/Generate purchase order\(s\) for all products/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generate PO" }));
     await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/orders/auto-reorder"));
   });

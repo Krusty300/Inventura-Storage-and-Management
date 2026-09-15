@@ -1,9 +1,9 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Shield, ShieldOff, ShieldCheck, Eye, KeyRound, Trash2, UserCheck, Download, Clock, Check, Search, X } from "lucide-react";
+import { Shield, ShieldOff, ShieldCheck, Eye, KeyRound, Trash2, UserCheck, Download, Clock, Check, Search, X, Truck } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { PaginatedResponse, User } from "../types";
+import type { PaginatedResponse, Supplier, User } from "../types";
 import UserDetail from "../components/UserDetail";
 import PermissionsEditor from "../components/PermissionsEditor";
 import Skeleton from "../components/Skeleton";
@@ -40,6 +40,7 @@ export default function Users() {
   const [reactivating, setReactivating] = useState<User | null>(null);
   const [editingPermissions, setEditingPermissions] = useState<User | null>(null);
   const [confirming, setConfirming] = useState<{ user: User; role: string } | null>(null);
+  const [linkingTarget, setLinkingTarget] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
   const [approving, setApproving] = useState<User | null>(null);
   const [approveRole, setApproveRole] = useState("worker");
@@ -133,9 +134,9 @@ export default function Users() {
   );
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, role }: { id: number; role: string }) => api.put(`/users/${id}`, { role }),
+    mutationFn: ({ id, updates }: { id: number; updates: Record<string, unknown> }) => api.put(`/users/${id}`, updates),
     onSuccess: () => {
-      addToast("User role updated", "success");
+      addToast("User updated", "success");
       queryClient.invalidateQueries({ queryKey: ["users"] });
       setEditingId(null);
     },
@@ -165,18 +166,22 @@ export default function Users() {
   const requestRoleChange = (user: User, role: string) => {
     setEditingId(null);
     if (role === user.role) return;
+    if (role === "supplier" && !user.supplier_id) {
+      setLinkingTarget(user);
+      return;
+    }
     setConfirming({ user, role });
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
             <UserCheck size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">User Management</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">User Management</h1>
             <p className="text-sm text-muted mt-1">Manage user accounts, roles, and permissions.</p>
           </div>
         </div>
@@ -314,16 +319,20 @@ export default function Users() {
                       options={[
                         { value: "worker", label: "worker" },
                         { value: "manager", label: "manager" },
+                        { value: "supplier", label: "supplier" },
                         ...(can("users.assign_admin_role") ? [{ value: "admin", label: "admin" }] : []),
                       ]}
                       ariaLabel={`Edit role for ${u.username}`}
                     />
                   ) : (
-                    <span className="inline-flex items-center gap-1">
-                      {u.role === "admin" ? <Shield size={14} className="text-primary" /> : u.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : <ShieldOff size={14} className="text-faint" />}
-                      <span className={`badge ${u.role === "admin" ? "badge-info" : u.role === "manager" ? "badge-success" : "badge-warning"}`}>{u.role}</span>
+                    <span className="inline-flex items-center gap-1 flex-wrap">
+                      {u.role === "admin" ? <Shield size={14} className="text-primary" /> : u.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : u.role === "supplier" ? <Truck size={14} className="text-primary" /> : <ShieldOff size={14} className="text-faint" />}
+                      <span className={`badge ${u.role === "admin" ? "badge-info" : u.role === "manager" ? "badge-success" : u.role === "supplier" ? "badge-info" : "badge-warning"}`}>{u.role}</span>
                       {u.role !== "admin" && u.permissions && u.permissions.length > 0 && (
                         <span className="badge badge-success" title={`${u.permissions.length} custom permission(s)`}>Custom</span>
+                      )}
+                      {u.supplier_name && (
+                        <span className="text-xs text-muted truncate max-w-[160px]" title={u.supplier_name}>{u.supplier_name}</span>
                       )}
                     </span>
                   )}
@@ -351,7 +360,7 @@ export default function Users() {
                       {u.is_active && can("users.update") && (!user || u.id !== user.id) && (
                         <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-primary dark:text-primary hover:text-primary-strong dark:text-primary">Edit</button>
                       )}
-                      {u.is_active && u.role !== "admin" && can("users.update") && (!user || u.id !== user.id) && (
+                      {u.is_active && u.role !== "admin" && u.role !== "supplier" && can("users.update") && (!user || u.id !== user.id) && (
                         <button onClick={() => setEditingPermissions(u)} className="p-1 text-faint hover:text-primary dark:text-primary" title="Manage permissions" aria-label={`Manage permissions for ${u.username}`}><ShieldCheck size={16} /></button>
                       )}
                     </div>
@@ -364,6 +373,17 @@ export default function Users() {
         )}
         </div>
       </div>
+
+      {linkingTarget && (
+        <PortalLinkModal
+          user={linkingTarget}
+          onClose={() => setLinkingTarget(null)}
+          onLinked={() => {
+            setLinkingTarget(null);
+            queryClient.invalidateQueries({ queryKey: ["users"] });
+          }}
+        />
+      )}
 
       {viewing && <UserDetail user={viewing} onClose={() => setViewing(null)} />}
 
@@ -416,7 +436,11 @@ export default function Users() {
         confirmLabel="Confirm"
         confirmClass="btn-primary"
         onConfirm={() => {
-          if (confirming) updateMutation.mutate({ id: confirming.user.id, role: confirming.role });
+          if (confirming) {
+            const updates: Record<string, unknown> = { role: confirming.role };
+            if (confirming.role === "supplier") updates.supplier_id = confirming.user.supplier_id;
+            updateMutation.mutate({ id: confirming.user.id, updates });
+          }
           setConfirming(null);
         }}
         onCancel={() => setConfirming(null)}
@@ -469,16 +493,32 @@ export default function Users() {
 }
 
 function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ username: "", email: "", password: "", role: "worker" });
+  const [form, setForm] = useState({ username: "", email: "", password: "", role: "worker", supplier_id: "" });
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const { can } = useAuth();
+  const { data: suppliers } = useQuery({
+    queryKey: ["suppliers", "link"],
+    queryFn: async () => {
+      const { data } = await api.get("/suppliers", { params: { limit: 200 } });
+      return data as PaginatedResponse<Supplier>;
+    },
+    enabled: form.role === "supplier",
+  });
+
+  const supplierOptions = (suppliers?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post("/users", form);
+      await api.post("/users", {
+        username: form.username,
+        email: form.email,
+        password: form.password,
+        role: form.role,
+        supplier_id: form.role === "supplier" ? Number(form.supplier_id) : undefined,
+      });
       addToast(`User ${form.username} created`, "success");
       onSaved();
     } catch (err: unknown) {
@@ -490,7 +530,7 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const field = (label: string, key: keyof typeof form, id: string, type = "text") => (
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-ink mb-1">{label}</label>
-      <input id={id} type={type} className="input" value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
+      <input id={id} type={type} className="input" value={String(form[key])} onChange={(e) => setForm({ ...form, [key]: e.target.value })} required />
     </div>
   );
 
@@ -508,15 +548,28 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <label htmlFor="create-role" className="block text-sm font-medium text-ink mb-1">Role</label>
           <FittedSelect
             value={form.role}
-            onChange={(v) => setForm({ ...form, role: v })}
+            onChange={(v) => setForm({ ...form, role: v, supplier_id: "" })}
             options={[
               { value: "worker", label: "Worker" },
               { value: "manager", label: "Manager" },
+              { value: "supplier", label: "Supplier (portal)" },
               ...(can("users.assign_admin_role") ? [{ value: "admin", label: "Admin" }] : []),
             ]}
             ariaLabel="Role"
           />
         </div>
+        {form.role === "supplier" && (
+          <div>
+            <label htmlFor="create-supplier" className="block text-sm font-medium text-ink mb-1">Linked supplier</label>
+            <FittedSelect
+              value={form.supplier_id}
+              onChange={(v) => setForm({ ...form, supplier_id: v })}
+              options={supplierOptions}
+              placeholder={supplierOptions.length ? "Select supplier..." : "No active suppliers"}
+              ariaLabel="Linked supplier"
+            />
+          </div>
+        )}
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Creating..." : "Create User"}</button>
@@ -556,6 +609,60 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: User; onClose: (
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving} className="btn-primary">{saving ? "Resetting..." : "Reset Password"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function PortalLinkModal({ user, onClose, onLinked }: { user: User; onClose: () => void; onLinked: () => void }) {
+  const [supplierId, setSupplierId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const { addToast } = useToast();
+  const { data: suppliers } = useQuery({
+    queryKey: ["suppliers", "link"],
+    queryFn: async () => {
+      const { data } = await api.get("/suppliers", { params: { limit: 200 } });
+      return data as PaginatedResponse<Supplier>;
+    },
+  });
+
+  const options = (suppliers?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supplierId) return;
+    setSaving(true);
+    try {
+      await api.put(`/users/${user.id}`, { role: "supplier", supplier_id: Number(supplierId) });
+      addToast(`User ${user.username} linked to supplier portal`, "success");
+      onLinked();
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Failed to link supplier"), "error");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Link portal account — ${user.username}`}>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <p className="text-sm text-muted">
+          Assign <strong>{user.username}</strong> a supplier. They will sign in through the supplier portal and only see
+          purchase orders for the selected company.
+        </p>
+        <div>
+          <label htmlFor="link-supplier" className="block text-sm font-medium text-ink mb-1">Supplier</label>
+          <FittedSelect
+            value={supplierId}
+            onChange={setSupplierId}
+            options={options}
+            placeholder={options.length ? "Select supplier..." : "No active suppliers"}
+            ariaLabel="Link supplier"
+          />
+        </div>
+        <div className="flex justify-end gap-3 pt-4">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" disabled={saving || !supplierId} className="btn-primary">{saving ? "Linking..." : "Link Supplier"}</button>
         </div>
       </form>
     </Modal>

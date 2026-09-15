@@ -160,7 +160,7 @@ export default function Settings() {
           <SettingsIcon size={22} strokeWidth={2} />
         </div>
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-ink">System Settings</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-ink">System Settings</h1>
           <p className="text-sm text-muted mt-0.5">Configure your business, currency, and defaults.</p>
         </div>
       </div>
@@ -177,7 +177,7 @@ export default function Settings() {
           <SettingsIcon size={22} strokeWidth={2} />
         </div>
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-ink">System Settings</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-ink">System Settings</h1>
           <p className="text-sm text-muted mt-0.5">Configure your business, currency, and defaults.</p>
         </div>
       </div>
@@ -200,7 +200,7 @@ export default function Settings() {
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Store Information</h2>
           <fieldset disabled={readOnly} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Store Name" value={form.store_name} onChange={(v) => set("store_name", v)} />
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Currency</label>
@@ -219,7 +219,7 @@ export default function Settings() {
               <label className="block text-sm font-medium text-ink mb-1">Address</label>
               <TextArea rows={2} value={form.address || ""} onChange={(v) => set("address", v)} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Phone" value={form.phone} onChange={(v) => set("phone", v)} />
               <Field label="Email" value={form.email} onChange={(v) => set("email", v)} type="email" />
             </div>
@@ -250,7 +250,7 @@ export default function Settings() {
           <fieldset disabled={readOnly} className="space-y-4">
             <div>
               <h3 className="text-sm font-medium text-ink mb-2">Core Documents</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Invoice Prefix" value={form.invoice_prefix} onChange={(v) => set("invoice_prefix", v)} description="e.g. INV → INV-0001" />
                 <Field label="Purchase Order Prefix" value={form.po_prefix} onChange={(v) => set("po_prefix", v)} description="e.g. PO → PO-0001" />
                 <Field label="Shipment Prefix" value={form.shipment_prefix} onChange={(v) => set("shipment_prefix", v)} description="e.g. SHP → SHP-0001" />
@@ -261,7 +261,7 @@ export default function Settings() {
             </div>
             <div>
               <h3 className="text-sm font-medium text-ink mb-2">Warehouse Operations</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="LPN Prefix" value={form.lpn_prefix} onChange={(v) => set("lpn_prefix", v)} description="e.g. LPN → LPN-0001" />
                 <Field label="LPN Move Prefix" value={form.lpn_move_prefix} onChange={(v) => set("lpn_move_prefix", v)} description="e.g. MOV → MOV-0001" />
                 <Field label="LPN Load Prefix" value={form.lpn_load_prefix} onChange={(v) => set("lpn_load_prefix", v)} description="e.g. LOD → LOD-0001" />
@@ -270,7 +270,7 @@ export default function Settings() {
             </div>
             <div>
               <h3 className="text-sm font-medium text-ink mb-2">Stock Movements</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Stock In Prefix" value={form.stock_in_prefix} onChange={(v) => set("stock_in_prefix", v)} description="e.g. SI → SI-0001" />
                 <Field label="Stock Out Prefix" value={form.stock_out_prefix} onChange={(v) => set("stock_out_prefix", v)} description="e.g. SO → SO-0001" />
                 <Field label="Transfer Prefix" value={form.transfer_prefix} onChange={(v) => set("transfer_prefix", v)} description="e.g. TRF → TRF-0001" />
@@ -282,7 +282,7 @@ export default function Settings() {
             </div>
             <div>
               <h3 className="text-sm font-medium text-ink mb-2">Quality</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Quality Check Prefix" value={form.qc_prefix} onChange={(v) => set("qc_prefix", v)} description="e.g. QC → QC-0001" />
                 <Field label="Cycle Count Prefix" value={form.cc_prefix} onChange={(v) => set("cc_prefix", v)} description="e.g. CC → CC-0001" />
               </div>
@@ -311,7 +311,7 @@ export default function Settings() {
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Financial Settings</h2>
           <fieldset disabled={readOnly} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Tax Rate (%)" value={form.tax_rate} onChange={(v) => set("tax_rate", v)} type="number" />
               <Field label="Default Reorder Level" value={form.default_reorder_level} onChange={(v) => set("default_reorder_level", v)} type="number" />
             </div>
@@ -349,7 +349,7 @@ export default function Settings() {
         <form onSubmit={handleSave} className="card space-y-4">
           <h2 className="text-lg font-semibold">Display Preferences</h2>
           <fieldset disabled={readOnly} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Default Items Per Page" value={form.default_items_per_page} onChange={(v) => set("default_items_per_page", v)} type="number" />
               <div>
                 <label className="block text-sm font-medium text-ink mb-1">Date Format</label>
@@ -432,7 +432,7 @@ export default function Settings() {
                 </FileUploadButton>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Tax ID / VAT Number" value={form.tax_id} onChange={(v) => set("tax_id", v)} placeholder="e.g. GB123456789" />
               <Field label="Payment Terms" value={form.payment_terms} onChange={(v) => set("payment_terms", v)} placeholder="e.g. Net 30, Due on Receipt" />
             </div>

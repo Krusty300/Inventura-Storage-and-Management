@@ -198,7 +198,7 @@ export default function Profile() {
           <UserCircle size={22} strokeWidth={2} />
         </div>
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-ink">Profile</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-ink">Profile</h1>
           <p className="text-sm text-muted mt-0.5">Manage your account details, password, and preferences.</p>
         </div>
       </div>

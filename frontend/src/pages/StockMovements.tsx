@@ -86,11 +86,11 @@ export default function StockMovements() {
             <ArrowLeftRight size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Stock Movements</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Stock Movements</h1>
             <p className="text-sm text-muted mt-1">Every change to inventory — moves, adjustments, and transfers in one timeline.</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={handleExport} className="btn-secondary inline-flex items-center gap-1" aria-label="Export movements to CSV">
             <Download size={16} /> Download CSV
           </button>

@@ -9,15 +9,21 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
+  AArrowDown,
+  AArrowUp,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemeMode } from "../context/ThemeContext";
+import { useFontSize } from "../context/FontSizeContext";
 import NotificationBell from "./NotificationBell";
 import FloatingSidebar from "./FloatingSidebar";
 import ScrollArea from "./ScrollArea";
 import DateTimeDisplay from "./DateTimeDisplay";
 import Breadcrumbs from "./Breadcrumbs";
 import { navGroups } from "../utils/navItems";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
+import { useTrapFocus } from "../hooks/useTrapFocus";
 
 const MIN_SIDEBAR_WIDTH = 208;
 const DEFAULT_SIDEBAR_WIDTH = 256;
@@ -28,23 +34,9 @@ const MAX_FLOATING_WIDTH = 200;
 const TABLET_MQ = "(min-width: 768px)";
 const DESKTOP_MQ = "(min-width: 1024px)";
 
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState<boolean>(() =>
-    typeof window !== "undefined" && window.matchMedia
-      ? window.matchMedia(query).matches
-      : false,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, [query]);
-  return matches;
-}
-
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const saved = Number(localStorage.getItem("sidebarWidth"));
     return saved >= MIN_SIDEBAR_WIDTH && saved <= MAX_SIDEBAR_WIDTH ? saved : DEFAULT_SIDEBAR_WIDTH;
@@ -82,8 +74,13 @@ export default function Layout() {
   const location = useLocation();
   const { logout, completeLogout, loggingOut, user, can } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { scale, percent, increase, decrease, reset, canIncrease, canDecrease } = useFontSize();
   const isTablet = useMediaQuery(TABLET_MQ);
   const isDesktop = useMediaQuery(DESKTOP_MQ);
+
+  const mobileDrawerOpen = sidebarOpen && !isDesktop;
+  useLockBodyScroll(mobileDrawerOpen);
+  useTrapFocus(drawerRef, mobileDrawerOpen, () => setSidebarOpen(false));
 
   const activeGroupId = navGroups.find((g) =>
     g.items.some((item) => location.pathname === item.to)
@@ -154,6 +151,7 @@ export default function Layout() {
         Skip to main content
       </a>
       <aside
+        ref={drawerRef}
         style={{ width: collapsed ? 0 : sidebarWidth }}
         aria-hidden={collapsed || undefined}
         className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-border max-w-[85vw] overflow-hidden transform transition-transform md:translate-x-0 md:static md:inset-auto md:max-w-none ${
@@ -282,6 +280,40 @@ export default function Layout() {
             <DateTimeDisplay />
             <div
               role="group"
+              aria-label="Font size"
+              className="flex items-center rounded-lg border border-border bg-subtle p-0.5"
+            >
+              <button
+                title="Decrease font size"
+                aria-label="Decrease font size"
+                onClick={decrease}
+                disabled={!canDecrease}
+                className="p-1.5 rounded-md transition-colors text-faint hover:text-ink disabled:opacity-40 disabled:hover:text-faint disabled:cursor-default"
+              >
+                <AArrowDown size={16} />
+              </button>
+              <button
+                title="Reset font size"
+                aria-label="Reset font size"
+                onClick={reset}
+                className={`w-9 text-center text-xs font-semibold rounded-md transition-colors select-none ${
+                  scale === 1 ? "text-primary" : "text-muted hover:text-ink"
+                }`}
+              >
+                {percent}%
+              </button>
+              <button
+                title="Increase font size"
+                aria-label="Increase font size"
+                onClick={increase}
+                disabled={!canIncrease}
+                className="p-1.5 rounded-md transition-colors text-faint hover:text-ink disabled:opacity-40 disabled:hover:text-faint disabled:cursor-default"
+              >
+                <AArrowUp size={16} />
+              </button>
+            </div>
+            <div
+              role="group"
               aria-label="Color theme"
               className="flex items-center rounded-lg border border-border bg-subtle p-0.5"
             >
@@ -325,7 +357,7 @@ export default function Layout() {
           className="flex-1 outline-none"
           viewportClassName="h-full"
         >
-          <div className="p-6">
+          <div className="p-4 md:p-6">
             <Breadcrumbs />
             <Outlet />
           </div>

@@ -1,7 +1,7 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useQuery } from "@tanstack/react-query";
-import { Shield, ShieldOff, ShieldCheck } from "lucide-react";
+import { Shield, ShieldOff, ShieldCheck, Truck } from "lucide-react";
 import api from "../api/client";
 import Skeleton from "./Skeleton";
 import EmptyState from "./EmptyState";
@@ -56,12 +56,18 @@ export default function UserDetail({ user, onClose }: Props) {
             <h3 className="text-lg font-bold text-ink truncate">{user.username}</h3>
             <p className="text-sm text-muted truncate">{user.email}</p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span className={`badge ${user.role === "admin" ? "badge-info" : user.role === "manager" ? "badge-success" : "badge-warning"}`}>
+              <span className={`badge ${user.role === "admin" ? "badge-info" : user.role === "manager" ? "badge-success" : user.role === "supplier" ? "badge-info" : "badge-warning"}`}>
                 {user.role === "admin" && <Shield size={12} className="mr-0.5" />}
                 {user.role === "manager" && <ShieldCheck size={12} className="mr-0.5" />}
                 {user.role === "worker" && <ShieldOff size={12} className="mr-0.5" />}
+                {user.role === "supplier" && <Truck size={12} className="mr-0.5" />}
                 {user.role}
               </span>
+              {user.role === "supplier" && user.supplier_id && (
+                <span className="badge badge-neutral" title={`Supplier #${user.supplier_id}`}>
+                  {user.supplier_name || `Supplier #${user.supplier_id}`}
+                </span>
+              )}
               {user.is_active ? (
                 <span className="badge badge-success">Active</span>
               ) : (

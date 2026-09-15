@@ -1,4 +1,4 @@
-from tests.conftest import client
+from tests.conftest import client, receive_order
 
 
 def test_create_supplier(auth_headers):
@@ -62,7 +62,7 @@ def _received_order(auth_headers, supplier_id, sku, price=10.0, qty=2):
         "supplier_id": supplier_id,
         "items": [{"product_id": prod["id"], "quantity": qty, "unit_price": price}],
     }, headers=auth_headers).json()
-    client.put(f"/api/orders/{order['id']}", json={"status": "received"}, headers=auth_headers)
+    receive_order(client, auth_headers, order["id"])
     return order
 
 

@@ -1293,7 +1293,8 @@ def create_orders(db, users, suppliers, by_sku):
         db.refresh(order)
         for sku, qty, price in items:
             db.add(OrderItem(order_id=order.id, product_id=by_sku[sku].id,
-                             quantity=qty, unit_price=price))
+                             quantity=qty, unit_price=price,
+                             received_qty=qty if status == "received" else 0))
         orders.append(order)
         po_counter += 1
     db.commit()

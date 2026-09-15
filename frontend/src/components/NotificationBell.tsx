@@ -133,7 +133,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <ScrollArea className="absolute right-0 top-11 w-80 bg-surface border border-border rounded-lg shadow-lg z-50" viewportClassName="max-h-96 sa-viewport-contain">
+        <ScrollArea className="absolute right-0 top-11 w-80 max-w-[calc(100vw-2rem)] bg-surface border border-border rounded-lg shadow-lg z-50" viewportClassName="max-h-96 sa-viewport-contain">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-sm font-semibold text-ink">Notifications</h3>
             {unread > 0 && (

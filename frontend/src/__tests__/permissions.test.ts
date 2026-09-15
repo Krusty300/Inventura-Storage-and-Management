@@ -51,6 +51,17 @@ describe("effectivePermissions", () => {
     expect(perms.has("users.delete")).toBe(false);
     expect(perms.has("users.assign_admin_role")).toBe(false);
   });
+
+  it("grants supplier accounts only notifications.view plus profile access", () => {
+    const perms = effectivePermissions({ role: "supplier" });
+    expect(perms.has("notifications.view")).toBe(true);
+    expect(perms.has("profile.view")).toBe(true);
+    expect(perms.has("dashboard.view")).toBe(false);
+    expect(perms.has("products.view")).toBe(false);
+    expect(perms.has("orders.create")).toBe(false);
+    expect(perms.has("users.view")).toBe(false);
+    expect(perms.size).toBe(2);
+  });
 });
 
 describe("canUser", () => {

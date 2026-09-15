@@ -1,14 +1,14 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Pencil, Camera, Trash2, ClipboardList } from "lucide-react";
+import { Pencil, Camera, Trash2, ClipboardList, Award, TrendingUp } from "lucide-react";
 import SlideOver from "./SlideOver";
 import Skeleton from "./Skeleton";
 import EmptyState from "./EmptyState";
 import FileUploadButton from "./FileUploadButton";
 import AttachmentSection from "./AttachmentSection";
 import api from "../api/client";
-import type { Order, PaginatedResponse, Product, Supplier, SupplierStats } from "../types";
+import type { Order, PaginatedResponse, Product, Supplier, SupplierPerformanceDetail, SupplierStats } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { useAuth } from "../context/AuthContext";
@@ -86,6 +86,12 @@ export default function SupplierDetail({ supplier, onClose, onEdit }: Props) {
       const { data } = await api.get(`/suppliers/${supplier.id}/products`, { params: { limit: 20 } });
       return data as PaginatedResponse<Product>;
     },
+  });
+
+  const { data: performance } = useQuery({
+    queryKey: ["supplier-performance", supplier.id],
+    queryFn: async () =>
+      (await api.get(`/suppliers/${supplier.id}/performance`)).data as SupplierPerformanceDetail,
   });
 
   const s = stats;
@@ -196,6 +202,36 @@ export default function SupplierDetail({ supplier, onClose, onEdit }: Props) {
             </div>
           </div>
         </div>
+
+        {performance && (performance.score !== null || performance.volume.total_orders > 0) && (
+          <div>
+            <h3 className="font-semibold text-ink mb-2 flex items-center gap-1.5"><Award size={15} />Performance</h3>
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
+              <div className="bg-app rounded-lg p-4 min-w-0">
+                <p className="text-muted text-xs">Score</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <p className="font-semibold text-xl truncate">{performance.score ?? "—"}</p>
+                  {performance.rating && <span className={`badge ${performance.rating === "excellent" ? "badge-success" : performance.rating === "good" ? "badge-info" : performance.rating === "fair" ? "badge-warning" : "badge-danger"}`}>{performance.rating}</span>}
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-subtle overflow-hidden mt-2">
+                  <div className={`h-full rounded-full ${performance.score === null ? "bg-faint" : performance.score >= 85 ? "bg-emerald-500" : performance.score >= 70 ? "bg-primary" : performance.score >= 50 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${performance.score ?? 0}%` }} aria-hidden />
+                </div>
+              </div>
+              <div className="bg-app rounded-lg p-4 min-w-0">
+                <p className="text-muted text-xs flex items-center gap-1"><TrendingUp size={12} />On-time</p>
+                <p className="font-semibold text-xl mt-1 truncate">{performance.on_time.rate !== null ? `${performance.on_time.rate}%` : "—"}</p>
+              </div>
+              <div className="bg-app rounded-lg p-4 min-w-0">
+                <p className="text-muted text-xs">Quality</p>
+                <p className="font-semibold text-xl mt-1 truncate">{performance.quality.pass_rate !== null ? `${performance.quality.pass_rate}%` : "—"}</p>
+              </div>
+              <div className="bg-app rounded-lg p-4 min-w-0">
+                <p className="text-muted text-xs">Lead adherence</p>
+                <p className="font-semibold text-xl mt-1 truncate">{performance.lead_time.adherence !== null ? `${performance.lead_time.adherence}%` : "—"}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div>
           <h3 className="font-semibold text-ink mb-2">Purchase Order History</h3>

@@ -14,6 +14,7 @@ import AttachmentSection from "./AttachmentSection";
 import { useToast } from "../context/ToastContext";
 import { errorMessage } from "../utils/errors";
 import { overdueStatus } from "../utils/date";
+import { statusBadge } from "../utils/statusBadges";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
 import LocationPicker from "./LocationPicker";
 import SlideOver from "./SlideOver";
@@ -35,6 +36,7 @@ interface LocationOption {
 }
 
 interface ReceiveEntry {
+  quantity: string;
   location: string;
   lpn_number: string;
   lpn_id?: number;
@@ -44,6 +46,7 @@ interface ReceiveEntry {
 }
 
 const emptyEntry: ReceiveEntry = {
+  quantity: "",
   location: "",
   lpn_number: "",
   lot_number: "",
@@ -116,9 +119,25 @@ function ReceiveRow({
     onChange({ lpn_number: v, lpn_id: match?.id });
   };
 
+  const parsedQty = Number.parseInt(entry.quantity, 10);
+  const receiveQty = Number.isFinite(parsedQty) && parsedQty >= 1 ? parsedQty : item.quantity;
+
   return (
     <div className="space-y-1.5">
       <label className="block text-sm text-muted">{item.product_name}</label>
+      <div className="flex items-center gap-2">
+        <input
+          className="input w-28"
+          type="number"
+          min={1}
+          max={item.quantity}
+          placeholder={`Qty (${item.quantity})`}
+          value={entry.quantity}
+          onChange={(e) => onChange({ quantity: e.target.value })}
+          aria-label={`Quantity to receive for ${item.product_name}`}
+        />
+        <span className="text-xs text-faint">of {item.quantity} ordered</span>
+      </div>
       <LocationPicker value={entry.location} onChange={handleLocationChange} placeholder="Location (defaults to product location)" />
       <StockLocationHints
         locations={stockLocations}
@@ -166,7 +185,7 @@ function ReceiveRow({
           rows={3}
           value={entry.serials}
           onChange={(v) => onChange({ serials: v })}
-          placeholder={`Enter ${item.quantity} serial number(s), one per line`}
+          placeholder={`Enter ${receiveQty} serial number(s), one per line`}
           ariaLabel={`Serial numbers for ${item.product_name}`}
         />
       )}
@@ -183,6 +202,7 @@ export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props
   const { data: settings } = useSettings();
   const formatDateTime = useDateTimeFormat();
   const currencySymbol = settings?.currency_symbol || "$";
+  const canApprove = can("orders.approve");
 
   const { data: locationOptions } = useQuery({
     queryKey: ["locations", "order-picker"],
@@ -202,7 +222,8 @@ export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props
 
   const serializedItems = order.items.filter((i) => i.is_serialized);
   const needsSerials = serializedItems.length > 0;
-  const expectedStatus = order.status === "pending" ? overdueStatus(order.expected_arrival) : null;
+  const isOpen = ["pending", "submitted", "approved", "acknowledged", "in_transit"].includes(order.status);
+  const expectedStatus = isOpen ? overdueStatus(order.expected_arrival) : null;
 
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -260,7 +281,15 @@ export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props
     setConfirming(null);
     try {
       await api.put(`/orders/${order.id}`, { status });
-      addToast(`Order ${status === "received" ? "marked as received" : "cancelled"}`, "success");
+      const labels: Record<string, string> = {
+        submitted: "Order submitted for approval",
+        approved: "Order approved",
+        acknowledged: "Order acknowledged by supplier",
+        in_transit: "Order marked in transit",
+        received: "marked as received",
+        cancelled: "cancelled",
+      };
+      addToast(`Order ${labels[status] ?? status}`, "success");
       onUpdated();
     } catch (err: unknown) {
       addToast(errorMessage(err, "Failed to update order"), "error");
@@ -270,6 +299,20 @@ export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props
   const handleReceive = async () => {
     setReceiving(false);
     const payload: Record<string, unknown> = { status: "received" };
+
+    const receive_quantities: Record<number, number> = {};
+    for (const item of order.items) {
+      const entry = receiveEntries[item.product_id] || emptyEntry;
+      const raw = (entry.quantity ?? "").trim();
+      const qty = raw === "" ? item.quantity : Number.parseInt(raw, 10);
+      if (!Number.isInteger(qty) || qty < 1 || qty > item.quantity) {
+        addToast(`Receive quantity for ${item.product_name} must be between 1 and ${item.quantity}`, "error");
+        return;
+      }
+      receive_quantities[item.product_id] = qty;
+    }
+    const hasPartialReceive = order.items.some((item) => receive_quantities[item.product_id] !== item.quantity);
+    if (hasPartialReceive) payload.receive_quantities = receive_quantities;
 
     const receive_locations: Record<number, number> = {};
     const lot_numbers: Record<number, string> = {};
@@ -313,11 +356,11 @@ export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props
           .split(/[\n,]+/)
           .map((s) => s.trim())
           .filter(Boolean);
-        if (list.length !== item.quantity) missing = true;
+        if (list.length !== receive_quantities[item.product_id]) missing = true;
         serialPayload[item.product_id] = list;
       }
       if (missing) {
-        addToast(`Enter exactly the ordered quantity of serial numbers for each serialized item`, "error");
+        addToast(`Enter exactly the receive quantity of serial numbers for each serialized item`, "error");
         return;
       }
       payload.serial_numbers = serialPayload;
@@ -332,7 +375,12 @@ export default function OrderDetail({ order, onClose, onUpdated, onEdit }: Props
     }
   };
 
-  const confirmLabel = `Are you sure you want to cancel ${order.order_number}?`;
+  const confirmLabel =
+    confirming === "cancelled"
+      ? `Are you sure you want to cancel ${order.order_number}?`
+      : confirming === "submitted"
+        ? `Submit ${order.order_number} for approval? It will be sent to a manager before the supplier is notified.`
+        : `Approve ${order.order_number}? This confirms the order to the supplier.`;
 
   return (
     <>
@@ -356,7 +404,11 @@ actions={
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-faint">Purchase Order</p>
               <h3 className="text-2xl font-bold text-ink mt-1 tracking-tight">{order.order_number}</h3>
-              <div className="mt-2"><span className={`badge ${order.status === "received" ? "badge-success" : order.status === "cancelled" ? "badge-danger" : order.status === "pending" ? "badge-warning" : "badge-info"}`}>{order.status}</span></div>
+              <div className="mt-2"><span className={`badge ${statusBadge(order.status)}`}>{order.status}</span>
+                  {order.approved_at && (
+                    <span className="ml-2 text-xs text-muted">Approved {order.approver_name ? `by ${order.approver_name}` : ""} · {formatDateTime(order.approved_at)}</span>
+                  )}
+                </div>
             </div>
             <div className="text-right text-sm space-y-1">
               <div>
@@ -410,6 +462,7 @@ actions={
                     <th className="py-2.5 pr-3 text-left font-medium">Product</th>
                     <th className="py-2.5 px-3 text-left font-medium">SKU</th>
                     <th className="py-2.5 px-3 text-center font-medium">Qty</th>
+                    <th className="py-2.5 px-3 text-center font-medium">Received</th>
                     <th className="py-2.5 px-3 text-right font-medium">Price</th>
                     <th className="py-2.5 pl-3 text-right font-medium">Total</th>
                   </tr>
@@ -439,6 +492,7 @@ actions={
                       </td>
                       <td className="py-3 px-3 text-muted whitespace-nowrap">{item.sku || "\u2014"}</td>
                       <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.quantity}</td>
+                      <td className="py-3 px-3 text-center text-muted whitespace-nowrap">{item.received_qty > 0 ? item.received_qty : "\u2014"}</td>
                       <td className="py-3 px-3 text-right text-muted whitespace-nowrap">{formatCurrency(item.unit_price, currencySymbol)}</td>
                       <td className="py-3 pl-3 text-right text-ink font-medium whitespace-nowrap">{formatCurrency(item.quantity * item.unit_price, currencySymbol)}</td>
                     </tr>
@@ -468,7 +522,7 @@ actions={
 
         {receiving && (
           <div className="bg-app rounded-lg p-4 space-y-3">
-            <p className="text-sm font-medium text-ink">Choose a location to receive into (optional - defaults to each product's location)</p>
+            <p className="text-sm font-medium text-ink">Receive into location and quantity (defaults to the full ordered quantity per line)</p>
             {order.items.map((item) => (
               <ReceiveRow
                 key={item.id}
@@ -501,6 +555,38 @@ actions={
             <Printer size={16} /> Print PDF
           </button>
           {order.status === "pending" && !confirming && !receiving && (
+            <>
+              <button onClick={() => setReceiving(true)} className="btn-primary flex-1 min-w-[120px]">Mark Received</button>
+              <button onClick={() => setConfirming("submitted")} className="btn-secondary flex-1 min-w-[120px]">Submit for Approval</button>
+              <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1 min-w-[120px]">Cancel Order</button>
+            </>
+          )}
+          {order.status === "submitted" && !confirming && !receiving && (
+            <>
+              {canApprove ? (
+                <button onClick={() => setConfirming("approved")} className="btn-primary flex-1 min-w-[120px]">Approve Order</button>
+              ) : (
+                <p className="text-sm text-muted flex-1 min-w-[120px] self-center">Waiting for a manager to approve this order.</p>
+              )}
+              <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1 min-w-[120px]">Cancel Order</button>
+            </>
+          )}
+          {order.status === "approved" && !confirming && !receiving && (
+            <>
+              <button onClick={() => updateStatus("acknowledged")} className="btn-secondary flex-1 min-w-[120px]">Mark Acknowledged</button>
+              <button onClick={() => updateStatus("in_transit")} className="btn-secondary flex-1 min-w-[120px]">Mark In Transit</button>
+              <button onClick={() => setReceiving(true)} className="btn-primary flex-1 min-w-[120px]">Mark Received</button>
+              <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1 min-w-[120px]">Cancel Order</button>
+            </>
+          )}
+          {order.status === "acknowledged" && !confirming && !receiving && (
+            <>
+              <button onClick={() => updateStatus("in_transit")} className="btn-secondary flex-1 min-w-[120px]">Mark In Transit</button>
+              <button onClick={() => setReceiving(true)} className="btn-primary flex-1 min-w-[120px]">Mark Received</button>
+              <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1 min-w-[120px]">Cancel Order</button>
+            </>
+          )}
+          {order.status === "in_transit" && !confirming && !receiving && (
             <>
               <button onClick={() => setReceiving(true)} className="btn-primary flex-1 min-w-[120px]">Mark Received</button>
               <button onClick={() => setConfirming("cancelled")} className="btn-danger flex-1 min-w-[120px]">Cancel Order</button>

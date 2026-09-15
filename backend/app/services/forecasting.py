@@ -255,12 +255,15 @@ def suggested_order_qty(
     return qty
 
 
+OPEN_ORDER_STATUSES = ("pending", "submitted", "approved", "acknowledged", "in_transit")
+
+
 def open_order_qty(db: Session, *, product_id: int) -> int:
-    """Units already on open (pending) purchase orders for the product."""
+    """Units already on open purchase orders (pending approval through in transit) for the product."""
     return (
         db.query(func.coalesce(func.sum(OrderItem.quantity), 0))
         .join(Order, Order.id == OrderItem.order_id)
-        .filter(OrderItem.product_id == product_id, Order.status == "pending")
+        .filter(OrderItem.product_id == product_id, Order.status.in_(OPEN_ORDER_STATUSES))
         .scalar()
         or 0
     )

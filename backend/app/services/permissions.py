@@ -63,6 +63,7 @@ ALL_PERMISSIONS = frozenset({
     "orders.update",
     "orders.delete",
     "orders.bulk",
+    "orders.approve",
     "sales.view",
     "sales.create",
     "sales.refund",
@@ -179,10 +180,19 @@ WORKER_PERMISSIONS = frozenset({
     "customer_groups.view",
 })
 
+# Suppliers are external users: everything they can reach lives under the
+# portal router (scoped by users.supplier_id), so they hold none of the
+# internal staff permissions. notifications.view keeps their own in-app
+# notification feed working while staying scoped to their user row.
+SUPPLIER_PERMISSIONS = frozenset({
+    "notifications.view",
+})
+
 ROLE_PERMISSIONS = {
     "admin": ALL_PERMISSIONS,
     "manager": MANAGER_PERMISSIONS,
     "worker": WORKER_PERMISSIONS,
+    "supplier": SUPPLIER_PERMISSIONS,
 }
 
 
@@ -202,6 +212,8 @@ def permissions_for_user(user) -> frozenset:
         return ALL_PERMISSIONS
     if getattr(user, "role", None) == "manager":
         return MANAGER_PERMISSIONS
+    if getattr(user, "role", None) == "supplier":
+        return SUPPLIER_PERMISSIONS
     custom = getattr(user, "permissions", None)
     if custom:
         return frozenset(p for p in custom if p in ALL_PERMISSIONS)

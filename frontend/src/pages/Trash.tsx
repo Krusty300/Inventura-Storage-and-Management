@@ -98,13 +98,13 @@ export default function Trash() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 shrink-0">
             <Trash2 size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Trash</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Trash</h1>
             <p className="text-sm text-muted mt-1">Restore or permanently delete soft-deleted items.</p>
           </div>
         </div>

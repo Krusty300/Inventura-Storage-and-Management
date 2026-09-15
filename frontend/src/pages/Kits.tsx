@@ -73,13 +73,13 @@ export default function Kits() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
             <Gift size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink tracking-tight">Kits</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink tracking-tight">Kits</h1>
             <p className="text-sm text-muted mt-0.5">Bundle multiple products into sellable kits with bundle pricing and discounting.</p>
           </div>
         </div>

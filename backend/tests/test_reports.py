@@ -1,4 +1,4 @@
-from tests.conftest import client
+from tests.conftest import client, receive_order
 
 
 def test_inventory_valuation(auth_headers):
@@ -66,7 +66,7 @@ def test_top_suppliers_report(auth_headers):
         "supplier_id": sup["id"],
         "items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 10.0}],
     }, headers=auth_headers).json()
-    client.put(f"/api/orders/{order['id']}", json={"status": "received"}, headers=auth_headers)
+    receive_order(client, auth_headers, order["id"])
     data = client.get("/api/reports/top-suppliers", headers=auth_headers).json()
     row = next(i for i in data["items"] if i["supplier_id"] == sup["id"])
     assert row["total_orders"] == 1

@@ -7,6 +7,7 @@ import type { Customer, Product, Promotion, QualityCheck, SalesChannel, Settings
 import { useToast } from "../context/ToastContext";
 import BarcodeScanner from "./BarcodeScanner";
 import { useProductStockLocations } from "../hooks/useProductStockLocations";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { formatCurrency } from "../utils/currency";
 import { errorMessage } from "../utils/errors";
 import type { Sale } from "../types";
@@ -294,7 +295,6 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [saving, setSaving] = useState(false);
-  const [isWide, setIsWide] = useState(false);
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const [stkPending, setStkBilling] = useState(false);
   const [stkSent, setStkSent] = useState(false);
@@ -422,13 +422,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     applyCartDraft(activeDraftRef.current);
   }, [activeCartId, restoreNonce, applyCartDraft]);
 
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const update = () => setIsWide(mq.matches);
-    update();
-    mq.addEventListener?.("change", update);
-    return () => mq.removeEventListener?.("change", update);
-  }, []);
+  const isWide = useMediaQuery("(min-width: 1024px)");
 
   const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();

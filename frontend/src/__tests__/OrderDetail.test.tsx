@@ -19,13 +19,16 @@ function makeOrder(overrides: Record<string, unknown> = {}): Order {
     supplier_id: null,
     supplier_name: "Acme Supplies",
     user_id: 1,
-    status: "pending",
+    status: "approved",
     total_amount: 250,
     notes: "",
     expected_arrival: null,
     created_at: "2026-01-01T10:00:00",
     updated_at: "2026-01-01T10:00:00",
     received_at: null,
+    approved_by: 1,
+    approved_at: "2026-01-02T10:00:00",
+    approver_name: "admin",
     username: "tester",
     items: [],
     ...overrides,
@@ -233,5 +236,79 @@ describe("OrderDetail receive", () => {
       });
     });
     expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it("sends receive_quantities when receiving a partial quantity", async () => {
+    putMock.mockResolvedValue({ data: { status: "received" } });
+    const onUpdated = vi.fn();
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    fireEvent.change(screen.getByLabelText("Quantity to receive for Widget"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/orders/1", { status: "received", receive_quantities: { 10: 1 } });
+    });
+    expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it("does not send receive_quantities when every line is at full quantity", async () => {
+    putMock.mockResolvedValue({ data: { status: "received" } });
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/orders/1", { status: "received" });
+      const arg = putMock.mock.calls[0][1];
+      expect(arg.receive_quantities).toBeUndefined();
+    });
+  });
+
+  it("does not submit when the receive quantity exceeds the ordered amount", async () => {
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget", is_serialized: false }],
+    });
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    fireEvent.change(screen.getByLabelText("Quantity to receive for Widget"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => expect(putMock).not.toHaveBeenCalled());
+  });
+
+  it("uses the receive quantity for the serial count check on a partial serialized receive", async () => {
+    putMock.mockResolvedValue({ data: { status: "received" } });
+    const onUpdated = vi.fn();
+    const order = makeOrder({
+      items: [{ id: 1, product_id: 10, quantity: 2, unit_price: 5, product_name: "Widget SN", is_serialized: true }],
+    });
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark Received" }));
+    fireEvent.change(screen.getByLabelText("Quantity to receive for Widget SN"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Serial numbers for Widget SN"), { target: { value: "SN-001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Receive Order" }));
+    await vi.waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/orders/1", {
+        status: "received",
+        receive_quantities: { 10: 1 },
+        serial_numbers: { 10: ["SN-001"] },
+      });
+    });
+    expect(onUpdated).toHaveBeenCalled();
+  });
+
+  it("marks an approved order as acknowledged and in transit", async () => {
+    putMock.mockResolvedValue({ data: {} });
+    const order = makeOrder();
+    const onUpdated = vi.fn();
+    renderWithProviders(<OrderDetail order={order} onClose={() => {}} onUpdated={onUpdated} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark Acknowledged" }));
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/orders/1", { status: "acknowledged" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark In Transit" }));
+    await vi.waitFor(() => expect(putMock).toHaveBeenCalledWith("/orders/1", { status: "in_transit" }));
   });
 });

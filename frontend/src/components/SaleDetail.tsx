@@ -356,7 +356,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
                   onChange={setNoteDraft}
                   placeholder="Add a note for this sale..."
                 />
-                <div className="flex justify-end gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
                   <button onClick={() => setEditingNote(false)} disabled={saveNote.isPending} className="btn-secondary text-xs">
                     Cancel
                   </button>
@@ -453,7 +453,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
                     ? `Permanently delete cancelled invoice "${sale.invoice_number}"? Stock was already restored. This cannot be undone.`
                     : `Permanently delete invoice "${sale.invoice_number}" and restore stock? This cannot be undone.`}
               </p>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <button onClick={() => setConfirmAction(null)} className="btn-secondary text-sm">Back</button>
                 <button onClick={() => {
                   if (confirmAction === "cancel") cancelMutation.mutate();
@@ -481,7 +481,7 @@ export default function SaleDetail({ sale, onClose }: Props) {
           <div className="flex-1 overflow-hidden p-2">
             <iframe src={pdfPreviewUrl} className="w-full h-full min-h-[600px] rounded border border-border" title={`PDF preview of ${sale.invoice_number}`} />
           </div>
-          <div className="flex justify-end gap-2 px-6 py-3 border-t border-border">
+          <div className="flex flex-wrap justify-end gap-2 px-6 py-3 border-t border-border">
             <button onClick={openInNewTab} className="btn-secondary text-sm inline-flex items-center gap-1"><ExternalLink size={14} />Open in tab</button>
             <button onClick={downloadInvoice} className="btn-primary text-sm inline-flex items-center gap-1"><Download size={14} />Download</button>
           </div>

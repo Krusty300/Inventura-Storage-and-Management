@@ -58,13 +58,13 @@ export default function CustomerGroups() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
             <UsersRound size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Customer Groups</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Customer Groups</h1>
             <p className="text-sm text-muted mt-1">Group customers together to apply shared pricing and discounts.</p>
           </div>
         </div>

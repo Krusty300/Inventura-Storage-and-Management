@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChevronRight, ChevronDown, MapPin, Pencil, Trash2, Package, Eye, FolderOpen, Folder, FileText, Search, CheckCircle2, CircleOff, Layers, Boxes, Fingerprint, DollarSign, FolderTree } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -98,6 +98,33 @@ export default function Locations() {
     if (!Number.isInteger(id)) return null;
     return (all || []).find((l) => l.id === id) ?? null;
   }, [all, searchParams]);
+
+  useEffect(() => {
+    if (!viewing) return;
+    const ancestors = new Set<number>();
+    const collect = (nodes: LocationTree[], targetId: number): boolean => {
+      for (const node of nodes) {
+        if (node.id === targetId || collect(node.children || [], targetId)) {
+          ancestors.add(node.id);
+          return true;
+        }
+      }
+      return false;
+    };
+    collect(tree || [], viewing.id);
+    if (ancestors.size > 0) {
+      setExpanded((prev) => {
+        let next = prev;
+        ancestors.forEach((id) => {
+          if (!next.has(id)) {
+            if (next === prev) next = new Set(prev);
+            next.add(id);
+          }
+        });
+        return next;
+      });
+    }
+  }, [viewing, tree]);
 
   const openDetail = (loc: Location) => {
     setSearchParams((prev) => {
@@ -246,7 +273,7 @@ export default function Locations() {
             <MapPin size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Locations</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Locations</h1>
             <p className="text-sm text-muted mt-1">Organize your warehouse into zones, aisles, shelves, and bins.</p>
           </div>
         </div>

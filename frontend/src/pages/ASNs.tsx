@@ -135,7 +135,7 @@ export default function ASNs() {
             <Truck size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">ASNs</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">ASNs</h1>
             <p className="text-sm text-muted mt-1">Advanced shipping notices — track incoming supplier shipments from order to dock.</p>
           </div>
         </div>

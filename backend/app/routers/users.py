@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.session import UserSession
+from app.models.supplier import Supplier
 from app.models.user import User
 from app.schemas.user import UserOut
 from app.services.auth import get_current_user, require_permission, hash_password, verify_password
@@ -18,7 +19,7 @@ from app.utils import log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-VALID_ROLES = {"admin", "manager", "worker"}
+VALID_ROLES = {"admin", "manager", "worker", "supplier"}
 
 
 def _purge_user(db: Session, u: User, user) -> None:
@@ -38,6 +39,7 @@ class UserUpdateAdmin(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     permissions: Optional[list[str]] = None
+    supplier_id: Optional[int] = None
 
 
 class UserCreateAdmin(BaseModel):
@@ -46,6 +48,7 @@ class UserCreateAdmin(BaseModel):
     password: str
     role: str = "worker"
     permissions: Optional[list[str]] = None
+    supplier_id: Optional[int] = None
 
 
 class PasswordChange(BaseModel):
@@ -69,6 +72,26 @@ def _get_user_or_404(db: Session, user_id: int, include_inactive: bool = False) 
 
 def _admin_count(db: Session) -> int:
     return db.query(User).filter(User.is_active == True, User.role == "admin").count()
+
+
+def _validate_supplier_binding(db: Session, role: str, supplier_id: int | None) -> None:
+    """Portal accounts must be tied to a real, active supplier.
+
+    A ``supplier_id`` on any other role is rejected so internal staff never
+    silently pick up supplier scoping (or crash a lazy relationship later).
+    """
+    if role == "supplier":
+        if not supplier_id:
+            raise HTTPException(status_code=400, detail="Supplier accounts must be linked to a supplier")
+        supplier = db.query(Supplier).filter(
+            Supplier.id == supplier_id,
+            Supplier.is_active == True,  # noqa: E712
+            Supplier.is_deleted == False,  # noqa: E712
+        ).first()
+        if not supplier:
+            raise HTTPException(status_code=400, detail="Supplier not found or inactive")
+    elif supplier_id is not None:
+        raise HTTPException(status_code=400, detail="Only supplier accounts can be linked to a supplier")
 
 
 class UserApproval(BaseModel):
@@ -204,6 +227,9 @@ def create_user(
     if data.role == "admin" and not has_permission(current_user.role, "users.assign_admin_role"):
         raise HTTPException(status_code=403, detail="Only admins can assign the admin role")
     _validate_permissions(data.permissions)
+    if data.role == "supplier" and data.permissions:
+        raise HTTPException(status_code=400, detail="Supplier accounts cannot hold custom permissions")
+    _validate_supplier_binding(db, data.role, data.supplier_id)
     password_error = validate_password(data.password)
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)
@@ -215,6 +241,7 @@ def create_user(
         password_hash=hash_password(data.password),
         role=data.role,
         permissions=data.permissions,
+        supplier_id=data.supplier_id,
         is_approved=True,
     )
     db.add(user)
@@ -257,6 +284,14 @@ def update_user(
                 raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
             if u.role == "admin" and _admin_count(db) <= 1:
                 raise HTTPException(status_code=400, detail="Cannot deactivate the last admin")
+    final_role = updates.get("role", u.role)
+    final_supplier_id = updates.get("supplier_id", u.supplier_id)
+    if u.supplier_id is not None and final_role != "supplier":
+        updates.setdefault("supplier_id", None)
+        final_supplier_id = None
+    if final_role == "supplier" and "permissions" in updates and updates["permissions"]:
+        raise HTTPException(status_code=400, detail="Supplier accounts cannot hold custom permissions")
+    _validate_supplier_binding(db, final_role, final_supplier_id)
     for key, val in updates.items():
         setattr(u, key, val)
     db.commit()

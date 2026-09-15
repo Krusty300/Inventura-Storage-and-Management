@@ -34,6 +34,7 @@ import {
   Store,
   Bell,
   Trash2,
+  Award,
 } from "lucide-react";
 
 export interface NavItem {
@@ -111,6 +112,13 @@ export const navGroups: NavGroup[] = [
       { to: "/forecasting", icon: TrendingUp, label: "Forecasting", perm: "forecasting.view" },
       { to: "/shipments", icon: PackageOpen, label: "Shipments", perm: "shipments.view" },
       { to: "/quality-checks", icon: FlaskConical, label: "Quality", perm: "quality_checks.view" },
+    ],
+  },
+  {
+    id: "supply-chain",
+    label: "Supply Chain",
+    items: [
+      { to: "/supplier-performance", icon: Award, label: "Performance", perm: "reports.view" },
     ],
   },
   {

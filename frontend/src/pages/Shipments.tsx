@@ -91,7 +91,7 @@ export default function Shipments() {
             <PackageOpen size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-ink">Shipments</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-ink">Shipments</h1>
             <p className="text-sm text-muted mt-1">Outbound orders moving through the pick, pack, and ship workflow.</p>
           </div>
         </div>
@@ -340,7 +340,7 @@ function ShipmentLineRow({
   );
 
   return (
-    <div className="grid grid-cols-12 gap-3 sm:gap-4 items-end">
+    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-end">
       <div className="col-span-12 sm:col-span-5">
         <label className="block text-sm font-medium text-ink mb-1.5">Product</label>
         <FittedSelect ariaLabel="Product" value={row.product_id} onChange={(v) => onChange(index, "product_id", v)} options={[{ value: "", label: "Select product..." }, ...products.sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: String(p.id), label: productLabel(p) }))]} />

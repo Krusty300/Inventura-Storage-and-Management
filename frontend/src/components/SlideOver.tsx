@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { X, GripVertical } from "lucide-react";
 import ScrollArea from "./ScrollArea";
 import { useBreadcrumbExtension } from "../context/BreadcrumbContext";
+import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
+import { useTrapFocus } from "../hooks/useTrapFocus";
 
 interface Props {
   open: boolean;
@@ -14,54 +16,20 @@ interface Props {
   breadcrumb?: string;
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
-
 const CLOSE_THRESHOLD = 120;
 
 export default function SlideOver({ open, onClose, title, children, wide, ariaLabel, actions, breadcrumb }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const dragStartX = useRef(0);
   const [dragOffset, setDragOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
 
   useBreadcrumbExtension(breadcrumb ?? (typeof title === "string" ? title : undefined), open);
-
-  useEffect(() => {
-    if (open) {
-      previousFocusRef.current = document.activeElement as HTMLElement;
-      requestAnimationFrame(() => { panelRef.current?.focus(); });
-    } else if (previousFocusRef.current) {
-      previousFocusRef.current.focus();
-      previousFocusRef.current = null;
-    }
-  }, [open]);
+  useLockBodyScroll(open);
+  useTrapFocus(panelRef, open, onClose);
 
   useEffect(() => {
     if (!open) setDragOffset(0);
-  }, [open]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") { onClose(); return; }
-      if (e.key !== "Tab" || !panelRef.current) return;
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-      } else {
-        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
-      }
-    },
-    [onClose],
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
   }, [open]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -103,7 +71,6 @@ export default function SlideOver({ open, onClose, title, children, wide, ariaLa
           transition: dragging ? "none" : "transform 0.25s ease",
         }}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
       >
         <div
           className="sticky top-0 z-10 flex items-center justify-between gap-3 p-6 border-b bg-surface touch-pan-y"
