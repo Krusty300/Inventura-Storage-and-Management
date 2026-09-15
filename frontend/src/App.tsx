@@ -60,6 +60,10 @@ const PortalLayout = lazy(() => import("./pages/portal/PortalLayout"));
 const PortalOverview = lazy(() => import("./pages/portal/PortalOverview"));
 const PortalOrders = lazy(() => import("./pages/portal/PortalOrders"));
 const PortalOrderDetail = lazy(() => import("./pages/portal/PortalOrderDetail"));
+const PortalASNs = lazy(() => import("./pages/portal/PortalASNs"));
+const PortalASNDetail = lazy(() => import("./pages/portal/PortalASNDetail"));
+const PortalReceipts = lazy(() => import("./pages/portal/PortalReceipts"));
+const PortalReceiptDetail = lazy(() => import("./pages/portal/PortalReceiptDetail"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, loggingOut } = useAuth();
@@ -146,6 +150,10 @@ function AppRoutes() {
           <Route path="/portal" element={<PageBoundary><PortalOverview /></PageBoundary>} />
           <Route path="/portal/orders" element={<PageBoundary><PortalOrders /></PageBoundary>} />
           <Route path="/portal/orders/:id" element={<PageBoundary><PortalOrderDetail /></PageBoundary>} />
+          <Route path="/portal/asns" element={<PageBoundary><PortalASNs /></PageBoundary>} />
+          <Route path="/portal/asns/:id" element={<PageBoundary><PortalASNDetail /></PageBoundary>} />
+          <Route path="/portal/receipts" element={<PageBoundary><PortalReceipts /></PageBoundary>} />
+          <Route path="/portal/receipts/:id" element={<PageBoundary><PortalReceiptDetail /></PageBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

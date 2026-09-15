@@ -762,6 +762,8 @@ export interface ASN {
   updated_at: string;
   supplier_name: string;
   username: string;
+  order_id: number | null;
+  order_number: string | null;
   items: ASNItem[];
 }
 
@@ -1383,4 +1385,9 @@ export interface PortalSummary {
   open_orders: number;
   open_value: number;
   recent_orders: Order[];
+  asn_counts: Record<string, number>;
+  total_asns: number;
+  receipt_count: number;
+  recent_asns: ASN[];
+  recent_receipts: Receipt[];
 }

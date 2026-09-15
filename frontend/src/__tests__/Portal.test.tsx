@@ -11,6 +11,10 @@ vi.mock("../api/client", () => ({
 import PortalOverview from "../pages/portal/PortalOverview";
 import PortalOrders from "../pages/portal/PortalOrders";
 import PortalOrderDetail from "../pages/portal/PortalOrderDetail";
+import PortalASNs from "../pages/portal/PortalASNs";
+import PortalASNDetail from "../pages/portal/PortalASNDetail";
+import PortalReceipts from "../pages/portal/PortalReceipts";
+import PortalReceiptDetail from "../pages/portal/PortalReceiptDetail";
 
 const getMock = api.get as ReturnType<typeof vi.fn>;
 const patchMock = api.patch as ReturnType<typeof vi.fn>;
@@ -47,7 +51,55 @@ function makeOrder(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockPortal(pages: { order?: ReturnType<typeof makeOrder> } = {}) {
+function makeASN(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    asn_number: "ASN-2026-0001",
+    supplier_id: 1,
+    user_id: 9,
+    status: "pending",
+    expected_arrival: "2026-03-12T00:00:00",
+    received_at: null,
+    total_expected: 2,
+    total_received: 0,
+    notes: "",
+    created_at: "2026-03-05T00:00:00",
+    updated_at: "2026-03-05T00:00:00",
+    supplier_name: "Acme Logistics",
+    username: "acme_portal",
+    order_id: 1,
+    order_number: "PO-2026-0001",
+    items: [
+      { id: 21, asn_id: 1, product_id: 5, expected_qty: 2, received_qty: 0, unit_cost: 60, status: "pending", product_name: "Widget", location_id: 1, location_name: "Main Aisle" },
+    ],
+    ...overrides,
+  };
+}
+
+function makeReceipt(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    receipt_number: "RCT-2026-0001",
+    supplier_id: 1,
+    user_id: 2,
+    reference: "PO-2026-0001",
+    notes: "",
+    total_quantity: 2,
+    total_cost: 120,
+    created_at: "2026-03-11T00:00:00",
+    supplier_name: "Acme Logistics",
+    username: "admin",
+    items: [
+      { id: 31, receipt_id: 1, product_id: 5, quantity: 2, unit_cost: 60, lot_id: 1, location_id: 1, product_name: "Widget", product_image: "", lot_number: "LOT-1", location_name: "Main Aisle" },
+    ],
+    ...overrides,
+  };
+}
+
+function mockPortal(pages: { order?: ReturnType<typeof makeOrder>; asn?: ReturnType<typeof makeASN>; receipt?: ReturnType<typeof makeReceipt> } = {}) {
+  const order = pages.order ?? makeOrder();
+  const asn = pages.asn ?? makeASN();
+  const receipt = pages.receipt ?? makeReceipt();
   getMock.mockImplementation((url: string) => {
     if (url === "/portal/me") return Promise.resolve({ data: ME });
     if (url === "/portal/summary") {
@@ -57,18 +109,41 @@ function mockPortal(pages: { order?: ReturnType<typeof makeOrder> } = {}) {
           total_orders: 1,
           open_orders: 1,
           open_value: 120,
-          recent_orders: [pages.order ?? makeOrder({ total_amount: 50 })],
+          recent_orders: [{ ...order, total_amount: 50 }],
+          asn_counts: { pending: 1, received: 0, cancelled: 0 },
+          total_asns: 1,
+          receipt_count: 1,
+          recent_asns: [asn],
+          recent_receipts: [receipt],
         },
       });
     }
     if (url === "/portal/orders") {
-      const items = [pages.order ?? makeOrder()];
+      const items = [order];
       return Promise.resolve({ data: { items, total: items.length, page: 1, pages: 1 } });
     }
     if (url.startsWith("/portal/orders/")) {
       const id = Number(url.split("/").pop());
       if (id !== 1) return Promise.reject({ response: { status: 404, data: { detail: "Order not found" } } });
-      return Promise.resolve({ data: pages.order ?? makeOrder() });
+      return Promise.resolve({ data: order });
+    }
+    if (url === "/portal/asns") {
+      const items = [asn];
+      return Promise.resolve({ data: { items, total: items.length, page: 1, pages: 1 } });
+    }
+    if (url === "/portal/receipts") {
+      const items = [receipt];
+      return Promise.resolve({ data: { items, total: items.length, page: 1, pages: 1 } });
+    }
+    if (url.startsWith("/portal/asns/")) {
+      const id = Number(url.split("/").pop());
+      if (id !== 1) return Promise.reject({ response: { status: 404, data: { detail: "ASN not found" } } });
+      return Promise.resolve({ data: asn });
+    }
+    if (url.startsWith("/portal/receipts/")) {
+      const id = Number(url.split("/").pop());
+      if (id !== 1) return Promise.reject({ response: { status: 404, data: { detail: "Receipt not found" } } });
+      return Promise.resolve({ data: receipt });
     }
     return Promise.reject(new Error(`Unexpected call: ${url}`));
   });
@@ -85,7 +160,7 @@ describe("Supplier Portal", () => {
     renderWithProviders(<PortalOverview />, { role: "supplier" });
     expect(await screen.findByText("Welcome, Acme Logistics")).toBeInTheDocument();
     expect(screen.getByText("Total orders")).toBeInTheDocument();
-    expect(screen.getByText("PO-2026-0001")).toBeInTheDocument();
+    expect(screen.getAllByText("PO-2026-0001").length).toBeGreaterThan(0);
     expect(screen.getByText("$120.00")).toBeInTheDocument();
     expect(screen.getByText("$50.00")).toBeInTheDocument();
     expect(screen.getAllByText("Approved").length).toBeGreaterThan(0);
@@ -146,5 +221,65 @@ describe("Supplier Portal", () => {
       { role: "supplier", route: "/portal/orders/1" }
     );
     expect(await screen.findByRole("button", { name: "Download order PDF" })).toBeInTheDocument();
+  });
+
+  it("renders overview shipment and delivery cards", async () => {
+    mockPortal();
+    renderWithProviders(<PortalOverview />, { role: "supplier" });
+    expect(await screen.findByText("Shipments")).toBeInTheDocument();
+    expect(screen.getByText("Open shipments")).toBeInTheDocument();
+    expect(screen.getByText("Deliveries")).toBeInTheDocument();
+    expect(await screen.findByText("ASN-2026-0001")).toBeInTheDocument();
+  });
+
+  it("lists the supplier's shipments with status filter", async () => {
+    mockPortal();
+    renderWithProviders(<PortalASNs />, { role: "supplier" });
+    expect(await screen.findByText("ASN-2026-0001")).toBeInTheDocument();
+    expect(screen.getByText("Shipments")).toBeInTheDocument();
+    const search = screen.getByPlaceholderText("Search by ASN number...");
+    fireEvent.change(search, { target: { value: "ASN-2026" } });
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith("/portal/asns", expect.objectContaining({ params: expect.objectContaining({ search: "ASN-2026" }) }))
+    );
+  });
+
+  it("renders shipment detail with line items and PDF button", async () => {
+    mockPortal();
+    renderWithProviders(
+      <Routes>
+        <Route path="/portal/asns/:id" element={<PortalASNDetail />} />
+      </Routes>,
+      { role: "supplier", route: "/portal/asns/1" }
+    );
+    expect(await screen.findByText("ASN-2026-0001")).toBeInTheDocument();
+    expect(screen.getByText("Widget")).toBeInTheDocument();
+    expect(screen.getByText("PO-2026-0001")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download shipment PDF" })).toBeInTheDocument();
+  });
+
+  it("lists the supplier's deliveries", async () => {
+    mockPortal();
+    renderWithProviders(<PortalReceipts />, { role: "supplier" });
+    expect(await screen.findByText("RCT-2026-0001")).toBeInTheDocument();
+    expect(screen.getByText("Deliveries")).toBeInTheDocument();
+    const search = screen.getByPlaceholderText("Search by receipt number...");
+    fireEvent.change(search, { target: { value: "RCT" } });
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith("/portal/receipts", expect.objectContaining({ params: expect.objectContaining({ search: "RCT" }) }))
+    );
+  });
+
+  it("renders delivery detail with line items and PDF button", async () => {
+    mockPortal();
+    renderWithProviders(
+      <Routes>
+        <Route path="/portal/receipts/:id" element={<PortalReceiptDetail />} />
+      </Routes>,
+      { role: "supplier", route: "/portal/receipts/1" }
+    );
+    expect(await screen.findByText("RCT-2026-0001")).toBeInTheDocument();
+    expect(screen.getByText("Widget")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download delivery PDF" })).toBeInTheDocument();
   });
 });

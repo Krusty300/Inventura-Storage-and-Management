@@ -15,13 +15,17 @@ quality 30%, lead-time adherence 30%), renormalising weights when a dimension
 is missing. Suppliers with no observations have ``score=None``.
 """
 
+from datetime import datetime, time, timezone
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.models.asn import ASN
 from app.models.lot import Lot
 from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.quality_check import QualityCheck
+from app.models.receipt import Receipt
 from app.models.supplier import Supplier
 
 ON_TIME_WEIGHT = 40
@@ -57,20 +61,40 @@ def _received_orders(db: Session, supplier_id: int) -> list[Order]:
     )
 
 
-def _on_time_dimension(orders: list[Order]) -> dict:
-    with_deadline = [
-        o for o in orders if o.expected_arrival is not None and o.received_at is not None
-    ]
-    on_time = [o for o in with_deadline if o.received_at <= o.expected_arrival]
-    deviations = [
-        (o.received_at - o.expected_arrival).total_seconds() / 86400.0 for o in with_deadline
-    ]
+def _received_asns(db: Session, supplier_id: int) -> list[ASN]:
+    return (
+        db.query(ASN)
+        .filter(ASN.supplier_id == supplier_id, ASN.status == "received")
+        .all()
+    )
+
+
+def _on_time_dimension(orders: list[Order], asns: list[ASN]) -> dict:
+    """On-time rate computed from the union of PO and ASN observations.
+
+    ASN expected-arrival/received pairs are the shipment-level measurements
+    and are preferred where they exist; PO-level pairs cover the rest.
+    """
+    deviations: list[float] = []
+    for o in orders:
+        if o.expected_arrival is not None and o.received_at is not None:
+            deviations.append((o.received_at - o.expected_arrival).total_seconds() / 86400.0)
+    from_asns = 0
+    for a in asns:
+        if a.expected_arrival is not None and a.received_at is not None:
+            # expected_arrival is a plain date; the supplier has until end of
+            # that UTC day before the shipment counts as late.
+            deadline = datetime.combine(a.expected_arrival, time.max).replace(tzinfo=timezone.utc)
+            deviations.append((a.received_at - deadline).total_seconds() / 86400.0)
+            from_asns += 1
+    on_time = sum(1 for d in deviations if d <= 0)
     return {
-        "orders": len(with_deadline),
-        "on_time": len(on_time),
-        "late": len(with_deadline) - len(on_time),
-        "rate": _rate(len(on_time), len(with_deadline)),
+        "orders": len(deviations),
+        "on_time": on_time,
+        "late": len(deviations) - on_time,
+        "rate": _rate(on_time, len(deviations)),
         "avg_deviation_days": round(sum(deviations) / len(deviations), 1) if deviations else None,
+        "from_asns": from_asns,
     }
 
 
@@ -176,10 +200,46 @@ def _recent_orders(orders: list[Order], limit: int = 10) -> list[dict]:
     } for o in recent]
 
 
+def _supply_chain_dimension(db: Session, supplier_id: int) -> dict:
+    total_asns = (
+        db.query(func.count(ASN.id)).filter(ASN.supplier_id == supplier_id).scalar() or 0
+    )
+    open_asns = (
+        db.query(func.count(ASN.id))
+        .filter(ASN.supplier_id == supplier_id, ASN.status == "pending")
+        .scalar()
+        or 0
+    )
+    received_asns = (
+        db.query(func.count(ASN.id))
+        .filter(ASN.supplier_id == supplier_id, ASN.status == "received")
+        .scalar()
+        or 0
+    )
+    total_receipts = (
+        db.query(func.count(Receipt.id)).filter(Receipt.supplier_id == supplier_id).scalar()
+        or 0
+    )
+    received_units = (
+        db.query(func.coalesce(func.sum(Receipt.total_quantity), 0))
+        .filter(Receipt.supplier_id == supplier_id)
+        .scalar()
+        or 0
+    )
+    return {
+        "total_asns": int(total_asns),
+        "open_asns": int(open_asns),
+        "received_asns": int(received_asns),
+        "total_receipts": int(total_receipts),
+        "received_units": int(received_units),
+    }
+
+
 def supplier_performance(db: Session, supplier: Supplier) -> dict:
     """Full performance detail for one supplier."""
     orders = _received_orders(db, supplier.id)
-    on_time = _on_time_dimension(orders)
+    asns = _received_asns(db, supplier.id)
+    on_time = _on_time_dimension(orders, asns)
     lead = _lead_time_dimension(orders, supplier, on_time)
     quality = _quality_dimension(db, supplier.id)
     volume = _volume_dimension(orders, db, supplier.id)
@@ -202,6 +262,7 @@ def supplier_performance(db: Session, supplier: Supplier) -> dict:
         "lead_time": lead,
         "quality": quality,
         "volume": volume,
+        "supply_chain": _supply_chain_dimension(db, supplier.id),
         "price_trend": _price_trend(db, supplier.id),
         "recent_orders": _recent_orders(orders),
     }

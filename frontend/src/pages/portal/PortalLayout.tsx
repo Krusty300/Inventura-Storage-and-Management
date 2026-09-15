@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, LayoutDashboard, ClipboardList, Truck } from "lucide-react";
+import { LogOut, LayoutDashboard, ClipboardList, Truck, PackageCheck, PackageOpen } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import type { PortalMe } from "../../types";
@@ -51,6 +51,12 @@ export default function PortalLayout() {
           </NavLink>
           <NavLink to="/portal/orders" className={navLink}>
             <ClipboardList size={16} /> Purchase Orders
+          </NavLink>
+          <NavLink to="/portal/asns" className={navLink}>
+            <PackageCheck size={16} /> Shipments
+          </NavLink>
+          <NavLink to="/portal/receipts" className={navLink}>
+            <PackageOpen size={16} /> Deliveries
           </NavLink>
         </nav>
       </header>

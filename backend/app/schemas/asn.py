@@ -13,6 +13,7 @@ class ASNItemCreate(BaseModel):
 
 class ASNCreate(BaseModel):
     supplier_id: Optional[int] = None
+    order_id: Optional[int] = None
     expected_arrival: Optional[date] = None
     notes: str = ""
     items: list[ASNItemCreate] = Field(min_length=1)
@@ -71,6 +72,7 @@ class ASNOut(BaseModel):
     id: int
     asn_number: str
     supplier_id: Optional[int] = None
+    order_id: Optional[int] = None
     user_id: int
     status: str
     expected_arrival: Optional[date] = None
@@ -78,6 +80,7 @@ class ASNOut(BaseModel):
     created_at: datetime
     received_at: Optional[datetime] = None
     supplier_name: str = ""
+    order_number: str = ""
     username: str = ""
     total_expected: int = 0
     total_received: int = 0

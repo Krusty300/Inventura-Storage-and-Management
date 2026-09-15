@@ -270,6 +270,132 @@ def test_portal_transition_notifies_admins(auth_headers):
     )
 
 
+# ---------------------------------------------------------------- ASN/receipts
+
+def _in_transit_order(auth_headers, supplier_id, sku, quantity=2):
+    """Approved order, then supplier pushes it to in_transit (auto-ASN)."""
+    order = _approved_order(auth_headers, supplier_id, sku, quantity=quantity)
+    _make_supplier_account(auth_headers, f"tsup_{sku.lower()}", supplier_id=supplier_id).json()
+    headers = _login(f"tsup_{sku.lower()}")
+    resp = client.patch(f"/api/portal/orders/{order['id']}", json={"status": "acknowledged"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    resp = client.patch(f"/api/portal/orders/{order['id']}", json={"status": "in_transit"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    return order, headers
+
+
+def test_portal_in_transit_auto_creates_asn(auth_headers):
+    supplier = _make_supplier(auth_headers, "Transit ASN Supplier")
+    order, headers = _in_transit_order(auth_headers, supplier["id"], "TASN-1")
+    data = client.get("/api/portal/asns", headers=headers).json()
+    assert data["total"] == 1
+    asn = data["items"][0]
+    assert asn["status"] == "pending"
+    assert asn["order_id"] == order["id"]
+    assert asn["order_number"] == order["order_number"]
+    assert asn["items"] and asn["items"][0]["product_name"].endswith("TASN-1")
+    # Detail endpoint matches.
+    detail = client.get(f"/api/portal/asns/{asn['id']}", headers=headers).json()
+    assert detail["asn_number"] == asn["asn_number"]
+    # Transitioning again does not create a second ASN.
+    resp = client.patch(f"/api/portal/orders/{order['id']}", json={"status": "in_transit"}, headers=headers)
+    assert resp.status_code == 400
+    assert client.get("/api/portal/asns", headers=headers).json()["total"] == 1
+
+
+def test_portal_asn_status_filter_and_scoping(auth_headers):
+    sup_a = _make_supplier(auth_headers, "ASN Scoped A")
+    order_a, headers_a = _in_transit_order(auth_headers, sup_a["id"], "ASCOP-A")
+    asn_a = client.get("/api/portal/asns", headers=headers_a).json()["items"][0]
+    # Invalid status is rejected.
+    resp = client.get("/api/portal/asns", params={"status": "draft"}, headers=headers_a)
+    assert resp.status_code == 400
+    assert "Invalid ASN status" in resp.json()["detail"]
+    # Supplier B cannot see supplier A's ASN.
+    sup_b = _make_supplier(auth_headers, "ASN Scoped B")
+    _make_supplier_account(auth_headers, "ascop_b", supplier_id=sup_b["id"]).json()
+    headers_b = _login("ascop_b")
+    assert client.get("/api/portal/asns", headers=headers_b).json()["total"] == 0
+    for path in (f"/api/portal/asns/{asn_a['id']}", f"/api/portal/asns/{asn_a['id']}/pdf"):
+        resp = client.get(path, headers=headers_b)
+        assert resp.status_code == 404, path
+    assert client.get("/api/portal/asns/999999", headers=headers_a).status_code == 404
+
+
+def test_portal_asn_pdf(auth_headers):
+    supplier = _make_supplier(auth_headers, "ASN Pdf Supplier")
+    _, headers = _in_transit_order(auth_headers, supplier["id"], "TAPDF-1")
+    asn = client.get("/api/portal/asns", headers=headers).json()["items"][0]
+    resp = client.get(f"/api/portal/asns/{asn['id']}/pdf", headers=headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content.startswith(b"%PDF")
+
+
+def _portal_receipt(auth_headers, supplier_id, product_id, quantity=2, lot=None):
+    """Record a warehouse receipt document tied to the supplier."""
+    payload = {"items": [{"product_id": product_id, "quantity": quantity}]}
+    if lot:
+        payload["items"][0]["lot_number"] = lot
+    resp = client.post("/api/receipts", json={
+        "supplier_id": supplier_id,
+        "items": payload["items"],
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def test_portal_receipt_visible_with_supplier_link(auth_headers):
+    supplier = _make_supplier(auth_headers, "Receipt Supplier")
+    order, headers = _in_transit_order(auth_headers, supplier["id"], "TRECV-1")
+    asn = client.get("/api/portal/asns", headers=headers).json()["items"][0]
+    receipt = _portal_receipt(auth_headers, supplier["id"], asn["items"][0]["product_id"])
+    # The supplier can see the delivery document tied to them.
+    data = client.get("/api/portal/receipts", headers=headers).json()
+    assert data["total"] == 1
+    assert data["items"][0]["id"] == receipt["id"]
+    assert data["items"][0]["supplier_id"] == supplier["id"]
+    detail = client.get(f"/api/portal/receipts/{receipt['id']}", headers=headers).json()
+    assert detail["receipt_number"] == receipt["receipt_number"]
+    # Another supplier is fenced off from it.
+    sup_b = _make_supplier(auth_headers, "Receipt Scoped B")
+    _make_supplier_account(auth_headers, "trecv_b", supplier_id=sup_b["id"]).json()
+    headers_b = _login("trecv_b")
+    resp = client.get(f"/api/portal/receipts/{receipt['id']}", headers=headers_b)
+    assert resp.status_code == 404
+    assert client.get("/api/portal/receipts", headers=headers_b).json()["total"] == 0
+
+
+def test_portal_receipt_pdf(auth_headers):
+    supplier = _make_supplier(auth_headers, "Receipt Pdf Supplier")
+    _, headers = _in_transit_order(auth_headers, supplier["id"], "TRPDF-1")
+    asn = client.get("/api/portal/asns", headers=headers).json()["items"][0]
+    receipt = _portal_receipt(auth_headers, supplier["id"], asn["items"][0]["product_id"])
+    resp = client.get(f"/api/portal/receipts/{receipt['id']}/pdf", headers=headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content.startswith(b"%PDF")
+
+
+def test_portal_summary_includes_asn_and_receipt_counts(auth_headers):
+    supplier = _make_supplier(auth_headers, "Full Summary Supplier")
+    order, headers = _in_transit_order(auth_headers, supplier["id"], "TSUM-1")
+    asn = client.get("/api/portal/asns", headers=headers).json()["items"][0]
+    data = client.get("/api/portal/summary", headers=headers).json()
+    assert data["total_asns"] == 1
+    assert data["asn_counts"]["pending"] == 1
+    assert data["receipt_count"] == 0
+    assert len(data["recent_asns"]) == 1
+    assert data["recent_asns"][0]["order_id"] == order["id"]
+    # After staff record the delivery, the summary reflects it.
+    _portal_receipt(auth_headers, supplier["id"], asn["items"][0]["product_id"])
+    data = client.get("/api/portal/summary", headers=headers).json()
+    assert data["asn_counts"]["pending"] == 1
+    assert data["total_asns"] == 1
+    assert data["receipt_count"] == 1
+    assert len(data["recent_receipts"]) == 1
+
+
 # ---------------------------------------------------------------- misc
 
 def test_portal_order_pdf(auth_headers):

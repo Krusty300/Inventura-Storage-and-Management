@@ -20,7 +20,7 @@ class Receipt(Base):
     total_cost: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
-    supplier = relationship("Supplier")
+    supplier = relationship("Supplier", back_populates="receipts")
     user = relationship("User")
     items = relationship("ReceiptItem", back_populates="receipt", cascade="all, delete-orphan", order_by="ReceiptItem.id")
 

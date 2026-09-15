@@ -13,6 +13,7 @@ class ASN(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     asn_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), nullable=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     expected_arrival: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -21,12 +22,17 @@ class ASN(Base):
     received_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     supplier = relationship("Supplier", back_populates="asns")
+    order = relationship("Order")
     user = relationship("User")
     items = relationship("ASNItem", back_populates="asn", cascade="all, delete-orphan", order_by="ASNItem.id")
 
     @property
     def supplier_name(self) -> str:
         return self.supplier.name if self.supplier else ""
+
+    @property
+    def order_number(self) -> str:
+        return self.order.order_number if self.order else ""
 
     @property
     def username(self) -> str:

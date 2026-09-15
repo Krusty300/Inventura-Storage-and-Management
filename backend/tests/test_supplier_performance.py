@@ -57,6 +57,10 @@ def test_performance_no_data_returns_neutral(auth_headers):
     assert data["volume"]["total_orders"] == 0
     assert data["volume"]["open_orders"] == 0
     assert data["price_trend"] == []
+    assert data["supply_chain"] == {
+        "total_asns": 0, "open_asns": 0, "received_asns": 0,
+        "total_receipts": 0, "received_units": 0,
+    }
 
 
 def test_on_time_and_lead_dimensions(auth_headers):
@@ -171,3 +175,26 @@ def test_performance_list_sorts_and_searches(auth_headers):
 
 def test_performance_rejects_missing_supplier(auth_headers):
     assert client.get("/api/suppliers/999999/performance", headers=auth_headers).status_code == 404
+
+
+def test_supply_chain_dimension_counts(auth_headers):
+    sup = _make_supplier(auth_headers, "Chain Supply")
+    _received_order(auth_headers, sup["id"], "PERF-CHAIN")
+    prod = _make_product(auth_headers, "PERF-CHAIN-2", sup["id"])
+
+    client.post("/api/receipts", json={
+        "supplier_id": sup["id"],
+        "items": [{"product_id": prod["id"], "quantity": 4, "lot_number": "CHAIN-LOT"}],
+    }, headers=auth_headers)
+    client.post("/api/asns", json={
+        "supplier_id": sup["id"],
+        "items": [{"product_id": prod["id"], "expected_qty": 4}],
+    }, headers=auth_headers)
+
+    data = _performance(auth_headers, sup["id"])
+    chain = data["supply_chain"]
+    assert chain["total_asns"] == 1
+    assert chain["open_asns"] == 1
+    assert chain["received_asns"] == 0
+    assert chain["total_receipts"] == 1
+    assert chain["received_units"] == 4

@@ -28,3 +28,4 @@ class Supplier(SoftDeleteMixin, Base):
     orders = relationship("Order", back_populates="supplier")
     lots = relationship("Lot", back_populates="supplier")
     asns = relationship("ASN", back_populates="supplier")
+    receipts = relationship("Receipt", back_populates="supplier")

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.constants import MAX_PAGE_SIZE
 from app.database import get_db
-from app.models import ASN, ASNItem, LPN, Location, Lot, Product, SerialNumber, StockMovement, Supplier
+from app.models import ASN, ASNItem, LPN, Location, Lot, Order, Product, SerialNumber, StockMovement, Supplier
 from app.models.settings import Settings
 from app.schemas.asn import ASNCreate, ASNOut, ASNReceiveRequest, ASNUpdate
 from app.services import inventory
@@ -138,9 +138,17 @@ def asn_pdf(asn_id: int, db: Session = Depends(get_db)):
 def create_asn(data: ASNCreate, db: Session = Depends(get_db), user=Depends(require_permission("asns.create"))):
     if data.supplier_id is not None:
         get_or_404(Supplier, data.supplier_id, db)
+    order = None
+    if data.order_id is not None:
+        order = get_or_404(Order, data.order_id, db)
+        if data.supplier_id is not None and order.supplier_id != data.supplier_id:
+            raise HTTPException(status_code=400, detail="Order supplier does not match ASN supplier")
+        if data.supplier_id is None:
+            data = ASNCreate(**data.model_dump(), supplier_id=order.supplier_id)
     asn = ASN(
         asn_number=next_document_number(db, "asn", "ASN-"),
         supplier_id=data.supplier_id,
+        order_id=data.order_id,
         user_id=user.id,
         expected_arrival=data.expected_arrival,
         notes=data.notes,
