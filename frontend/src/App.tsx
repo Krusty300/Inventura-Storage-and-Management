@@ -64,6 +64,7 @@ const PortalASNs = lazy(() => import("./pages/portal/PortalASNs"));
 const PortalASNDetail = lazy(() => import("./pages/portal/PortalASNDetail"));
 const PortalReceipts = lazy(() => import("./pages/portal/PortalReceipts"));
 const PortalReceiptDetail = lazy(() => import("./pages/portal/PortalReceiptDetail"));
+const PortalSettings = lazy(() => import("./pages/portal/PortalSettings"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, loggingOut } = useAuth();
@@ -93,6 +94,16 @@ function AppRoutes() {
         <Route path="/login" element={user ? <Navigate to={user.role === "supplier" ? "/portal" : "/"} replace /> : <Login />} />
         <Route path="/register" element={user ? <Navigate to={user.role === "supplier" ? "/portal" : "/"} replace /> : <Register />} />
         <Route
+          path="/"
+          element={
+            user ? (
+              user.role === "supplier" ? <Navigate to="/portal" replace /> : <Navigate to="/dashboard" replace />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
           element={
             <ProtectedRoute>
               <SupplierRedirect>
@@ -101,7 +112,7 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={user?.role === "supplier" ? <Navigate to="/portal" replace /> : <PageBoundary><RequirePermission perm="dashboard.view"><Dashboard /></RequirePermission></PageBoundary>} />
+          <Route path="/dashboard" element={user?.role === "supplier" ? <Navigate to="/portal" replace /> : <PageBoundary><RequirePermission perm="dashboard.view"><Dashboard /></RequirePermission></PageBoundary>} />
           <Route path="/products" element={<PageBoundary><RequirePermission perm="products.view"><Products /></RequirePermission></PageBoundary>} />
           <Route path="/categories" element={<PageBoundary><RequirePermission perm="categories.view"><Categories /></RequirePermission></PageBoundary>} />
           <Route path="/customers" element={<PageBoundary><RequirePermission perm="customers.view"><Customers /></RequirePermission></PageBoundary>} />
@@ -154,6 +165,8 @@ function AppRoutes() {
           <Route path="/portal/asns/:id" element={<PageBoundary><PortalASNDetail /></PageBoundary>} />
           <Route path="/portal/receipts" element={<PageBoundary><PortalReceipts /></PageBoundary>} />
           <Route path="/portal/receipts/:id" element={<PageBoundary><PortalReceiptDetail /></PageBoundary>} />
+          <Route path="/portal/settings" element={<PageBoundary><PortalSettings /></PageBoundary>} />
+          <Route path="/portal/notifications" element={<PageBoundary><Notifications /></PageBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

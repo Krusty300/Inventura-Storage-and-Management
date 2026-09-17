@@ -96,6 +96,7 @@ def _validate_supplier_binding(db: Session, role: str, supplier_id: int | None) 
 
 class UserApproval(BaseModel):
     role: Optional[str] = None
+    supplier_id: Optional[int] = None
 
 
 @router.get("/pending", response_model=list[UserOut])
@@ -123,6 +124,10 @@ def approve_user(
     if data.role and data.role in VALID_ROLES:
         if data.role == "admin" and not has_permission(current_user.role, "users.assign_admin_role"):
             raise HTTPException(status_code=403, detail="Only admins can assign the admin role")
+        if data.role == "supplier":
+            final_supplier_id = data.supplier_id if data.supplier_id is not None else u.supplier_id
+            _validate_supplier_binding(db, "supplier", final_supplier_id)
+            u.supplier_id = final_supplier_id
         u.role = data.role
     db.commit()
     db.refresh(u)

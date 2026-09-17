@@ -8,6 +8,8 @@ import { statusBadge } from "../../utils/statusBadges";
 import Skeleton from "../../components/Skeleton";
 import EmptyState from "../../components/EmptyState";
 import { errorMessage } from "../../utils/errors";
+import { entityImageUrl } from "../../utils/images";
+import { onImageError } from "../../utils/placeholders";
 import type { PortalMe, PortalSummary } from "../../types";
 
 const STATUS_ORDER = ["approved", "acknowledged", "in_transit", "received", "cancelled"] as const;
@@ -51,10 +53,15 @@ export default function PortalOverview() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-ink">Welcome, {me?.supplier.name ?? "supplier"}</h1>
-          <p className="text-sm text-muted mt-1">Review and acknowledge your purchase orders below.</p>
-        </div>
+        <div className="flex items-center gap-2.5">
+            {me?.supplier.image_url && (
+              <img src={entityImageUrl(me.supplier.image_url)} alt={me.supplier.name} onError={onImageError} className="h-8 w-8 rounded-lg object-cover shrink-0" />
+            )}
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-ink">Welcome, {me?.supplier.name ?? "supplier"}</h1>
+              <p className="text-sm text-muted mt-1">Review and acknowledge your purchase orders below.</p>
+            </div>
+          </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

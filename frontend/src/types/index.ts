@@ -100,6 +100,7 @@ export interface Supplier {
   avg_order_value?: number;
   last_order_at?: string | null;
   product_count?: number;
+  preferences?: Record<string, unknown> | null;
 }
 
 export interface SupplierStats {
@@ -594,6 +595,7 @@ export interface User {
   created_at?: string;
   supplier_id?: number | null;
   supplier_name?: string | null;
+  supplier_image_url?: string | null;
 }
 
 export interface Sale {
@@ -1377,6 +1379,7 @@ export interface PortalMe {
   supplier: Supplier;
   store_name: string;
   currency_symbol: string;
+  logo_url: string;
 }
 
 export interface PortalSummary {

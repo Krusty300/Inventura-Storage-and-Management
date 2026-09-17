@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Save, KeyRound, Bell, Hash, Workflow, DollarSign, Monitor, FileText, Upload, X, Settings as SettingsIcon, Image as ImageIcon } from "lucide-react";
 import api from "../api/client";
@@ -41,6 +42,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 export default function Settings() {
   const { can, logout, completeLogout } = useAuth();
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("store");
   const [form, setForm] = useState<Record<string, any>>({});
   const formInitRef = useRef(false);
@@ -105,6 +107,7 @@ export default function Settings() {
         fiscal_year_start_month: parseInt(form.fiscal_year_start_month) || 1,
         default_items_per_page: parseInt(form.default_items_per_page) || 50,
       });
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
       addToast("Settings saved", "success");
     } catch (err: unknown) {
       addToast(errorMessage(err, "Failed to save settings"), "error");

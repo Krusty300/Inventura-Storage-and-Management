@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { BarChart3, Boxes, PackageCheck } from "lucide-react";
 import { useSettings } from "../hooks/useSettings";
-import { getPlaceholder } from "../utils/placeholders";
+import { getPlaceholder, onImageError } from "../utils/placeholders";
 
 interface Props {
   title: string;
@@ -13,6 +13,7 @@ interface Props {
 export default function AuthLayout({ title, subtitle, children, footer }: Props) {
   const { data: settings } = useSettings();
   const storeName = settings?.store_name || "Inventura Storage";
+  const logoUrl = settings?.logo_url || getPlaceholder();
 
   return (
     <div className="min-h-screen flex bg-app">
@@ -21,7 +22,7 @@ export default function AuthLayout({ title, subtitle, children, footer }: Props)
         <div className="absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-black/20 blur-3xl" />
         <div className="absolute top-1/2 left-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-glow blur-3xl" />
         <div className="relative flex items-center gap-3">
-          <img src={getPlaceholder()} alt={`${storeName} logo`} className="h-10 w-10" loading="eager" />
+          <img src={logoUrl} onError={onImageError} alt={`${storeName} logo`} className="h-10 w-10 object-contain" loading="eager" />
           <span className="text-xl font-bold">{storeName}</span>
         </div>
         <div className="relative space-y-8">
@@ -51,15 +52,16 @@ export default function AuthLayout({ title, subtitle, children, footer }: Props)
         <div className="w-full max-w-md mx-auto">
           <div className="lg:hidden flex justify-center mb-8">
             <div className="flex items-center gap-3">
-              <img src={getPlaceholder()} alt={`${storeName} logo`} className="h-16 w-16" loading="eager" />
+              <img src={logoUrl} onError={onImageError} alt={`${storeName} logo`} className="h-16 w-16 object-contain" loading="eager" />
               <span className="text-2xl font-bold text-ink">{storeName}</span>
             </div>
           </div>
           <div className="bg-surface shadow-lg border border-border p-8 sm:p-10">
             <img
-              src={getPlaceholder()}
+              src={logoUrl}
+              onError={onImageError}
               alt={`${storeName} logo`}
-              className="mx-auto h-16 w-16 rounded-lg object-cover mb-4"
+              className="mx-auto h-16 w-16 rounded-lg object-contain mb-4"
               loading="eager"
             />
             <h2 className="text-2xl font-bold text-ink text-center">{title}</h2>

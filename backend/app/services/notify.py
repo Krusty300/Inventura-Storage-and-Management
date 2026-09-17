@@ -80,6 +80,33 @@ def notify_admins(db: Session, title: str, message: str = "", type: str = "info"
     return created
 
 
+def notify_supplier(db: Session, supplier_id: int, title: str, message: str = "", type: str = "info", link: str = "") -> list[Notification]:
+    """Notify the linked portal user(s) of a supplier.
+
+    Supplier/worker accounts that were approved with ``supplier_id`` are excluded
+    from the admin/manager broadcast pool, so they need their own delivery path.
+    Only target active users linked to this supplier.
+    """
+    if not supplier_id:
+        return []
+    users = db.query(User).filter(
+        User.supplier_id == supplier_id,
+        User.is_active == True,  # noqa: E712
+    ).all()
+    created = []
+    for u in users:
+        already = db.query(Notification).filter(
+            Notification.user_id == u.id,
+            Notification.type == type,
+            Notification.title == title,
+            Notification.is_read == False,  # noqa: E712
+        ).first()
+        if already:
+            continue
+        created.append(create_notification(db, u.id, title, message, type=type, link=link))
+    return created
+
+
 def notify_note_assigned(db: Session, note, assigner_name: str) -> None:
     if note.assigned_to_id is None:
         return

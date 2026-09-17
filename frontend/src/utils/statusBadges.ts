@@ -31,6 +31,7 @@ const STATUS_CLASSES: Record<string, string> = {
   logout_all: "badge-neutral",
   quarantined: "badge-warning",
   partial: "badge-warning",
+  partially_received: "badge-warning",
   picking: "badge-warning",
   pick: "badge-warning",
   start: "badge-warning",

@@ -884,29 +884,29 @@ export default function Notes() {
               )}
             </div>
 
-          <div className="grid grid-cols-2 gap-2 pt-4 border-t border-border sm:flex sm:flex-wrap sm:justify-end">
+          <div className="flex flex-wrap justify-end gap-2 pt-4 border-t border-border">
             {!viewingNote.is_completed && (
-              <button onClick={() => { completeMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm">
+              <button onClick={() => { completeMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                 <CheckCircle2 size={16} />Complete
               </button>
             )}
             {can("notes.update") && (
-              <button onClick={() => { archiveMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm">
+              <button onClick={() => { archiveMutation.mutate(viewingNote.id); setViewingNote(null); }} className="btn-secondary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                 {viewingNote.is_archived ? <><ArchiveRestore size={16} />Unarchive</> : <><Archive size={16} />Archive</>}
               </button>
             )}
             {can("notes.create") && (
-              <button onClick={() => { duplicateMutation.mutate(viewingNote.id); }} className="btn-secondary text-sm">
+              <button onClick={() => { duplicateMutation.mutate(viewingNote.id); }} className="btn-secondary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                 <Copy size={16} />Duplicate
               </button>
             )}
             {can("notes.update") && (
-              <button onClick={() => { setViewingNote(null); openEdit(viewingNote); }} className="btn-secondary text-sm">
+              <button onClick={() => { setViewingNote(null); openEdit(viewingNote); }} className="btn-secondary text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                 <Edit3 size={16} />Edit
               </button>
             )}
             {can("notes.delete") && (
-              <button onClick={() => { setConfirmDelete(viewingNote); }} className="btn-danger text-sm last:odd:col-span-2">
+              <button onClick={() => { setConfirmDelete(viewingNote); }} className="btn-danger text-sm inline-flex items-center gap-1 flex-1 sm:flex-none">
                 <Trash2 size={16} />Delete
               </button>
             )}

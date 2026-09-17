@@ -89,7 +89,10 @@ describe("FormattedDateTime gating", () => {
     const queryClient = makeQueryClient();
     renderWithTheme(<FormattedDateTime value="2026-01-05T14:03:00" label="Order placed" />, queryClient);
     const trigger = await screen.findByText("2026-01-05 14:03");
-    await waitFor(() => expect(queryClient.getQueryData(["settings"])).toBeTruthy());
+    await waitFor(() => {
+      const cached = queryClient.getQueryCache().findAll({ queryKey: ["settings"] });
+      expect(cached.some((q) => q.state.data)).toBe(true);
+    });
     fireEvent.mouseEnter(trigger);
     expect(await screen.findByRole("grid", { name: "Mini calendar" })).toBeInTheDocument();
   });
@@ -100,7 +103,10 @@ describe("FormattedDateTime gating", () => {
     const queryClient = makeQueryClient();
     renderWithTheme(<FormattedDateTime value="2026-01-05T14:03:00" label="Order placed" />, queryClient);
     const trigger = await screen.findByText("2026-01-05 14:03");
-    await waitFor(() => expect(queryClient.getQueryData(["settings"])).toBeTruthy());
+    await waitFor(() => {
+      const cached = queryClient.getQueryCache().findAll({ queryKey: ["settings"] });
+      expect(cached.some((q) => q.state.data)).toBe(true);
+    });
     fireEvent.mouseEnter(trigger);
     expect(screen.queryByRole("grid", { name: "Mini calendar" })).not.toBeInTheDocument();
     expect(screen.getByText("2026-01-05 14:03")).toBeInTheDocument();

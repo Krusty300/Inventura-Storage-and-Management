@@ -11,9 +11,13 @@ handles receive via the internal orders API.
 """
 
 from math import ceil
+from pathlib import Path
+import re
+from typing import Optional
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -33,17 +37,32 @@ from app.schemas.order import OrderOut
 from app.schemas.receipt import ReceiptOut
 from app.schemas.supplier import SupplierOut
 from app.schemas.user import UserOut
-from app.services.auth import get_current_user
+from app.services.auth import get_current_user, hash_password, verify_password
 from app.services.filters import apply_date_range
-from app.services.notify import notify_admins
+from app.services.notify import create_notification, notify_admins, notify_supplier
 from app.services.order_pdf import render_order_pdf
+from app.services.password_policy import validate_password
 from app.services.sequences import next_document_number
-from app.utils import broadcast_change, get_or_404, log_activity
+from app.utils import broadcast_change, detect_image_ext, get_or_404, log_activity
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
+UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+JPEG_EXTENSIONS = {".jpg", ".jpeg"}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
+
+DEFAULT_SUPPLIER_PREFERENCES = {
+    "auto_acknowledge": False,
+    "notify_new_orders": True,
+    "default_page_size": 25,
+    "show_lead_time": True,
+}
+
+ALLOWED_PAGE_SIZES = (10, 25, 50, 100)
+
 # Internal planning states (pending/submitted) stay hidden from suppliers.
-PORTAL_VISIBLE_STATUSES = ("approved", "acknowledged", "in_transit", "received", "cancelled")
+PORTAL_VISIBLE_STATUSES = ("approved", "acknowledged", "in_transit", "partially_received", "received", "cancelled")
 OPEN_STATUSES = ("approved", "acknowledged", "in_transit")
 
 # The states a supplier may move a PO into, per current order status.
@@ -55,6 +74,75 @@ PORTAL_TRANSITIONS = {
 
 class PortalStatusUpdate(BaseModel):
     status: str
+
+
+class PortalProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    lead_time_days: Optional[int] = None
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, v: Optional[str]) -> Optional[str]:
+        v = (v or "").strip()
+        if v and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("Invalid email address")
+        return v
+
+    @field_validator("lead_time_days")
+    @classmethod
+    def _validate_lead_time(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v < 0:
+            raise ValueError("Lead time cannot be negative")
+        return v
+
+
+class PortalSettingsUpdate(BaseModel):
+    auto_acknowledge: Optional[bool] = None
+    notify_new_orders: Optional[bool] = None
+    default_page_size: Optional[int] = None
+    show_lead_time: Optional[bool] = None
+
+    @field_validator("default_page_size")
+    @classmethod
+    def _validate_page_size(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v not in ALLOWED_PAGE_SIZES:
+            raise ValueError("default_page_size must be one of 10, 25, 50, 100")
+        return v
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+def _preferences(supplier: Supplier) -> dict:
+    data = dict(DEFAULT_SUPPLIER_PREFERENCES)
+    for key, value in (supplier.preferences or {}).items():
+        if key in DEFAULT_SUPPLIER_PREFERENCES:
+            data[key] = value
+    return data
+
+
+def _set_preference(supplier: Supplier, key: str, value) -> None:
+    prefs = dict(supplier.preferences or {})
+    prefs[key] = value
+    supplier.preferences = prefs
+
+
+def _delete_uploaded_image(image_url: str) -> None:
+    if not image_url:
+        return
+    path = UPLOAD_DIR / Path(image_url).name
+    try:
+        if path.exists():
+            path.unlink()
+    except Exception:
+        pass
 
 
 def _order_options():
@@ -135,6 +223,7 @@ def portal_me(
         "supplier": SupplierOut.model_validate(supplier),
         "store_name": (s.store_name if s else None) or "My Store",
         "currency_symbol": (s.currency_symbol if s else "$") or "$",
+        "logo_url": (s.logo_url if s else None) or "",
     }
 
 
@@ -313,6 +402,13 @@ def portal_update_status(
         link="/orders",
         exclude_user_id=user.id,
     )
+    notify_supplier(
+        db, o.supplier_id,
+        f"PO {o.order_number} {o.status}",
+        f"Order #{o.order_number} was marked as {o.status}.",
+        type="info",
+        link=f"/portal/orders/{o.id}",
+    )
     if asn_created is not None:
         log_activity(db, user.id, user.username, "create", "asn", asn_created.id,
                      f"Auto-created ASN '{asn_created.asn_number}' for '{o.order_number}'")
@@ -322,6 +418,13 @@ def portal_update_status(
             type="info",
             link="/asns",
             exclude_user_id=user.id,
+        )
+        notify_supplier(
+            db, o.supplier_id,
+            f"ASN {asn_created.asn_number} created",
+            f"An ASN was created for PO {o.order_number}. Verify the shipment detail in your portal.",
+            type="info",
+            link=f"/portal/asns/{asn_created.id}",
         )
     db.commit()
     broadcast_change("order", "updated")
@@ -432,3 +535,133 @@ def portal_receipt_pdf(
 ):
     r = _get_portal_receipt(db, supplier, receipt_id)
     return render_receipt_pdf(r.id, db)
+
+
+@router.patch("/profile", response_model=SupplierOut)
+def portal_update_profile(
+    data: PortalProfileUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    supplier: Supplier = Depends(require_supplier),
+):
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No changes to apply")
+    if "name" in updates and not (updates["name"] or "").strip():
+        raise HTTPException(status_code=400, detail="Supplier name cannot be empty")
+    for key, value in updates.items():
+        setattr(supplier, key, value)
+    db.commit()
+    db.refresh(supplier)
+    log_activity(db, user.id, user.username, "update", "supplier", supplier.id,
+                 f"Supplier '{supplier.name}' updated their profile")
+    db.commit()
+    broadcast_change("supplier", "updated")
+    return supplier
+
+
+@router.post("/profile/image")
+def portal_upload_profile_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    supplier: Supplier = Depends(require_supplier),
+):
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+    detected = detect_image_ext(content)
+    if detected is None:
+        raise HTTPException(status_code=400, detail="File content is not a supported image")
+    matches = detected in JPEG_EXTENSIONS if ext in JPEG_EXTENSIONS else detected == ext
+    if not matches:
+        raise HTTPException(status_code=400, detail=f"File content does not match its extension ({ext})")
+    _delete_uploaded_image(supplier.image_url)
+    UPLOAD_DIR.mkdir(exist_ok=True)
+    filename = f"supplier_{supplier.id}_{uuid4().hex}{detected}"
+    filepath = UPLOAD_DIR / filename
+    with open(filepath, "wb") as f:
+        f.write(content)
+    supplier.image_url = f"/uploads/{filename}"
+    db.commit()
+    db.refresh(supplier)
+    log_activity(db, user.id, user.username, "update", "supplier", supplier.id,
+                 f"Supplier '{supplier.name}' uploaded their profile image")
+    db.commit()
+    broadcast_change("supplier", "updated")
+    return {"image_url": supplier.image_url}
+
+
+@router.delete("/profile/image")
+def portal_remove_profile_image(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    supplier: Supplier = Depends(require_supplier),
+):
+    _delete_uploaded_image(supplier.image_url)
+    supplier.image_url = ""
+    db.commit()
+    db.refresh(supplier)
+    log_activity(db, user.id, user.username, "update", "supplier", supplier.id,
+                 f"Supplier '{supplier.name}' removed their profile image")
+    db.commit()
+    broadcast_change("supplier", "updated")
+    return {"image_url": supplier.image_url}
+
+
+@router.get("/settings")
+def portal_get_settings(
+    db: Session = Depends(get_db),
+    supplier: Supplier = Depends(require_supplier),
+):
+    return {
+        "supplier_id": supplier.id,
+        "supplier_name": supplier.name,
+        "preferences": _preferences(supplier),
+    }
+
+
+@router.patch("/settings")
+def portal_update_settings(
+    data: PortalSettingsUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    supplier: Supplier = Depends(require_supplier),
+):
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No changes to apply")
+    for key, value in updates.items():
+        _set_preference(supplier, key, value)
+    db.commit()
+    db.refresh(supplier)
+    log_activity(db, user.id, user.username, "update", "supplier", supplier.id,
+                 f"Supplier '{supplier.name}' updated portal settings")
+    db.commit()
+    broadcast_change("supplier", "updated")
+    return {"preferences": _preferences(supplier)}
+
+
+@router.post("/change-password")
+def portal_change_password(
+    data: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    supplier: Supplier = Depends(require_supplier),
+):
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    password_error = validate_password(data.new_password)
+    if password_error:
+        raise HTTPException(status_code=400, detail=password_error)
+    user.password_hash = hash_password(data.new_password)
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "user", user.id,
+                 "Supplier changed their portal password")
+    db.commit()
+    return {"ok": True}

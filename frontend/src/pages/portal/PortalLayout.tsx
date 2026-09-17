@@ -1,9 +1,12 @@
 import { useCallback, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, LayoutDashboard, ClipboardList, Truck, PackageCheck, PackageOpen } from "lucide-react";
+import { LogOut, LayoutDashboard, ClipboardList, PackageCheck, PackageOpen, Bell, Settings as SettingsIcon } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { entityImageUrl } from "../../utils/images";
+import { getPlaceholder, onImageError } from "../../utils/placeholders";
+import NotificationBell from "../../components/NotificationBell";
 import type { PortalMe } from "../../types";
 
 export default function PortalLayout() {
@@ -30,15 +33,24 @@ export default function PortalLayout() {
       <header className="bg-surface border-b border-border sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary shrink-0">
-              <Truck size={18} strokeWidth={2} />
-            </span>
+            <img
+              src={me?.logo_url || getPlaceholder()}
+              onError={onImageError}
+              alt={me?.store_name ?? "Supplier Portal"}
+              className="h-9 w-9 rounded-xl object-cover shrink-0"
+            />
             <div className="min-w-0">
               <p className="font-bold text-ink leading-tight truncate">{me?.store_name ?? "Supplier Portal"}</p>
-              <p className="text-xs text-muted truncate">{me?.supplier.name ?? user?.username}</p>
+              <div className="flex items-center gap-1.5 min-w-0">
+                {me?.supplier.image_url && (
+                  <img src={entityImageUrl(me.supplier.image_url)} alt={me.supplier.name} onError={onImageError} className="h-3 w-3 rounded-full object-cover shrink-0" />
+                )}
+                <p className="text-xs text-muted truncate">{me?.supplier.name ?? user?.username}</p>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
+            <NotificationBell />
             <span className="hidden sm:inline-flex badge badge-info">Supplier</span>
             <button onClick={handleLogout} className="p-2 text-faint hover:text-ink rounded-lg" title="Log out" aria-label="Log out">
               <LogOut size={18} />
@@ -57,6 +69,12 @@ export default function PortalLayout() {
           </NavLink>
           <NavLink to="/portal/receipts" className={navLink}>
             <PackageOpen size={16} /> Deliveries
+          </NavLink>
+          <NavLink to="/portal/notifications" className={navLink}>
+            <Bell size={16} /> Notifications
+          </NavLink>
+          <NavLink to="/portal/settings" className={navLink}>
+            <SettingsIcon size={16} /> Settings
           </NavLink>
         </nav>
       </header>

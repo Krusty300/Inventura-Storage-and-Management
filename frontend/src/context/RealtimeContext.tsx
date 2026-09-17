@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "./AuthContext";
 
 export interface RealtimeMessage {
   event: string;
@@ -47,6 +48,7 @@ const entityQueryMap: Record<string, string[]> = {
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const { token } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
   const listenersRef = useRef<Set<(msg: RealtimeMessage) => void>>(new Set());
   const [connected, setConnected] = useState(false);
@@ -141,7 +143,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       clearInterval(heartbeatTimer);
       wsRef.current?.close();
     };
-  }, [queryClient]);
+  }, [queryClient, token]);
 
   const value = useMemo(() => ({ connected, subscribe }), [connected, subscribe]);
 

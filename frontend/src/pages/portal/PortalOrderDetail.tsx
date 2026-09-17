@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCheck, Truck, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, CheckCheck, Truck, FileText, Loader2, Clock } from "lucide-react";
 import api from "../../api/client";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import { formatCurrency } from "../../utils/currency";
@@ -18,16 +18,26 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+interface PortalSettings {
+  supplier_id: number;
+  supplier_name: string;
+  preferences: Record<string, unknown>;
+}
+
 export default function PortalOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const orderId = Number(id);
-const formatDate = useDateFormat();
-const queryClient = useQueryClient();
+  const formatDate = useDateFormat();
+  const queryClient = useQueryClient();
   const { addToast } = useToast();
 
   const { data: me } = useQuery({
     queryKey: ["portal", "me"],
     queryFn: async () => (await api.get("/portal/me")).data as PortalMe,
+  });
+  const { data: settingsData } = useQuery({
+    queryKey: ["portal", "settings"],
+    queryFn: async () => (await api.get("/portal/settings")).data as PortalSettings,
   });
   const { data: order, isLoading, isError, error } = useQuery({
     queryKey: ["portal", "order", orderId],
@@ -94,6 +104,11 @@ const queryClient = useQueryClient();
               <span className={`badge ${statusBadge(order.status)}`}>{STATUS_LABEL[order.status] ?? order.status}</span>
             </div>
             <p className="text-sm text-muted mt-1">{me?.supplier.name ?? "Supplier"} · {formatDate(order.created_at)}</p>
+            {Boolean(settingsData?.preferences?.show_lead_time) && me?.supplier?.lead_time_days != null && (
+              <p className="text-sm text-muted mt-1 inline-flex items-center gap-1">
+                <Clock size={14} /> Estimated lead time: {me.supplier.lead_time_days} day{me.supplier.lead_time_days === 1 ? "" : "s"}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={downloadPdf} className="btn-secondary inline-flex items-center gap-1.5" aria-label="Download order PDF">

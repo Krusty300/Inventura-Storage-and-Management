@@ -121,9 +121,13 @@ def _try_load_image(path: str | None, base_dir: Path | None = None) -> ImageRead
     """Attempt to load an image file from a relative or absolute path."""
     if not path:
         return None
-    p = Path(path)
-    if not p.is_absolute() and base_dir:
-        p = base_dir / path.lstrip("/")
+    if path.startswith("/uploads/"):
+        from app.routers.settings import UPLOAD_DIR as _uploads_dir
+        p = _uploads_dir / Path(path).name
+    else:
+        p = Path(path)
+        if not p.is_absolute() and base_dir:
+            p = base_dir / path.lstrip("/")
     if not p.exists():
         return None
     try:

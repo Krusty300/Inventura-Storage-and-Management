@@ -745,12 +745,25 @@ def test_partial_receive_tracks_received_qty(auth_headers):
     }, headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] == "received"
+    # A short receive keeps the order open at partially_received instead of
+    # force-closing it as fully received while still outstanding.
+    assert body["status"] == "partially_received"
     assert body["items"][0]["received_qty"] == 4
     assert body["items"][0]["quantity"] == 10
     assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 4
     movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
     assert any(m["movement_type"] == "in" and m["quantity_change"] == 4 for m in movements)
+
+    # Receiving the outstanding remainder closes the order as fully received.
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "receive_quantities": {prod["id"]: 6},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "received"
+    assert body["items"][0]["received_qty"] == 10
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 10
 
 
 def test_full_receive_records_full_received_qty(auth_headers):
@@ -840,4 +853,42 @@ def test_receive_quantity_for_unknown_product_rejected(auth_headers):
     assert resp.status_code == 400
     assert "not on this order" in resp.json()["detail"].lower()
     assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()["status"] == "approved"
+def test_short_receive_feeds_backorder_followup_po(auth_headers):
+    sup = client.post("/api/suppliers", json={"name": "BO Feed Sup"}, headers=auth_headers).json()
+    prod = client.post("/api/products", json={
+        "location_id": 1, "sku": "ORD-BO", "name": "Backorder Feed Item",
+        "cost_price": 6.00, "supplier_id": sup["id"],
+    }, headers=auth_headers).json()
+    order = client.post("/api/orders", json={
+        "items": [{"product_id": prod["id"], "quantity": 10, "unit_price": 6.00}],
+    }, headers=auth_headers).json()
+    submit_approve(client, auth_headers, order["id"])
 
+    # Short receive (4 of 10) - the outstanding 6 must stay visible.
+    short = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received", "receive_quantities": {prod["id"]: 4},
+    }, headers=auth_headers).json()
+    assert short["status"] == "partially_received"
+    assert short["items"][0]["received_qty"] == 4
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 4
+
+    # The shortfall feeds a follow-up backorder PO to the same supplier —
+    # autopilot: the partial receive ALREADY produced the draft, so the
+    # shortfall actively becomes a follow-up PO instead of sitting as a quiet
+    # open line waiting for someone to POST /backorder-outstanding.
+    follows = client.get(f"/api/orders?supplier_id={sup['id']}", headers=auth_headers).json()["items"]
+    drafts = [f for f in follows if f["order_number"] != order["order_number"]]
+    assert drafts, "shortfall should have auto-produced a follow-up backorder PO draft"
+    (follow,) = drafts
+    assert follow["supplier_id"] == sup["id"]
+    assert follow["items"][0]["product_id"] == prod["id"]
+    assert follow["items"][0]["quantity"] == 6
+    assert follow["status"] == "pending"
+
+    # Finishing the original receive closes it; the backorder stays open.
+    rem = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received", "receive_quantities": {prod["id"]: 6},
+    }, headers=auth_headers).json()
+    assert rem["status"] == "received"
+    assert rem["items"][0]["received_qty"] == 10
+    assert client.get(f"/api/orders/{follow['id']}", headers=auth_headers).json()["status"] == "pending"

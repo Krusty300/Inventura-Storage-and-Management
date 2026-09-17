@@ -7,7 +7,6 @@ import { useDateFormat } from "../../hooks/useDateFormat";
 import { useDebounce } from "../../hooks/useDebounce";
 import Table from "../../components/Table";
 import Pagination from "../../components/Pagination";
-import Skeleton from "../../components/Skeleton";
 import EmptyState from "../../components/EmptyState";
 import { errorMessage } from "../../utils/errors";
 import { formatCurrency } from "../../utils/currency";
@@ -50,7 +49,7 @@ export default function PortalReceipts() {
           </div>
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-bold text-ink">Deliveries</h1>
-            <p className="text-sm text-muted mt-1 truncate">Goods received by {me?.supplier.name ?? "your warehouse"}.</p>
+            <p className="text-sm text-muted mt-1 truncate">Deliveries recorded against your purchase orders.</p>
           </div>
         </div>
       </div>
@@ -74,39 +73,35 @@ export default function PortalReceipts() {
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
-          {isLoading ? (
-            <Skeleton variant="rows" rows={6} cols={5} />
-          ) : (
-            <Table
-              columns={[
-                { key: "receipt", header: "Receipt", className: "px-4 py-3 font-medium text-muted" },
-                { key: "reference", header: "Reference", className: "px-4 py-3 font-medium text-muted hidden sm:table-cell" },
-                { key: "date", header: "Date", className: "px-4 py-3 font-medium text-muted hidden md:table-cell" },
-                { key: "qty", header: "Qty", className: "px-4 py-3 font-medium text-muted text-right" },
-                { key: "cost", header: "Value", className: "px-4 py-3 font-medium text-muted text-right" },
-              ]}
-              aria-label="Portal deliveries table"
-              loading={false}
-              skeletonRows={6}
-              noData={rows.length === 0}
-              empty={
-                <EmptyState
-                  title={search ? "No matching deliveries" : "No deliveries yet"}
-                  message={search ? "Try adjusting your search." : "Goods received against your purchase orders will appear here."}
-                />
-              }
-            >
-              {rows.map((r) => (
-                <tr key={r.id} className="hover:bg-app cursor-pointer" onClick={() => navigate(`/portal/receipts/${r.id}`)}>
-                  <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">{r.receipt_number}</td>
-                  <td className="px-4 py-3 text-muted whitespace-nowrap hidden sm:table-cell">{r.reference || "—"}</td>
-                  <td className="px-4 py-3 text-muted whitespace-nowrap hidden md:table-cell">{formatDate(r.created_at)}</td>
-                  <td className="px-4 py-3 text-right font-medium">{r.total_quantity}</td>
-                  <td className="px-4 py-3 text-right font-medium">{formatCurrency(r.total_cost, me?.currency_symbol || "$")}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
+          <Table
+            columns={[
+              { key: "receipt", header: "Receipt", className: "px-4 py-3 font-medium text-muted" },
+              { key: "reference", header: "Reference", className: "px-4 py-3 font-medium text-muted hidden sm:table-cell" },
+              { key: "date", header: "Date", className: "px-4 py-3 font-medium text-muted hidden md:table-cell" },
+              { key: "qty", header: "Qty", className: "px-4 py-3 font-medium text-muted text-right" },
+              { key: "cost", header: "Value", className: "px-4 py-3 font-medium text-muted text-right" },
+            ]}
+            aria-label="Portal deliveries table"
+            loading={isLoading}
+            skeletonRows={6}
+            noData={rows.length === 0}
+            empty={
+              <EmptyState
+                title={search ? "No matching deliveries" : "No deliveries yet"}
+                message={search ? "Try adjusting your search." : "Goods received against your purchase orders will appear here."}
+              />
+            }
+          >
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-app cursor-pointer" onClick={() => navigate(`/portal/receipts/${r.id}`)}>
+                <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">{r.receipt_number}</td>
+                <td className="px-4 py-3 text-muted whitespace-nowrap hidden sm:table-cell">{r.reference || "—"}</td>
+                <td className="px-4 py-3 text-muted whitespace-nowrap hidden md:table-cell">{formatDate(r.created_at)}</td>
+                <td className="px-4 py-3 text-right font-medium">{r.total_quantity}</td>
+                <td className="px-4 py-3 text-right font-medium">{formatCurrency(r.total_cost, me?.currency_symbol || "$")}</td>
+              </tr>
+            ))}
+          </Table>
         </div>
       </div>
 

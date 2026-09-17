@@ -15,6 +15,11 @@ from app.services.cache import settings_cache
 
 router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[Depends(require_permission("settings.view"))])
 
+# Public settings are reachable without authentication (e.g. the login screen
+# needs store branding). Kept on a separate router because FastAPI route-level
+# `dependencies=[]` cannot override router-level auth dependencies.
+public_router = APIRouter(prefix="/api/settings", tags=["settings"], dependencies=[])
+
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 ALLOWED_LOGO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 MAX_LOGO_SIZE = 5 * 1024 * 1024
@@ -146,10 +151,10 @@ def get_settings(db: Session = Depends(get_db)):
     return _serialize(get_or_create_settings(db))
 
 
-@router.get("/public", dependencies=[])
+@public_router.get("/public", dependencies=[])
 def get_public_settings(db: Session = Depends(get_db)):
     s = get_or_create_settings(db)
-    return {"store_name": s.store_name}
+    return {"store_name": s.store_name, "logo_url": s.logo_url}
 
 
 @router.put("")

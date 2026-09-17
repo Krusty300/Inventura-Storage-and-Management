@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Camera, Trash2 } from "lucide-react";
 import api from "../api/client";
 import type { Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
 import SlideOver from "./SlideOver";
-import FileUploadButton from "./FileUploadButton";
 import TextArea from "./TextArea";
 import { errorMessage } from "../utils/errors";
 import { entityImageUrl } from "../utils/images";
@@ -29,9 +26,6 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
   });
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
-  const queryClient = useQueryClient();
-  const [imageUrl, setImageUrl] = useState("");
-  const [imageBusy, setImageBusy] = useState(false);
 
   useEffect(() => {
     if (supplier) {
@@ -44,44 +38,8 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
         notes: supplier.notes,
         lead_time_days: supplier.lead_time_days != null ? String(supplier.lead_time_days) : "",
       });
-      setImageUrl(supplier.image_url || "");
     }
   }, [supplier]);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !supplier) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    setImageBusy(true);
-    try {
-      const { data } = await api.post(`/suppliers/${supplier.id}/upload-image`, fd);
-      await new Promise<void>((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-        img.src = data.image_url;
-      });
-      setImageUrl(data.image_url);
-      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
-      addToast("Profile image updated", "success");
-    } catch (err: unknown) {
-      addToast(errorMessage(err, "Failed to upload profile image"), "error");
-    }
-    setImageBusy(false);
-  };
-
-  const handleImageRemove = async () => {
-    if (!supplier) return;
-    try {
-      await api.delete(`/suppliers/${supplier.id}/upload-image`);
-      setImageUrl("");
-      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
-      addToast("Profile image removed", "success");
-    } catch (err: unknown) {
-      addToast(errorMessage(err, "Failed to remove profile image"), "error");
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,37 +106,19 @@ export default function SupplierForm({ supplier, onClose, onSaved }: Props) {
           </div>
         </div>
 
-        {supplier && (
+        {supplier && supplier.image_url && (
           <div className="rounded-xl border border-border bg-app p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <img
-                  src={entityImageUrl(imageUrl)}
-                  alt=""
-                  className="h-14 w-14 rounded-full object-cover border border-border bg-subtle shrink-0"
-                  loading="lazy"
-                  onError={onImageError}
-                />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-ink">Profile Image</div>
-                  <p className="text-xs text-muted">Shown on this supplier's page, detail view, and hover cards.</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <FileUploadButton
-                  onFileChange={handleImageUpload}
-                  accept=".png,.jpg,.jpeg,.gif,.webp"
-                  disabled={imageBusy}
-                  className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
-                  ariaLabel="Upload profile image"
-                >
-                  <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
-                </FileUploadButton>
-                {imageUrl && (
-                  <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
-                    <Trash2 size={13} />Remove
-                  </button>
-                )}
+            <div className="flex items-center gap-3 min-w-0">
+              <img
+                src={entityImageUrl(supplier.image_url)}
+                alt=""
+                className="h-14 w-14 rounded-full object-cover border border-border bg-subtle shrink-0"
+                loading="lazy"
+                onError={onImageError}
+              />
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-ink">Profile Image</div>
+                <p className="text-xs text-muted">Managed by the supplier in their portal.</p>
               </div>
             </div>
           </div>

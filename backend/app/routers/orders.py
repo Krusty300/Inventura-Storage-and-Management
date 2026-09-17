@@ -14,12 +14,13 @@ from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
 from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
+from app.models.user import User
 from app.schemas.order import OrderBulkEdit, OrderCreate, OrderOut, OrderUpdate, ReorderLowStockRequest
 from app.services import forecasting, inventory
 from app.services.auth import require_permission
 from app.services.order_pdf import load_order_for_pdf, render_order_pdf
 from app.services.permissions import permissions_for_user
-from app.services.notify import notify_admins
+from app.services.notify import create_notification, notify_admins, notify_supplier
 from app.services.sequences import next_document_number
 from app.services.filters import apply_date_range, apply_numeric_range
 from app.utils import get_or_404, log_activity, broadcast_change, require_active_location
@@ -37,13 +38,14 @@ def _parse_expiry_date(value: str | None) -> date | None:
         raise HTTPException(status_code=400, detail=f"Invalid expiry date '{value}' - use YYYY-MM-DD")
 
 
-ORDER_STATUSES = ("pending", "submitted", "approved", "acknowledged", "in_transit", "received", "cancelled")
+ORDER_STATUSES = ("pending", "submitted", "approved", "acknowledged", "in_transit", "partially_received", "received", "cancelled")
 ORDER_TRANSITIONS = {
     "pending": ("submitted", "cancelled"),
     "submitted": ("approved", "pending", "cancelled"),
-    "approved": ("acknowledged", "in_transit", "received", "cancelled"),
-    "acknowledged": ("in_transit", "received", "cancelled"),
-    "in_transit": ("received", "cancelled"),
+    "approved": ("acknowledged", "in_transit", "partially_received", "received", "cancelled"),
+    "acknowledged": ("in_transit", "partially_received", "received", "cancelled"),
+    "in_transit": ("partially_received", "received", "cancelled"),
+    "partially_received": ("received", "cancelled"),
     "received": (),
     "cancelled": (),
 }
@@ -128,6 +130,49 @@ def reorder_low_stock(
     )
     broadcast_change("order", "created")
     return orders
+
+
+def _outstanding_groups(o: Order) -> dict[int | None, list[dict]]:
+    """Group an order's outstanding (quantity âˆ’ received_qty) shortfall by
+    supplier in the reorder-request shape `_create_reorder_orders` consumes,
+    so both the manual backorder endpoint and the autopilot feed share the
+    exact same computed feed."""
+    by_supplier: dict[int | None, list[dict]] = {}
+    for it in o.items:
+        outstanding = it.quantity - (it.received_qty or 0)
+        if outstanding > 0:
+            by_supplier.setdefault(it.product.supplier_id if it.product else None, []).append({
+                "product_id": it.product_id,
+                "supplier_id": it.product.supplier_id if it.product else None,
+                "suggested_order_qty": outstanding,
+            })
+    return by_supplier
+
+
+@router.post("/{order_id}/backorder-outstanding", response_model=list[OrderOut])
+def backorder_outstanding(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("orders.create")),
+):
+    """Turn a partially received order's outstanding into follow-up backorder
+    PO draft(s) â€” the shortfall is fed into the same supplier grouping the
+    reorder-low-stock flow uses, so it doesn't quietly vanish."""
+
+    o = get_or_404(Order, order_id, db)
+    if o.status not in ("in_transit", "partially_received"):
+        raise HTTPException(status_code=400, detail=(
+            f"Cannot backorder {o.status} order '{o.order_number}' â€” only open in_transit/partially_received orders have outstanding"
+        ))
+    by_supplier = _outstanding_groups(o)
+    if not by_supplier:
+        raise HTTPException(status_code=400, detail="This order has no outstanding lines to backorder")
+    follow = _create_reorder_orders(
+        db, user, by_supplier,
+        f"Backorder for outstanding on order '{o.order_number}' after partial receipt",
+    )
+    broadcast_change("order", "created")
+    return follow
 
 
 def _create_reorder_orders(db: Session, user, groups: dict[int | None, list[dict]], notes_template: str) -> list[Order]:
@@ -348,6 +393,11 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
             o.approved_at = datetime.now(timezone.utc)
         o.status = status
 
+        # Supplier portal preference: approved orders are auto-acknowledged so
+        # the supplier does not need to open the portal for every approval.
+        if status == "approved" and prev_status != "approved" and o.supplier and (o.supplier.preferences or {}).get("auto_acknowledge"):
+            o.status = "acknowledged"
+
     received_now = status == "received" and prev_status != "received"
     if received_now:
         o.received_at = datetime.now(timezone.utc)
@@ -371,10 +421,11 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                 product = item.product
                 if not product:
                     continue
-                qty = receive_quantities.get(product.id, item.quantity)
-                if qty < 1 or qty > item.quantity:
+                outstanding = item.quantity - (item.received_qty or 0)
+                qty = receive_quantities.get(product.id, outstanding)
+                if qty < 1 or qty > outstanding:
                     raise inventory.InventoryError(
-                        f"Receive quantity for '{product.display_name}' must be between 1 and {item.quantity}, got {qty}"
+                        f"Receive quantity for '{product.display_name}' must be between 1 and {outstanding} (outstanding), got {qty}"
                     )
                 loc_id = receive_locations.get(product.id)
                 if loc_id is not None:
@@ -476,7 +527,7 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
                         reference=o.order_number,
                     )
                     movements_by_location.setdefault(loc_id, []).append(movement)
-                item.received_qty = qty
+                item.received_qty = (item.received_qty or 0) + qty
         except inventory.InventoryError as exc:
             db.rollback()
             raise HTTPException(status_code=400, detail=str(exc))
@@ -486,6 +537,24 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
         for loc_id, movements in movements_by_location.items():
             inventory.auto_quarantine(db, db.get(Location, loc_id), movements)
 
+        outstanding_total = sum((it.quantity - (it.received_qty or 0)) for it in o.items)
+        if outstanding_total > 0:
+            # Not fully received: keep the order open and mark it partially
+            # received so the outstanding can be surfaced (and the remainder
+            # received or auto-reordered later) instead of closing it early.
+            o.status = "partially_received"
+            # Backorder feed autopilot: the same shortfall grouping the manual
+            # /backorder-outstanding endpoint uses is fed straight into the
+            # reorder factory here, so a partial receipt ACTIVELY produces the
+            # follow-up PO draft(s) instead of leaving the shortfall sitting as
+            # a quiet open line waiting for someone to POST it into existence.
+            other_groups = _outstanding_groups(o)
+            if other_groups:
+                _create_reorder_orders(
+                    db, user, other_groups,
+                    f"Backorder for outstanding on order '{o.order_number}' after partial receipt",
+                )
+
     db.commit()
     db.refresh(o)
 
@@ -493,14 +562,34 @@ def update_order(order_id: int, data: OrderUpdate, db: Session = Depends(get_db)
         notify_admins(db, f"Order {o.order_number} received",
                       f"{len(o.items)} item(s) added to stock",
                       type="success", link="/orders", exclude_user_id=user.id)
+        notify_supplier(db, o.supplier_id, f"Receipt recorded for {o.order_number}",
+                        f"{len(o.items)} item(s) added to stock against your PO.",
+                        type="success", link="/portal/orders")
         db.commit()
         db.refresh(o)
 
     order_number = o.order_number
     if status and status != prev_status:
         log_activity(db, user.id, user.username, "update", "order", order_id,
-                     f"Order '{order_number}' status changed to '{status}'")
+                     f"Order '{order_number}' status changed to '{o.status}'")
         db.commit()
+        if status == "approved" and o.supplier and (o.supplier.preferences or {}).get("notify_new_orders", True):
+            auto_acknowledged = o.status == "acknowledged"
+            supplier_users = db.query(User.id).filter(
+                User.supplier_id == o.supplier_id,
+                User.role == "supplier",
+                User.is_active == True,  # noqa: E712
+            ).all()
+            for (uid,) in supplier_users:
+                create_notification(
+                    db, uid,
+                    f"Purchase order {order_number} approved",
+                    ("Auto-acknowledged per your portal preference." if auto_acknowledged
+                     else "A new purchase order is awaiting your acknowledgment in the supplier portal."),
+                    type="info",
+                    link="/portal/orders",
+                )
+            db.commit()
     broadcast_change("order", "updated")
     return o
 

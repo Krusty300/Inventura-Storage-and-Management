@@ -9,7 +9,6 @@ import { formatCurrency } from "../../utils/currency";
 import { statusBadge } from "../../utils/statusBadges";
 import Table from "../../components/Table";
 import Pagination from "../../components/Pagination";
-import Skeleton from "../../components/Skeleton";
 import EmptyState from "../../components/EmptyState";
 import FittedSelect from "../../components/FittedSelect";
 import { errorMessage } from "../../utils/errors";
@@ -20,6 +19,7 @@ const STATUS_OPTIONS = [
   { value: "approved", label: "Approved" },
   { value: "acknowledged", label: "Acknowledged" },
   { value: "in_transit", label: "In transit" },
+  { value: "partially_received", label: "Partially received" },
   { value: "received", label: "Received" },
   { value: "cancelled", label: "Cancelled" },
 ];
@@ -79,8 +79,8 @@ export default function PortalOrders() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 items-center">
-        <div className="relative sm:col-span-2 lg:col-span-1">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 items-center">
+        <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input
             className="input pl-10"
@@ -90,7 +90,7 @@ export default function PortalOrders() {
             aria-label="Search orders"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-muted sm:col-span-1">
+        <label className="flex items-center gap-2 text-sm text-muted">
           <span className="whitespace-nowrap">Status</span>
           <FittedSelect
             value={status}
@@ -104,39 +104,35 @@ export default function PortalOrders() {
 
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
-          {isLoading ? (
-            <Skeleton variant="rows" rows={6} cols={5} />
-          ) : (
-            <Table
-              columns={[
-                { key: "order", header: "Order", className: "px-4 py-3 font-medium text-muted" },
-                { key: "date", header: "Date", className: "px-4 py-3 font-medium text-muted hidden sm:table-cell" },
-                { key: "expected", header: "Expected", className: "px-4 py-3 font-medium text-muted hidden md:table-cell" },
-                { key: "status", header: "Status", className: "px-4 py-3 font-medium text-muted" },
-                { key: "total", header: "Total", className: "px-4 py-3 font-medium text-muted text-right" },
-              ]}
-              aria-label="Portal purchase orders table"
-              loading={false}
-              skeletonRows={6}
-              noData={rows.length === 0}
-              empty={
-                <EmptyState
-                  title={search || status ? "No matching orders" : "No orders yet"}
-                  message={search || status ? "Try adjusting your search or status filter." : "Approved purchase orders will appear here."}
-                />
-              }
-            >
-              {rows.map((o) => (
-                <tr key={o.id} className="hover:bg-app cursor-pointer" onClick={() => navigate(`/portal/orders/${o.id}`)}>
-                  <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">{o.order_number}</td>
-                  <td className="px-4 py-3 text-muted whitespace-nowrap hidden sm:table-cell">{formatDate(o.created_at)}</td>
-                  <td className="px-4 py-3 text-muted whitespace-nowrap hidden md:table-cell">{o.expected_arrival ? formatDate(o.expected_arrival) : "—"}</td>
-                  <td className="px-4 py-3"><span className={`badge ${statusBadge(o.status)}`}>{STATUS_LABEL[o.status] ?? o.status}</span></td>
-                  <td className="px-4 py-3 text-right font-medium">{formatCurrency(o.total_amount, currencySymbol)}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
+          <Table
+            columns={[
+              { key: "order", header: "Order", className: "px-4 py-3 font-medium text-muted" },
+              { key: "date", header: "Date", className: "px-4 py-3 font-medium text-muted hidden sm:table-cell" },
+              { key: "expected", header: "Expected", className: "px-4 py-3 font-medium text-muted hidden md:table-cell" },
+              { key: "status", header: "Status", className: "px-4 py-3 font-medium text-muted" },
+              { key: "total", header: "Total", className: "px-4 py-3 font-medium text-muted text-right" },
+            ]}
+            aria-label="Portal purchase orders table"
+            loading={isLoading}
+            skeletonRows={6}
+            noData={rows.length === 0}
+            empty={
+              <EmptyState
+                title={search || status ? "No matching orders" : "No orders yet"}
+                message={search || status ? "Try adjusting your search or status filter." : "Approved purchase orders for your company will appear here."}
+              />
+            }
+          >
+            {rows.map((o) => (
+              <tr key={o.id} className="hover:bg-app cursor-pointer" onClick={() => navigate(`/portal/orders/${o.id}`)}>
+                <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">{o.order_number}</td>
+                <td className="px-4 py-3 text-muted whitespace-nowrap hidden sm:table-cell">{formatDate(o.created_at)}</td>
+                <td className="px-4 py-3 text-muted whitespace-nowrap hidden md:table-cell">{o.expected_arrival ? formatDate(o.expected_arrival) : "—"}</td>
+                <td className="px-4 py-3"><span className={`badge ${statusBadge(o.status)}`}>{STATUS_LABEL[o.status] ?? o.status}</span></td>
+                <td className="px-4 py-3 text-right font-medium">{formatCurrency(o.total_amount, currencySymbol)}</td>
+              </tr>
+            ))}
+          </Table>
         </div>
       </div>
 

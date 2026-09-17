@@ -310,6 +310,14 @@ button:disabled {
     border: none;
     transition: all 0.15s;
   }
+  .btn svg,
+  .btn-primary svg,
+  .btn-secondary svg,
+  .btn-danger svg {
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
   .btn:disabled,
   .btn-primary:disabled,
   .btn-secondary:disabled,

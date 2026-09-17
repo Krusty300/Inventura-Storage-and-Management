@@ -36,3 +36,7 @@ class User(SoftDeleteMixin, Base):
     @property
     def supplier_name(self) -> str:
         return self.supplier.name if self.supplier else ""
+
+    @property
+    def supplier_image_url(self) -> str:
+        return self.supplier.image_url if self.supplier else ""

@@ -42,7 +42,6 @@ import { useAuth } from "../context/AuthContext";
 import GlobalSearch from "../components/GlobalSearch";
 import ConfirmDialog from "../components/ConfirmDialog";
 import ProgressBar from "../components/ProgressBar";
-import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import AttachmentSection from "../components/AttachmentSection";
 import { errorMessage } from "../utils/errors";
@@ -239,7 +238,12 @@ export default function Dashboard() {
           <div key={i} className="space-y-3">
             <div className="h-4 w-20 bg-subtle-strong rounded animate-pulse" />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Skeleton variant="card" rows={count} />
+              {Array.from({ length: count }).map((_, j) => (
+                <div key={j} className="card">
+                  <div className="h-4 w-24 bg-subtle-strong rounded animate-pulse mb-3" />
+                  <div className="h-8 w-16 bg-subtle-strong rounded animate-pulse" />
+                </div>
+              ))}
             </div>
           </div>
         ))}

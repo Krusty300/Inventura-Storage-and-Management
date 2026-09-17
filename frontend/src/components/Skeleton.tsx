@@ -25,14 +25,14 @@ function TableSkeleton({ rows = 5, cols = 4 }: { rows?: number; cols?: number })
 
 function CardSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <>
+    <div className="space-y-6">
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="card">
           <div className="h-4 w-24 bg-subtle-strong rounded animate-pulse mb-3" />
           <div className="h-8 w-16 bg-subtle-strong rounded animate-pulse" />
         </div>
       ))}
-    </>
+    </div>
   );
 }
 

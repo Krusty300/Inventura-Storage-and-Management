@@ -15,6 +15,8 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { exportCSV } from "../utils/csv";
+import { entityImageUrl } from "../utils/images";
+import { onImageError } from "../utils/placeholders";
 
 const PASSWORD_HINT = "At least 8 characters.";
 
@@ -44,6 +46,7 @@ export default function Users() {
   const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
   const [approving, setApproving] = useState<User | null>(null);
   const [approveRole, setApproveRole] = useState("worker");
+  const [approveSupplierId, setApproveSupplierId] = useState("");
   const [rejecting, setRejecting] = useState<User | null>(null);
   const queryClient = useQueryClient();
   const { can, user } = useAuth();
@@ -78,8 +81,19 @@ export default function Users() {
 
   const pendingUsers = pendingData || [];
 
+  const { data: approveSuppliers } = useQuery({
+    queryKey: ["suppliers", "link"],
+    queryFn: async () => {
+      const { data } = await api.get("/suppliers", { params: { limit: 200 } });
+      return data as PaginatedResponse<Supplier>;
+    },
+    enabled: !!approving && approveRole === "supplier",
+  });
+  const approveSupplierOptions = (approveSuppliers?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }));
+
   const approveMutation = useMutation({
-    mutationFn: ({ id, role }: { id: number; role: string }) => api.post(`/users/${id}/approve`, { role }),
+    mutationFn: ({ id, role, supplier_id }: { id: number; role: string; supplier_id?: number }) =>
+      api.post(`/users/${id}/approve`, { role, supplier_id }),
     onSuccess: () => {
       addToast("User approved", "success");
       queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -263,7 +277,7 @@ export default function Users() {
                   <td className="px-4 py-3">
                     {can("users.update") && (
                       <div className="flex gap-2 items-center">
-                        <button onClick={() => { setApproving(u); setApproveRole(u.role); }} className="inline-flex items-center gap-1 btn-primary text-xs py-1 px-2">
+                        <button onClick={() => { setApproving(u); setApproveRole(u.role); setApproveSupplierId(""); }} className="inline-flex items-center gap-1 btn-primary text-xs py-1 px-2">
                           <Check size={14} /> Approve
                         </button>
                         <button onClick={() => setRejecting(u)} className="inline-flex items-center gap-1 btn-secondary text-xs py-1 px-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">
@@ -332,7 +346,12 @@ export default function Users() {
                         <span className="badge badge-success" title={`${u.permissions.length} custom permission(s)`}>Custom</span>
                       )}
                       {u.supplier_name && (
-                        <span className="text-xs text-muted truncate max-w-[160px]" title={u.supplier_name}>{u.supplier_name}</span>
+                        <span className="inline-flex items-center gap-1.5 min-w-0">
+                          {u.supplier_image_url && (
+                            <img src={entityImageUrl(u.supplier_image_url)} alt={u.supplier_name} onError={onImageError} className="h-4 w-4 rounded-full object-cover shrink-0" />
+                          )}
+                          <span className="text-xs text-muted truncate max-w-[160px]" title={u.supplier_name}>{u.supplier_name}</span>
+                        </span>
                       )}
                     </span>
                   )}
@@ -460,14 +479,35 @@ export default function Users() {
                 options={[
                   { value: "worker", label: "Worker" },
                   { value: "manager", label: "Manager" },
+                  { value: "supplier", label: "Supplier (portal)" },
                   ...(can("users.assign_admin_role") ? [{ value: "admin", label: "Admin" }] : []),
                 ]}
                 ariaLabel="Role"
               />
             </div>
+            {approveRole === "supplier" && (
+              <div>
+                <label htmlFor="approve-supplier" className="block text-sm font-medium text-ink mb-1">Linked supplier</label>
+                <FittedSelect
+                  value={approveSupplierId}
+                  onChange={setApproveSupplierId}
+                  options={approveSupplierOptions}
+                  placeholder={approveSupplierOptions.length ? "Select supplier..." : "No active suppliers"}
+                  ariaLabel="Linked supplier"
+                />
+              </div>
+            )}
             <div className="flex justify-end gap-3 pt-4">
               <button onClick={() => setApproving(null)} className="btn-secondary">Cancel</button>
-              <button onClick={() => approveMutation.mutate({ id: approving.id, role: approveRole })} className="btn-primary inline-flex items-center gap-1">
+              <button
+                onClick={() => approveMutation.mutate({
+                  id: approving.id,
+                  role: approveRole,
+                  supplier_id: approveRole === "supplier" ? Number(approveSupplierId) : undefined,
+                })}
+                disabled={approveRole === "supplier" && !approveSupplierId}
+                className="btn-primary inline-flex items-center gap-1"
+              >
                 <Check size={16} /> Approve
               </button>
             </div>
@@ -572,7 +612,7 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         )}
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Creating..." : "Create User"}</button>
+          <button type="submit" disabled={saving || (form.role === "supplier" && !form.supplier_id)} className="btn-primary">{saving ? "Creating..." : "Create User"}</button>
         </div>
       </form>
     </Modal>

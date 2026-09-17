@@ -565,17 +565,17 @@ function ShipmentDetail({ shipment, onClose, onChanged }: { shipment: Shipment; 
             )}
             <div className="ml-auto flex flex-wrap gap-2">
               {canPick && (
-                <button onClick={handlePick} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1 flex-1 sm:flex-none">
+                <button onClick={handlePick} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1 flex-1 sm:flex-none whitespace-nowrap">
                   <PackageOpen size={16} />Pick
                 </button>
               )}
               {canPack && (
-                <button onClick={() => run("pack", `/shipments/${current.id}/pack`, "Packed")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1 flex-1 sm:flex-none">
+                <button onClick={() => run("pack", `/shipments/${current.id}/pack`, "Packed")} disabled={busy !== null} className="btn-secondary inline-flex items-center gap-1 flex-1 sm:flex-none whitespace-nowrap">
                   <PackageCheck size={16} />Pack
                 </button>
               )}
               {canShip && (
-                <button onClick={ship} disabled={busy !== null} className="btn-primary inline-flex items-center gap-1 flex-1 sm:flex-none">
+                <button onClick={ship} disabled={busy !== null} className="btn-primary inline-flex items-center gap-1 flex-1 sm:flex-none whitespace-nowrap">
                   <PackagePlus size={16} />Product Shipping
                 </button>
               )}

@@ -1,4 +1,28 @@
+from pathlib import Path
+import shutil
+
 from tests.conftest import client
+
+
+def test_public_settings_includes_logo_url():
+    resp = client.get("/api/settings/public")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "store_name" in data
+    assert "logo_url" in data
+    assert data["logo_url"] == ""
+
+
+def test_try_load_image_resolves_uploads_alias(monkeypatch, tmp_path):
+    import app.routers.settings as settings_module
+    from app.services.pdf_helpers import _try_load_image
+
+    src = Path(__file__).resolve().parents[2] / "frontend" / "public" / "placeholders" / "cart-illustration.png"
+    target = tmp_path / "logo_test.png"
+    shutil.copy2(src, target)
+    monkeypatch.setattr(settings_module, "UPLOAD_DIR", tmp_path)
+
+    assert _try_load_image("/uploads/logo_test.png") is not None
 
 
 def test_get_settings_defaults(auth_headers):

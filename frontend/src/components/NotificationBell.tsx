@@ -6,6 +6,7 @@ import api from "../api/client";
 import type { Notification } from "../types";
 import { useRealtime } from "../context/RealtimeContext";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import ScrollArea from "./ScrollArea";
 import { errorMessage } from "../utils/errors";
@@ -25,8 +26,10 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const { subscribe } = useRealtime();
+  const { user } = useAuth();
   const { addToast } = useToast();
   const formatDateTime = useDateTimeFormat();
+  const allLink = user?.role === "supplier" ? "/portal/notifications" : "/notifications";
 
   const load = useCallback(async (withItems: boolean) => {
     if (withItems) setLoading(true);
@@ -215,7 +218,7 @@ export default function NotificationBell() {
                 })}
               </div>
               <button
-                onClick={() => { setOpen(false); navigate("/notifications"); }}
+                onClick={() => { setOpen(false); navigate(allLink); }}
                 className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 border-t border-border text-xs font-medium text-primary dark:text-primary hover:bg-app"
               >
                 View all <ArrowRight size={14} />

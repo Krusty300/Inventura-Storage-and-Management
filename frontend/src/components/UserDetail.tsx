@@ -8,6 +8,8 @@ import EmptyState from "./EmptyState";
 import SlideOver from "./SlideOver";
 import type { PaginatedResponse, User } from "../types";
 import { statusBadge } from "../utils/statusBadges";
+import { entityImageUrl } from "../utils/images";
+import { onImageError } from "../utils/placeholders";
 
 interface ActivityLogEntry {
   id: number;
@@ -64,8 +66,13 @@ export default function UserDetail({ user, onClose }: Props) {
                 {user.role}
               </span>
               {user.role === "supplier" && user.supplier_id && (
-                <span className="badge badge-neutral" title={`Supplier #${user.supplier_id}`}>
-                  {user.supplier_name || `Supplier #${user.supplier_id}`}
+                <span className="inline-flex items-center gap-1.5">
+                  {user.supplier_image_url && (
+                    <img src={entityImageUrl(user.supplier_image_url)} alt={user.supplier_name || "Supplier"} onError={onImageError} className="h-4 w-4 rounded-full object-cover border border-border shrink-0" />
+                  )}
+                  <span className="badge badge-neutral" title={`Supplier #${user.supplier_id}`}>
+                    {user.supplier_name || `Supplier #${user.supplier_id}`}
+                  </span>
                 </span>
               )}
               {user.is_active ? (
