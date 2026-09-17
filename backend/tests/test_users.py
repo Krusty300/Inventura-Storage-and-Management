@@ -206,3 +206,49 @@ def test_update_can_deactivate_but_not_self_or_last_admin(auth_headers):
     assert resp.json()["is_active"] is False
     # Deactivated user can no longer log in
     assert client.post("/api/auth/login", json={"username": "vanish", "password": "testpass123"}).status_code == 401
+
+
+def test_converting_worker_to_supplier_clears_note_assignments(auth_headers):
+    from tests.conftest import TestingSessionLocal
+    from app.models.note import Note
+    from app.models.supplier import Supplier
+    from app.models.user import User
+
+    db = TestingSessionLocal()
+    worker = User(username="worker-to-sup", email="wts@b.com", password_hash="x", role="worker")
+    db.add(worker)
+    db.commit()
+    db.refresh(worker)
+    worker_id = worker.id
+
+    note = Note(title="Assigned to worker", user_id=1, assigned_to_id=worker_id)
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    note_id = note.id
+    db.close()
+
+    # Verify note is assigned
+    detail = client.get(f"/api/notes/{note_id}", headers=auth_headers).json()
+    assert detail["assigned_to_id"] == worker_id
+
+    # Create a supplier for the binding
+    db2 = TestingSessionLocal()
+    supplier = Supplier(name="Test Supplier Co")
+    db2.add(supplier)
+    db2.commit()
+    db2.refresh(supplier)
+    supplier_id = supplier.id
+    db2.close()
+
+    # Convert worker → supplier (requires supplier_id binding)
+    resp = client.put(f"/api/users/{worker_id}", json={
+        "role": "supplier",
+        "supplier_id": supplier_id,
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "supplier"
+
+    # Note assignment should now be cleared
+    detail = client.get(f"/api/notes/{note_id}", headers=auth_headers).json()
+    assert detail["assigned_to_id"] is None

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Layout from "../components/Layout";
 import { AuthProvider } from "../context/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -170,13 +170,13 @@ describe("Layout", () => {
     expect(screen.queryByRole("navigation", { name: "Collapsed navigation" })).not.toBeInTheDocument();
   });
 
-  it("dispatches open-global-search on Ctrl+K", () => {
-    const handler = vi.fn();
-    window.addEventListener("open-global-search", handler);
+  it("opens and closes the command palette on Ctrl+K", () => {
     renderLayout();
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    expect(handler).toHaveBeenCalledTimes(1);
-    window.removeEventListener("open-global-search", handler);
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
   });
 
   it("expands the sidebar back after collapsing", () => {

@@ -155,6 +155,7 @@ export default function Notes() {
   const { data: users = [] } = useQuery({
     queryKey: ["assignable-users"],
     queryFn: async () => { const { data } = await api.get("/notes/assignable-users"); return data as User[]; },
+    staleTime: 0,
   });
 
   const { data: templates = [] } = useQuery({
@@ -279,7 +280,7 @@ export default function Notes() {
 
   const assignMutation = useMutation({
     mutationFn: ({ noteId, userId }: { noteId: number; userId: number | null }) => api.post(`/notes/${noteId}/assign`, { assigned_to_id: userId }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); addToast("Note reassigned", "success"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); queryClient.invalidateQueries({ queryKey: ["assignable-users"] }); addToast("Note reassigned", "success"); },
     onError: (err) => addToast(errorMessage(err, "Failed to assign note"), "error"),
   });
 

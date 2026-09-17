@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   LogOut,
   Menu,
+  Search,
   Sun,
   Moon,
   Monitor,
@@ -20,6 +21,7 @@ import FloatingSidebar from "./FloatingSidebar";
 import ScrollArea from "./ScrollArea";
 import DateTimeDisplay from "./DateTimeDisplay";
 import Breadcrumbs from "./Breadcrumbs";
+import CommandPalette from "./CommandPalette";
 import { navGroups } from "../utils/navItems";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
@@ -102,10 +104,6 @@ export default function Layout() {
       if ((e.ctrlKey || e.metaKey) && e.key === "b") {
         e.preventDefault();
         toggleSidebarCollapsed();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-        e.preventDefault();
-        window.dispatchEvent(new CustomEvent("open-global-search"));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -277,6 +275,16 @@ export default function Layout() {
             <div className="hidden md:block text-lg font-semibold text-ink">Inventura Storage</div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent("open-command-palette"))}
+              aria-label="Open command palette"
+              title="Command palette (Ctrl+K)"
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-subtle text-sm text-muted hover:text-ink hover:bg-subtle-strong transition-colors"
+            >
+              <Search size={14} />
+              <span className="hidden lg:inline">Search</span>
+              <kbd className="text-[10px] font-mono px-1 py-px rounded bg-surface border border-border text-faint">Ctrl+K</kbd>
+            </button>
             <DateTimeDisplay />
             <div
               role="group"
@@ -372,6 +380,8 @@ export default function Layout() {
           </div>
         </div>
       )}
+
+      <CommandPalette />
     </div>
   );
 }

@@ -155,6 +155,75 @@ class TestAssign:
         resp = test_client.post(f"/api/notes/{note_id}/assign", json={"assigned_to_id": 99999}, headers=auth_headers)
         assert resp.status_code == 404
 
+    def test_cannot_assign_note_to_supplier(self, test_client, auth_headers):
+        from tests.conftest import TestingSessionLocal
+        from app.models.supplier import Supplier
+        from app.models.user import User
+        db = TestingSessionLocal()
+        supplier = Supplier(name="Acme Supplies")
+        db.add(supplier)
+        db.commit()
+        db.refresh(supplier)
+        su = User(username="acme-portal", email="portal@acme.com", password_hash="x",
+                  role="supplier", supplier_id=supplier.id)
+        db.add(su)
+        db.commit()
+        db.refresh(su)
+        su_id = su.id
+        db.close()
+
+        create = test_client.post("/api/notes", json={"title": "Assign to supplier"}, headers=auth_headers)
+        note_id = create.json()["id"]
+        resp = test_client.post(f"/api/notes/{note_id}/assign", json={"assigned_to_id": su_id}, headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_create_note_rejects_supplier_assignee(self, test_client, auth_headers):
+        from tests.conftest import TestingSessionLocal
+        from app.models.supplier import Supplier
+        from app.models.user import User
+        db = TestingSessionLocal()
+        supplier = Supplier(name="Acme Supplies 2")
+        db.add(supplier)
+        db.commit()
+        db.refresh(supplier)
+        su = User(username="acme-portal-2", email="portal2@acme.com", password_hash="x",
+                  role="supplier", supplier_id=supplier.id)
+        db.add(su)
+        db.commit()
+        db.refresh(su)
+        su_id = su.id
+        db.close()
+
+        resp = test_client.post(
+            "/api/notes",
+            json={"title": "Bad assignee", "assigned_to_id": su_id},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_assignable_users_excludes_suppliers(self, test_client, auth_headers):
+        from tests.conftest import TestingSessionLocal
+        from app.models.supplier import Supplier
+        from app.models.user import User
+        db = TestingSessionLocal()
+        worker = User(username="worker-assign", email="wa@b.com", password_hash="x", role="worker")
+        db.add(worker)
+        supplier = Supplier(name="Acme Supplies 3")
+        db.add(supplier)
+        db.commit()
+        db.refresh(supplier)
+        su = User(username="supplier-assign", email="sa@b.com", password_hash="x",
+                  role="supplier", supplier_id=supplier.id)
+        db.add(su)
+        db.commit()
+        db.close()
+
+        resp = test_client.get("/api/notes/assignable-users", headers=auth_headers)
+        assert resp.status_code == 200
+        names = {u["username"] for u in resp.json()}
+        assert "worker-assign" in names
+        assert "supplier-assign" not in names
+
 
 # --- Tags ---
 

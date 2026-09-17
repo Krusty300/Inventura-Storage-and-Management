@@ -25,6 +25,7 @@ from app.schemas.note import (
 )
 from app.services.auth import get_current_user, require_permission
 from app.services.filters import apply_date_range
+from app.services.permissions import has_permission
 from app.services.notify import create_notification, notify_note_assigned
 from app.services.soft_delete import register, soft_delete
 from app.models.notification import Notification
@@ -110,6 +111,15 @@ def resolve_entity_label(db: Session, entity_type: str, entity_id: int) -> str:
     if not obj:
         return ""
     return getattr(obj, col_name, "") or ""
+
+
+def _valid_assignee(db: Session, user_id: int) -> bool:
+    assignee = db.query(User).filter(
+        User.id == user_id,
+        User.is_active == True,  # noqa: E712
+        User.is_deleted == False,  # noqa: E712
+    ).first()
+    return bool(assignee and has_permission(assignee.role, "notes.view"))
 
 
 def _serialize_note(note: Note) -> dict:
@@ -293,6 +303,9 @@ def create_note(data: NoteCreate, db: Session = Depends(get_db), user: User = De
         raise HTTPException(status_code=400, detail=f"Invalid priority: {data.priority}")
     if data.recurrence not in VALID_RECURRENCE:
         raise HTTPException(status_code=400, detail=f"Invalid recurrence: {data.recurrence}")
+    if data.assigned_to_id is not None:
+        if not _valid_assignee(db, data.assigned_to_id):
+            raise HTTPException(status_code=400, detail="Invalid assignee")
 
     note = Note(
         title=data.title,
@@ -328,7 +341,11 @@ def create_note(data: NoteCreate, db: Session = Depends(get_db), user: User = De
 
 @router.get("/assignable-users")
 def list_assignable_users(db: Session = Depends(get_db)):
-    users = db.query(User).filter(User.is_active == True).order_by(User.username).all()  # noqa: E712
+    users = db.query(User).filter(
+        User.is_active == True,  # noqa: E712
+        User.is_deleted == False,  # noqa: E712
+        User.role != "supplier",
+    ).order_by(User.username).all()
     return [{"id": u.id, "username": u.username} for u in users]
 
 
@@ -415,6 +432,11 @@ def update_note(note_id: int, data: NoteUpdate, db: Session = Depends(get_db), u
         raise HTTPException(status_code=400, detail=f"Invalid priority: {update_data['priority']}")
     if "recurrence" in update_data and update_data["recurrence"] not in VALID_RECURRENCE:
         raise HTTPException(status_code=400, detail=f"Invalid recurrence: {update_data['recurrence']}")
+
+    if "assigned_to_id" in update_data:
+        if update_data["assigned_to_id"] is not None:
+            if not _valid_assignee(db, update_data["assigned_to_id"]):
+                raise HTTPException(status_code=400, detail="Invalid assignee")
 
     if "image_url" in update_data and not update_data["image_url"] and note.image_url:
         old_path = UPLOAD_DIR / Path(note.image_url).name
@@ -602,9 +624,8 @@ def duplicate_note(note_id: int, db: Session = Depends(get_db), user: User = Dep
 def assign_note(note_id: int, data: NoteAssign, db: Session = Depends(get_db), user: User = Depends(require_permission("notes.update"))):
     note = get_or_404(Note, note_id, db)
     if data.assigned_to_id is not None:
-        assignee = db.get(User, data.assigned_to_id)
-        if not assignee:
-            raise HTTPException(status_code=404, detail="User not found")
+        if not _valid_assignee(db, data.assigned_to_id):
+            raise HTTPException(status_code=404, detail="Assignee not found or cannot receive notes")
     note.assigned_to_id = data.assigned_to_id
     db.commit()
     db.refresh(note)

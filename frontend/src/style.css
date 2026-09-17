@@ -305,6 +305,7 @@ button:disabled {
     font-size: 0.875rem;
     font-weight: 600;
     line-height: 1.25;
+    white-space: nowrap;
     box-sizing: border-box;
     cursor: pointer;
     border: none;
@@ -374,6 +375,12 @@ button:disabled {
   outline: 2px solid var(--t-primary-ring);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+.command-palette-input:focus,
+.command-palette-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .select {

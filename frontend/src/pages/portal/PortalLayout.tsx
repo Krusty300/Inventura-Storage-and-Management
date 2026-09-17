@@ -1,12 +1,13 @@
 import { useCallback, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, LayoutDashboard, ClipboardList, PackageCheck, PackageOpen, Bell, Settings as SettingsIcon } from "lucide-react";
+import { LogOut, LayoutDashboard, ClipboardList, PackageCheck, PackageOpen, Bell, Search, Settings as SettingsIcon } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import NotificationBell from "../../components/NotificationBell";
+import CommandPalette from "../../components/CommandPalette";
 import type { PortalMe } from "../../types";
 
 export default function PortalLayout() {
@@ -50,6 +51,14 @@ export default function PortalLayout() {
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent("open-command-palette"))}
+              aria-label="Open command palette"
+              title="Command palette (Ctrl+K)"
+              className="p-2 text-faint hover:text-ink rounded-lg"
+            >
+              <Search size={18} />
+            </button>
             <NotificationBell />
             <span className="hidden sm:inline-flex badge badge-info">Supplier</span>
             <button onClick={handleLogout} className="p-2 text-faint hover:text-ink rounded-lg" title="Log out" aria-label="Log out">
@@ -91,6 +100,8 @@ export default function PortalLayout() {
           </div>
         </div>
       )}
+
+      <CommandPalette portal />
     </div>
   );
 }

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database import get_db
+from app.models.note import Note
 from app.models.session import UserSession
 from app.models.supplier import Supplier
 from app.models.user import User
@@ -291,6 +292,11 @@ def update_user(
                 raise HTTPException(status_code=400, detail="Cannot deactivate the last admin")
     final_role = updates.get("role", u.role)
     final_supplier_id = updates.get("supplier_id", u.supplier_id)
+    if u.role != "supplier" and final_role == "supplier":
+        db.query(Note).filter(
+            Note.assigned_to_id == u.id,
+            Note.is_deleted == False,  # noqa: E712
+        ).update({Note.assigned_to_id: None}, synchronize_session=False)
     if u.supplier_id is not None and final_role != "supplier":
         updates.setdefault("supplier_id", None)
         final_supplier_id = None
