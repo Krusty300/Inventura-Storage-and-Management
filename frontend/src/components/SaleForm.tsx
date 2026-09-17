@@ -476,7 +476,11 @@ export default function SaleForm({ onClose, onSaved }: Props) {
   }, [isDraftRestored, isLocked]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[aria-label="Command palette"]')) return;
+      handleClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [handleClose]);
@@ -908,7 +912,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                   aria-label="Locked form username"
                 />
               </div>
-<div>
+              <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Password</label>
                   <PasswordInput
                     id="sale-lock-password"
@@ -958,6 +962,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
                     value={lockUsername}
                     onChange={(e) => setLockUsername(e.target.value)}
                     autoComplete="username"
+                    aria-label="Locked form username"
                   />
                 </div>
                 <div>
@@ -1117,7 +1122,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
         )}
 
         <aside
-          className="shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-surface flex flex-col max-h-[50vh] lg:max-h-none lg:h-auto overflow-y-auto lg:overflow-visible"
+          className="shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-surface flex flex-col h-[50vh] lg:h-auto overflow-y-auto lg:overflow-visible"
           style={{ width: isWide ? `${cartWidth}px` : undefined }}
           aria-label="Sale cart"
         >
@@ -1131,7 +1136,7 @@ export default function SaleForm({ onClose, onSaved }: Props) {
               onDelete={handleDeleteCart}
             />
           </div>
-          <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+          <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-visible lg:overflow-hidden">
             <div className="px-5 py-4 border-b border-border space-y-3">
               <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-3">
                 <div>
