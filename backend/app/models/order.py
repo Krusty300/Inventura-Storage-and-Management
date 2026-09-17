@@ -17,6 +17,8 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     notes: Mapped[str] = mapped_column(Text, default="")
+    supplier_delivery_notes: Mapped[str] = mapped_column(Text, default="")
+    supplier_instructions: Mapped[str] = mapped_column(Text, default="")
     expected_arrival: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())

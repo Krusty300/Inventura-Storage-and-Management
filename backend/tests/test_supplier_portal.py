@@ -270,6 +270,86 @@ def test_portal_transition_notifies_admins(auth_headers):
     )
 
 
+# ---------------------------------------------------------------- order notes
+
+def test_portal_order_notes_save_and_read_back(auth_headers):
+    supplier = _make_supplier(auth_headers, "Note Taker Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "NOTES-1")
+    _make_supplier_account(auth_headers, "notetaker", supplier_id=supplier["id"]).json()
+    headers = _login("notetaker")
+    resp = client.put(f"/api/portal/orders/{order['id']}/notes", json={
+        "delivery_notes": "3 pallets, use dock B",
+        "instructions": "Keep upright",
+    }, headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["supplier_delivery_notes"] == "3 pallets, use dock B"
+    assert resp.json()["supplier_instructions"] == "Keep upright"
+    detail = client.get(f"/api/portal/orders/{order['id']}", headers=headers).json()
+    assert detail["supplier_delivery_notes"] == "3 pallets, use dock B"
+    assert detail["supplier_instructions"] == "Keep upright"
+    # The buyer team can see the supplier's notes on the order too.
+    internal = client.get(f"/api/orders/{order['id']}", headers=auth_headers).json()
+    assert internal["supplier_delivery_notes"] == "3 pallets, use dock B"
+    assert internal["supplier_instructions"] == "Keep upright"
+
+
+def test_portal_order_notes_partial_update(auth_headers):
+    supplier = _make_supplier(auth_headers, "Partial Note Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "PNOTES-1")
+    _make_supplier_account(auth_headers, "partialnote", supplier_id=supplier["id"]).json()
+    headers = _login("partialnote")
+    resp = client.put(f"/api/portal/orders/{order['id']}/notes", json={
+        "instructions": "Call on arrival",
+    }, headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["supplier_delivery_notes"] == ""
+    assert resp.json()["supplier_instructions"] == "Call on arrival"
+
+
+def test_portal_order_notes_scoped(auth_headers):
+    sup_a = _make_supplier(auth_headers, "Notes Scoped A")
+    sup_b = _make_supplier(auth_headers, "Notes Scoped B")
+    order_b = _approved_order(auth_headers, sup_b["id"], "NSCOPE-B")
+    _make_supplier_account(auth_headers, "nscope_a", supplier_id=sup_a["id"]).json()
+    headers = _login("nscope_a")
+    resp = client.put(f"/api/portal/orders/{order_b['id']}/notes", json={
+        "delivery_notes": "intrusion attempt",
+    }, headers=headers)
+    assert resp.status_code == 404
+    # Supplier B's notes were not touched.
+    _make_supplier_account(auth_headers, "nscope_b", supplier_id=sup_b["id"]).json()
+    headers_b = _login("nscope_b")
+    detail = client.get(f"/api/portal/orders/{order_b['id']}", headers=headers_b).json()
+    assert detail["supplier_delivery_notes"] == ""
+
+
+def test_portal_order_notes_length_limited(auth_headers):
+    supplier = _make_supplier(auth_headers, "Long Note Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "LONGNOTE-1")
+    _make_supplier_account(auth_headers, "longnote", supplier_id=supplier["id"]).json()
+    headers = _login("longnote")
+    resp = client.put(f"/api/portal/orders/{order['id']}/notes", json={
+        "delivery_notes": "x" * 2001,
+    }, headers=headers)
+    assert resp.status_code == 422
+    assert "2000" in resp.json()["detail"][0]["msg"]
+
+
+def test_portal_order_notes_notify_admins(auth_headers):
+    supplier = _make_supplier(auth_headers, "Noting Supplier")
+    order = _approved_order(auth_headers, supplier["id"], "NOTIFY-NOTE-1")
+    _make_supplier_account(auth_headers, "notifynote", supplier_id=supplier["id"]).json()
+    headers = _login("notifynote")
+    client.put(f"/api/portal/orders/{order['id']}/notes", json={
+        "delivery_notes": "Arriving Thursday",
+    }, headers=headers)
+    notifications = client.get("/api/notifications", headers=auth_headers).json()
+    assert any(
+        "notes updated" in n["title"].lower() and order["order_number"] in n["title"]
+        for n in notifications["items"]
+    )
+
+
 # ---------------------------------------------------------------- ASN/receipts
 
 def _in_transit_order(auth_headers, supplier_id, sku, quantity=2):

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search, Pin, PinOff, CheckCircle2, Circle, Trash2, Edit3, Clock,
-  AlertTriangle, Tag as TagIcon, Link as LinkIcon, StickyNote, ListTodo, Bell,
+  AlertTriangle, Tag as TagIcon, Link as LinkIcon, NotebookTabs, ListTodo, Bell,
   LayoutGrid, List, Columns3, X as XIcon, User as UserIcon, Image as ImageIcon,
   Copy, Archive, ArchiveRestore, BookTemplate, ChevronUp, ChevronDown, Eye,
   Info, FileText, CalendarDays, ExternalLink, Download,
@@ -26,6 +26,7 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import EntitySearchInput from "../components/EntitySearchInput";
 import FittedSelect from "../components/FittedSelect";
 import DatePicker from "../components/DatePicker";
+import ExpandableTabs, { type ExpandableTabsTab } from "../components/ExpandableTabs";
 import { LINKABLE_ENTITIES, getEntityTypeLabel, getEntityTypeIcon } from "../utils/linkableEntities";
 import { buildCalendarEvents, buildIcsEvents, downloadIcs, googleCalUrl, outlookCalUrl, safeFilename } from "../utils/calendar";
 import { useDebounce } from "../hooks/useDebounce";
@@ -55,13 +56,20 @@ type ViewMode = "list" | "card" | "kanban" | "calendar";
 
 const EMPTY_FORM: NoteForm = { title: "", body: "", category: "note", priority: "normal", is_pinned: false, due_date: "", recurrence: "none", assigned_to_id: null, tag_ids: [], links: [] };
 
-const CATEGORY_ICONS: Record<string, typeof StickyNote> = { note: StickyNote, reminder: Bell, todo: ListTodo };
+const CATEGORY_ICONS: Record<string, typeof NotebookTabs> = { note: NotebookTabs, reminder: Bell, todo: ListTodo };
 const PRIORITY_COLORS: Record<string, string> = { low: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400", normal: "bg-gray-100 text-gray-600 dark:bg-gray-500/20 dark:text-gray-400", high: "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400", urgent: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 ring-1 ring-red-300 dark:ring-red-500/40" };
 const CATEGORY_COLORS: Record<string, string> = { note: "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400", reminder: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400", todo: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" };
-const KANBAN_COLUMNS: { key: string; label: string; icon: typeof StickyNote; dot: string }[] = [
-  { key: "note", label: "Notes", icon: StickyNote, dot: "bg-sky-400" },
+const KANBAN_COLUMNS: { key: string; label: string; icon: typeof NotebookTabs; dot: string }[] = [
+  { key: "note", label: "Notes", icon: NotebookTabs, dot: "bg-sky-400" },
   { key: "reminder", label: "Reminders", icon: Bell, dot: "bg-amber-400" },
   { key: "todo", label: "Todos", icon: ListTodo, dot: "bg-emerald-400" },
+];
+
+const NOTE_VIEW_TABS: ExpandableTabsTab<ViewMode>[] = [
+  { id: "list", label: "List", icon: List },
+  { id: "card", label: "Card", icon: LayoutGrid },
+  { id: "kanban", label: "Kanban", icon: Columns3 },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
 ];
 
 function priorityBadge(p: string) {
@@ -473,7 +481,6 @@ export default function Notes() {
   };
 
   const tabClasses = (active: boolean) => `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${active ? "bg-primary-soft text-primary-strong dark:bg-primary/20 dark:text-primary" : "text-muted hover:text-ink hover:bg-subtle"}`;
-  const viewBtnClass = (active: boolean) => `p-1.5 rounded transition-colors ${active ? "bg-surface text-primary dark:text-primary shadow-sm" : "text-muted hover:text-ink"}`;
 
   const renderNoteActions = (note: Note) => (
     <div className="flex items-center gap-1 shrink-0">
@@ -490,7 +497,7 @@ export default function Notes() {
   );
 
   const renderNoteTableRow = (note: Note) => {
-    const CatIcon = CATEGORY_ICONS[note.category] || StickyNote;
+    const CatIcon = CATEGORY_ICONS[note.category] || NotebookTabs;
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
@@ -568,7 +575,7 @@ export default function Notes() {
     </div>
   );
   const renderNoteCard = (note: Note) => {
-    const CatIcon = CATEGORY_ICONS[note.category] || StickyNote;
+    const CatIcon = CATEGORY_ICONS[note.category] || NotebookTabs;
     const overdue = isOverdue(note.due_date, note.is_completed);
     const dueSoon = isDueSoon(note.due_date, note.is_completed);
     return (
@@ -688,7 +695,7 @@ export default function Notes() {
       <EmptyState
         title="No notes yet"
         message="Create your first note to get started"
-        icon={<StickyNote size={48} />}
+        icon={<NotebookTabs size={48} />}
         actionLabel={can("notes.create") ? "New Note" : undefined}
         onAction={can("notes.create") ? openCreate : undefined}
       />
@@ -778,7 +785,7 @@ export default function Notes() {
 
   const renderDetailPanel = () => {
     if (!viewingNote) return null;
-    const CatIcon = CATEGORY_ICONS[viewingNote.category] || StickyNote;
+    const CatIcon = CATEGORY_ICONS[viewingNote.category] || NotebookTabs;
     return (
       <SlideOver open={!!viewingNote} title={viewingNote.title} onClose={() => setViewingNote(null)} wide>
         <div className="space-y-6">
@@ -922,7 +929,7 @@ export default function Notes() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
           <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
-            <StickyNote size={22} strokeWidth={2} />
+            <NotebookTabs size={22} strokeWidth={2} />
           </div>
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-bold text-ink">Notes</h1>
@@ -939,12 +946,6 @@ export default function Notes() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div role="group" aria-label="View mode" className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
-            <button onClick={() => setViewMode("list")} className={viewBtnClass(viewMode === "list")} title="List view" aria-label="List view"><List size={16} /></button>
-            <button onClick={() => setViewMode("card")} className={viewBtnClass(viewMode === "card")} title="Card view" aria-label="Card view"><LayoutGrid size={16} /></button>
-            <button onClick={() => setViewMode("kanban")} className={viewBtnClass(viewMode === "kanban")} title="Kanban view" aria-label="Kanban view"><Columns3 size={16} /></button>
-            <button onClick={() => setViewMode("calendar")} className={viewBtnClass(viewMode === "calendar")} title="Calendar view" aria-label="Calendar view"><CalendarDays size={16} /></button>
-          </div>
           {can("notes.create") && (
             <button onClick={() => setShowTagManager(true)} className="btn-secondary text-sm px-3 py-1.5" aria-label="Manage tags" title="Manage tags"><TagIcon size={16} /></button>
           )}
@@ -1008,66 +1009,70 @@ export default function Notes() {
         </div>
       </div>
 
-      {viewMode === "list" && (
-        <div className="flex gap-2 items-center text-sm">
-          <span className="text-muted">Sort by:</span>
-          {[
-            { key: "created_at", label: "Created" },
-            { key: "updated_at", label: "Updated" },
-            { key: "due_date", label: "Due date" },
-            { key: "title", label: "Title" },
-            { key: "priority", label: "Priority" },
-          ].map((s) => (
-            <button
-              key={s.key}
-              onClick={() => { if (sortField === s.key) setSortOrder(sortOrder === "asc" ? "desc" : "asc"); else { setSortField(s.key); setSortOrder(s.key === "due_date" ? "asc" : "desc"); } }}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${sortField === s.key ? "bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary" : "text-muted hover:text-ink hover:bg-subtle"}`}
-            >
-              {s.label}
-              {sortField === s.key && (sortOrder === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {selectedIds.size > 0 && can("notes.update") && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-primary-soft dark:bg-primary/10 rounded-lg border border-primary-soft dark:border-primary/30 flex-wrap">
-          <span className="text-sm font-medium text-primary-strong dark:text-primary">{selectedIds.size} selected</span>
-          <button onClick={() => bulkArchiveMutation.mutate({ ids: Array.from(selectedIds), archive: completedFilter !== "archived" })} className="btn-primary text-sm px-3 py-1.5" disabled={bulkArchiveMutation.isPending}>
-            {completedFilter === "archived" ? "Unarchive" : "Archive"}
-          </button>
-          <button onClick={() => bulkCompleteMutation.mutate({ ids: Array.from(selectedIds), is_completed: true })} className="btn-secondary text-sm px-3 py-1.5" disabled={bulkCompleteMutation.isPending}>
-            Complete
-          </button>
-          <FittedSelect
-            value=""
-            onChange={(val) => { if (val) { bulkPriorityMutation.mutate({ ids: Array.from(selectedIds), priority: val }); } }}
-            options={[
-              { value: "low", label: "Low" },
-              { value: "normal", label: "Normal" },
-              { value: "high", label: "High" },
-              { value: "urgent", label: "Urgent" },
-            ]}
-            placeholder="Set priority..."
-            ariaLabel="Set priority"
-            maxWidth={140}
-          />
-          {can("notes.delete") && (
-            <button onClick={() => setConfirmBulkDelete(true)} className="text-sm px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-800 font-medium" disabled={bulkDeleteMutation.isPending}>
-              Delete
-            </button>
+      <ExpandableTabs value={viewMode} onChange={setViewMode} tabs={NOTE_VIEW_TABS} ariaLabel="View mode">
+        <div className="space-y-4">
+          {viewMode === "list" && (
+            <div className="flex gap-2 items-center text-sm">
+              <span className="text-muted">Sort by:</span>
+              {[
+                { key: "created_at", label: "Created" },
+                { key: "updated_at", label: "Updated" },
+                { key: "due_date", label: "Due date" },
+                { key: "title", label: "Title" },
+                { key: "priority", label: "Priority" },
+              ].map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => { if (sortField === s.key) setSortOrder(sortOrder === "asc" ? "desc" : "asc"); else { setSortField(s.key); setSortOrder(s.key === "due_date" ? "asc" : "desc"); } }}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${sortField === s.key ? "bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary" : "text-muted hover:text-ink hover:bg-subtle"}`}
+                >
+                  {s.label}
+                  {sortField === s.key && (sortOrder === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                </button>
+              ))}
+            </div>
           )}
-          <button onClick={clearSelection} className="text-sm text-primary dark:text-primary hover:text-primary-strong dark:text-primary underline ml-auto">
-            Clear
-          </button>
+
+          {selectedIds.size > 0 && can("notes.update") && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-primary-soft dark:bg-primary/10 rounded-lg border border-primary-soft dark:border-primary/30 flex-wrap">
+              <span className="text-sm font-medium text-primary-strong dark:text-primary">{selectedIds.size} selected</span>
+              <button onClick={() => bulkArchiveMutation.mutate({ ids: Array.from(selectedIds), archive: completedFilter !== "archived" })} className="btn-primary text-sm px-3 py-1.5" disabled={bulkArchiveMutation.isPending}>
+                {completedFilter === "archived" ? "Unarchive" : "Archive"}
+              </button>
+              <button onClick={() => bulkCompleteMutation.mutate({ ids: Array.from(selectedIds), is_completed: true })} className="btn-secondary text-sm px-3 py-1.5" disabled={bulkCompleteMutation.isPending}>
+                Complete
+              </button>
+              <FittedSelect
+                value=""
+                onChange={(val) => { if (val) { bulkPriorityMutation.mutate({ ids: Array.from(selectedIds), priority: val }); } }}
+                options={[
+                  { value: "low", label: "Low" },
+                  { value: "normal", label: "Normal" },
+                  { value: "high", label: "High" },
+                  { value: "urgent", label: "Urgent" },
+                ]}
+                placeholder="Set priority..."
+                ariaLabel="Set priority"
+                maxWidth={140}
+              />
+              {can("notes.delete") && (
+                <button onClick={() => setConfirmBulkDelete(true)} className="text-sm px-3 py-1.5 text-red-600 dark:text-red-400 hover:text-red-800 font-medium" disabled={bulkDeleteMutation.isPending}>
+                  Delete
+                </button>
+              )}
+              <button onClick={clearSelection} className="text-sm text-primary dark:text-primary hover:text-primary-strong dark:text-primary underline ml-auto">
+                Clear
+              </button>
+            </div>
+          )}
+
+          <div className={viewMode === "kanban" ? "" : "card overflow-hidden p-0"}>
+            {renderContent()}
+          </div>
+
+          {data && viewMode !== "kanban" && viewMode !== "calendar" && <Pagination page={page} totalPages={data.pages} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />}
         </div>
-      )}
-
-      <div className={viewMode === "kanban" ? "" : "card overflow-hidden p-0"}>
-        {renderContent()}
-      </div>
-
-      {data && viewMode !== "kanban" && viewMode !== "calendar" && <Pagination page={page} totalPages={data.pages} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />}
+      </ExpandableTabs>
 
       <SlideOver open={showForm} title={editingNote ? "Edit Note" : "New Note"} onClose={() => { setShowForm(false); setEditingNote(null); setForm(EMPTY_FORM); }} wide>
           <div className="space-y-5">
@@ -1268,7 +1273,7 @@ export default function Notes() {
               {templates.map((t) => (
                 <div key={t.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-subtle transition-colors">
                   <div className="flex items-center gap-2.5 text-sm min-w-0">
-                    <StickyNote size={14} className="text-muted shrink-0" />
+                    <NotebookTabs size={14} className="text-muted shrink-0" />
                     <div className="min-w-0">
                       <div className="font-medium text-ink truncate">{t.name}</div>
                       <div className="text-xs text-muted">{t.category} / {t.priority}</div>

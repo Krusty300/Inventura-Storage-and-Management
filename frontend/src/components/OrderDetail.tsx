@@ -518,6 +518,24 @@ actions={
               <p className="text-muted">{order.notes}</p>
             </div>
           )}
+
+          {(order.supplier_delivery_notes || order.supplier_instructions) && (
+            <div className="px-6 pb-5 text-sm space-y-3">
+              <p className="text-faint text-xs uppercase tracking-wide mb-1">Supplier notes</p>
+              {order.supplier_delivery_notes && (
+                <div>
+                  <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Delivery notes</p>
+                  <p className="text-muted whitespace-pre-wrap">{order.supplier_delivery_notes}</p>
+                </div>
+              )}
+              {order.supplier_instructions && (
+                <div>
+                  <p className="text-faint text-xs uppercase tracking-wide mb-0.5">Special instructions</p>
+                  <p className="text-muted whitespace-pre-wrap">{order.supplier_instructions}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {receiving && (

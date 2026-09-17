@@ -70,6 +70,8 @@ class OrderOut(BaseModel):
     status: str
     total_amount: float
     notes: str
+    supplier_delivery_notes: str = ""
+    supplier_instructions: str = ""
     expected_arrival: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

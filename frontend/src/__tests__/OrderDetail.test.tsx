@@ -22,6 +22,8 @@ function makeOrder(overrides: Record<string, unknown> = {}): Order {
     status: "approved",
     total_amount: 250,
     notes: "",
+    supplier_delivery_notes: "",
+    supplier_instructions: "",
     expected_arrival: null,
     created_at: "2026-01-01T10:00:00",
     updated_at: "2026-01-01T10:00:00",

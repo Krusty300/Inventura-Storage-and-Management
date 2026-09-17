@@ -229,6 +229,8 @@ export interface Order {
   status: string;
   total_amount: number;
   notes: string;
+  supplier_delivery_notes: string;
+  supplier_instructions: string;
   expected_arrival: string | null;
   created_at: string;
   updated_at: string;

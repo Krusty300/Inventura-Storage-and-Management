@@ -202,14 +202,14 @@ describe("Notes Page", () => {
     const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     mockNotes([mockNote({ title: "Ship order", due_date: `${iso}T09:00:00` })]);
     renderWithProviders(<Notes />);
-    fireEvent.click(await screen.findByLabelText("Calendar view"));
+    fireEvent.click(await screen.findByRole("tab", { name: "Calendar" }));
     expect(await screen.findByText("Ship order")).toBeInTheDocument();
   });
 
   it("shows the empty calendar state when nothing is due", async () => {
     mockNotes([mockNote({ due_date: null })]);
     renderWithProviders(<Notes />);
-    fireEvent.click(await screen.findByLabelText("Calendar view"));
+    fireEvent.click(await screen.findByRole("tab", { name: "Calendar" }));
     expect(await screen.findByText("No dated tasks")).toBeInTheDocument();
   });
 
@@ -222,7 +222,7 @@ describe("Notes Page", () => {
     putMock.mockResolvedValue({ data: mockNote({ title: "Move me", due_date: `${iso}T09:00:00` }) });
     mockNotes([mockNote({ title: "Move me", due_date: `${iso}T09:00:00` })]);
     renderWithProviders(<Notes />);
-    fireEvent.click(await screen.findByLabelText("Calendar view"));
+    fireEvent.click(await screen.findByRole("tab", { name: "Calendar" }));
 
     const chip = await screen.findByText("Move me");
     fireEvent.dragStart(chip, {

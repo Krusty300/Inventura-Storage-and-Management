@@ -1,11 +1,13 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCheck, Truck, FileText, Loader2, Clock } from "lucide-react";
+import { ArrowLeft, CheckCheck, Truck, FileText, Loader2, Clock, Save } from "lucide-react";
 import api from "../../api/client";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import { formatCurrency } from "../../utils/currency";
 import { statusBadge } from "../../utils/statusBadges";
 import Skeleton from "../../components/Skeleton";
+import TextArea from "../../components/TextArea";
 import { errorMessage } from "../../utils/errors";
 import { useToast } from "../../context/ToastContext";
 import type { Order, PortalMe } from "../../types";
@@ -44,6 +46,17 @@ export default function PortalOrderDetail() {
     queryFn: async () => (await api.get(`/portal/orders/${orderId}`)).data as Order,
   });
 
+  const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [notesTouched, setNotesTouched] = useState(false);
+  useEffect(() => {
+    if (order) {
+      setDeliveryNotes(order.supplier_delivery_notes || "");
+      setInstructions(order.supplier_instructions || "");
+      setNotesTouched(false);
+    }
+  }, [order]);
+
   const patchMutation = useMutation({
     mutationFn: (status: string) => api.patch(`/portal/orders/${orderId}`, { status }),
     onSuccess: () => {
@@ -54,6 +67,20 @@ export default function PortalOrderDetail() {
       queryClient.invalidateQueries({ queryKey: ["portal", "me"] });
     },
     onError: (err: unknown) => addToast(errorMessage(err, "Failed to update order"), "error"),
+  });
+
+  const saveNotesMutation = useMutation({
+    mutationFn: () =>
+      api.put(`/portal/orders/${orderId}/notes`, {
+        delivery_notes: deliveryNotes,
+        instructions,
+      }),
+    onSuccess: () => {
+      addToast("Delivery notes saved", "success");
+      setNotesTouched(false);
+      queryClient.invalidateQueries({ queryKey: ["portal", "order", orderId] });
+    },
+    onError: (err: unknown) => addToast(errorMessage(err, "Failed to save notes"), "error"),
   });
 
   const downloadPdf = async () => {
@@ -159,6 +186,53 @@ export default function PortalOrderDetail() {
         {order.notes && (
           <p className="text-sm text-muted mt-4 border-t border-border pt-4">{order.notes}</p>
         )}
+      </div>
+
+      <div className="card p-5">
+        <h2 className="font-semibold text-ink">Delivery notes & special instructions</h2>
+        <p className="text-sm text-muted mt-0.5">
+          Add delivery notes or special instructions for the buyer team to see when this order is received.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2 mt-4">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Delivery notes</label>
+            <TextArea
+              rows={3}
+              ariaLabel="Delivery notes"
+              placeholder="e.g. pallet count, carrier, dock contact"
+              value={deliveryNotes}
+              maxLength={2000}
+              onChange={(v) => {
+                setDeliveryNotes(v);
+                setNotesTouched(true);
+              }}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Special instructions</label>
+            <TextArea
+              rows={3}
+              ariaLabel="Special instructions"
+              placeholder="e.g. fragile, cold-chain, unload details"
+              value={instructions}
+              maxLength={2000}
+              onChange={(v) => {
+                setInstructions(v);
+                setNotesTouched(true);
+              }}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={() => saveNotesMutation.mutate()}
+            disabled={!notesTouched || saveNotesMutation.isPending}
+            className="btn-primary inline-flex items-center gap-1.5"
+          >
+            {saveNotesMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Save notes
+          </button>
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">

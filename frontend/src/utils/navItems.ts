@@ -27,7 +27,7 @@ import {
   PackageOpen,
   TrendingUp,
   CircleUser,
-  StickyNote,
+  NotebookTabs,
   BadgePercent,
   Tag,
   UsersRound,
@@ -127,7 +127,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { to: "/stock-movements", icon: ArrowLeftRight, label: "Movements", perm: "stock.view" },
       { to: "/exceptions", icon: AlertTriangle, label: "Exceptions", perm: "reports.view" },
-      { to: "/notes", icon: StickyNote, label: "Notes", perm: "notes.view" },
+      { to: "/notes", icon: NotebookTabs, label: "Notes", perm: "notes.view" },
     ],
   },
   {

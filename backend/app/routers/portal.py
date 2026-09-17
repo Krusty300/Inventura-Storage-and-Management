@@ -71,9 +71,26 @@ PORTAL_TRANSITIONS = {
     "acknowledged": ("in_transit",),
 }
 
+MAX_ORDER_NOTE_LENGTH = 2000
+
 
 class PortalStatusUpdate(BaseModel):
     status: str
+
+
+class PortalOrderNotes(BaseModel):
+    delivery_notes: Optional[str] = None
+    instructions: Optional[str] = None
+
+    @field_validator("delivery_notes", "instructions")
+    @classmethod
+    def _strip_and_limit_notes(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = v.strip()
+        if len(v) > MAX_ORDER_NOTE_LENGTH:
+            raise ValueError(f"Notes cannot exceed {MAX_ORDER_NOTE_LENGTH} characters")
+        return v
 
 
 class PortalProfileUpdate(BaseModel):
@@ -440,6 +457,35 @@ def portal_order_pdf(
 ):
     o = _get_portal_order(db, supplier, order_id)
     return render_order_pdf(db, o)
+
+
+@router.put("/orders/{order_id}/notes", response_model=OrderOut)
+def portal_update_order_notes(
+    order_id: int,
+    data: PortalOrderNotes,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    supplier: Supplier = Depends(require_supplier),
+):
+    o = _get_portal_order(db, supplier, order_id)
+    if data.delivery_notes is not None:
+        o.supplier_delivery_notes = data.delivery_notes
+    if data.instructions is not None:
+        o.supplier_instructions = data.instructions
+    db.commit()
+    db.refresh(o)
+    log_activity(db, user.id, user.username, "update", "order", o.id,
+                 f"Supplier '{supplier.name}' updated delivery notes on '{o.order_number}'")
+    notify_admins(
+        db, f"PO {o.order_number} notes updated",
+        f"Supplier '{supplier.name}' updated delivery notes on order #{o.order_number}.",
+        type="info",
+        link="/orders",
+        exclude_user_id=user.id,
+    )
+    db.commit()
+    broadcast_change("order", "updated")
+    return o
 
 
 @router.get("/asns")
