@@ -7,6 +7,7 @@ import { formatCurrency } from "../../utils/currency";
 import { statusBadge } from "../../utils/statusBadges";
 import Skeleton from "../../components/Skeleton";
 import EmptyState from "../../components/EmptyState";
+import StatCard, { KpiGrid } from "../../components/StatCard";
 import { errorMessage } from "../../utils/errors";
 import { entityImageUrl } from "../../utils/images";
 import { onImageError } from "../../utils/placeholders";
@@ -64,65 +65,17 @@ export default function PortalOverview() {
           </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="card p-5 flex items-center gap-4">
-          <span className="w-10 h-10 rounded-xl bg-primary-soft dark:bg-primary/20 text-primary-strong dark:text-primary flex items-center justify-center shrink-0">
-            <ClipboardList size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs text-muted">Total orders</p>
-            <p className="text-2xl font-bold text-ink">{summary.total_orders}</p>
-          </div>
-        </div>
-        <div className="card p-5 flex items-center gap-4">
-          <span className="w-10 h-10 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <PackageOpen size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs text-muted">Open orders</p>
-            <p className="text-2xl font-bold text-ink">{summary.open_orders}</p>
-          </div>
-        </div>
-        <div className="card p-5 flex items-center gap-4">
-          <span className="w-10 h-10 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <CircleDollarSign size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs text-muted">Open value</p>
-            <p className="text-2xl font-bold text-ink">{formatCurrency(summary.open_value, currencySymbol)}</p>
-          </div>
-        </div>
-      </div>
+      <KpiGrid columns={3}>
+        <StatCard icon={ClipboardList} tone="primary" label="Total orders" value={summary.total_orders} />
+        <StatCard icon={PackageOpen} tone="amber" label="Open orders" value={summary.open_orders} />
+        <StatCard icon={CircleDollarSign} tone="emerald" label="Open value" value={formatCurrency(summary.open_value, currencySymbol)} />
+      </KpiGrid>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="card p-5 flex items-center gap-4">
-          <span className="w-10 h-10 rounded-xl bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
-            <PackageCheck size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs text-muted">Shipments</p>
-            <p className="text-2xl font-bold text-ink">{summary.total_asns}</p>
-          </div>
-        </div>
-        <div className="card p-5 flex items-center gap-4">
-          <span className="w-10 h-10 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <Truck size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs text-muted">Open shipments</p>
-            <p className="text-2xl font-bold text-ink">{summary.asn_counts.pending ?? 0}</p>
-          </div>
-        </div>
-        <div className="card p-5 flex items-center gap-4">
-          <span className="w-10 h-10 rounded-xl bg-violet-500/10 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
-            <Package size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs text-muted">Deliveries</p>
-            <p className="text-2xl font-bold text-ink">{summary.receipt_count}</p>
-          </div>
-        </div>
-      </div>
+      <KpiGrid columns={3}>
+        <StatCard icon={PackageCheck} tone="sky" label="Shipments" value={summary.total_asns} />
+        <StatCard icon={Truck} tone="amber" label="Open shipments" value={summary.asn_counts.pending ?? 0} />
+        <StatCard icon={Package} tone="violet" label="Deliveries" value={summary.receipt_count} />
+      </KpiGrid>
 
       <div className="flex flex-wrap gap-2">
         {STATUS_ORDER.map((st) => (

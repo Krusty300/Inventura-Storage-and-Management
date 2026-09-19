@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { LogOut, LayoutDashboard, ClipboardList, PackageCheck, PackageOpen, Bell, Search, Settings as SettingsIcon } from "lucide-react";
 import api from "../../api/client";
@@ -8,11 +8,23 @@ import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import NotificationBell from "../../components/NotificationBell";
 import CommandPalette from "../../components/CommandPalette";
+import ExpandableTabs, { type ExpandableTabsTab } from "../../components/ExpandableTabs";
 import type { PortalMe } from "../../types";
+
+const PORTAL_NAV_TABS: ExpandableTabsTab<string>[] = [
+  { id: "/portal", label: "Overview", icon: LayoutDashboard },
+  { id: "/portal/orders", label: "Purchase Orders", icon: ClipboardList },
+  { id: "/portal/asns", label: "Shipments", icon: PackageCheck },
+  { id: "/portal/receipts", label: "Deliveries", icon: PackageOpen },
+  { id: "/portal/notifications", label: "Notifications", icon: Bell },
+  { id: "/portal/settings", label: "Settings", icon: SettingsIcon },
+];
 
 export default function PortalLayout() {
   const { user, logout, completeLogout } = useAuth();
   const [loggingOut, setLoggingOut] = useState(false);
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { data: me } = useQuery({
     queryKey: ["portal", "me"],
     queryFn: async () => (await api.get("/portal/me")).data as PortalMe,
@@ -23,11 +35,6 @@ export default function PortalLayout() {
     logout();
     setTimeout(() => completeLogout(), 600);
   }, [logout, completeLogout]);
-
-  const navLink = ({ isActive }: { isActive: boolean }) =>
-    `inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-      isActive ? "bg-primary-soft dark:bg-primary/15 text-primary-strong dark:text-primary" : "text-muted hover:text-ink hover:bg-subtle"
-    }`;
 
   return (
     <div className="min-h-screen bg-app flex flex-col">
@@ -66,31 +73,19 @@ export default function PortalLayout() {
             </button>
           </div>
         </div>
-        <nav className="max-w-6xl mx-auto px-4 sm:px-6 pb-3 flex items-center gap-1" aria-label="Portal navigation">
-          <NavLink to="/portal" end className={navLink}>
-            <LayoutDashboard size={16} /> Overview
-          </NavLink>
-          <NavLink to="/portal/orders" className={navLink}>
-            <ClipboardList size={16} /> Purchase Orders
-          </NavLink>
-          <NavLink to="/portal/asns" className={navLink}>
-            <PackageCheck size={16} /> Shipments
-          </NavLink>
-          <NavLink to="/portal/receipts" className={navLink}>
-            <PackageOpen size={16} /> Deliveries
-          </NavLink>
-          <NavLink to="/portal/notifications" className={navLink}>
-            <Bell size={16} /> Notifications
-          </NavLink>
-          <NavLink to="/portal/settings" className={navLink}>
-            <SettingsIcon size={16} /> Settings
-          </NavLink>
-        </nav>
       </header>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6">
+      <ExpandableTabs
+        value={pathname}
+        onChange={(to) => navigate(to)}
+        tabs={PORTAL_NAV_TABS}
+        ariaLabel="Portal navigation"
+        position="top"
+        matchByPrefix
+        className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6"
+      >
         <Outlet />
-      </main>
+      </ExpandableTabs>
 
       {loggingOut && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-app/80 backdrop-blur-sm">

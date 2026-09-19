@@ -2,7 +2,7 @@ import type { SavedSearchEntry } from "../components/SavedSearches";
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, Package, PackagePlus, Search, Fingerprint, ExternalLink, PanelRightOpen } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, History, Eye, ClipboardList, ChevronRight, ChevronDown, Package, PackagePlus, Fingerprint, ExternalLink, PanelRightOpen } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Category, PaginatedResponse, Product, StockMovement } from "../types";
@@ -20,7 +20,8 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import SlideOver from "../components/SlideOver";
 import Drawer from "../components/Drawer";
 import BarcodeScanner from "../components/BarcodeScanner";
-import FittedSelect from "../components/FittedSelect";
+import PageHeader from "../components/PageHeader";
+import FilterBar from "../components/FilterBar";
 import Skeleton from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import Pagination from "../components/Pagination";
@@ -188,6 +189,12 @@ export default function Products() {
       else next.delete(key);
       return next;
     }, { replace: true });
+  };
+
+  const onFilterChange = (key: string, value: string) => {
+    if (key === "search") { setSearch(value); setPage(1); return; }
+    if (key === "category") { setCategoryFilter(value); setPage(1); updateSearchParam("category", value); return; }
+    if (key === "expiry") { setExpiryFilter(value); setPage(1); updateSearchParam("expiry", value); return; }
   };
 
   useEffect(() => {
@@ -385,83 +392,85 @@ export default function Products() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-y-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
-            <Package size={22} strokeWidth={2} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-ink">Products</h1>
-            <p className="text-sm text-muted mt-1">Manage the items you stock, sell, and manufacture.</p>
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import products from CSV">
-            Import
-          </button>
-          <button onClick={handleExport} className="btn-secondary" aria-label="Export products to CSV">
-            Export
-          </button>
-          <button onClick={handleLabels} className="btn-secondary" aria-label="Print barcode labels">
-            Labels
-          </button>
-          <button onClick={() => { setEditing(null); setVariantParent(null); setShowForm(true); }} className="btn-primary">
-            Add Product
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Package}
+        title="Products"
+        subtitle="Manage the items you stock, sell, and manufacture."
+        actions={
+          <>
+            <button onClick={() => setShowImport(true)} className="btn-secondary" aria-label="Import products from CSV">
+              Import
+            </button>
+            <button onClick={handleExport} className="btn-secondary" aria-label="Export products to CSV">
+              Export
+            </button>
+            <button onClick={handleLabels} className="btn-secondary" aria-label="Print barcode labels">
+              Labels
+            </button>
+            <button onClick={() => { setEditing(null); setVariantParent(null); setShowForm(true); }} className="btn-primary">
+              Add Product
+            </button>
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
-        <div className="relative sm:col-span-2 lg:col-span-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-          <input
-            className="input pl-10"
-            placeholder="Search by Product Name and SKU ..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && search.trim()) addRecent(search.trim()); }}
-            aria-label="Search products"
-          />
-        </div>
+      <FilterBar
+        columns={4}
+        values={{ search, category: categoryFilter, expiry: expiryFilter }}
+        setFilter={onFilterChange}
+        items={[
+          {
+            type: "search",
+            ariaLabel: "Search products",
+            placeholder: "Search by Product Name and SKU ...",
+            className: "sm:col-span-2 lg:col-span-1",
+            onKeyDown: (e) => { if (e.key === "Enter" && search.trim()) addRecent(search.trim()); },
+          },
+          { type: "custom", render: () => <BarcodeScanner onProductFound={(p) => { setSearch(p.sku); setPage(1); }} /> },
+          {
+            type: "select",
+            key: "category",
+            ariaLabel: "Filter by category",
+            placeholder: "All Categories",
+            maxWidth: 220,
+            options: (categories || []).map((c) => ({ value: String(c.id), label: c.name })),
+          },
+          {
+            type: "select",
+            key: "expiry",
+            ariaLabel: "Filter by expiry",
+            placeholder: "All Expiry",
+            maxWidth: 220,
+            options: [
+              { value: "expiring", label: `Expiring Soon (${expiryWindow} days)` },
+              { value: "expired", label: "Expired" },
+            ],
+          },
+        ]}
+      />
 
-        <BarcodeScanner onProductFound={(p) => { setSearch(p.sku); setPage(1); }} />
-        <FittedSelect
-          value={categoryFilter}
-          onChange={(v) => { setCategoryFilter(v); setPage(1); updateSearchParam("category", v); }}
-          ariaLabel="Filter by category"
-          maxWidth={220}
-          options={[{ value: "", label: "All Categories" }, ...(categories || []).map((c) => ({ value: String(c.id), label: c.name }))]}
-        />
-        <FittedSelect
-          value={expiryFilter}
-          onChange={(v) => { setExpiryFilter(v); setPage(1); updateSearchParam("expiry", v); }}
-          ariaLabel="Filter by expiry"
-          maxWidth={220}
-          options={[
-            { value: "", label: "All Expiry" },
-            { value: "expiring", label: `Expiring Soon (${expiryWindow} days)` },
-            { value: "expired", label: "Expired" },
-          ]}
-        />
-        {expiryFilter && (
-          <button
-            onClick={() => { setExpiryFilter(""); setPage(1); updateSearchParam("expiry", ""); }}
-            className="badge badge-warning cursor-pointer border border-amber-300"
-            aria-label="Clear expiry filter"
-          >
-            {expiryFilter === "expired" ? "Expired ✕" : `Expiring Soon (${expiryWindow} days) ✕`}
-          </button>
-        )}
-        {lowStock && (
-          <button
-            onClick={() => { setLowStock(false); setPage(1); updateSearchParam("low_stock", ""); }}
-            className="badge badge-warning cursor-pointer border border-amber-300"
-            aria-label="Clear low stock filter"
-          >
-            Low Stock ✕
-          </button>
-        )}
-      </div>
+      {(expiryFilter || lowStock) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {expiryFilter && (
+            <button
+              onClick={() => { setExpiryFilter(""); setPage(1); updateSearchParam("expiry", ""); }}
+              className="badge badge-warning cursor-pointer border border-amber-300"
+              aria-label="Clear expiry filter"
+            >
+              {expiryFilter === "expired" ? "Expired ✕" : `Expiring Soon (${expiryWindow} days) ✕`}
+            </button>
+          )}
+          {lowStock && (
+            <button
+              onClick={() => { setLowStock(false); setPage(1); updateSearchParam("low_stock", ""); }}
+              className="badge badge-warning cursor-pointer border border-amber-300"
+              aria-label="Clear low stock filter"
+            >
+              Low Stock ✕
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
         <NumericRangeInput

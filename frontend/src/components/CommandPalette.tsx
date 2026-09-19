@@ -292,7 +292,7 @@ export default function CommandPalette({ portal = false }: { portal?: boolean })
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-150" onClick={close} />
       <div
         ref={paletteRef}
-        className="relative w-full max-w-xl rounded-2xl border border-border bg-surface shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-150"
+        className="relative w-full max-w-xl rounded-3xl border border-border bg-surface shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-150"
       >
         <div className="flex items-center gap-3 px-4 border-b border-border">
           <Search size={18} className="text-faint shrink-0" />

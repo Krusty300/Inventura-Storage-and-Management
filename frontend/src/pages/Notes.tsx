@@ -26,6 +26,8 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import EntitySearchInput from "../components/EntitySearchInput";
 import FittedSelect from "../components/FittedSelect";
 import DatePicker from "../components/DatePicker";
+import PageHeader from "../components/PageHeader";
+import FilterBar from "../components/FilterBar";
 import ExpandableTabs, { type ExpandableTabsTab } from "../components/ExpandableTabs";
 import { LINKABLE_ENTITIES, getEntityTypeLabel, getEntityTypeIcon } from "../utils/linkableEntities";
 import { buildCalendarEvents, buildIcsEvents, downloadIcs, googleCalUrl, outlookCalUrl, safeFilename } from "../utils/calendar";
@@ -926,90 +928,102 @@ export default function Notes() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
-            <NotebookTabs size={22} strokeWidth={2} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-ink">Notes</h1>
-            <p className="text-sm text-muted mt-1">Notes, reminders, and todos — linked to the rest of your warehouse.</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
-            {(["all", "active", "completed", "archived"] as const).map((f) => (
-              <button key={f} onClick={() => { setCompletedFilter(f); setPage(1); clearSelection(); }} className={tabClasses(completedFilter === f)}>
-                {f === "all" ? "All" : f === "active" ? "Active" : f === "completed" ? "Done" : "Archived"}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {can("notes.create") && (
-            <button onClick={() => setShowTagManager(true)} className="btn-secondary text-sm px-3 py-1.5" aria-label="Manage tags" title="Manage tags"><TagIcon size={16} /></button>
-          )}
-          {can("notes.create") && (
-            <button onClick={() => setShowTemplateManager(true)} className="btn-secondary text-sm px-3 py-1.5" aria-label="Templates" title="Templates"><BookTemplate size={16} /></button>
-          )}
-          {can("notes.create") && (
-            <button onClick={openCreate} className="btn-primary">New Note</button>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        icon={NotebookTabs}
+        title="Notes"
+        subtitle="Notes, reminders, and todos — linked to the rest of your warehouse."
+        actions={
+          <>
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-subtle p-0.5">
+              {(["all", "active", "completed", "archived"] as const).map((f) => (
+                <button key={f} onClick={() => { setCompletedFilter(f); setPage(1); clearSelection(); }} className={tabClasses(completedFilter === f)}>
+                  {f === "all" ? "All" : f === "active" ? "Active" : f === "completed" ? "Done" : "Archived"}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              {can("notes.create") && (
+                <button onClick={() => setShowTagManager(true)} className="btn-secondary text-sm px-3 py-1.5" aria-label="Manage tags" title="Manage tags"><TagIcon size={16} /></button>
+              )}
+              {can("notes.create") && (
+                <button onClick={() => setShowTemplateManager(true)} className="btn-secondary text-sm px-3 py-1.5" aria-label="Templates" title="Templates"><BookTemplate size={16} /></button>
+              )}
+              {can("notes.create") && (
+                <button onClick={openCreate} className="btn-primary">New Note</button>
+              )}
+            </div>
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
-        <div className="relative sm:col-span-2 lg:col-span-2">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-          <input className="input pl-10 w-full" placeholder="Search notes..." aria-label="Search notes" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-        </div>
-        <FittedSelect
-          value={category}
-          onChange={(val) => { setCategory(val); setPage(1); }}
-          options={[
-            { value: "", label: "All categories" },
-            { value: "note", label: "Notes" },
-            { value: "reminder", label: "Reminders" },
-            { value: "todo", label: "Todos" },
-          ]}
-          ariaLabel="Filter by category"
-          maxWidth={180}
-        />
-        <FittedSelect
-          value={priority}
-          onChange={(val) => { setPriority(val); setPage(1); }}
-          options={[
-            { value: "", label: "All priorities" },
-            { value: "low", label: "Low" },
-            { value: "normal", label: "Normal" },
-            { value: "high", label: "High" },
-            { value: "urgent", label: "Urgent" },
-          ]}
-          ariaLabel="Filter by priority"
-          maxWidth={180}
-        />
-        <FittedSelect
-          value={tagFilter}
-          onChange={(val) => { setTagFilter(val); setPage(1); }}
-          options={[{ value: "", label: "All tags" }, ...tags.map((t) => ({ value: String(t.id), label: t.name }))]}
-          ariaLabel="Filter by tag"
-          maxWidth={180}
-        />
-        <FittedSelect
-          value={assigneeFilter}
-          onChange={(val) => { setAssigneeFilter(val); setPage(1); }}
-          options={[{ value: "", label: "All assignees" }, ...users.map((u) => ({ value: String(u.id), label: u.username }))]}
-          ariaLabel="Filter by assignee"
-          maxWidth={180}
-        />
-        <div role="group" aria-label="Filter by due date" className="sm:col-span-2 lg:col-span-2 flex items-center gap-2">
-          <DatePicker value={dueDateFrom} onChange={(v) => { setDueDateFrom(v); setPage(1); }} ariaLabel="Due after" className="flex-1 min-w-0" />
-          <span className="text-faint text-sm shrink-0 select-none" aria-hidden="true">to</span>
-          <DatePicker value={dueDateTo} onChange={(v) => { setDueDateTo(v); setPage(1); }} ariaLabel="Due before" className="flex-1 min-w-0" />
-        </div>
-      </div>
+      <FilterBar
+        columns={4}
+        values={{ search, category, priority, tag: tagFilter, assignee: assigneeFilter }}
+        setFilter={(key, value) => {
+          if (key === "search") { setSearch(value); setPage(1); return; }
+          if (key === "category") { setCategory(value); setPage(1); return; }
+          if (key === "priority") { setPriority(value); setPage(1); return; }
+          if (key === "tag") { setTagFilter(value); setPage(1); return; }
+          if (key === "assignee") { setAssigneeFilter(value); setPage(1); return; }
+        }}
+        items={[
+          { type: "search", ariaLabel: "Search notes", placeholder: "Search notes..." },
+          {
+            type: "select",
+            key: "category",
+            ariaLabel: "Filter by category",
+            placeholder: "All categories",
+            maxWidth: 180,
+            options: [
+              { value: "note", label: "Notes" },
+              { value: "reminder", label: "Reminders" },
+              { value: "todo", label: "Todos" },
+            ],
+          },
+          {
+            type: "select",
+            key: "priority",
+            ariaLabel: "Filter by priority",
+            placeholder: "All priorities",
+            maxWidth: 180,
+            options: [
+              { value: "low", label: "Low" },
+              { value: "normal", label: "Normal" },
+              { value: "high", label: "High" },
+              { value: "urgent", label: "Urgent" },
+            ],
+          },
+          {
+            type: "select",
+            key: "tag",
+            ariaLabel: "Filter by tag",
+            placeholder: "All tags",
+            maxWidth: 180,
+            options: tags.map((t) => ({ value: String(t.id), label: t.name })),
+          },
+          {
+            type: "select",
+            key: "assignee",
+            ariaLabel: "Filter by assignee",
+            placeholder: "All assignees",
+            maxWidth: 180,
+            options: users.map((u) => ({ value: String(u.id), label: u.username })),
+          },
+          {
+            type: "custom",
+            className: "sm:col-span-2 lg:col-span-2",
+            render: () => (
+              <div role="group" aria-label="Filter by due date" className="flex items-center gap-2">
+                <DatePicker value={dueDateFrom} onChange={(v) => { setDueDateFrom(v); setPage(1); }} ariaLabel="Due after" className="flex-1 min-w-0" />
+                <span className="text-faint text-sm shrink-0 select-none" aria-hidden="true">to</span>
+                <DatePicker value={dueDateTo} onChange={(v) => { setDueDateTo(v); setPage(1); }} ariaLabel="Due before" className="flex-1 min-w-0" />
+              </div>
+            ),
+          },
+        ]}
+      />
 
-      <ExpandableTabs value={viewMode} onChange={setViewMode} tabs={NOTE_VIEW_TABS} ariaLabel="View mode">
+      <ExpandableTabs value={viewMode} onChange={setViewMode} tabs={NOTE_VIEW_TABS} ariaLabel="View mode" position="top">
         <div className="space-y-4">
           {viewMode === "list" && (
             <div className="flex gap-2 items-center text-sm">

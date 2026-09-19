@@ -1,22 +1,23 @@
 import { useDateTimeFormat } from "../hooks/useDateTimeFormat";
 import { useState } from "react";
-import { Pencil, Eye, Trash2, Printer, Search, ShoppingCart, Fingerprint } from "lucide-react";
+import { Pencil, Eye, Trash2, Printer, ShoppingCart, Fingerprint } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Order, PaginatedResponse } from "../types";
 import OrderForm from "../components/OrderForm";
 import OrderDetail from "../components/OrderDetail";
 import ConfirmDialog from "../components/ConfirmDialog";
-import FittedSelect from "../components/FittedSelect";
 import BulkActionBar from "../components/BulkActionBar";
 import EntityBulkEditModal, { type BulkFieldConfig } from "../components/EntityBulkEditModal";
+import PageHeader from "../components/PageHeader";
+import FilterBar from "../components/FilterBar";
 import Pagination from "../components/Pagination";
 import Table from "../components/Table";
 import EmptyState from "../components/EmptyState";
-import { useDebounce } from "../hooks/useDebounce";
 import { useBulkSelection } from "../hooks/useBulkSelection";
 import { useSettings } from "../hooks/useSettings";
 import { useExportCsv } from "../hooks/useExportCsv";
+import { usePageQuery } from "../hooks/usePageQuery";
 import { formatCurrency } from "../utils/currency";
 import { statusBadge } from "../utils/statusBadges";
 import { overdueStatus } from "../utils/date";
@@ -24,14 +25,9 @@ import { errorMessage } from "../utils/errors";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 
-import { usePageSize } from "../hooks/usePageSize";
-
 export default function Orders() {
   const formatDateTime = useDateTimeFormat();
-  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get("search") ?? "");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [page, setPage] = useState(1);
-  const { pageSize, setPageSize } = usePageSize();
+  const q = usePageQuery<{ status: string }>({ status: "" });
   const [showForm, setShowForm] = useState(() => new URLSearchParams(window.location.search).get("new") === "1");
   const [editing, setEditing] = useState<Order | null>(null);
   const [viewing, setViewing] = useState<Order | null>(null);
@@ -43,7 +39,6 @@ export default function Orders() {
   const { can } = useAuth();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
-  const debouncedSearch = useDebounce(search, 300);
   const { exportCsv } = useExportCsv();
 
   const deleteMutation = useMutation({
@@ -77,12 +72,9 @@ export default function Orders() {
   };
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["orders", debouncedSearch, statusFilter, page, pageSize],
+    queryKey: ["orders", ...q.deps],
     queryFn: async () => {
-      const params: Record<string, string> = { skip: ((page - 1) * pageSize).toString(), limit: pageSize.toString() };
-      if (debouncedSearch) params.search = debouncedSearch;
-      if (statusFilter) params.status = statusFilter;
-      const { data } = await api.get("/orders", { params });
+      const { data } = await api.get("/orders", { params: q.params });
       return data as PaginatedResponse<Order>;
     },
   });
@@ -101,7 +93,7 @@ export default function Orders() {
   ];
 
   const handleExport = () => {
-    exportCsv("/reports/export/orders", "orders_report.csv", "Orders", debouncedSearch ? { search: debouncedSearch } : undefined);
+    exportCsv("/reports/export/orders", "orders_report.csv", "Orders", q.debouncedSearch ? { search: q.debouncedSearch } : undefined);
   };
 
   const printPdf = async (o: Order) => {
@@ -128,53 +120,51 @@ export default function Orders() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-y-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="hidden sm:flex items-center justify-center w-11 h-11 rounded-xl bg-primary-soft text-primary-strong dark:text-primary shrink-0">
-            <ShoppingCart size={22} strokeWidth={2} />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-ink">Orders / Purchase Orders</h1>
-            <p className="text-sm text-muted mt-1">Place and receive orders with your suppliers.</p>
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={handleExport} className="btn-secondary" aria-label="Export orders to CSV">
-            Export
-          </button>
-          <button onClick={() => setConfirmAutoReorder(true)} className="btn-secondary" aria-label="Auto-reorder low stock">
-            Reorder
-          </button>
-          <button onClick={() => setShowForm(true)} className="btn-primary">
-            New Order
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={ShoppingCart}
+        title="Orders / Purchase Orders"
+        subtitle="Place and receive orders with your suppliers."
+        actions={
+          <>
+            <button onClick={handleExport} className="btn-secondary" aria-label="Export orders to CSV">
+              Export
+            </button>
+            <button onClick={() => setConfirmAutoReorder(true)} className="btn-secondary" aria-label="Auto-reorder low stock">
+              Reorder
+            </button>
+            <button onClick={() => setShowForm(true)} className="btn-primary">
+              New Order
+            </button>
+          </>
+        }
+      />
 
       {isError && <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">{errorMessage(error, "Failed to load orders")}</div>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-2">
-        <div className="relative sm:col-span-2 lg:col-span-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-          <input className="input pl-10" placeholder="Search by order number..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Search orders" />
-        </div>
-        <FittedSelect
-          value={statusFilter}
-          onChange={(v) => { setStatusFilter(v); setPage(1); }}
-          ariaLabel="Filter by status"
-          maxWidth={150}
-          options={[
-            { value: "", label: "All statuses" },
-            { value: "pending", label: "Pending" },
-            { value: "submitted", label: "Submitted" },
-            { value: "approved", label: "Approved" },
-            { value: "acknowledged", label: "Acknowledged" },
-            { value: "in_transit", label: "In Transit" },
-            { value: "received", label: "Received" },
-            { value: "cancelled", label: "Cancelled" },
-          ]}
-        />
-      </div>
+      <FilterBar
+        columns={2}
+        values={{ search: q.search, ...q.filters }}
+        setFilter={q.setFilter}
+        items={[
+          { type: "search", ariaLabel: "Search orders", placeholder: "Search by order number...", className: "sm:col-span-2 lg:col-span-1" },
+          {
+            type: "select",
+            key: "status",
+            ariaLabel: "Filter by status",
+            placeholder: "All statuses",
+            maxWidth: 150,
+            options: [
+              { value: "pending", label: "Pending" },
+              { value: "submitted", label: "Submitted" },
+              { value: "approved", label: "Approved" },
+              { value: "acknowledged", label: "Acknowledged" },
+              { value: "in_transit", label: "In Transit" },
+              { value: "received", label: "Received" },
+              { value: "cancelled", label: "Cancelled" },
+            ],
+          },
+        ]}
+      />
 
       <BulkActionBar count={selectedIds.size} canEdit={can("orders.bulk")} onEdit={() => setShowBulkEdit(true)} onClear={clearSelection} />
 
@@ -197,7 +187,7 @@ export default function Orders() {
           loading={isLoading}
           skeletonRows={5}
           noData={orders.length === 0}
-          empty={<EmptyState title={search || statusFilter ? "No matching orders" : "No orders"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Create a purchase order to start tracking deliveries."} actionLabel={search || statusFilter ? undefined : "New Order"} onAction={search || statusFilter ? undefined : () => setShowForm(true)} />}
+          empty={<EmptyState title={q.search || q.filters.status ? "No matching orders" : "No orders"} message={q.search || q.filters.status ? "Nothing matched your search or filters. Try adjusting them." : "Create a purchase order to start tracking deliveries."} actionLabel={q.search || q.filters.status ? undefined : "New Order"} onAction={q.search || q.filters.status ? undefined : () => setShowForm(true)} />}
         >
           {orders.map((o) => (
               <tr key={o.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(o); }}>
@@ -251,7 +241,7 @@ export default function Orders() {
         </div>
       </div>
 
-      <Pagination page={page} totalPages={data?.pages || 1} onPageChange={setPage} pageSize={pageSize} onPageSizeChange={(n) => { setPageSize(n); setPage(1); }} />
+      <Pagination page={q.page} totalPages={data?.pages || 1} onPageChange={q.setPage} pageSize={q.pageSize} onPageSizeChange={(n) => { q.setPageSize(n); q.setPage(1); }} />
 
       {showForm && (
         <OrderForm

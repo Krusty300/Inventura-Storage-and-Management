@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { CalendarDays, Columns3, LayoutGrid, List } from "lucide-react";
+import { CalendarDays, ClipboardList, Columns3, LayoutDashboard, LayoutGrid, List, PackageCheck } from "lucide-react";
 import ExpandableTabs, { type ExpandableTabsTab } from "../components/ExpandableTabs";
 
 const TABS = [
@@ -107,5 +107,34 @@ describe("ExpandableTabs", () => {
       />,
     );
     expect(screen.getByText("Active: Card")).toBeInTheDocument();
+  });
+
+  it("renders the pill bar above the panel when position is top", () => {
+    render(
+      <ExpandableTabs value="list" onChange={() => {}} tabs={TABS} position="top">
+        <p>List content</p>
+      </ExpandableTabs>,
+    );
+    const tablist = screen.getByRole("tablist");
+    const panel = screen.getByRole("tabpanel");
+    expect(tablist.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("matches the active nav tab by path prefix when matchByPrefix is on", () => {
+    const navTabs = [
+      { id: "/portal", label: "Overview", icon: LayoutDashboard },
+      { id: "/portal/orders", label: "Purchase Orders", icon: ClipboardList },
+      { id: "/portal/asns", label: "Shipments", icon: PackageCheck },
+    ];
+    render(
+      <ExpandableTabs value="/portal/orders/5" onChange={() => {}} tabs={navTabs} matchByPrefix>
+        <p>Order detail content</p>
+      </ExpandableTabs>,
+    );
+    const ordersTab = screen.getByRole("tab", { name: "Purchase Orders" });
+    expect(ordersTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", ordersTab.id);
+    expect(screen.getByText("Order detail content")).toBeInTheDocument();
   });
 });
