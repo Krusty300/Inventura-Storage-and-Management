@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Shield, ShieldOff, ShieldCheck, Eye, KeyRound, Trash2, UserCheck, Download, Clock, Check, Search, X, Truck } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import type { PaginatedResponse, Supplier, User } from "../types";
+import type { Customer, PaginatedResponse, Supplier, User } from "../types";
 import UserDetail from "../components/UserDetail";
 import PermissionsEditor from "../components/PermissionsEditor";
 import Skeleton from "../components/Skeleton";
@@ -42,11 +42,12 @@ export default function Users() {
   const [reactivating, setReactivating] = useState<User | null>(null);
   const [editingPermissions, setEditingPermissions] = useState<User | null>(null);
   const [confirming, setConfirming] = useState<{ user: User; role: string } | null>(null);
-  const [linkingTarget, setLinkingTarget] = useState<User | null>(null);
+  const [linkingTarget, setLinkingTarget] = useState<{ user: User; role: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "pending">("all");
   const [approving, setApproving] = useState<User | null>(null);
   const [approveRole, setApproveRole] = useState("worker");
   const [approveSupplierId, setApproveSupplierId] = useState("");
+  const [approveCustomerId, setApproveCustomerId] = useState("");
   const [rejecting, setRejecting] = useState<User | null>(null);
   const queryClient = useQueryClient();
   const { can, user } = useAuth();
@@ -91,9 +92,19 @@ export default function Users() {
   });
   const approveSupplierOptions = (approveSuppliers?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }));
 
+  const { data: approveCustomers } = useQuery({
+    queryKey: ["customers", "link"],
+    queryFn: async () => {
+      const { data } = await api.get("/customers", { params: { limit: 200 } });
+      return data as PaginatedResponse<Customer>;
+    },
+    enabled: !!approving && approveRole === "customer",
+  });
+  const approveCustomerOptions = (approveCustomers?.items ?? []).map((c) => ({ value: String(c.id), label: c.name }));
+
   const approveMutation = useMutation({
-    mutationFn: ({ id, role, supplier_id }: { id: number; role: string; supplier_id?: number }) =>
-      api.post(`/users/${id}/approve`, { role, supplier_id }),
+    mutationFn: ({ id, role, supplier_id, customer_id }: { id: number; role: string; supplier_id?: number; customer_id?: number }) =>
+      api.post(`/users/${id}/approve`, { role, supplier_id, customer_id }),
     onSuccess: () => {
       addToast("User approved", "success");
       queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -181,7 +192,11 @@ export default function Users() {
     setEditingId(null);
     if (role === user.role) return;
     if (role === "supplier" && !user.supplier_id) {
-      setLinkingTarget(user);
+      setLinkingTarget({ user, role: "supplier" });
+      return;
+    }
+    if (role === "customer" && !user.customer_id) {
+      setLinkingTarget({ user, role: "customer" });
       return;
     }
     setConfirming({ user, role });
@@ -277,7 +292,7 @@ export default function Users() {
                   <td className="px-4 py-3">
                     {can("users.update") && (
                       <div className="flex gap-2 items-center">
-                        <button onClick={() => { setApproving(u); setApproveRole(u.role); setApproveSupplierId(""); }} className="inline-flex items-center gap-1 btn-primary text-xs py-1 px-2">
+                        <button onClick={() => { setApproving(u); setApproveRole(u.role); setApproveSupplierId(""); setApproveCustomerId(""); }} className="inline-flex items-center gap-1 btn-primary text-xs py-1 px-2">
                           <Check size={14} /> Approve
                         </button>
                         <button onClick={() => setRejecting(u)} className="inline-flex items-center gap-1 btn-secondary text-xs py-1 px-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">
@@ -334,14 +349,15 @@ export default function Users() {
                         { value: "worker", label: "worker" },
                         { value: "manager", label: "manager" },
                         { value: "supplier", label: "supplier" },
+                        { value: "customer", label: "customer" },
                         ...(can("users.assign_admin_role") ? [{ value: "admin", label: "admin" }] : []),
                       ]}
                       ariaLabel={`Edit role for ${u.username}`}
                     />
                   ) : (
                     <span className="inline-flex items-center gap-1 flex-wrap">
-                      {u.role === "admin" ? <Shield size={14} className="text-primary" /> : u.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : u.role === "supplier" ? <Truck size={14} className="text-primary" /> : <ShieldOff size={14} className="text-faint" />}
-                      <span className={`badge ${u.role === "admin" ? "badge-info" : u.role === "manager" ? "badge-success" : u.role === "supplier" ? "badge-info" : "badge-warning"}`}>{u.role}</span>
+                      {u.role === "admin" ? <Shield size={14} className="text-primary" /> : u.role === "manager" ? <ShieldCheck size={14} className="text-blue-500" /> : u.role === "supplier" || u.role === "customer" ? <Truck size={14} className="text-primary" /> : <ShieldOff size={14} className="text-faint" />}
+                      <span className={`badge ${u.role === "admin" ? "badge-info" : u.role === "manager" ? "badge-success" : u.role === "supplier" || u.role === "customer" ? "badge-info" : "badge-warning"}`}>{u.role}</span>
                       {u.role !== "admin" && u.permissions && u.permissions.length > 0 && (
                         <span className="badge badge-success" title={`${u.permissions.length} custom permission(s)`}>Custom</span>
                       )}
@@ -351,6 +367,14 @@ export default function Users() {
                             <img src={entityImageUrl(u.supplier_image_url)} alt={u.supplier_name} onError={onImageError} className="h-4 w-4 rounded-full object-cover shrink-0" />
                           )}
                           <span className="text-xs text-muted truncate max-w-[160px]" title={u.supplier_name}>{u.supplier_name}</span>
+                        </span>
+                      )}
+                      {u.customer_name && (
+                        <span className="inline-flex items-center gap-1.5 min-w-0">
+                          {u.customer_image_url && (
+                            <img src={entityImageUrl(u.customer_image_url)} alt={u.customer_name} onError={onImageError} className="h-4 w-4 rounded-full object-cover shrink-0" />
+                          )}
+                          <span className="text-xs text-muted truncate max-w-[160px]" title={u.customer_name}>{u.customer_name}</span>
                         </span>
                       )}
                     </span>
@@ -379,7 +403,7 @@ export default function Users() {
                       {u.is_active && can("users.update") && (!user || u.id !== user.id) && (
                         <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-primary dark:text-primary hover:text-primary-strong dark:text-primary">Edit</button>
                       )}
-                      {u.is_active && u.role !== "admin" && u.role !== "supplier" && can("users.update") && (!user || u.id !== user.id) && (
+                      {u.is_active && u.role !== "admin" && u.role !== "supplier" && u.role !== "customer" && can("users.update") && (!user || u.id !== user.id) && (
                         <button onClick={() => setEditingPermissions(u)} className="p-1 text-faint hover:text-primary dark:text-primary" title="Manage permissions" aria-label={`Manage permissions for ${u.username}`}><ShieldCheck size={16} /></button>
                       )}
                     </div>
@@ -392,17 +416,6 @@ export default function Users() {
         )}
         </div>
       </div>
-
-      {linkingTarget && (
-        <PortalLinkModal
-          user={linkingTarget}
-          onClose={() => setLinkingTarget(null)}
-          onLinked={() => {
-            setLinkingTarget(null);
-            queryClient.invalidateQueries({ queryKey: ["users"] });
-          }}
-        />
-      )}
 
       {viewing && <UserDetail user={viewing} onClose={() => setViewing(null)} />}
 
@@ -458,12 +471,26 @@ export default function Users() {
           if (confirming) {
             const updates: Record<string, unknown> = { role: confirming.role };
             if (confirming.role === "supplier") updates.supplier_id = confirming.user.supplier_id;
+            if (confirming.role === "customer") updates.customer_id = confirming.user.customer_id;
             updateMutation.mutate({ id: confirming.user.id, updates });
+            setEditingId(null);
           }
           setConfirming(null);
         }}
         onCancel={() => setConfirming(null)}
       />
+
+      {linkingTarget && (
+        <PortalLinkModal
+          user={linkingTarget.user}
+          role={linkingTarget.role}
+          onClose={() => setLinkingTarget(null)}
+          onLinked={() => {
+            setLinkingTarget(null);
+            queryClient.invalidateQueries({ queryKey: ["users"] });
+          }}
+        />
+      )}
 
       {approving && (
         <Modal open onClose={() => setApproving(null)} title={`Approve ${approving.username}`}>
@@ -480,6 +507,7 @@ export default function Users() {
                   { value: "worker", label: "Worker" },
                   { value: "manager", label: "Manager" },
                   { value: "supplier", label: "Supplier (portal)" },
+                  { value: "customer", label: "Customer (portal)" },
                   ...(can("users.assign_admin_role") ? [{ value: "admin", label: "Admin" }] : []),
                 ]}
                 ariaLabel="Role"
@@ -497,6 +525,18 @@ export default function Users() {
                 />
               </div>
             )}
+            {approveRole === "customer" && (
+              <div>
+                <label htmlFor="approve-customer" className="block text-sm font-medium text-ink mb-1">Linked customer</label>
+                <FittedSelect
+                  value={approveCustomerId}
+                  onChange={setApproveCustomerId}
+                  options={approveCustomerOptions}
+                  placeholder={approveCustomerOptions.length ? "Select customer..." : "No active customers"}
+                  ariaLabel="Linked customer"
+                />
+              </div>
+            )}
             <div className="flex justify-end gap-3 pt-4">
               <button onClick={() => setApproving(null)} className="btn-secondary">Cancel</button>
               <button
@@ -504,8 +544,9 @@ export default function Users() {
                   id: approving.id,
                   role: approveRole,
                   supplier_id: approveRole === "supplier" ? Number(approveSupplierId) : undefined,
+                  customer_id: approveRole === "customer" ? Number(approveCustomerId) : undefined,
                 })}
-                disabled={approveRole === "supplier" && !approveSupplierId}
+                disabled={(approveRole === "supplier" && !approveSupplierId) || (approveRole === "customer" && !approveCustomerId)}
                 className="btn-primary inline-flex items-center gap-1"
               >
                 <Check size={16} /> Approve
@@ -533,7 +574,7 @@ export default function Users() {
 }
 
 function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ username: "", email: "", password: "", role: "worker", supplier_id: "" });
+  const [form, setForm] = useState({ username: "", email: "", password: "", role: "worker", supplier_id: "", customer_id: "" });
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const { can } = useAuth();
@@ -548,6 +589,17 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
 
   const supplierOptions = (suppliers?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }));
 
+  const { data: customers } = useQuery({
+    queryKey: ["customers", "link"],
+    queryFn: async () => {
+      const { data } = await api.get("/customers", { params: { limit: 200 } });
+      return data as PaginatedResponse<Customer>;
+    },
+    enabled: form.role === "customer",
+  });
+
+  const customerOptions = (customers?.items ?? []).map((c) => ({ value: String(c.id), label: c.name }));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -558,6 +610,7 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         password: form.password,
         role: form.role,
         supplier_id: form.role === "supplier" ? Number(form.supplier_id) : undefined,
+        customer_id: form.role === "customer" ? Number(form.customer_id) : undefined,
       });
       addToast(`User ${form.username} created`, "success");
       onSaved();
@@ -588,11 +641,12 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <label htmlFor="create-role" className="block text-sm font-medium text-ink mb-1">Role</label>
           <FittedSelect
             value={form.role}
-            onChange={(v) => setForm({ ...form, role: v, supplier_id: "" })}
+            onChange={(v) => setForm({ ...form, role: v, supplier_id: "", customer_id: "" })}
             options={[
               { value: "worker", label: "Worker" },
               { value: "manager", label: "Manager" },
               { value: "supplier", label: "Supplier (portal)" },
+              { value: "customer", label: "Customer (portal)" },
               ...(can("users.assign_admin_role") ? [{ value: "admin", label: "Admin" }] : []),
             ]}
             ariaLabel="Role"
@@ -610,9 +664,21 @@ function CreateUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
             />
           </div>
         )}
+        {form.role === "customer" && (
+          <div>
+            <label htmlFor="create-customer" className="block text-sm font-medium text-ink mb-1">Linked customer</label>
+            <FittedSelect
+              value={form.customer_id}
+              onChange={(v) => setForm({ ...form, customer_id: v })}
+              options={customerOptions}
+              placeholder={customerOptions.length ? "Select customer..." : "No active customers"}
+              ariaLabel="Linked customer"
+            />
+          </div>
+        )}
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || (form.role === "supplier" && !form.supplier_id)} className="btn-primary">{saving ? "Creating..." : "Create User"}</button>
+          <button type="submit" disabled={saving || (form.role === "supplier" && !form.supplier_id) || (form.role === "customer" && !form.customer_id)} className="btn-primary">{saving ? "Creating..." : "Create User"}</button>
         </div>
       </form>
     </Modal>
@@ -655,8 +721,9 @@ function ResetPasswordModal({ user, onClose, onSaved }: { user: User; onClose: (
   );
 }
 
-function PortalLinkModal({ user, onClose, onLinked }: { user: User; onClose: () => void; onLinked: () => void }) {
-  const [supplierId, setSupplierId] = useState("");
+function PortalLinkModal({ user, role, onClose, onLinked }: { user: User; role: string; onClose: () => void; onLinked: () => void }) {
+  const isCustomer = role === "customer";
+  const [entityId, setEntityId] = useState("");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const { data: suppliers } = useQuery({
@@ -665,20 +732,35 @@ function PortalLinkModal({ user, onClose, onLinked }: { user: User; onClose: () 
       const { data } = await api.get("/suppliers", { params: { limit: 200 } });
       return data as PaginatedResponse<Supplier>;
     },
+    enabled: !isCustomer,
+  });
+  const { data: customers } = useQuery({
+    queryKey: ["customers", "link"],
+    queryFn: async () => {
+      const { data } = await api.get("/customers", { params: { limit: 200 } });
+      return data as PaginatedResponse<Customer>;
+    },
+    enabled: isCustomer,
   });
 
-  const options = (suppliers?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }));
+  const options = isCustomer
+    ? (customers?.items ?? []).map((c) => ({ value: String(c.id), label: c.name }))
+    : (suppliers?.items ?? []).map((s) => ({ value: String(s.id), label: s.name }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supplierId) return;
+    if (!entityId) return;
     setSaving(true);
     try {
-      await api.put(`/users/${user.id}`, { role: "supplier", supplier_id: Number(supplierId) });
-      addToast(`User ${user.username} linked to supplier portal`, "success");
+      if (isCustomer) {
+        await api.put(`/users/${user.id}`, { role: "customer", customer_id: Number(entityId) });
+      } else {
+        await api.put(`/users/${user.id}`, { role: "supplier", supplier_id: Number(entityId) });
+      }
+      addToast(`User ${user.username} linked to ${isCustomer ? "customer" : "supplier"} portal`, "success");
       onLinked();
     } catch (err: unknown) {
-      addToast(errorMessage(err, "Failed to link supplier"), "error");
+      addToast(errorMessage(err, `Failed to link ${isCustomer ? "customer" : "supplier"}`), "error");
     }
     setSaving(false);
   };
@@ -687,22 +769,23 @@ function PortalLinkModal({ user, onClose, onLinked }: { user: User; onClose: () 
     <Modal open onClose={onClose} title={`Link portal account — ${user.username}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-sm text-muted">
-          Assign <strong>{user.username}</strong> a supplier. They will sign in through the supplier portal and only see
-          purchase orders for the selected company.
+          Assign <strong>{user.username}</strong> a {isCustomer ? "customer" : "supplier"}. They will sign in through the{" "}
+          {isCustomer ? "customer" : "supplier"} portal and only see{" "}
+          {isCustomer ? "their purchases and invoices" : "purchase orders for the selected company"}.
         </p>
         <div>
-          <label htmlFor="link-supplier" className="block text-sm font-medium text-ink mb-1">Supplier</label>
+          <label htmlFor="link-entity" className="block text-sm font-medium text-ink mb-1">{isCustomer ? "Customer" : "Supplier"}</label>
           <FittedSelect
-            value={supplierId}
-            onChange={setSupplierId}
+            value={entityId}
+            onChange={setEntityId}
             options={options}
-            placeholder={options.length ? "Select supplier..." : "No active suppliers"}
-            ariaLabel="Link supplier"
+            placeholder={options.length ? `Select ${isCustomer ? "customer" : "supplier"}...` : `No active ${isCustomer ? "customers" : "suppliers"}`}
+            ariaLabel={`Link ${isCustomer ? "customer" : "supplier"}`}
           />
         </div>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !supplierId} className="btn-primary">{saving ? "Linking..." : "Link Supplier"}</button>
+          <button type="submit" disabled={saving || !entityId} className="btn-primary">{saving ? "Linking..." : `Link ${isCustomer ? "Customer" : "Supplier"}`}</button>
         </div>
       </form>
     </Modal>

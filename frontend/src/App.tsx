@@ -65,6 +65,11 @@ const PortalASNDetail = lazy(() => import("./pages/portal/PortalASNDetail"));
 const PortalReceipts = lazy(() => import("./pages/portal/PortalReceipts"));
 const PortalReceiptDetail = lazy(() => import("./pages/portal/PortalReceiptDetail"));
 const PortalSettings = lazy(() => import("./pages/portal/PortalSettings"));
+const CustomerOverview = lazy(() => import("./pages/portal/CustomerOverview"));
+const CustomerCatalog = lazy(() => import("./pages/portal/CustomerCatalog"));
+const CustomerInvoices = lazy(() => import("./pages/portal/CustomerInvoices"));
+const CustomerInvoiceDetail = lazy(() => import("./pages/portal/CustomerInvoiceDetail"));
+const CustomerSettings = lazy(() => import("./pages/portal/CustomerSettings"));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading, loggingOut } = useAuth();
@@ -75,7 +80,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 
 function SupplierRedirect({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  if (user?.role === "supplier") return <Navigate to="/portal" replace />;
+  if (user?.role === "supplier" || user?.role === "customer") return <Navigate to="/portal" replace />;
   return <>{children}</>;
 }
 
@@ -85,19 +90,41 @@ function SupplierPortalRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function PortalUserRoute({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role !== "supplier" && user?.role !== "customer") return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+function CustomerPortalRoute({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role !== "customer") return user?.role === "supplier" ? <Navigate to="/portal" replace /> : <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+function PointerOverview() {
+  const { user } = useAuth();
+  return user?.role === "customer" ? <CustomerOverview /> : <PortalOverview />;
+}
+
+function PointerSettings() {
+  const { user } = useAuth();
+  return user?.role === "customer" ? <CustomerSettings /> : <PortalSettings />;
+}
+
 function AppRoutes() {
   const { user, loading } = useAuth();
   if (loading) return <PageLoader />;
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to={user.role === "supplier" ? "/portal" : "/"} replace /> : <Login />} />
-        <Route path="/register" element={user ? <Navigate to={user.role === "supplier" ? "/portal" : "/"} replace /> : <Register />} />
+        <Route path="/login" element={user ? <Navigate to={user.role === "supplier" || user.role === "customer" ? "/portal" : "/"} replace /> : <Login />} />
+        <Route path="/register" element={user ? <Navigate to={user.role === "supplier" || user.role === "customer" ? "/portal" : "/"} replace /> : <Register />} />
         <Route
           path="/"
           element={
             user ? (
-              user.role === "supplier" ? <Navigate to="/portal" replace /> : <Navigate to="/dashboard" replace />
+              user.role === "supplier" || user.role === "customer" ? <Navigate to="/portal" replace /> : <Navigate to="/dashboard" replace />
             ) : (
               <Navigate to="/login" replace />
             )
@@ -112,7 +139,7 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         >
-          <Route path="/dashboard" element={user?.role === "supplier" ? <Navigate to="/portal" replace /> : <PageBoundary><RequirePermission perm="dashboard.view"><Dashboard /></RequirePermission></PageBoundary>} />
+          <Route path="/dashboard" element={user?.role === "supplier" || user?.role === "customer" ? <Navigate to="/portal" replace /> : <PageBoundary><RequirePermission perm="dashboard.view"><Dashboard /></RequirePermission></PageBoundary>} />
           <Route path="/products" element={<PageBoundary><RequirePermission perm="products.view"><Products /></RequirePermission></PageBoundary>} />
           <Route path="/categories" element={<PageBoundary><RequirePermission perm="categories.view"><Categories /></RequirePermission></PageBoundary>} />
           <Route path="/customers" element={<PageBoundary><RequirePermission perm="customers.view"><Customers /></RequirePermission></PageBoundary>} />
@@ -152,20 +179,23 @@ function AppRoutes() {
         <Route
           element={
             <ProtectedRoute>
-              <SupplierPortalRoute>
+              <PortalUserRoute>
                 <PortalLayout />
-              </SupplierPortalRoute>
+              </PortalUserRoute>
             </ProtectedRoute>
           }
         >
-          <Route path="/portal" element={<PageBoundary><PortalOverview /></PageBoundary>} />
-          <Route path="/portal/orders" element={<PageBoundary><PortalOrders /></PageBoundary>} />
-          <Route path="/portal/orders/:id" element={<PageBoundary><PortalOrderDetail /></PageBoundary>} />
-          <Route path="/portal/asns" element={<PageBoundary><PortalASNs /></PageBoundary>} />
-          <Route path="/portal/asns/:id" element={<PageBoundary><PortalASNDetail /></PageBoundary>} />
-          <Route path="/portal/receipts" element={<PageBoundary><PortalReceipts /></PageBoundary>} />
-          <Route path="/portal/receipts/:id" element={<PageBoundary><PortalReceiptDetail /></PageBoundary>} />
-          <Route path="/portal/settings" element={<PageBoundary><PortalSettings /></PageBoundary>} />
+          <Route path="/portal" element={<PageBoundary><PointerOverview /></PageBoundary>} />
+          <Route path="/portal/catalog" element={<CustomerPortalRoute><PageBoundary><CustomerCatalog /></PageBoundary></CustomerPortalRoute>} />
+          <Route path="/portal/invoices" element={<CustomerPortalRoute><PageBoundary><CustomerInvoices /></PageBoundary></CustomerPortalRoute>} />
+          <Route path="/portal/invoices/:id" element={<CustomerPortalRoute><PageBoundary><CustomerInvoiceDetail /></PageBoundary></CustomerPortalRoute>} />
+          <Route path="/portal/orders" element={<SupplierPortalRoute><PageBoundary><PortalOrders /></PageBoundary></SupplierPortalRoute>} />
+          <Route path="/portal/orders/:id" element={<SupplierPortalRoute><PageBoundary><PortalOrderDetail /></PageBoundary></SupplierPortalRoute>} />
+          <Route path="/portal/asns" element={<SupplierPortalRoute><PageBoundary><PortalASNs /></PageBoundary></SupplierPortalRoute>} />
+          <Route path="/portal/asns/:id" element={<SupplierPortalRoute><PageBoundary><PortalASNDetail /></PageBoundary></SupplierPortalRoute>} />
+          <Route path="/portal/receipts" element={<SupplierPortalRoute><PageBoundary><PortalReceipts /></PageBoundary></SupplierPortalRoute>} />
+          <Route path="/portal/receipts/:id" element={<SupplierPortalRoute><PageBoundary><PortalReceiptDetail /></PageBoundary></SupplierPortalRoute>} />
+          <Route path="/portal/settings" element={<PageBoundary><PointerSettings /></PageBoundary>} />
           <Route path="/portal/notifications" element={<PageBoundary><Notifications /></PageBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

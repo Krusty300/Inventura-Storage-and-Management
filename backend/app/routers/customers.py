@@ -34,6 +34,10 @@ def _purge_customer(db: Session, c: Customer, user) -> None:
     has_sales = db.query(Sale).filter(Sale.customer_id == c.id).first() is not None
     if has_sales:
         raise HTTPException(status_code=400, detail="Cannot permanently delete a customer with sales history")
+    from app.models.user import User
+    has_portal_users = db.query(User).filter(User.customer_id == c.id).first() is not None
+    if has_portal_users:
+        raise HTTPException(status_code=400, detail="Cannot permanently delete a customer with linked portal accounts")
     db.delete(c)
 
 

@@ -29,7 +29,7 @@ export default function NotificationBell() {
   const { user } = useAuth();
   const { addToast } = useToast();
   const formatDateTime = useDateTimeFormat();
-  const allLink = user?.role === "supplier" ? "/portal/notifications" : "/notifications";
+  const allLink = user?.role === "supplier" || user?.role === "customer" ? "/portal/notifications" : "/notifications";
 
   const load = useCallback(async (withItems: boolean) => {
     if (withItems) setLoading(true);

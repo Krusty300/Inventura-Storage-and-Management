@@ -62,6 +62,17 @@ describe("effectivePermissions", () => {
     expect(perms.has("users.view")).toBe(false);
     expect(perms.size).toBe(2);
   });
+
+  it("grants customer accounts only notifications.view plus profile access", () => {
+    const perms = effectivePermissions({ role: "customer" });
+    expect(perms.has("notifications.view")).toBe(true);
+    expect(perms.has("profile.view")).toBe(true);
+    expect(perms.has("dashboard.view")).toBe(false);
+    expect(perms.has("products.view")).toBe(false);
+    expect(perms.has("sales.view")).toBe(false);
+    expect(perms.has("users.view")).toBe(false);
+    expect(perms.size).toBe(2);
+  });
 });
 
 describe("canUser", () => {
@@ -83,6 +94,14 @@ describe("can (role-based)", () => {
     expect(can("admin", "users.delete")).toBe(true);
     expect(can("worker", "users.view")).toBe(false);
     expect(can("worker", "orders.create")).toBe(true);
+  });
+
+  it("keeps customer role defaults isolated from internal permissions", () => {
+    expect(can("customer", "notifications.view")).toBe(true);
+    expect(can("customer", "dashboard.view")).toBe(false);
+    expect(can("customer", "products.view")).toBe(false);
+    expect(can("customer", "sales.view")).toBe(false);
+    expect(can("customer", "users.view")).toBe(false);
   });
 
   it("grants managers most permissions but not admin-only ones", () => {

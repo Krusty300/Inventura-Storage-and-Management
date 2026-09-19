@@ -177,11 +177,16 @@ const SUPPLIER_ROLE_PERMISSIONS = [
   "notifications.view",
 ];
 
+const CUSTOMER_ROLE_PERMISSIONS = [
+  "notifications.view",
+];
+
 const ROLE_PERMISSIONS: Record<string, ReadonlySet<string>> = {
   admin: new Set(ALL_PERMISSIONS),
   manager: new Set(MANAGER_PERMISSIONS),
   worker: new Set(WORKER_PERMISSIONS),
   supplier: new Set(SUPPLIER_ROLE_PERMISSIONS),
+  customer: new Set(CUSTOMER_ROLE_PERMISSIONS),
 };
 
 export function can(role: string | undefined, permission: string): boolean {

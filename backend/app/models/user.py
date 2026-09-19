@@ -19,6 +19,8 @@ class User(SoftDeleteMixin, Base):
     permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
     supplier = relationship("Supplier")
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True, index=True)
+    customer = relationship("Customer")
     is_active: Mapped[bool] = mapped_column(default=True)
     is_approved: Mapped[bool] = mapped_column(default=False)
     avatar_url: Mapped[str] = mapped_column(String(500), default="")
@@ -40,3 +42,11 @@ class User(SoftDeleteMixin, Base):
     @property
     def supplier_image_url(self) -> str:
         return self.supplier.image_url if self.supplier else ""
+
+    @property
+    def customer_name(self) -> str:
+        return self.customer.name if self.customer else ""
+
+    @property
+    def customer_image_url(self) -> str:
+        return self.customer.image_url if self.customer else ""

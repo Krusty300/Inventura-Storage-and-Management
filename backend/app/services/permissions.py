@@ -188,11 +188,19 @@ SUPPLIER_PERMISSIONS = frozenset({
     "notifications.view",
 })
 
+# Customers (portal logins) are scoped the same way: no internal permissions,
+# only their own notification feed. Their catalog/pricing/sales surface lives
+# under the customer portal router (scoped by users.customer_id).
+CUSTOMER_PERMISSIONS = frozenset({
+    "notifications.view",
+})
+
 ROLE_PERMISSIONS = {
     "admin": ALL_PERMISSIONS,
     "manager": MANAGER_PERMISSIONS,
     "worker": WORKER_PERMISSIONS,
     "supplier": SUPPLIER_PERMISSIONS,
+    "customer": CUSTOMER_PERMISSIONS,
 }
 
 
@@ -214,6 +222,8 @@ def permissions_for_user(user) -> frozenset:
         return MANAGER_PERMISSIONS
     if getattr(user, "role", None) == "supplier":
         return SUPPLIER_PERMISSIONS
+    if getattr(user, "role", None) == "customer":
+        return CUSTOMER_PERMISSIONS
     custom = getattr(user, "permissions", None)
     if custom:
         return frozenset(p for p in custom if p in ALL_PERMISSIONS)

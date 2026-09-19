@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database import get_db
+from app.models.customer import Customer
 from app.models.note import Note
 from app.models.session import UserSession
 from app.models.supplier import Supplier
@@ -20,7 +21,7 @@ from app.utils import log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-VALID_ROLES = {"admin", "manager", "worker", "supplier"}
+VALID_ROLES = {"admin", "manager", "worker", "supplier", "customer"}
 
 
 def _purge_user(db: Session, u: User, user) -> None:
@@ -41,6 +42,7 @@ class UserUpdateAdmin(BaseModel):
     is_active: Optional[bool] = None
     permissions: Optional[list[str]] = None
     supplier_id: Optional[int] = None
+    customer_id: Optional[int] = None
 
 
 class UserCreateAdmin(BaseModel):
@@ -50,6 +52,7 @@ class UserCreateAdmin(BaseModel):
     role: str = "worker"
     permissions: Optional[list[str]] = None
     supplier_id: Optional[int] = None
+    customer_id: Optional[int] = None
 
 
 class PasswordChange(BaseModel):
@@ -95,9 +98,30 @@ def _validate_supplier_binding(db: Session, role: str, supplier_id: int | None) 
         raise HTTPException(status_code=400, detail="Only supplier accounts can be linked to a supplier")
 
 
+def _validate_customer_binding(db: Session, role: str, customer_id: int | None) -> None:
+    """Portal accounts must be tied to a real, active customer.
+
+    A ``customer_id`` on any other role is rejected so internal staff never
+    silently pick up customer scoping (or crash a lazy relationship later).
+    """
+    if role == "customer":
+        if not customer_id:
+            raise HTTPException(status_code=400, detail="Customer accounts must be linked to a customer")
+        customer = db.query(Customer).filter(
+            Customer.id == customer_id,
+            Customer.is_active == True,  # noqa: E712
+            Customer.is_deleted == False,  # noqa: E712
+        ).first()
+        if not customer:
+            raise HTTPException(status_code=400, detail="Customer not found or inactive")
+    elif customer_id is not None:
+        raise HTTPException(status_code=400, detail="Only customer accounts can be linked to a customer")
+
+
 class UserApproval(BaseModel):
     role: Optional[str] = None
     supplier_id: Optional[int] = None
+    customer_id: Optional[int] = None
 
 
 @router.get("/pending", response_model=list[UserOut])
@@ -129,6 +153,10 @@ def approve_user(
             final_supplier_id = data.supplier_id if data.supplier_id is not None else u.supplier_id
             _validate_supplier_binding(db, "supplier", final_supplier_id)
             u.supplier_id = final_supplier_id
+        if data.role == "customer":
+            final_customer_id = data.customer_id if data.customer_id is not None else u.customer_id
+            _validate_customer_binding(db, "customer", final_customer_id)
+            u.customer_id = final_customer_id
         u.role = data.role
     db.commit()
     db.refresh(u)
@@ -235,7 +263,10 @@ def create_user(
     _validate_permissions(data.permissions)
     if data.role == "supplier" and data.permissions:
         raise HTTPException(status_code=400, detail="Supplier accounts cannot hold custom permissions")
+    if data.role == "customer" and data.permissions:
+        raise HTTPException(status_code=400, detail="Customer accounts cannot hold custom permissions")
     _validate_supplier_binding(db, data.role, data.supplier_id)
+    _validate_customer_binding(db, data.role, data.customer_id)
     password_error = validate_password(data.password)
     if password_error:
         raise HTTPException(status_code=400, detail=password_error)
@@ -248,6 +279,7 @@ def create_user(
         role=data.role,
         permissions=data.permissions,
         supplier_id=data.supplier_id,
+        customer_id=data.customer_id,
         is_approved=True,
     )
     db.add(user)
@@ -292,6 +324,7 @@ def update_user(
                 raise HTTPException(status_code=400, detail="Cannot deactivate the last admin")
     final_role = updates.get("role", u.role)
     final_supplier_id = updates.get("supplier_id", u.supplier_id)
+    final_customer_id = updates.get("customer_id", u.customer_id)
     if u.role != "supplier" and final_role == "supplier":
         db.query(Note).filter(
             Note.assigned_to_id == u.id,
@@ -300,9 +333,15 @@ def update_user(
     if u.supplier_id is not None and final_role != "supplier":
         updates.setdefault("supplier_id", None)
         final_supplier_id = None
+    if u.customer_id is not None and final_role != "customer":
+        updates.setdefault("customer_id", None)
+        final_customer_id = None
     if final_role == "supplier" and "permissions" in updates and updates["permissions"]:
         raise HTTPException(status_code=400, detail="Supplier accounts cannot hold custom permissions")
+    if final_role == "customer" and "permissions" in updates and updates["permissions"]:
+        raise HTTPException(status_code=400, detail="Customer accounts cannot hold custom permissions")
     _validate_supplier_binding(db, final_role, final_supplier_id)
+    _validate_customer_binding(db, final_role, final_customer_id)
     for key, val in updates.items():
         setattr(u, key, val)
     db.commit()

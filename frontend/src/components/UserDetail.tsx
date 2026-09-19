@@ -58,7 +58,7 @@ export default function UserDetail({ user, onClose }: Props) {
             <h3 className="text-lg font-bold text-ink truncate">{user.username}</h3>
             <p className="text-sm text-muted truncate">{user.email}</p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span className={`badge ${user.role === "admin" ? "badge-info" : user.role === "manager" ? "badge-success" : user.role === "supplier" ? "badge-info" : "badge-warning"}`}>
+              <span className={`badge ${user.role === "admin" ? "badge-info" : user.role === "manager" ? "badge-success" : user.role === "supplier" || user.role === "customer" ? "badge-info" : "badge-warning"}`}>
                 {user.role === "admin" && <Shield size={12} className="mr-0.5" />}
                 {user.role === "manager" && <ShieldCheck size={12} className="mr-0.5" />}
                 {user.role === "worker" && <ShieldOff size={12} className="mr-0.5" />}
@@ -72,6 +72,16 @@ export default function UserDetail({ user, onClose }: Props) {
                   )}
                   <span className="badge badge-neutral" title={`Supplier #${user.supplier_id}`}>
                     {user.supplier_name || `Supplier #${user.supplier_id}`}
+                  </span>
+                </span>
+              )}
+              {user.role === "customer" && user.customer_id && (
+                <span className="inline-flex items-center gap-1.5">
+                  {user.customer_image_url && (
+                    <img src={entityImageUrl(user.customer_image_url)} alt={user.customer_name || "Customer"} onError={onImageError} className="h-4 w-4 rounded-full object-cover border border-border shrink-0" />
+                  )}
+                  <span className="badge badge-neutral" title={`Customer #${user.customer_id}`}>
+                    {user.customer_name || `Customer #${user.customer_id}`}
                   </span>
                 </span>
               )}

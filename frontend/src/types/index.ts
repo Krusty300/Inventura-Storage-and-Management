@@ -598,6 +598,9 @@ export interface User {
   supplier_id?: number | null;
   supplier_name?: string | null;
   supplier_image_url?: string | null;
+  customer_id?: number | null;
+  customer_name?: string | null;
+  customer_image_url?: string | null;
 }
 
 export interface Sale {
@@ -1395,4 +1398,31 @@ export interface PortalSummary {
   receipt_count: number;
   recent_asns: ASN[];
   recent_receipts: Receipt[];
+}
+
+export interface CustomerPortalMe {
+  user: User;
+  customer: Customer;
+  store_name: string;
+  currency_symbol: string;
+  logo_url: string;
+}
+
+export interface CustomerPortalSummary {
+  status_counts: Record<string, number>;
+  total_sales: number;
+  total_spent: number;
+  recent_sales: Sale[];
+}
+
+export interface CatalogProduct {
+  id: number;
+  sku: string;
+  name: string;
+  description: string;
+  category_name: string;
+  unit_price: number;
+  price: number;
+  image_url: string;
+  in_stock: boolean;
 }

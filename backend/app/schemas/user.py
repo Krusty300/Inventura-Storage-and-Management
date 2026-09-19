@@ -45,6 +45,9 @@ class UserOut(BaseModel):
     supplier_id: int | None = None
     supplier_name: str = ""
     supplier_image_url: str = ""
+    customer_id: int | None = None
+    customer_name: str = ""
+    customer_image_url: str = ""
     last_login_at: datetime | None = None
     created_at: datetime
 
