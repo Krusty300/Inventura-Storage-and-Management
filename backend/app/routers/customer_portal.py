@@ -202,7 +202,7 @@ def customer_catalog_detail(
     db: Session = Depends(get_db),
     customer: Customer = Depends(require_customer),
 ):
-    p = get_or_404(Product, product_id, db)
+    p = get_or_404(Product, product_id, db, options=[joinedload(Product.images)])
     if p.parent_id is not None or not p.is_active or p.is_deleted:
         raise HTTPException(status_code=404, detail="Product not found")
     price = resolve_price(db, p.id, customer_id=customer.id)

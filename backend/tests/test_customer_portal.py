@@ -232,6 +232,31 @@ def test_portal_catalog_filters_unknown_status_ok(auth_headers):
     assert data["total"] == 1
 
 
+def test_portal_catalog_image_url_falls_back_to_gallery(auth_headers):
+    prod = _make_product(auth_headers, "CAT-IMAGED", unit_price=7.0)
+    # Seed a gallery entry; the product's image_url column stays empty so the
+    # catalog must fall back to images[0].url.
+    from sqlalchemy.orm import Session
+    from tests.conftest import TestingSessionLocal
+    from app.models.product_image import ProductImage
+    db: Session = TestingSessionLocal()
+    db.add(ProductImage(product_id=prod["id"], url="/uploads/gallery-test.jpg", sort_order=0))
+    db.commit()
+    db.close()
+
+    customer = _make_customer(auth_headers, "Imaged Customer")
+    _make_customer_account(auth_headers, "imgcust", customer_id=customer["id"]).json()
+    headers = _login("imgcust")
+    for item in client.get("/api/customer/products", headers=headers).json()["items"]:
+        if item["id"] == prod["id"]:
+            assert item["image_url"] == "/uploads/gallery-test.jpg"
+            break
+    else:
+        raise AssertionError("product with gallery image not present in catalog")
+    detail = client.get(f"/api/customer/products/{prod['id']}", headers=headers).json()
+    assert detail["image_url"] == "/uploads/gallery-test.jpg"
+
+
 # ---------------------------------------------------------------- sales scoping
 
 def _customer_with_sale(auth_headers, name, sku, customer_id, quantity=2):
