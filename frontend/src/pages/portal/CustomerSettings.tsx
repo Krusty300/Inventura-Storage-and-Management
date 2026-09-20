@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, Settings as SettingsIcon, KeyRound, UserRound } from "lucide-react";
+import { Save, Settings as SettingsIcon, KeyRound, Image as ImageIcon, Camera, Trash2 } from "lucide-react";
 import api from "../../api/client";
 import { useToast } from "../../context/ToastContext";
 import { errorMessage } from "../../utils/errors";
 import PasswordInput from "../../components/PasswordInput";
+import FileUploadButton from "../../components/FileUploadButton";
+import { entityImageUrl } from "../../utils/images";
+import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import type { Customer, CustomerPortalMe } from "../../types";
 
 type Tab = "profile" | "password";
@@ -54,6 +57,34 @@ export default function CustomerSettings() {
       addToast("Profile updated", "success");
     },
     onError: (err) => addToast(errorMessage(err, "Failed to update profile"), "error"),
+  });
+
+  const uploadImage = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/customer/profile/image", fd);
+      return data as { image_url: string };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customer"] });
+      queryClient.invalidateQueries({ queryKey: ["customer", "me"] });
+      addToast("Profile image updated", "success");
+    },
+    onError: (err) => addToast(errorMessage(err, "Failed to upload profile image"), "error"),
+  });
+
+  const removeImage = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.delete("/customer/profile/image");
+      return data as { image_url: string };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customer"] });
+      queryClient.invalidateQueries({ queryKey: ["customer", "me"] });
+      addToast("Profile image removed", "success");
+    },
+    onError: (err) => addToast(errorMessage(err, "Failed to remove profile image"), "error"),
   });
 
   const changePassword = useMutation({
@@ -112,7 +143,7 @@ export default function CustomerSettings() {
       {tab === "profile" && (
         <div className="card">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <UserRound size={18} /> My Profile
+            <ImageIcon size={18} /> My Profile
           </h2>
           {meLoading && !customer ? (
             <div className="space-y-6 animate-pulse" aria-hidden="true">
@@ -129,18 +160,42 @@ export default function CustomerSettings() {
               </div>
             </div>
           ) : (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                updateProfile.mutate({
-                  name: draft.name,
-                  phone: draft.phone,
-                  email: draft.email,
-                  address: draft.address,
-                });
-              }}
-              className="space-y-4"
-            >
+            <>
+              <div className="flex items-center gap-4 mb-6">
+                <img
+                  src={customer?.image_url ? entityImageUrl(customer.image_url) : getPlaceholder()}
+                  alt={draft.name || "Customer"}
+                  onError={onImageError}
+                  className="h-16 w-16 rounded-xl object-cover border border-border"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <FileUploadButton onFileChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadImage.mutate(f);
+                  }} accept=".png,.jpg,.jpeg,.gif,.webp" className="btn-secondary">
+                    <Camera size={15} className="inline mr-1" />
+                    Upload Image
+                  </FileUploadButton>
+                  {customer?.image_url && (
+                    <button type="button" onClick={() => removeImage.mutate()} className="btn-secondary" disabled={removeImage.isPending}>
+                      <Trash2 size={15} className="inline mr-1" />
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  updateProfile.mutate({
+                    name: draft.name,
+                    phone: draft.phone,
+                    email: draft.email,
+                    address: draft.address,
+                  });
+                }}
+                className="space-y-4"
+              >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1">Name *</label>
@@ -166,6 +221,7 @@ export default function CustomerSettings() {
                 </button>
               </div>
             </form>
+            </>
           )}
         </div>
       )}

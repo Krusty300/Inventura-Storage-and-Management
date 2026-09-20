@@ -1,12 +1,10 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, Trash2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, CustomerGroup, PaginatedResponse } from "../types";
 import { useToast } from "../context/ToastContext";
 import SlideOver from "./SlideOver";
 import FittedSelect from "./FittedSelect";
-import FileUploadButton from "./FileUploadButton";
 import TextArea from "./TextArea";
 import { errorMessage } from "../utils/errors";
 import { entityImageUrl } from "../utils/images";
@@ -29,44 +27,6 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
   const [notes, setNotes] = useState(customer?.notes || "");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
-  const queryClient = useQueryClient();
-  const [imageUrl, setImageUrl] = useState(customer?.image_url || "");
-  const [imageBusy, setImageBusy] = useState(false);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !customer) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    setImageBusy(true);
-    try {
-      const { data } = await api.post(`/customers/${customer.id}/upload-image`, fd);
-      await new Promise<void>((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-        img.src = data.image_url;
-      });
-      setImageUrl(data.image_url);
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      addToast("Profile image updated", "success");
-    } catch (err: unknown) {
-      addToast(errorMessage(err, "Failed to upload profile image"), "error");
-    }
-    setImageBusy(false);
-  };
-
-  const handleImageRemove = async () => {
-    if (!customer) return;
-    try {
-      await api.delete(`/customers/${customer.id}/upload-image`);
-      setImageUrl("");
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      addToast("Profile image removed", "success");
-    } catch (err: unknown) {
-      addToast(errorMessage(err, "Failed to remove profile image"), "error");
-    }
-  };
 
   const { data: groups } = useQuery({
     queryKey: ["customer-groups"],
@@ -154,38 +114,20 @@ export default function CustomerForm({ customer, onClose, onSaved }: Props) {
           </div>
         </div>
 
-        {isEdit && (
+{customer?.image_url && (
           <div className="rounded-xl border border-border bg-app p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <img
-                  src={entityImageUrl(imageUrl)}
-                  alt=""
-                  className="h-14 w-14 rounded-full object-cover border border-border bg-subtle shrink-0"
-                  loading="lazy"
-                  onError={onImageError}
-                />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-ink">Profile Image</div>
-                  <p className="text-xs text-muted">Shown on this customer's page, detail view, and hover cards.</p>
-                </div>
+            <div className="flex items-center gap-3">
+              <img
+                src={entityImageUrl(customer.image_url)}
+                alt=""
+                className="h-14 w-14 rounded-full object-cover border border-border bg-subtle shrink-0"
+                loading="lazy"
+                onError={onImageError}
+              />
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-ink">Profile Image</div>
+                <p className="text-xs text-muted">Managed from this customer's portal.</p>
               </div>
-<div className="flex items-center gap-2">
-                  <FileUploadButton
-                    onFileChange={handleImageUpload}
-                    accept=".png,.jpg,.jpeg,.gif,.webp"
-                    disabled={imageBusy}
-                    className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
-                    ariaLabel="Upload profile image"
-                  >
-                    <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
-                  </FileUploadButton>
-                  {imageUrl && (
-                    <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
-                      <Trash2 size={13} />Remove
-                    </button>
-                  )}
-                </div>
             </div>
           </div>
         )}

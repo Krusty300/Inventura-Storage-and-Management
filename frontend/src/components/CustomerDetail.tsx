@@ -1,20 +1,16 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Users, Tag, Pencil, Camera, Trash2, PackageSearch } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Users, Tag, Pencil, PackageSearch } from "lucide-react";
 import SlideOver from "./SlideOver";
 import Skeleton from "./Skeleton";
 import AttachmentSection from "./AttachmentSection";
 import EmptyState from "./EmptyState";
-import FileUploadButton from "./FileUploadButton";
 import api from "../api/client";
 import type { Customer, CustomerStats, FrequentProduct, PaginatedResponse, Sale } from "../types";
 import { formatCurrency } from "../utils/currency";
 import { useSettings } from "../hooks/useSettings";
 import { paymentLabel } from "../utils/payments";
 import { useAuth } from "../context/AuthContext";
-import { useToast } from "../context/ToastContext";
-import { errorMessage } from "../utils/errors";
 import { entityImageUrl } from "../utils/images";
 import { onImageError } from "../utils/placeholders";
 
@@ -27,46 +23,8 @@ interface Props {
 export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
   const formatDate = useDateFormat();
   const { can } = useAuth();
-  const { addToast } = useToast();
-  const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const currencySymbol = settings?.currency_symbol || "$";
-  const [imageUrl, setImageUrl] = useState(customer.image_url);
-  const [imageBusy, setImageBusy] = useState(false);
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    setImageBusy(true);
-    try {
-      const { data } = await api.post(`/customers/${customer.id}/upload-image`, fd);
-      await new Promise<void>((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-        img.src = data.image_url;
-      });
-      setImageUrl(data.image_url);
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      addToast("Profile image updated", "success");
-    } catch (err: unknown) {
-      addToast(errorMessage(err, "Failed to upload profile image"), "error");
-    }
-    setImageBusy(false);
-  };
-
-  const handleImageRemove = async () => {
-    try {
-      await api.delete(`/customers/${customer.id}/upload-image`);
-      setImageUrl("");
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      addToast("Profile image removed", "success");
-    } catch (err: unknown) {
-      addToast(errorMessage(err, "Failed to remove profile image"), "error");
-    }
-  };
 
   const { data: stats } = useQuery({
     queryKey: ["customer-stats", customer.id],
@@ -111,7 +69,7 @@ export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
           <div className="border-b border-border px-5 py-4 flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
               <img
-                src={entityImageUrl(imageUrl)}
+                src={entityImageUrl(customer.image_url)}
                 alt=""
                 className="h-16 w-16 rounded-full object-cover border border-border bg-subtle shrink-0"
                 loading="lazy"
@@ -123,24 +81,6 @@ export default function CustomerDetail({ customer, onClose, onEdit }: Props) {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {can("customers.update") && (
-                <div className="flex items-center gap-2">
-                  <FileUploadButton
-                    onFileChange={handleImageUpload}
-                    accept=".png,.jpg,.jpeg,.gif,.webp"
-                    disabled={imageBusy}
-                    className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1"
-                    ariaLabel="Upload profile image"
-                  >
-                    <Camera size={13} />{imageBusy ? "Uploading..." : "Upload"}
-                  </FileUploadButton>
-                  {imageUrl && (
-                    <button type="button" onClick={handleImageRemove} className="btn-secondary text-xs px-2.5 py-1.5 inline-flex items-center gap-1" aria-label="Remove profile image">
-                      <Trash2 size={13} />Remove
-                    </button>
-                  )}
-                </div>
-              )}
               <span className="badge badge-info">{customer.customer_type}</span>
             </div>
           </div>

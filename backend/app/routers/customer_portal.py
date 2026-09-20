@@ -5,8 +5,9 @@ Customers authenticate as ``User`` rows with ``role="customer"`` linked to a
 internal staff permissions; every query here is scoped to the linked customer:
 customer A can only ever see (and re-order from) customer A's own history.
 
-The customer portal exposes three things for now:
-* their profile and a short sales summary (``/me``, ``/summary``)
+The customer portal exposes four things for now:
+* their profile, profile image, and a short sales summary (``/me``, ``/summary``,
+  ``POST/DELETE /profile/image``)
 * the store catalog with prices resolved for this customer (``/products``),
   which flows through ``pricing.resolve_price`` so group price lists (and
   eventually personal lists) apply automatically
@@ -14,8 +15,10 @@ The customer portal exposes three things for now:
 """
 
 from math import ceil
+from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, field_validator
 import re
 from typing import Optional
@@ -38,9 +41,14 @@ from app.services.auth import get_current_user, hash_password, verify_password
 from app.services.filters import apply_date_range
 from app.services.password_policy import validate_password
 from app.services.pricing import resolve_price
-from app.utils import get_or_404, log_activity, broadcast_change
+from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/customer", tags=["customer portal"])
+
+UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+JPEG_EXTENSIONS = {".jpg", ".jpeg"}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 # A customer's invoices that still need payment / are live.
 ACTIVE_SALE_STATUSES = ("completed", "pending")
@@ -289,6 +297,71 @@ def customer_update_profile(
     db.commit()
     broadcast_change("customer", "updated")
     return customer
+
+
+def _delete_uploaded_image(image_url: str) -> None:
+    if not image_url:
+        return
+    path = UPLOAD_DIR / Path(image_url).name
+    try:
+        if path.exists():
+            path.unlink()
+    except Exception:
+        pass
+
+
+@router.post("/profile/image")
+def customer_upload_profile_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    customer: Customer = Depends(require_customer),
+):
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+    detected = detect_image_ext(content)
+    if detected is None:
+        raise HTTPException(status_code=400, detail="File content is not a supported image")
+    matches = detected in JPEG_EXTENSIONS if ext in JPEG_EXTENSIONS else detected == ext
+    if not matches:
+        raise HTTPException(status_code=400, detail=f"File content does not match its extension ({ext})")
+    _delete_uploaded_image(customer.image_url)
+    UPLOAD_DIR.mkdir(exist_ok=True)
+    filename = f"customer_{customer.id}_{uuid4().hex}{detected}"
+    filepath = UPLOAD_DIR / filename
+    with open(filepath, "wb") as f:
+        f.write(content)
+    customer.image_url = f"/uploads/{filename}"
+    db.commit()
+    db.refresh(customer)
+    log_activity(db, user.id, user.username, "update", "customer", customer.id,
+                 f"Customer '{customer.name}' uploaded their profile image")
+    db.commit()
+    broadcast_change("customer", "updated")
+    return {"image_url": customer.image_url}
+
+
+@router.delete("/profile/image")
+def customer_remove_profile_image(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    customer: Customer = Depends(require_customer),
+):
+    _delete_uploaded_image(customer.image_url)
+    customer.image_url = ""
+    db.commit()
+    db.refresh(customer)
+    log_activity(db, user.id, user.username, "update", "customer", customer.id,
+                 f"Customer '{customer.name}' removed their profile image")
+    db.commit()
+    broadcast_change("customer", "updated")
+    return {"image_url": customer.image_url}
 
 
 @router.post("/change-password")
