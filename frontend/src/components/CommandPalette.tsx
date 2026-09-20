@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
-  Bell,
   Boxes,
   ClipboardList,
   Contact,
@@ -11,7 +10,6 @@ import {
   Fingerprint,
   FlaskConical,
   Layers,
-  LayoutDashboard,
   MapPin,
   Monitor,
   Moon,
@@ -20,7 +18,6 @@ import {
   PackageOpen,
   Receipt,
   Search,
-  Settings as SettingsIcon,
   ShoppingCart,
   Store,
   Sun,
@@ -40,6 +37,7 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
 import { useTrapFocus } from "../hooks/useTrapFocus";
 import ScrollArea from "./ScrollArea";
+import { CUSTOMER_PORTAL_NAV, SUPPLIER_PORTAL_NAV } from "../portalNav";
 import type { GlobalSearchResponse, GlobalSearchResult } from "../types";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -85,15 +83,6 @@ const RESULT_ICONS: Record<string, LucideIcon> = {
   bom: Factory,
   sales_channel: Store,
 };
-
-const PORTAL_COMMANDS: { to: string; label: string; icon: LucideIcon }[] = [
-  { to: "/portal", label: "Overview", icon: LayoutDashboard },
-  { to: "/portal/orders", label: "Purchase Orders", icon: ClipboardList },
-  { to: "/portal/asns", label: "Shipments", icon: PackageCheck },
-  { to: "/portal/receipts", label: "Deliveries", icon: PackageOpen },
-  { to: "/portal/notifications", label: "Notifications", icon: Bell },
-  { to: "/portal/settings", label: "Settings", icon: SettingsIcon },
-];
 
 interface Command {
   id: string;
@@ -162,14 +151,15 @@ export default function CommandPalette({ portal = false }: { portal?: boolean })
 
   const pageCommands = useMemo<Command[]>(() => {
     if (portal) {
-      return PORTAL_COMMANDS.map((item) => ({
-        id: `portal-${item.to}`,
+      const nav = user?.role === "customer" ? CUSTOMER_PORTAL_NAV : SUPPLIER_PORTAL_NAV;
+      return nav.map((item) => ({
+        id: `portal-${item.id}`,
         label: item.label,
-        keywords: "portal supplier",
+        keywords: `portal ${user?.role ?? ""}`,
         section: "Portal",
         icon: item.icon,
-        hint: item.to,
-        run: () => navigate(item.to),
+        hint: item.id,
+        run: () => navigate(item.id),
       }));
     }
     const out: Command[] = [];
@@ -299,7 +289,7 @@ export default function CommandPalette({ portal = false }: { portal?: boolean })
           <input
             aria-label="Command search"
             className="command-palette-input w-full py-4 bg-transparent outline-none text-ink placeholder:text-faint text-base"
-            placeholder="Search pages, actions, products, orders, customers..."
+            placeholder={portal ? "Jump to a portal page or run an action..." : "Search pages, actions, products, orders, customers..."}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

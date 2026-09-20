@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, LayoutDashboard, ClipboardList, PackageCheck, PackageOpen, Bell, Search, Settings as SettingsIcon, ShoppingBag, Receipt } from "lucide-react";
+import { LogOut, Search } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { entityImageUrl } from "../../utils/images";
@@ -9,24 +9,11 @@ import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import NotificationBell from "../../components/NotificationBell";
 import CommandPalette from "../../components/CommandPalette";
 import ExpandableTabs, { type ExpandableTabsTab } from "../../components/ExpandableTabs";
+import { CUSTOMER_PORTAL_NAV, SUPPLIER_PORTAL_NAV } from "../../portalNav";
 import type { CustomerPortalMe, PortalMe } from "../../types";
 
-const SUPPLIER_NAV_TABS: ExpandableTabsTab<string>[] = [
-  { id: "/portal", label: "Overview", icon: LayoutDashboard },
-  { id: "/portal/orders", label: "Purchase Orders", icon: ClipboardList },
-  { id: "/portal/asns", label: "Shipments", icon: PackageCheck },
-  { id: "/portal/receipts", label: "Deliveries", icon: PackageOpen },
-  { id: "/portal/notifications", label: "Notifications", icon: Bell },
-  { id: "/portal/settings", label: "Settings", icon: SettingsIcon },
-];
-
-const CUSTOMER_NAV_TABS: ExpandableTabsTab<string>[] = [
-  { id: "/portal", label: "Overview", icon: LayoutDashboard },
-  { id: "/portal/catalog", label: "Catalog", icon: ShoppingBag },
-  { id: "/portal/invoices", label: "Invoices", icon: Receipt },
-  { id: "/portal/notifications", label: "Notifications", icon: Bell },
-  { id: "/portal/settings", label: "Settings", icon: SettingsIcon },
-];
+const supplierTabs = SUPPLIER_PORTAL_NAV as ExpandableTabsTab<string>[];
+const customerTabs = CUSTOMER_PORTAL_NAV as ExpandableTabsTab<string>[];
 
 export default function PortalLayout() {
   const { user, logout, completeLogout } = useAuth();
@@ -52,7 +39,7 @@ export default function PortalLayout() {
     setTimeout(() => completeLogout(), 600);
   }, [logout, completeLogout]);
 
-  const tabs = isCustomer ? CUSTOMER_NAV_TABS : SUPPLIER_NAV_TABS;
+  const tabs = isCustomer ? customerTabs : supplierTabs;
 
   return (
     <div className="min-h-screen bg-app flex flex-col">
@@ -62,7 +49,7 @@ export default function PortalLayout() {
             <img
               src={me?.logo_url || getPlaceholder()}
               onError={onImageError}
-              alt={me?.store_name ?? "Supplier Portal"}
+              alt={me?.store_name ?? "Portal"}
               className="h-9 w-9 rounded-xl object-cover shrink-0"
             />
             <div className="min-w-0">
