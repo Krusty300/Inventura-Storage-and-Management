@@ -1383,8 +1383,11 @@ export interface PortalMe {
   user: User;
   supplier: Supplier;
   store_name: string;
+  currency_code: string;
   currency_symbol: string;
   logo_url: string;
+  date_format: string;
+  default_items_per_page: number;
 }
 
 export interface PortalSummary {
@@ -1404,9 +1407,12 @@ export interface CustomerPortalMe {
   user: User;
   customer: Customer;
   store_name: string;
+  currency_code: string;
   currency_symbol: string;
   logo_url: string;
   tax_rate: number;
+  date_format: string;
+  default_items_per_page: number;
 }
 
 export interface CustomerPortalSummary {
@@ -1426,4 +1432,18 @@ export interface CatalogProduct {
   price: number;
   image_url: string;
   in_stock: boolean;
+}
+
+export interface PricingItem {
+  product_id: number;
+  unit_price: number;
+  line_total: number;
+}
+
+export interface PricingResponse {
+  items: PricingItem[];
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  total: number;
 }

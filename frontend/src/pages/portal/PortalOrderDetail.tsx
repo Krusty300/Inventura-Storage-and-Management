@@ -16,6 +16,7 @@ const STATUS_LABEL: Record<string, string> = {
   approved: "Approved",
   acknowledged: "Acknowledged",
   in_transit: "In transit",
+  partially_received: "Partially received",
   received: "Received",
   cancelled: "Cancelled",
 };
@@ -59,10 +60,13 @@ export default function PortalOrderDetail() {
 
   const patchMutation = useMutation({
     mutationFn: (status: string) => api.patch(`/portal/orders/${orderId}`, { status }),
-    onSuccess: () => {
-      addToast(`Order marked as ${STATUS_LABEL[order?.status ?? ""] ?? "updated"}`, "success");
+    onSuccess: (_data, status) => {
+      addToast(`Order marked as ${STATUS_LABEL[status] ?? status}`, "success");
       queryClient.invalidateQueries({ queryKey: ["portal", "order", orderId] });
       queryClient.invalidateQueries({ queryKey: ["portal", "orders"] });
+      // Marking a PO in transit auto-raises an ASN server-side, so the
+      // shipment lists must refresh too.
+      queryClient.invalidateQueries({ queryKey: ["portal", "asns"] });
       queryClient.invalidateQueries({ queryKey: ["portal", "summary"] });
       queryClient.invalidateQueries({ queryKey: ["portal", "me"] });
     },

@@ -518,3 +518,72 @@ def test_portal_checkout_scoped_to_own_account(auth_headers):
     }, headers=_login("scopeco_b")).json()
     resp = client.get(f"/api/customer/sales/{sale['id']}", headers=_login("scopeco_a"))
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------- live pricing
+
+def test_portal_me_exposes_date_format_and_page_size(auth_headers):
+    customer = _make_customer(auth_headers, "Me Fields Customer")
+    _make_customer_account(auth_headers, "mefields", customer_id=customer["id"]).json()
+    data = client.get("/api/customer/me", headers=_login("mefields")).json()
+    assert data["currency_code"] in ("USD",)
+    assert bool(data["currency_symbol"])
+    assert data["date_format"] == "YYYY-MM-DD"
+    assert data["default_items_per_page"] >= 1
+
+
+def test_portal_pricing_matches_checkout(auth_headers):
+    customer = _make_customer(auth_headers, "Pricing Customer")
+    _make_customer_account(auth_headers, "pricecust", customer_id=customer["id"]).json()
+    prod = _make_product(auth_headers, "PRICE-1", unit_price=30.0, quantity=10)
+    headers = _login("pricecust")
+    resp = client.post("/api/customer/pricing", json={
+        "items": [{"product_id": prod["id"], "quantity": 2}],
+    }, headers=headers)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["subtotal"] == 60.0
+    assert data["items"][0]["unit_price"] == 30.0
+    assert data["items"][0]["line_total"] == 60.0
+    # Checkout lands at exactly the price shown in the cart.
+    sale = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 2}],
+        "payment_method": "cash",
+    }, headers=headers).json()
+    assert sale["subtotal"] == data["subtotal"]
+    assert sale["total_amount"] == data["total"]
+    assert sale["items"][0]["unit_price"] == data["items"][0]["unit_price"]
+
+
+def test_portal_pricing_resolves_group_list_with_qty(auth_headers):
+    prod = _make_product(auth_headers, "PRICE-GRP", unit_price=20.0, quantity=50)
+    pl = client.post("/api/price-lists", json={
+        "name": "Pricing List", "is_default": False,
+        "items": [{"product_id": prod["id"], "price": 10.0}],
+    }, headers=auth_headers).json()
+    group = client.post("/api/customer-groups", json={
+        "name": "Pricing Group", "price_list_id": pl["id"],
+    }, headers=auth_headers).json()
+    customer = _make_customer(auth_headers, "Priced Group Customer", group_id=group["id"])
+    _make_customer_account(auth_headers, "pricegrp", customer_id=customer["id"]).json()
+    data = client.post("/api/customer/pricing", json={
+        "items": [{"product_id": prod["id"], "quantity": 3}],
+    }, headers=_login("pricegrp")).json()
+    assert data["subtotal"] == 30.0
+    assert data["items"][0]["unit_price"] == 10.0
+
+
+def test_portal_pricing_guards_mirror_checkout(auth_headers):
+    customer = _make_customer(auth_headers, "Pricing Guard Customer")
+    _make_customer_account(auth_headers, "priceguard", customer_id=customer["id"]).json()
+    headers = _login("priceguard")
+    resp = client.post("/api/customer/pricing", json={"items": []}, headers=headers)
+    assert resp.status_code == 422
+    resp = client.post("/api/customer/pricing", json={
+        "items": [{"product_id": 999999, "quantity": 1}],
+    }, headers=headers)
+    assert resp.status_code == 404
+    resp = client.post("/api/customer/pricing", json={
+        "items": [{"product_id": 1, "quantity": 0}],
+    }, headers=headers)
+    assert resp.status_code == 422

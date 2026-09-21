@@ -108,8 +108,14 @@ export default function CustomerSettings() {
       return;
     }
     setPwSaving(true);
-    await changePassword.mutateAsync();
-    setPwSaving(false);
+    try {
+      await changePassword.mutateAsync();
+    } catch {
+      // The mutation's onError already surfaces the toast; a thrown rejection
+      // here would be an unhandled promise rejection and leave the button stuck.
+    } finally {
+      setPwSaving(false);
+    }
   };
 
   return (

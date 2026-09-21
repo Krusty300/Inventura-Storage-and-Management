@@ -62,7 +62,7 @@ export default function CustomerInvoiceDetail() {
     );
   }
 
-  const currencySymbol = me?.currency_symbol || "$";
+  const currencySymbol = sale.currency_symbol || me?.currency_symbol || "$";
 
   return (
     <div className="space-y-6">

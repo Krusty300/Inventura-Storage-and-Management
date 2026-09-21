@@ -9,6 +9,12 @@ const api = axios.create({
 
 let isRedirectingToLogin = false;
 
+// Endpoints that legitimately answer 401 for *bad credentials* (not for an
+// unauthenticated session). Intercepting those into a full-page redirect to
+// /login would break the inline error handling on the login form and sign staff
+// out when they mis-type the password on the sale-lock dialog.
+const REDIRECT_EXEMPT_401 = new Set(["/auth/login", "/auth/verify"]);
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
@@ -20,7 +26,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
-    if (err.response?.status === 401 && err.config?.url !== "/auth/logout" && !isRedirectingToLogin) {
+    const url = err.config?.url ?? "";
+    const isSessionExpired =
+      err.response?.status === 401 &&
+      url !== "/auth/logout" &&
+      !REDIRECT_EXEMPT_401.has(url);
+    if (isSessionExpired && !isRedirectingToLogin) {
       isRedirectingToLogin = true;
       localStorage.removeItem("token");
       localStorage.removeItem("user");

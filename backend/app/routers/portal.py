@@ -32,6 +32,7 @@ from app.models.supplier import Supplier
 from app.models.user import User
 from app.routers.asn import asn_pdf as render_asn_pdf
 from app.routers.receipts import receipt_pdf as render_receipt_pdf
+from app.routers.sales import get_currency_defaults
 from app.schemas.asn import ASNOut
 from app.schemas.order import OrderOut
 from app.schemas.receipt import ReceiptOut
@@ -235,12 +236,22 @@ def portal_me(
     supplier: Supplier = Depends(require_supplier),
 ):
     s = db.query(Settings).first()
+    default_currency, default_symbol = get_currency_defaults(db)
+    preferences = _preferences(supplier)
     return {
         "user": UserOut.model_validate(user),
         "supplier": SupplierOut.model_validate(supplier),
         "store_name": (s.store_name if s else None) or "My Store",
-        "currency_symbol": (s.currency_symbol if s else "$") or "$",
+        "currency_code": default_currency,
+        "currency_symbol": default_symbol,
         "logo_url": (s.logo_url if s else None) or "",
+        "date_format": (s.date_format if s else None) or "YYYY-MM-DD",
+        "default_items_per_page": int(
+            preferences.get("default_page_size")
+            or (s.default_items_per_page if s else 25)
+            or 25
+        ),
+        "tax_rate": float(s.tax_rate) if s else 0.0,
     }
 
 

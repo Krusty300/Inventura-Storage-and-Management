@@ -125,7 +125,7 @@ export default function CustomerInvoices() {
                 <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">{s.invoice_number}</td>
                 <td className="px-4 py-3 text-muted whitespace-nowrap hidden sm:table-cell">{formatDate(s.created_at)}</td>
                 <td className="px-4 py-3"><span className={`badge ${statusBadge(s.status)}`}>{STATUS_LABEL[s.status] ?? s.status}</span></td>
-                <td className="px-4 py-3 text-right font-medium">{formatCurrency(s.total_amount, currencySymbol)}</td>
+                <td className="px-4 py-3 text-right font-medium">{formatCurrency(s.total_amount, s.currency_symbol || currencySymbol)}</td>
               </tr>
             ))}
           </Table>

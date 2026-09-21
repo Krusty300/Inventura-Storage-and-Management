@@ -119,6 +119,7 @@ const [profileDraft, setProfileDraft] = useState(form);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["portal"] });
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
       addToast("Preferences saved", "success");
     },
     onError: (err) => addToast(errorMessage(err, "Failed to save preferences"), "error"),
@@ -171,8 +172,14 @@ const [profileDraft, setProfileDraft] = useState(form);
       return;
     }
     setPwSaving(true);
-    await changePassword.mutateAsync();
-    setPwSaving(false);
+    try {
+      await changePassword.mutateAsync();
+    } catch {
+      // The mutation's onError already surfaces the toast; a thrown rejection
+      // here would be an unhandled promise rejection and leave the button stuck.
+    } finally {
+      setPwSaving(false);
+    }
   };
 
   const imageUrl = supplier?.image_url ? entityImageUrl(supplier.image_url) : getPlaceholder();

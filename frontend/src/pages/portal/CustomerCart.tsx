@@ -10,7 +10,7 @@ import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { formatCurrency } from "../../utils/currency";
 import { errorMessage } from "../../utils/errors";
 import EmptyState from "../../components/EmptyState";
-import type { CustomerPortalMe, Sale } from "../../types";
+import type { CustomerPortalMe, PricingResponse, Sale } from "../../types";
 
 const PAYMENT_METHODS = [
   { value: "cash", label: "Cash", icon: Banknote, hint: "Pay on pickup or delivery" },
@@ -33,12 +33,35 @@ export default function CustomerCart() {
   const currencySymbol = me?.currency_symbol || "$";
   const taxRate = me?.tax_rate || 0;
 
-  const subtotal = useMemo(
+  // Live prices: the catalog snapshot price is qty-independent, but checkout
+  // re-resolves through tiered group pricing, so the cart re-quotes server-side
+  // with the real quantities (mirroring checkout exactly).
+  const itemKey = items.map((it) => `${it.product.id}:${it.quantity}`).join(",");
+  const { data: pricing, isError: pricingError } = useQuery({
+    queryKey: ["customer", "pricing", itemKey],
+    queryFn: async () => {
+      const { data } = await api.post("/customer/pricing", {
+        items: items.map((it) => ({ product_id: it.product.id, quantity: it.quantity })),
+      });
+      return data as PricingResponse;
+    },
+    enabled: items.length > 0,
+  });
+
+  const priceMap = useMemo(() => {
+    const map: Record<number, PricingResponse["items"][number]> = {};
+    for (const p of pricing?.items ?? []) map[p.product_id] = p;
+    return map;
+  }, [pricing]);
+
+  const snapshotSubtotal = useMemo(
     () => items.reduce((sum, it) => sum + it.product.price * it.quantity, 0),
     [items],
   );
-  const tax = (subtotal * taxRate) / 100;
-  const total = subtotal + tax;
+  const subtotal = pricing?.subtotal ?? snapshotSubtotal;
+  const effectiveTaxRate = pricing?.tax_rate ?? taxRate;
+  const tax = pricing?.tax_amount ?? (snapshotSubtotal * effectiveTaxRate) / 100;
+  const total = pricing?.total ?? subtotal + tax;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -122,8 +145,8 @@ export default function CustomerCart() {
                 <h3 className="font-semibold text-ink leading-snug">{it.product.name}</h3>
                 {it.product.sku && <p className="text-xs text-faint">SKU: {it.product.sku}</p>}
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <span className="text-sm font-bold text-ink">{formatCurrency(it.product.price * it.quantity, currencySymbol)}</span>
-                  <span className="text-xs text-faint">{formatCurrency(it.product.price, currencySymbol)} each</span>
+                  <span className="text-sm font-bold text-ink">{formatCurrency(priceMap[it.product.id]?.line_total ?? it.product.price * it.quantity, currencySymbol)}</span>
+                  <span className="text-xs text-faint">{formatCurrency(priceMap[it.product.id]?.unit_price ?? it.product.price, currencySymbol)} each</span>
                 </div>
               </div>
               <div className="flex items-center justify-between sm:flex-col sm:items-end sm:justify-between gap-2 shrink-0">
@@ -201,9 +224,12 @@ export default function CustomerCart() {
               <span className="text-ink font-medium">{formatCurrency(subtotal, currencySymbol)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted">Tax ({taxRate}%)</span>
+              <span className="text-muted">Tax ({effectiveTaxRate}%)</span>
               <span className="text-ink font-medium">{formatCurrency(tax, currencySymbol)}</span>
             </div>
+            {pricingError && (
+              <p className="text-xs text-faint">Totals are an estimate - re-quote failed. Review your items before ordering.</p>
+            )}
             <div className="flex justify-between text-base font-bold">
               <span className="text-ink">Total</span>
               <span className="text-ink">{formatCurrency(total, currencySymbol)}</span>

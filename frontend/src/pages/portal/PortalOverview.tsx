@@ -13,12 +13,13 @@ import { entityImageUrl } from "../../utils/images";
 import { onImageError } from "../../utils/placeholders";
 import type { PortalMe, PortalSummary } from "../../types";
 
-const STATUS_ORDER = ["approved", "acknowledged", "in_transit", "received", "cancelled"] as const;
+const STATUS_ORDER = ["approved", "acknowledged", "in_transit", "partially_received", "received", "cancelled"] as const;
 
 const STATUS_LABEL: Record<string, string> = {
   approved: "Approved",
   acknowledged: "Acknowledged",
   in_transit: "In transit",
+  partially_received: "Partially received",
   received: "Received",
   cancelled: "Cancelled",
 };

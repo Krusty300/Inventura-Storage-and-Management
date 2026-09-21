@@ -16,15 +16,15 @@ interface RealtimeContextType {
 const RealtimeContext = createContext<RealtimeContextType>({ connected: false, subscribe: () => () => {} });
 
 const entityQueryMap: Record<string, string[]> = {
-  product: ["products", "product", "product-cost", "product-movements", "product-stock-locations", "product-quarantined-lots", "product-quarantined-serials", "product-reserved-serials", "trace", "exceptions", "dashboard", "reports", "forecasting", "mrp", "stock-locations", "global-search", "entity-search"],
+  product: ["products", "product", "product-cost", "product-movements", "product-stock-locations", "product-quarantined-lots", "product-quarantined-serials", "product-reserved-serials", "trace", "exceptions", "dashboard", "reports", "forecasting", "mrp", "stock-locations", "global-search", "entity-search", "customer"],
   category: ["categories", "category-products", "category-suppliers", "reports", "dashboard"],
-  supplier: ["suppliers", "suppliers-lookup", "supplier-products", "supplier-stats", "supplier-orders", "reports", "global-search", "entity-search"],
+  supplier: ["suppliers", "suppliers-lookup", "supplier-products", "supplier-stats", "supplier-orders", "reports", "global-search", "entity-search", "portal"],
   stock_movement: ["stock-movements", "product-movements", "trace", "stock-locations", "quarantined-locations", "exceptions", "dashboard", "reports", "mrp"],
   shipment: ["shipments", "shipment", "dashboard", "reports"],
-  order: ["orders", "dashboard", "reports", "forecasting"],
+  order: ["orders", "dashboard", "reports", "forecasting", "portal"],
   sale: ["sales", "dashboard", "reports", "forecasting", "customer"],
-  asn: ["asns", "reports"],
-  receipt: ["receipts", "dashboard", "reports"],
+  asn: ["asns", "reports", "portal"],
+  receipt: ["receipts", "dashboard", "reports", "portal"],
   user: ["users", "auth-sessions", "assignable-users"],
   activity_log: ["activity-logs"],
   notification: ["notifications"],
@@ -33,7 +33,7 @@ const entityQueryMap: Record<string, string[]> = {
   location: ["locations", "location-detail", "stock-locations", "quarantined-locations", "dashboard"],
   quality_check: ["quality-checks", "exceptions", "dashboard"],
   bom: ["boms", "product-cost", "mrp"],
-  customer: ["customers", "customer-stats", "customer-frequent-products", "customer-sales", "reports", "global-search", "entity-search"],
+  customer: ["customers", "customer-stats", "customer-frequent-products", "customer-sales", "reports", "global-search", "entity-search", "customer"],
   customer_group: ["customer-groups", "reports"],
   cycle_count: ["cycle-counts", "dashboard"],
   lpn: ["lpns", "lpn", "stock-locations", "quarantined-locations", "dashboard"],
@@ -42,7 +42,7 @@ const entityQueryMap: Record<string, string[]> = {
   sales_channel: ["sales-channels"],
   work_order: ["work-orders", "work-orders-kanban", "work-order-cost", "work-order-genealogy", "mrp"],
   serial_number: ["serial-numbers", "serial-movements", "product-reserved-serials", "trace", "exceptions"],
-  settings: ["settings"],
+  settings: ["settings", "portal", "customer"],
   kit: ["kits", "mrp", "product-cost"],
 };
 

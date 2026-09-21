@@ -61,7 +61,7 @@ function renderCart(quantity = 2) {
 
 describe("CustomerCart", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     localStorage.clear();
   });
 
@@ -82,6 +82,30 @@ describe("CustomerCart", () => {
     fireEvent.click(plus);
     expect(screen.getByLabelText("Quantity")).toHaveTextContent("3");
     expect(screen.getAllByText("$37.50").length).toBeGreaterThan(0);
+  });
+
+  it("re-quotes live prices so totals match the tiered checkout price", async () => {
+    postMock.mockImplementation((url: string) => {
+      if (url === "/customer/pricing") {
+        return Promise.resolve({
+          data: {
+            items: [{ product_id: 7, unit_price: 10, line_total: 20 }],
+            subtotal: 20,
+            tax_rate: 10,
+            tax_amount: 2,
+            total: 22,
+          },
+        });
+      }
+      return Promise.reject(new Error(`unexpected POST ${url}`));
+    });
+    renderCart(2);
+    // Line total re-priced at the tiered unit price (also shown as subtotal).
+    expect((await screen.findAllByText("$20.00")).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("$10.00 each")).toBeInTheDocument();
+    // Tax and total come from the live quote, not the snapshot.
+    expect(await screen.findByText("$2.00")).toBeInTheDocument();
+    expect(await screen.findByText("$22.00")).toBeInTheDocument();
   });
 
   it("clears the cart if all items are removed", async () => {

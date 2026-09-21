@@ -95,6 +95,30 @@ class CheckoutRequest(BaseModel):
         return self
 
 
+class PricingRequest(BaseModel):
+    items: list[CheckoutItemCreate]
+
+    @model_validator(mode="after")
+    def _validate_items_not_empty(self):
+        if not self.items:
+            raise ValueError("Cart is empty")
+        return self
+
+
+class PricingItemOut(BaseModel):
+    product_id: int
+    unit_price: float
+    line_total: float
+
+
+class PricingResponse(BaseModel):
+    items: list[PricingItemOut]
+    subtotal: float
+    tax_rate: float
+    tax_amount: float
+    total: float
+
+
 class CatalogProduct(BaseModel):
     id: int
     sku: str
@@ -140,13 +164,17 @@ def customer_me(
     customer: Customer = Depends(require_customer),
 ):
     s = db.query(Settings).first()
+    default_currency, default_symbol = get_currency_defaults(db)
     return {
         "user": UserOut.model_validate(user),
         "customer": CustomerOut.model_validate(customer),
         "store_name": (s.store_name if s else None) or "My Store",
-        "currency_symbol": (s.currency_symbol if s else "$") or "$",
+        "currency_code": default_currency,
+        "currency_symbol": default_symbol,
         "logo_url": (s.logo_url if s else None) or "",
         "tax_rate": float(s.tax_rate) if s else 0.0,
+        "date_format": (s.date_format if s else None) or "YYYY-MM-DD",
+        "default_items_per_page": int((s.default_items_per_page if s else 25) or 25),
     }
 
 
@@ -246,6 +274,53 @@ def customer_catalog_detail(
         price=price,
         image_url=p.image_url or (p.images[0].url if p.images else ""),
         in_stock=p.total_quantity > 0,
+    )
+
+
+@router.post("/pricing", response_model=PricingResponse)
+def customer_pricing(
+    data: PricingRequest,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(require_customer),
+):
+    """Resolve live unit prices for the cart at the current quantities.
+
+    Mirrors the checkout validation (variant/serialized/QC guards and
+    ``resolve_price`` with quantity for tier pricing) so the cart summary shows
+    exactly what the invoice will total before the order is placed.
+    """
+    product_ids = list({item.product_id for item in data.items})
+    products = {p.id: p for p in db.query(Product).filter(Product.id.in_(product_ids)).all()}
+    parents_with_variants = {
+        pid for (pid,) in db.query(Product.parent_id)
+        .filter(Product.parent_id.in_(product_ids), Product.is_active == True, Product.parent_id.isnot(None))  # noqa: E712
+        .distinct().all()
+    }
+    lines = []
+    subtotal = 0.0
+    for item in data.items:
+        product = products.get(item.product_id)
+        if product is None or product.is_deleted or not product.is_active:
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+        if not product.is_variant and product.id in parents_with_variants:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - select a specific variant")
+        if product.is_serialized:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' is serialized - not available for online checkout")
+        blockers = _qc_blockers(db, product.id, None)
+        if blockers:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' is not available for purchase right now")
+        price = resolve_price(db, product.id, customer_id=customer.id, qty=item.quantity)
+        line_total = item.quantity * price
+        subtotal += line_total
+        lines.append(PricingItemOut(product_id=item.product_id, unit_price=price, line_total=line_total))
+    tax_rate = get_tax_rate(db)
+    tax_amount = subtotal * tax_rate / 100
+    return PricingResponse(
+        items=lines,
+        subtotal=round(subtotal, 2),
+        tax_rate=tax_rate,
+        tax_amount=round(tax_amount, 2),
+        total=round(subtotal + tax_amount, 2),
     )
 
 

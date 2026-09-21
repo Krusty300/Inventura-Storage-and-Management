@@ -150,6 +150,21 @@ def test_supplier_login_and_portal_me(auth_headers):
     assert data["supplier"]["name"] == "Portal Me Supplier"
 
 
+def test_portal_me_uses_supplier_default_page_size(auth_headers):
+    supplier = _make_supplier(auth_headers, "Paging Supplier")
+    _make_supplier_account(auth_headers, "pagingsup", supplier_id=supplier["id"]).json()
+    headers = _login("pagingsup")
+    # Until the supplier picks their own size, the store default applies.
+    assert client.get("/api/portal/me", headers=headers).json()["default_items_per_page"] == 25
+    resp = client.patch("/api/portal/settings", json={"default_page_size": 50}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["preferences"]["default_page_size"] == 50
+    assert client.get("/api/portal/me", headers=headers).json()["default_items_per_page"] == 50
+    # Non-allowed sizes are still rejected.
+    resp = client.patch("/api/portal/settings", json={"default_page_size": 40}, headers=headers)
+    assert resp.status_code == 422
+
+
 def test_supplier_cannot_use_internal_endpoints(auth_headers):
     supplier = _make_supplier(auth_headers, "Fenced Supplier")
     _make_supplier_account(auth_headers, "fencedsup", supplier_id=supplier["id"]).json()
