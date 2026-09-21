@@ -310,9 +310,80 @@ describe("Shipments", () => {
 
     await waitFor(() =>
       expect(postMock).toHaveBeenCalledWith("/shipments/1/pick", expect.objectContaining({
-        items: [{ product_id: 2, serial_ids: [11, 12] }],
+        items: [{ product_id: 2, item_id: 2, serial_ids: [11, 12] }],
       }))
     );
+  });
+
+  it("keeps Pick Selected enabled for a line left empty and sends no serials (auto-allocate)", async () => {
+    const serialized: Shipment = {
+      ...baseShipment("draft"),
+      items: [
+        { id: 3, shipment_id: 1, product_id: 3, location_id: null, quantity_ordered: 2, quantity_picked: 0, quantity_packed: 0, quantity_shipped: 0, product_name: "Auto Widget", location_name: "", is_serialized: true },
+      ],
+    };
+    getMock.mockImplementation((url: string) => {
+      if (url === "/shipments") return Promise.resolve({ data: { items: [serialized], total: 1, page: 1, pages: 1 } });
+      if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 1, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 1 } });
+      if (url === "/shipments/1") return Promise.resolve({ data: serialized });
+      if (url === "/serial-numbers") return Promise.resolve({ data: { items: [
+        { id: 21, product_id: 3, serial_number: "A-1", lot_id: null, location_id: null, lpn_id: null, status: "in_stock", sold_at: null, location_name: "", lot_number: "", lot_status: "in_stock", product_name: "Auto Widget", created_at: "2026-01-01T00:00:00" },
+        { id: 22, product_id: 3, serial_number: "A-2", lot_id: null, location_id: null, lpn_id: null, status: "in_stock", sold_at: null, location_name: "", lot_number: "", lot_status: "in_stock", product_name: "Auto Widget", created_at: "2026-01-01T00:00:00" },
+      ], total: 2, page: 1, pages: 1 } });
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD" } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+    postMock.mockImplementation((url: string) => {
+      if (url === "/shipments/1/pick") return Promise.resolve({ data: { ...serialized, status: "picking" } });
+      return Promise.reject(new Error(`Unexpected post: ${url}`));
+    });
+
+    renderWithProviders(<Shipments />);
+    fireEvent.click(await screen.findByRole("button", { name: /View/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
+
+    const pickButton = await screen.findByRole("button", { name: "Pick Selected" });
+    expect(pickButton).toBeEnabled();
+    fireEvent.click(pickButton);
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/shipments/1/pick", expect.objectContaining({
+        items: [{ product_id: 3, item_id: 3, serial_ids: [] }],
+      }))
+    );
+  });
+
+  it("keeps Pick Selected disabled and explains when a line is only partially selected", async () => {
+    const serialized: Shipment = {
+      ...baseShipment("draft"),
+      items: [
+        { id: 4, shipment_id: 1, product_id: 4, location_id: null, quantity_ordered: 3, quantity_picked: 0, quantity_packed: 0, quantity_shipped: 0, product_name: "Partial Widget", location_name: "", is_serialized: true },
+      ],
+    };
+    getMock.mockImplementation((url: string) => {
+      if (url === "/shipments") return Promise.resolve({ data: { items: [serialized], total: 1, page: 1, pages: 1 } });
+      if (url === "/shipments/stats") return Promise.resolve({ data: { counts: { draft: 1, picking: 0, packed: 0, shipped: 0, cancelled: 0 }, open: 1 } });
+      if (url === "/shipments/1") return Promise.resolve({ data: serialized });
+      if (url === "/serial-numbers") return Promise.resolve({ data: { items: [
+        { id: 31, product_id: 4, serial_number: "P-1", lot_id: null, location_id: null, lpn_id: null, status: "in_stock", sold_at: null, location_name: "", lot_number: "", lot_status: "in_stock", product_name: "Partial Widget", created_at: "2026-01-01T00:00:00" },
+        { id: 32, product_id: 4, serial_number: "P-2", lot_id: null, location_id: null, lpn_id: null, status: "in_stock", sold_at: null, location_name: "", lot_number: "", lot_status: "in_stock", product_name: "Partial Widget", created_at: "2026-01-01T00:00:00" },
+        { id: 33, product_id: 4, serial_number: "P-3", lot_id: null, location_id: null, lpn_id: null, status: "in_stock", sold_at: null, location_name: "", lot_number: "", lot_status: "in_stock", product_name: "Partial Widget", created_at: "2026-01-01T00:00:00" },
+      ], total: 3, page: 1, pages: 1 } });
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD" } });
+      return Promise.reject(new Error(`Unexpected call: ${url}`));
+    });
+
+    renderWithProviders(<Shipments />);
+    fireEvent.click(await screen.findByRole("button", { name: /View/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pick" }));
+
+    const checkboxes = await screen.findAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]);
+    expect(screen.getByRole("button", { name: "Pick Selected" })).toBeDisabled();
+    expect(screen.getByText(/Select all 3 serials or clear this line/)).toBeInTheDocument();
+
+    fireEvent.click(checkboxes[0]);
+    expect(screen.getByRole("button", { name: "Pick Selected" })).toBeEnabled();
   });
 
   it("shows a fulfillment status badge for serialized lines in the detail view", async () => {

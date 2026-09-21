@@ -599,6 +599,8 @@ def delete_order(order_id: int, db: Session = Depends(get_db), user=Depends(requ
     o = get_or_404(Order, order_id, db)
     if o.status == "received":
         raise HTTPException(status_code=400, detail="Received orders cannot be deleted - stock was already added to inventory")
+    if o.status == "partially_received":
+        raise HTTPException(status_code=400, detail="Partially received orders cannot be deleted - stock was already added to inventory")
     if o.status in ("approved", "acknowledged", "in_transit"):
         raise HTTPException(status_code=400, detail="Confirmed orders cannot be deleted - cancel the order instead")
     if o.status == "pending":

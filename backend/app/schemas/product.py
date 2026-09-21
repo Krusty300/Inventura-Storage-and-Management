@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProductCreate(BaseModel):
@@ -13,9 +13,9 @@ class ProductCreate(BaseModel):
     parent_id: Optional[int] = None
     attributes: Optional[dict] = None
     unit_price: float = 0.0
-    cost_price: float = 0.0
+    cost_price: float = Field(default=0.0, ge=0)
     quantity: int = 0
-    reorder_level: Optional[int] = None
+    reorder_level: Optional[int] = Field(default=None, ge=0)
     location_id: Optional[int] = None
     location: str = ""
     barcode: str = ""
@@ -41,9 +41,9 @@ class ProductUpdate(BaseModel):
     parent_id: Optional[int] = None
     attributes: Optional[dict] = None
     unit_price: Optional[float] = None
-    cost_price: Optional[float] = None
+    cost_price: Optional[float] = Field(default=None, ge=0)
     quantity: Optional[int] = None
-    reorder_level: Optional[int] = None
+    reorder_level: Optional[int] = Field(default=None, ge=0)
     location_id: Optional[int] = None
     location: Optional[str] = None
     barcode: Optional[str] = None

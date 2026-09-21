@@ -343,7 +343,7 @@ function ShipmentLineRow({
     <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-end">
       <div className="col-span-12 sm:col-span-5">
         <label className="block text-sm font-medium text-ink mb-1.5">Product</label>
-        <FittedSelect ariaLabel="Product" value={row.product_id} onChange={(v) => onChange(index, "product_id", v)} options={[{ value: "", label: "Select product..." }, ...products.sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: String(p.id), label: productLabel(p) }))]} />
+        <FittedSelect ariaLabel="Product" value={row.product_id} onChange={(v) => onChange(index, "product_id", v)} options={[{ value: "", label: "Select product..." }, ...[...products].sort((a, b) => a.name.localeCompare(b.name)).map((p) => ({ value: String(p.id), label: productLabel(p) }))]} />
       </div>
       <div className="col-span-4 sm:col-span-2">
         <label className="block text-sm font-medium text-ink mb-1.5">Qty</label>
@@ -659,11 +659,15 @@ function SerializedPickRow({ item, selected, onSelect }: {
   const toggle = (serialId: number) => {
     const next = new Set(selected);
     if (next.has(serialId)) next.delete(serialId);
-    else next.add(serialId);
+    else {
+      if (next.size >= remaining) return;
+      next.add(serialId);
+    }
     onSelect([...next]);
   };
 
   const allSelected = selected.size === serials.length && serials.length > 0;
+  const partiallySelected = selected.size > 0 && selected.size < remaining;
 
   return (
     <div className="border border-border rounded-lg p-3">
@@ -671,7 +675,9 @@ function SerializedPickRow({ item, selected, onSelect }: {
         {item.product_name} <span className="text-muted font-normal">- pick {remaining}</span>
       </p>
       {serials.length === 0 ? (
-        <p className="text-sm text-faint">No in-stock serials found.</p>
+        <p className="text-sm text-faint">
+          No in-stock serials at this location. Leave this line empty to auto-allocate; the pick will fail if stock is insufficient elsewhere.
+        </p>
       ) : (
         <>
           <div className="border border-border rounded-lg divide-y divide-border max-h-40 overflow-y-auto">
@@ -700,6 +706,11 @@ function SerializedPickRow({ item, selected, onSelect }: {
           </div>
         </>
       )}
+      {partiallySelected && (
+        <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+          Select all {remaining} serials or clear this line to auto-allocate.
+        </p>
+      )}
     </div>
   );
 }
@@ -717,13 +728,14 @@ function PickSerialsModal({ shipment, onClose, onPicked }: {
     (i) => i.is_serialized && i.quantity_picked < i.quantity_ordered
   );
 
-  const setSerialIds = (productId: number, serialIds: number[]) => {
-    setSelected((prev) => ({ ...prev, [productId]: new Set(serialIds) }));
+  const setSerialIds = (itemId: number, serialIds: number[]) => {
+    setSelected((prev) => ({ ...prev, [itemId]: new Set(serialIds) }));
   };
 
-  const allFilled = serializedItems.every((item) => {
+  const allFilledOrEmpty = serializedItems.every((item) => {
     const remaining = item.quantity_ordered - item.quantity_picked;
-    return (selected[item.product_id]?.size ?? 0) === remaining;
+    const count = selected[item.id]?.size ?? 0;
+    return count === 0 || count === remaining;
   });
 
   const submit = async () => {
@@ -731,7 +743,8 @@ function PickSerialsModal({ shipment, onClose, onPicked }: {
     try {
       const items = serializedItems.map((item) => ({
         product_id: item.product_id,
-        serial_ids: [...(selected[item.product_id] ?? [])],
+        item_id: item.id,
+        serial_ids: [...(selected[item.id] ?? [])],
       }));
       await api.post(`/shipments/${shipment.id}/pick`, { items });
       addToast("Picked", "success");
@@ -746,21 +759,21 @@ function PickSerialsModal({ shipment, onClose, onPicked }: {
     <Modal open onClose={onClose} title="Select Serial Numbers" wide>
       <div className="space-y-4">
         <p className="text-sm text-muted">
-          Choose the exact serial numbers to pick for each serialized line. Lines you don't touch are auto-allocated.
+          Choose the exact serial numbers to pick for each serialized line. Lines left empty are auto-allocated (FEFO).
         </p>
         <div className="space-y-3 max-h-[50vh] overflow-auto">
           {serializedItems.map((item) => (
             <SerializedPickRow
               key={item.id}
               item={item}
-              selected={selected[item.product_id] ?? new Set()}
-              onSelect={(ids) => setSerialIds(item.product_id, ids)}
+              selected={selected[item.id] ?? new Set()}
+              onSelect={(ids) => setSerialIds(item.id, ids)}
             />
           ))}
         </div>
         <div className="flex justify-end gap-3 pt-4">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="button" disabled={!allFilled || busy} onClick={submit} className="btn-primary">
+          <button type="button" disabled={!allFilledOrEmpty || busy} onClick={submit} className="btn-primary">
             {busy ? "Picking..." : "Pick Selected"}
           </button>
         </div>

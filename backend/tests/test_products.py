@@ -22,6 +22,27 @@ def test_create_duplicate_sku(auth_headers):
     assert resp.status_code == 400
 
 
+def test_create_product_rejects_negative_cost_and_reorder(auth_headers):
+    resp = client.post("/api/products", json={"location_id": 1,
+        "sku": "SKU-NEG", "name": "Negative", "cost_price": -1.0,
+    }, headers=auth_headers)
+    assert resp.status_code == 422
+    resp = client.post("/api/products", json={"location_id": 1,
+        "sku": "SKU-NEG2", "name": "Negative 2", "reorder_level": -5,
+    }, headers=auth_headers)
+    assert resp.status_code == 422
+
+
+def test_update_product_rejects_negative_cost_and_reorder(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "SKU-NEGU", "name": "Neg Update", "cost_price": 5.0, "reorder_level": 3,
+    }, headers=auth_headers).json()
+    resp = client.put(f"/api/products/{prod['id']}", json={"cost_price": -2.0}, headers=auth_headers)
+    assert resp.status_code == 422
+    resp = client.put(f"/api/products/{prod['id']}", json={"reorder_level": -1}, headers=auth_headers)
+    assert resp.status_code == 422
+
+
 def test_list_products(auth_headers):
     client.post("/api/products", json={"location_id": 1, "sku": "SKU003", "name": "Alpha"}, headers=auth_headers)
     client.post("/api/products", json={"location_id": 1, "sku": "SKU004", "name": "Beta"}, headers=auth_headers)

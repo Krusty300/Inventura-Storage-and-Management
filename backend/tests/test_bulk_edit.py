@@ -150,6 +150,43 @@ def test_bulk_edit_sales_notes(auth_headers):
     assert client.get(f"/api/sales/{s['id']}", headers=auth_headers).json()["notes"] == "bulk note"
 
 
+def test_bulk_edit_sales_cancel_restores_stock(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "SALE-BC", "name": "BC-Sale", "unit_price": 10.0, "cost_price": 5.0, "quantity": 10,
+    }, headers=auth_headers).json()
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 10.0}],
+        "payment_method": "mobile_money",
+        "payment_provider": "m-pesa",
+        "payment_provider_amount": 40.0,
+        "currency": "KES",
+    }, headers=auth_headers).json()
+    assert sale["status"] == "pending"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 6
+
+    resp = client.patch("/api/sales/bulk-edit", json={"ids": [sale["id"]], "status": "cancelled"}, headers=auth_headers)
+    assert resp.status_code == 200
+    updated = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
+    assert updated["status"] == "cancelled"
+    assert client.get(f"/api/products/{prod['id']}", headers=auth_headers).json()["quantity"] == 10
+    movements = client.get(f"/api/products/{prod['id']}/movements", headers=auth_headers).json()
+    assert any(m["movement_type"] == "sale_return" and m["quantity_change"] == 4 for m in movements)
+
+
+def test_bulk_edit_sales_cancel_rejects_completed(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1,
+        "sku": "SALE-BD", "name": "BD-Sale", "unit_price": 10.0, "cost_price": 5.0, "quantity": 5,
+    }, headers=auth_headers).json()
+    sale = client.post("/api/sales", json={
+        "items": [{"product_id": prod["id"], "quantity": 1, "unit_price": 10.0}],
+        "payment_method": "cash",
+        "payment_status": "completed",
+    }, headers=auth_headers).json()
+    assert sale["status"] == "completed"
+    resp = client.patch("/api/sales/bulk-edit", json={"ids": [sale["id"]], "status": "cancelled"}, headers=auth_headers)
+    assert resp.status_code == 400
+
+
 # --- Validation ----------------------------------------------------------
 
 def test_bulk_edit_no_fields(auth_headers):

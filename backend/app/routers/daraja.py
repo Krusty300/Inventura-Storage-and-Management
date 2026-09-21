@@ -132,11 +132,12 @@ async def stk_callback(request: Request, db=Depends(get_db)):
         sale = db.query(Sale).filter(Sale.payment_checkout_request_id == parsed["checkout_request_id"]).first()
         if sale:
             if parsed["result_code"] == "0":
-                sale.payment_status = "completed"
-                sale.status = "completed"
-                receipt = parsed.get("mpesa_receipt_number", "")
-                if receipt:
-                    sale.payment_reference = receipt
+                if sale.payment_status == "pending":
+                    sale.payment_status = "completed"
+                    sale.status = "completed"
+                    receipt = parsed.get("mpesa_receipt_number", "")
+                    if receipt:
+                        sale.payment_reference = receipt
             else:
                 sale.payment_status = "failed"
                 if sale.status == "pending":

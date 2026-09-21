@@ -30,6 +30,7 @@ class ShipmentUpdate(BaseModel):
 class ShipmentPickItem(BaseModel):
     product_id: int
     serial_ids: Optional[list[int]] = None
+    item_id: Optional[int] = None
 
 
 class ShipmentPickRequest(BaseModel):

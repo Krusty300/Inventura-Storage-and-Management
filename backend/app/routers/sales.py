@@ -347,11 +347,15 @@ def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depe
             status_code=400,
             detail="Refunds must be processed via the sale's refund action so stock is restored",
         )
+    restored_stock = False
     for s in sales:
         if new_status and s.status not in _VALID_STATUS_TRANSITIONS:
             raise HTTPException(status_code=400, detail=f"Cannot change status of sale '{s.invoice_number}' from '{s.status}'")
         if new_status and new_status not in _VALID_STATUS_TRANSITIONS.get(s.status, set()):
             raise HTTPException(status_code=400, detail=f"Invalid transition '{s.status}' → '{new_status}' for sale '{s.invoice_number}'")
+        if new_status == "cancelled" and s.status in ("pending", "completed"):
+            _restore_stock_for_sale(db, s, reason="Cancellation")
+            restored_stock = True
         for k, v in updates.items():
             if k in ALLOWED_SALE_BULK_FIELDS:
                 setattr(s, k, v)
@@ -360,6 +364,9 @@ def bulk_edit_sales(data: SaleBulkEdit, db: Session = Depends(get_db), user=Depe
                  f"Bulk-edited {len(sales)} sale(s): {', '.join(f'{k}={v}' for k, v in updates.items())}")
     db.commit()
     broadcast_change("sale", "updated")
+    if restored_stock:
+        broadcast_change("stock_movement", "created")
+        broadcast_change("product", "updated")
     return {"updated": len(sales), "fields": [k for k in updates if k in ALLOWED_SALE_BULK_FIELDS]}
 
 

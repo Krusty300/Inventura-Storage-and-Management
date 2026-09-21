@@ -244,6 +244,40 @@ def test_shipment_auto_allocate_skips_serialized_units(auth_headers):
     assert picked.json()["total_picked"] == 2
 
 
+def test_pick_duplicate_product_lines_by_item_id(auth_headers):
+    p = _make_product(auth_headers, "SHP-DUPI", serialized=True)
+    loc_a = _make_location(auth_headers, "SHP-DUPI-A")
+    loc_b = _make_location(auth_headers, "SHP-DUPI-B")
+    assert _receive_serials(auth_headers, p["id"], loc_a["id"], ["DA1", "DA2"]).status_code == 201
+    assert _receive_serials(auth_headers, p["id"], loc_b["id"], ["DB1", "DB2"]).status_code == 201
+
+    created = client.post("/api/shipments", json={
+        "items": [
+            {"product_id": p["id"], "quantity": 2, "location_id": loc_a["id"]},
+            {"product_id": p["id"], "quantity": 2, "location_id": loc_b["id"]},
+        ],
+    }, headers=auth_headers)
+    assert created.status_code == 201
+    shipment = created.json()
+    assert len(shipment["items"]) == 2
+
+    sa = [s["id"] for s in client.get(
+        f"/api/serial-numbers?product_id={p['id']}&location_id={loc_a['id']}&limit=10", headers=auth_headers).json()["items"]]
+    sb = [s["id"] for s in client.get(
+        f"/api/serial-numbers?product_id={p['id']}&location_id={loc_b['id']}&limit=10", headers=auth_headers).json()["items"]]
+
+    picked = client.post(f"/api/shipments/{shipment['id']}/pick", json={
+        "items": [
+            {"product_id": p["id"], "item_id": shipment["items"][0]["id"], "serial_ids": sa},
+            {"product_id": p["id"], "item_id": shipment["items"][1]["id"], "serial_ids": sb},
+        ],
+    }, headers=auth_headers)
+    assert picked.status_code == 200
+    body = picked.json()
+    assert body["status"] == "picking"
+    assert all(i["quantity_picked"] == i["quantity_ordered"] for i in body["items"])
+
+
 def test_pick_rejects_deactivated_serialized_product(auth_headers):
     p = _make_product(auth_headers, "SHP-DEACT", serialized=True)
     loc = _make_location(auth_headers, "SHP-DEACT-LOC")

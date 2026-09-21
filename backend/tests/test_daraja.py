@@ -81,6 +81,39 @@ def test_stk_callback_failure_cancels_sale(auth_headers):
     assert updated["payment_status"] == "cancelled"
 
 
+def test_stk_callback_late_success_does_not_recomplete_cancelled_sale(auth_headers):
+    sale = _make_mm_sale(auth_headers, "DK-STK3")
+    _set_stk_fields(sale["id"], "ws_CO_LATE789")
+    # The sale is cancelled before the STK success callback arrives (e.g. the
+    # operator refunded/cancelled manually). A late 0 result must not flip it
+    # back to completed.
+    client.patch("/api/sales/bulk-edit", json={"ids": [sale["id"]], "payment_status": "cancelled"}, headers=auth_headers)
+
+    callback_body = {
+        "Body": {
+            "stkCallback": {
+                "MerchantRequestID": "mrq-late",
+                "CheckoutRequestID": "ws_CO_LATE789",
+                "ResultCode": 0,
+                "ResultDesc": "Success",
+                "CallbackMetadata": {
+                    "Item": [
+                        {"Name": "MpesaReceiptNumber", "Value": "QHK0LATE7"},
+                    ]
+                },
+            }
+        }
+    }
+    resp = client.post("/api/daraja/callback/stk", json=callback_body)
+    assert resp.status_code == 200
+    assert resp.json()["ResultCode"] == 0
+
+    updated = client.get(f"/api/sales/{sale['id']}", headers=auth_headers).json()
+    assert updated["payment_status"] == "cancelled"
+    assert updated["status"] != "completed"
+    assert updated["payment_reference"] is None
+
+
 def test_b2c_callback_updates_refund(auth_headers):
     sale = _make_cash_sale(auth_headers, "DK-B2C1")
 

@@ -117,7 +117,23 @@ describe("CustomerCart", () => {
 
   it("posts checkout payload and navigates to the invoice detail", async () => {
     renderCart(2);
-    postMock.mockResolvedValue({ data: { id: 99, invoice_number: "INV-2010", status: "completed" } });
+    postMock.mockImplementation((url: string) => {
+      if (url === "/customer/pricing") {
+        return Promise.resolve({
+          data: {
+            items: [{ product_id: 7, unit_price: 12.5, line_total: 25 }],
+            subtotal: 25,
+            tax_rate: 10,
+            tax_amount: 2.5,
+            total: 27.5,
+          },
+        });
+      }
+      if (url === "/customer/checkout") {
+        return Promise.resolve({ data: { id: 99, invoice_number: "INV-2010", status: "completed" } });
+      }
+      return Promise.reject(new Error(`unexpected POST ${url}`));
+    });
     fireEvent.click(await screen.findByText("Bank Transfer"));
     const refInput = await screen.findByPlaceholderText("e.g. card or transfer reference");
     fireEvent.change(refInput, { target: { value: "TRF-1" } });

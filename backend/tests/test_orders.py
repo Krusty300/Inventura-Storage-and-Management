@@ -268,6 +268,22 @@ def test_delete_received_order_rejected(auth_headers):
     assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).status_code == 200
 
 
+def test_delete_partially_received_order_rejected(auth_headers):
+    prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-DELP", "name": "Delete Partial", "cost_price": 5.00}, headers=auth_headers).json()
+    order = client.post("/api/orders", json={"items": [{"product_id": prod["id"], "quantity": 4, "unit_price": 5.00}]}, headers=auth_headers).json()
+    submit_approve(client, auth_headers, order["id"])
+    resp = client.put(f"/api/orders/{order['id']}", json={
+        "status": "received",
+        "receive_quantities": {prod["id"]: 2},
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "partially_received"
+    resp = client.delete(f"/api/orders/{order['id']}", headers=auth_headers)
+    assert resp.status_code == 400
+    assert "already added to inventory" in resp.json()["detail"]
+    assert client.get(f"/api/orders/{order['id']}", headers=auth_headers).status_code == 200
+
+
 def test_create_order_unknown_supplier_rejected(auth_headers):
     prod = client.post("/api/products", json={"location_id": 1, "sku": "ORD-BADSUP", "name": "Bad Supplier", "cost_price": 5.00}, headers=auth_headers).json()
     resp = client.post("/api/orders", json={

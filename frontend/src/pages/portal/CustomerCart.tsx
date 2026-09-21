@@ -37,7 +37,7 @@ export default function CustomerCart() {
   // re-resolves through tiered group pricing, so the cart re-quotes server-side
   // with the real quantities (mirroring checkout exactly).
   const itemKey = items.map((it) => `${it.product.id}:${it.quantity}`).join(",");
-  const { data: pricing, isError: pricingError } = useQuery({
+  const { data: pricing, isError: pricingError, isLoading: pricingLoading } = useQuery({
     queryKey: ["customer", "pricing", itemKey],
     queryFn: async () => {
       const { data } = await api.post("/customer/pricing", {
@@ -105,7 +105,7 @@ export default function CustomerCart() {
     );
   }
 
-  const canSubmit = items.length > 0 && !mutation.isPending;
+  const canSubmit = items.length > 0 && !mutation.isPending && !pricingLoading && !pricingError;
 
   return (
     <div className="space-y-6">
@@ -245,6 +245,11 @@ export default function CustomerCart() {
               <>
                 <span className="h-4 w-4 rounded bg-white/40 animate-pulse" />
                 Placing order...
+              </>
+            ) : pricingLoading ? (
+              <>
+                <span className="h-4 w-4 rounded bg-white/40 animate-pulse" />
+                Confirming prices...
               </>
             ) : (
               `Place order · ${formatCurrency(total, currencySymbol)}`

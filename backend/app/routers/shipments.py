@@ -174,14 +174,15 @@ def _validate_manual_serials(db: Session, product: Product, serial_ids: list[int
     return serials
 
 
-def _pick_shipment_items(db: Session, shipment: Shipment, user, serial_ids_by_product: dict[int, list[int]] | None = None, skip_serialized: bool = False) -> Location:
+def _pick_shipment_items(db: Session, shipment: Shipment, user, serial_ids_by_product: dict[int, list[int]] | None = None, serial_ids_by_item: dict[int, list[int]] | None = None, skip_serialized: bool = False) -> Location:
     """Allocate the shipment's outstanding items and move them to the shipping
     staging location, marking each item as picked. Used by the manual ``pick``
     flow and, when ``auto_allocate_stock`` is enabled, at shipment creation.
-    Serialized items pick the exact serials in ``serial_ids_by_product`` when
-    provided for the product, otherwise they fall back to FEFO auto-allocation.
-    Pass ``skip_serialized=True`` (the auto-allocate-at-creation path) to leave
-    serialized lines for the operator's manual serial selection.
+    Serialized items pick the exact serials in ``serial_ids_by_item`` (keyed by
+    shipment item) or ``serial_ids_by_product`` (legacy, keyed by product) when
+    provided for the item/product, otherwise they fall back to FEFO
+    auto-allocation.  Pass ``skip_serialized=True`` (the auto-allocate-at-creation
+    path) to leave serialized lines for the operator's manual serial selection.
     Raises ``inventory.InventoryError`` on failure; the caller is responsible
     for committing / rolling back."""
     staging = _staging_location(db)
@@ -193,7 +194,9 @@ def _pick_shipment_items(db: Session, shipment: Shipment, user, serial_ids_by_pr
         if product and product.is_serialized:
             if skip_serialized:
                 continue
-            manual = (serial_ids_by_product or {}).get(item.product_id)
+            manual = (serial_ids_by_item or {}).get(item.id)
+            if not manual:
+                manual = (serial_ids_by_product or {}).get(item.product_id)
             if manual:
                 serials = _validate_manual_serials(db, product, manual, item.location_id, remaining)
             else:
@@ -350,13 +353,21 @@ def pick_shipment(shipment_id: int, data: ShipmentPickRequest | None = None, db:
             status_code=400,
             detail=f"Quality check '{qc.qc_number}' is {qc.result} for '{qc.product_name}'. Resolve QC before picking.",
         )
-    serial_ids_by_product: dict[int, list[int]] = {}
+    serial_ids_by_item: dict[int, list[int]] = {}
+    rest_serials_by_product: dict[int, list[int]] = {}
     if data:
         for pi in data.items:
             if pi.serial_ids:
-                serial_ids_by_product[pi.product_id] = pi.serial_ids
+                if pi.item_id is not None:
+                    serial_ids_by_item[pi.item_id] = pi.serial_ids
+                else:
+                    rest_serials_by_product[pi.product_id] = pi.serial_ids
     try:
-        staging = _pick_shipment_items(db, shipment, user, serial_ids_by_product=serial_ids_by_product)
+        staging = _pick_shipment_items(
+            db, shipment, user,
+            serial_ids_by_product=rest_serials_by_product,
+            serial_ids_by_item=serial_ids_by_item,
+        )
     except inventory.InventoryError as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
