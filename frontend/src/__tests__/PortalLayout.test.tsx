@@ -6,6 +6,7 @@ import { AuthProvider } from "../context/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
 import { FontSizeProvider } from "../context/FontSizeContext";
 import { ToastProvider } from "../context/ToastContext";
+import { CustomerCartProvider } from "../context/CustomerCartContext";
 import PortalLayout from "../pages/portal/PortalLayout";
 import api from "../api/client";
 
@@ -66,16 +67,18 @@ function renderPortal(role: string, route = "/portal") {
         <ThemeProvider>
           <FontSizeProvider>
             <ToastProvider>
-              <AuthProvider>
-                <Routes>
-                  <Route path="/portal" element={<PortalLayout />}>
-                    <Route index element={<div>Portal Home Page</div>} />
-                    <Route path="orders" element={<div>Orders Page</div>} />
-                    <Route path="orders/:id" element={<div>Order Detail Page</div>} />
-                    <Route path="catalog" element={<div>Customer Catalog Page</div>} />
-                  </Route>
-                </Routes>
-              </AuthProvider>
+              <CustomerCartProvider>
+                <AuthProvider>
+                  <Routes>
+                    <Route path="/portal" element={<PortalLayout />}>
+                      <Route index element={<div>Portal Home Page</div>} />
+                      <Route path="orders" element={<div>Orders Page</div>} />
+                      <Route path="orders/:id" element={<div>Order Detail Page</div>} />
+                      <Route path="catalog" element={<div>Customer Catalog Page</div>} />
+                    </Route>
+                  </Routes>
+                </AuthProvider>
+              </CustomerCartProvider>
             </ToastProvider>
           </FontSizeProvider>
         </ThemeProvider>

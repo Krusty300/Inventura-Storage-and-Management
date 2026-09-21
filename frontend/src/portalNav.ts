@@ -8,6 +8,7 @@ import {
   Receipt,
   Settings as SettingsIcon,
   ShoppingBag,
+  ShoppingCart,
 } from "lucide-react";
 
 export interface PortalNavItem {
@@ -28,6 +29,7 @@ export const SUPPLIER_PORTAL_NAV: PortalNavItem[] = [
 export const CUSTOMER_PORTAL_NAV: PortalNavItem[] = [
   { id: "/portal", label: "Overview", icon: LayoutDashboard },
   { id: "/portal/catalog", label: "Catalog", icon: ShoppingBag },
+  { id: "/portal/cart", label: "Cart", icon: ShoppingCart },
   { id: "/portal/invoices", label: "Invoices", icon: Receipt },
   { id: "/portal/notifications", label: "Notifications", icon: Bell },
   { id: "/portal/settings", label: "Settings", icon: SettingsIcon },

@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, ShoppingBag, Package } from "lucide-react";
+import { Minus, Package, Plus, Search, ShoppingBag, Trash2 } from "lucide-react";
 import api from "../../api/client";
 import { useDebounce } from "../../hooks/useDebounce";
 import { usePageSize } from "../../hooks/usePageSize";
+import { useCustomerCart } from "../../context/CustomerCartContext";
+import { useToast } from "../../context/ToastContext";
 import { formatCurrency } from "../../utils/currency";
 import { onImageError, getPlaceholder } from "../../utils/placeholders";
 import { entityImageUrl } from "../../utils/images";
@@ -17,6 +19,14 @@ export default function CustomerCatalog() {
   const [page, setPage] = useState(1);
   const { pageSize, setPageSize } = usePageSize();
   const debouncedSearch = useDebounce(search, 300);
+  const { items, add, setQuantity } = useCustomerCart();
+  const { addToast } = useToast();
+
+  const qtyByProduct = useMemo(() => {
+    const map: Record<number, number> = {};
+    for (const it of items) map[it.product.id] = it.quantity;
+    return map;
+  }, [items]);
 
   const { data: me } = useQuery({
     queryKey: ["customer", "me"],
@@ -58,7 +68,7 @@ export default function CustomerCatalog() {
         </div>
       </div>
 
-      <div className="relative max-w-md">
+      <div className="relative w-full sm:max-w-md">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
         <input
           className="input pl-10"
@@ -88,27 +98,71 @@ export default function CustomerCatalog() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {data.items.map((p) => (
-              <div key={p.id} className="card overflow-hidden flex flex-col">
-                <div className="aspect-square bg-subtle-strong overflow-hidden">
-                  <img
-                    src={p.image_url ? entityImageUrl(p.image_url) : getPlaceholder()}
-                    alt={p.name}
-                    onError={onImageError}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <div className="p-4 flex flex-col gap-1.5 flex-1">
-                  <p className="text-xs text-faint uppercase tracking-wide">{p.category_name || "Uncategorized"}</p>
-                  <h3 className="font-semibold text-ink leading-snug">{p.name}</h3>
-                  {p.sku && <p className="text-xs text-faint">SKU: {p.sku}</p>}
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="text-lg font-bold text-ink">{formatCurrency(p.price, currencySymbol)}</span>
-                    <span className={`badge ${p.in_stock ? "badge-success" : "badge-neutral"}`}>{p.in_stock ? "In stock" : "Out of stock"}</span>
+            {data.items.map((p) => {
+              const qty = qtyByProduct[p.id] ?? 0;
+              return (
+                <div key={p.id} className="card overflow-hidden flex flex-col">
+                  <div className="aspect-square bg-subtle-strong overflow-hidden">
+                    <img
+                      src={p.image_url ? entityImageUrl(p.image_url) : getPlaceholder()}
+                      alt={p.name}
+                      onError={onImageError}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <div className="p-4 flex flex-col gap-1.5 flex-1">
+                    <p className="text-xs text-faint uppercase tracking-wide">{p.category_name || "Uncategorized"}</p>
+                    <h3 className="font-semibold text-ink leading-snug">{p.name}</h3>
+                    {p.sku && <p className="text-xs text-faint">SKU: {p.sku}</p>}
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-lg font-bold text-ink">{formatCurrency(p.price, currencySymbol)}</span>
+                      <span className={`badge ${p.in_stock ? "badge-success" : "badge-neutral"}`}>{p.in_stock ? "In stock" : "Out of stock"}</span>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-border">
+                      {qty > 0 ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setQuantity(p.id, qty - 1)}
+                              className="p-1.5 rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
+                              aria-label={`Decrease quantity of ${p.name}`}
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="w-8 text-center text-sm font-medium text-ink" aria-label="Quantity in cart">{qty}</span>
+                            <button
+                              onClick={() => { add(p, 1); }}
+                              className="p-1.5 rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
+                              aria-label={`Increase quantity of ${p.name}`}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => setQuantity(p.id, 0)}
+                            className="p-1.5 rounded-lg text-faint hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                            aria-label={`Remove ${p.name} from cart`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            add(p, 1);
+                            addToast(`${p.name} added to cart`, "success");
+                          }}
+                          disabled={!p.in_stock}
+                          className="btn-primary w-full text-sm disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          {p.in_stock ? "Add to cart" : "Out of stock"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <Pagination
             page={page}

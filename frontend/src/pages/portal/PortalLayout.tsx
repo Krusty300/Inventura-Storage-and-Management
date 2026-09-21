@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, Menu, Search } from "lucide-react";
+import { LogOut, Menu, Search, ShoppingCart } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { useCustomerCart } from "../../context/CustomerCartContext";
 import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import NotificationBell from "../../components/NotificationBell";
@@ -15,6 +16,7 @@ import type { CustomerPortalMe, PortalMe } from "../../types";
 export default function PortalLayout() {
   const { user, logout, completeLogout } = useAuth();
   const isCustomer = user?.role === "customer";
+  const { totalItems } = useCustomerCart();
   const [loggingOut, setLoggingOut] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { pathname } = useLocation();
@@ -99,6 +101,21 @@ export default function PortalLayout() {
             >
               <Search size={18} />
             </button>
+            {isCustomer && (
+              <Link
+                to="/portal/cart"
+                aria-label={`Open cart with ${totalItems} item${totalItems === 1 ? "" : "s"}`}
+                title="Cart"
+                className="relative p-2 text-faint hover:text-ink rounded-lg"
+              >
+                <ShoppingCart size={18} />
+                {totalItems > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary-solid text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                    {totalItems > 99 ? "99+" : totalItems}
+                  </span>
+                )}
+              </Link>
+            )}
             <NotificationBell />
             <span className="hidden sm:inline-flex badge badge-info">{isCustomer ? "Customer" : "Supplier"}</span>
             <button onClick={handleLogout} className="p-2 text-faint hover:text-ink rounded-lg" title="Log out" aria-label="Log out">

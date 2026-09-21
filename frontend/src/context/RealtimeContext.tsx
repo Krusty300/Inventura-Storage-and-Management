@@ -22,7 +22,7 @@ const entityQueryMap: Record<string, string[]> = {
   stock_movement: ["stock-movements", "product-movements", "trace", "stock-locations", "quarantined-locations", "exceptions", "dashboard", "reports", "mrp"],
   shipment: ["shipments", "shipment", "dashboard", "reports"],
   order: ["orders", "dashboard", "reports", "forecasting"],
-  sale: ["sales", "dashboard", "reports", "forecasting"],
+  sale: ["sales", "dashboard", "reports", "forecasting", "customer"],
   asn: ["asns", "reports"],
   receipt: ["receipts", "dashboard", "reports"],
   user: ["users", "auth-sessions", "assignable-users"],

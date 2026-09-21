@@ -4,6 +4,7 @@ import queryClient from "./api/queryClient";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
+import { CustomerCartProvider } from "./context/CustomerCartContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { FontSizeProvider } from "./context/FontSizeContext";
 import { BreadcrumbProvider } from "./context/BreadcrumbContext";
@@ -67,6 +68,7 @@ const PortalReceiptDetail = lazy(() => import("./pages/portal/PortalReceiptDetai
 const PortalSettings = lazy(() => import("./pages/portal/PortalSettings"));
 const CustomerOverview = lazy(() => import("./pages/portal/CustomerOverview"));
 const CustomerCatalog = lazy(() => import("./pages/portal/CustomerCatalog"));
+const CustomerCart = lazy(() => import("./pages/portal/CustomerCart"));
 const CustomerInvoices = lazy(() => import("./pages/portal/CustomerInvoices"));
 const CustomerInvoiceDetail = lazy(() => import("./pages/portal/CustomerInvoiceDetail"));
 const CustomerSettings = lazy(() => import("./pages/portal/CustomerSettings"));
@@ -187,6 +189,7 @@ function AppRoutes() {
         >
           <Route path="/portal" element={<PageBoundary><PointerOverview /></PageBoundary>} />
           <Route path="/portal/catalog" element={<CustomerPortalRoute><PageBoundary><CustomerCatalog /></PageBoundary></CustomerPortalRoute>} />
+          <Route path="/portal/cart" element={<CustomerPortalRoute><PageBoundary><CustomerCart /></PageBoundary></CustomerPortalRoute>} />
           <Route path="/portal/invoices" element={<CustomerPortalRoute><PageBoundary><CustomerInvoices /></PageBoundary></CustomerPortalRoute>} />
           <Route path="/portal/invoices/:id" element={<CustomerPortalRoute><PageBoundary><CustomerInvoiceDetail /></PageBoundary></CustomerPortalRoute>} />
           <Route path="/portal/orders" element={<SupplierPortalRoute><PageBoundary><PortalOrders /></PageBoundary></SupplierPortalRoute>} />
@@ -212,13 +215,15 @@ export default function App() {
           <FontSizeProvider>
             <AuthProvider>
             <ToastProvider>
-              <RealtimeProvider>
-                <BreadcrumbProvider>
-                  <ErrorBoundary>
-                    <AppRoutes />
-                  </ErrorBoundary>
-                </BreadcrumbProvider>
-              </RealtimeProvider>
+              <CustomerCartProvider>
+                <RealtimeProvider>
+                  <BreadcrumbProvider>
+                    <ErrorBoundary>
+                      <AppRoutes />
+                    </ErrorBoundary>
+                  </BreadcrumbProvider>
+                </RealtimeProvider>
+              </CustomerCartProvider>
             </ToastProvider>
           </AuthProvider>
           </FontSizeProvider>

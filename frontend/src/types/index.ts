@@ -1406,6 +1406,7 @@ export interface CustomerPortalMe {
   store_name: string;
   currency_symbol: string;
   logo_url: string;
+  tax_rate: number;
 }
 
 export interface CustomerPortalSummary {

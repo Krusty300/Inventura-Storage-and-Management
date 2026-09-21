@@ -19,7 +19,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import re
 from typing import Optional
 
@@ -33,13 +33,16 @@ from app.models.product import Product
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
 from app.models.user import User
-from app.routers.sales import sale_pdf
+from app.routers.sales import _qc_blockers, generate_invoice_number, get_currency_defaults, get_tax_rate, sale_pdf
 from app.schemas.customer import CustomerOut
 from app.schemas.sale import SaleOut
 from app.schemas.user import UserOut
+from app.services import inventory
 from app.services.auth import get_current_user, hash_password, verify_password
 from app.services.filters import apply_date_range
+from app.services.notify import notify_admins, notify_low_stock
 from app.services.password_policy import validate_password
+from app.services.payment_methods import resolve_payment_details
 from app.services.pricing import resolve_price
 from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change
 
@@ -72,6 +75,24 @@ class CustomerProfileUpdate(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+class CheckoutItemCreate(BaseModel):
+    product_id: int
+    quantity: int = Field(gt=0)
+
+
+class CheckoutRequest(BaseModel):
+    items: list[CheckoutItemCreate]
+    payment_method: str = "cash"
+    payment_provider: Optional[str] = None
+    payment_reference: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_items_not_empty(self):
+        if not self.items:
+            raise ValueError("Checkout must contain at least one item")
+        return self
 
 
 class CatalogProduct(BaseModel):
@@ -125,6 +146,7 @@ def customer_me(
         "store_name": (s.store_name if s else None) or "My Store",
         "currency_symbol": (s.currency_symbol if s else "$") or "$",
         "logo_url": (s.logo_url if s else None) or "",
+        "tax_rate": float(s.tax_rate) if s else 0.0,
     }
 
 
@@ -225,6 +247,117 @@ def customer_catalog_detail(
         image_url=p.image_url or (p.images[0].url if p.images else ""),
         in_stock=p.total_quantity > 0,
     )
+
+
+@router.post("/checkout", response_model=SaleOut, status_code=201)
+def customer_checkout(
+    data: CheckoutRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    customer: Customer = Depends(require_customer),
+):
+    """Place an order straight from the cart.
+
+    Prices are always re-resolved server-side through ``resolve_price`` for this
+    customer; the client never supplies ``unit_price``. Stock, quality checks,
+    and serialization rules mirror the staff sale path, and the sale lands as
+    ``completed`` (cash/card/transfer only for now).
+    """
+    if data.payment_method not in ("cash", "card", "transfer"):
+        raise HTTPException(
+            status_code=400,
+            detail="Mobile money checkout is not available yet - choose cash, card, or bank transfer",
+        )
+    try:
+        default_currency, default_symbol = get_currency_defaults(db)
+        payment = resolve_payment_details(
+            data.payment_method, data.payment_provider, None, None, None,
+            default_currency=default_currency, default_symbol=default_symbol,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    product_ids = list({item.product_id for item in data.items})
+    products = {p.id: p for p in db.query(Product).filter(Product.id.in_(product_ids)).all()}
+    parents_with_variants = {
+        pid for (pid,) in db.query(Product.parent_id)
+        .filter(Product.parent_id.in_(product_ids), Product.is_active == True, Product.parent_id.isnot(None))  # noqa: E712
+        .distinct().all()
+    }
+    subtotal = 0.0
+    resolved: dict[int, float] = {}
+    for item in data.items:
+        product = products.get(item.product_id)
+        if product is None or product.is_deleted or not product.is_active:
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+        if not product.is_variant and product.id in parents_with_variants:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' has variants - select a specific variant")
+        if product.is_serialized:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' is serialized - not available for online checkout")
+        blockers = _qc_blockers(db, product.id, None)
+        if blockers:
+            raise HTTPException(status_code=400, detail=f"'{product.display_name}' is not available for purchase right now")
+        price = resolve_price(db, product.id, customer_id=customer.id, qty=item.quantity)
+        resolved[product.id] = price
+        subtotal += item.quantity * price
+
+    tax_rate = get_tax_rate(db)
+    tax_amount = subtotal * tax_rate / 100
+    sale = Sale(
+        invoice_number=generate_invoice_number(db),
+        customer_id=customer.id,
+        user_id=user.id,
+        channel_id=None,
+        subtotal=subtotal,
+        discount_amount=0.0,
+        tax_amount=tax_amount,
+        total_amount=subtotal + tax_amount,
+        status="completed",
+        payment_method=data.payment_method,
+        payment_provider=payment["provider"],
+        payment_reference=(data.payment_reference or "").strip() or None,
+        payment_phone=None,
+        payment_provider_amount=None,
+        currency=payment["currency"],
+        currency_symbol=payment["currency_symbol"],
+        payment_status=None,
+    )
+    db.add(sale)
+    db.flush()
+
+    try:
+        for item in data.items:
+            product = products[item.product_id]
+            db.add(SaleItem(sale_id=sale.id, product_id=product.id, quantity=item.quantity, unit_price=resolved[product.id]))
+            allocation = inventory.allocate_lots(db, product_id=product.id, quantity=item.quantity, location_id=None)
+            for lot_id, take, location_id, lpn_id in allocation:
+                inventory.post_journal_entry(
+                    db, product_id=product.id, user_id=user.id,
+                    quantity_change=-take, movement_type=inventory.SALE,
+                    lot_id=lot_id, from_location_id=location_id, lpn_id=lpn_id,
+                    reference_type="sale", reference=sale.invoice_number,
+                    notes=f"Portal checkout for {customer.name}",
+                )
+    except inventory.InventoryError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="One or more items are out of stock - update quantities and try again")
+
+    db.commit()
+    sale = get_or_404(Sale, sale.id, db, options=[joinedload(Sale.items)])
+    s = db.query(Settings).first()
+    currency = (s.currency_symbol if s else "$") or "$"
+    log_activity(db, user.id, user.username, "create", "sale", sale.id,
+                 f"Portal checkout '{sale.invoice_number}' for {currency}{float(sale.total_amount):.2f}")
+    notify_admins(db, f"New portal order {sale.invoice_number}",
+                  f"{customer.name} · {currency}{float(sale.total_amount):.2f}",
+                  type="success", link="/sales", exclude_user_id=user.id)
+    for item in sale.items:
+        if item.product:
+            notify_low_stock(db, item.product)
+    db.commit()
+    broadcast_change("sale", "created")
+    broadcast_change("stock_movement", "created")
+    return SaleOut.model_validate(sale)
 
 
 @router.get("/sales")

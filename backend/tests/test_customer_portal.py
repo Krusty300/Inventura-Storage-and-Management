@@ -374,3 +374,147 @@ def test_purge_customer_blocked_with_linked_accounts(auth_headers):
     resp = client.delete(f"/api/trash/customer/{customer['id']}", headers=auth_headers)
     assert resp.status_code == 400
     assert "linked portal accounts" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------- checkout
+
+def test_portal_checkout_completes_sale(auth_headers):
+    customer = _make_customer(auth_headers, "Checkout Customer")
+    _make_customer_account(auth_headers, "cocust", customer_id=customer["id"]).json()
+    prod = _make_product(auth_headers, "CO-1", unit_price=30.0, quantity=5)
+    headers = _login("cocust")
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 2}],
+        "payment_method": "cash",
+    }, headers=headers)
+    assert resp.status_code == 201, resp.text
+    sale = resp.json()
+    assert sale["customer_id"] == customer["id"]
+    assert sale["status"] == "completed"
+    assert sale["payment_method"] == "cash"
+    assert sale["subtotal"] == 60.0
+    assert sale["total_amount"] == 60.0
+    assert sale["items"][0]["quantity"] == 2
+    assert sale["items"][0]["unit_price"] == 30.0
+    # Stock was decremented: only 3 remain, so 4 more fails but 3 succeeds.
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 4}],
+        "payment_method": "cash",
+    }, headers=headers)
+    assert resp.status_code == 400
+    assert "out of stock" in resp.json()["detail"]
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 3}],
+        "payment_method": "cash",
+    }, headers=headers)
+    assert resp.status_code == 201, resp.text
+
+
+def test_portal_checkout_card_and_transfer(auth_headers):
+    customer = _make_customer(auth_headers, "Card Customer")
+    _make_customer_account(auth_headers, "cardcust", customer_id=customer["id"]).json()
+    prod = _make_product(auth_headers, "CO-CARD", unit_price=10.0)
+    headers = _login("cardcust")
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 1}],
+        "payment_method": "card", "payment_reference": "CARD-REF-1",
+    }, headers=headers)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["payment_method"] == "card"
+    assert resp.json()["payment_reference"] == "CARD-REF-1"
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 1}],
+        "payment_method": "transfer",
+    }, headers=headers)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["payment_method"] == "transfer"
+
+
+def test_portal_checkout_rejects_mobile_money(auth_headers):
+    customer = _make_customer(auth_headers, "MoMo Customer")
+    _make_customer_account(auth_headers, "momocust", customer_id=customer["id"]).json()
+    prod = _make_product(auth_headers, "CO-MOMO", unit_price=10.0)
+    headers = _login("momocust")
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 1}],
+        "payment_method": "mobile_money", "payment_provider": "m-pesa",
+    }, headers=headers)
+    assert resp.status_code == 400
+    assert "Mobile money" in resp.json()["detail"]
+
+
+def test_portal_checkout_rejects_provider_for_cash(auth_headers):
+    customer = _make_customer(auth_headers, "Provider Customer")
+    _make_customer_account(auth_headers, "provcust", customer_id=customer["id"]).json()
+    prod = _make_product(auth_headers, "CO-PROV", unit_price=10.0)
+    headers = _login("provcust")
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 1}],
+        "payment_method": "cash", "payment_provider": "m-pesa",
+    }, headers=headers)
+    assert resp.status_code == 400
+    assert "payment_provider" in resp.json()["detail"]
+
+
+def test_portal_checkout_requires_items(auth_headers):
+    customer = _make_customer(auth_headers, "Empty Customer")
+    _make_customer_account(auth_headers, "emptycust", customer_id=customer["id"]).json()
+    headers = _login("emptycust")
+    resp = client.post("/api/customer/checkout", json={"items": []}, headers=headers)
+    assert resp.status_code == 422
+
+
+def test_portal_checkout_resolves_group_price_list(auth_headers):
+    prod = _make_product(auth_headers, "CO-PRICED", unit_price=20.0, quantity=10)
+    pl = client.post("/api/price-lists", json={
+        "name": "Checkout Price List", "is_default": False,
+        "items": [{"product_id": prod["id"], "price": 12.5}],
+    }, headers=auth_headers).json()
+    group = client.post("/api/customer-groups", json={
+        "name": "Checkout Group", "price_list_id": pl["id"],
+    }, headers=auth_headers).json()
+    customer = _make_customer(auth_headers, "Pay Customer", group_id=group["id"])
+    _make_customer_account(auth_headers, "paycust", customer_id=customer["id"]).json()
+    headers = _login("paycust")
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 2}],
+        "payment_method": "cash",
+    }, headers=headers)
+    assert resp.status_code == 201, resp.text
+    sale = resp.json()
+    assert sale["subtotal"] == 25.0
+    assert sale["items"][0]["unit_price"] == 12.5
+
+
+def test_portal_checkout_lands_in_order_history(auth_headers):
+    customer = _make_customer(auth_headers, "History Customer")
+    _make_customer_account(auth_headers, "histcust", customer_id=customer["id"]).json()
+    prod = _make_product(auth_headers, "CO-HIST", unit_price=15.0)
+    headers = _login("histcust")
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 1}],
+        "payment_method": "cash",
+    }, headers=headers)
+    assert resp.status_code == 201, resp.text
+    sale = resp.json()
+    data = client.get("/api/customer/sales", headers=headers).json()
+    assert data["total"] == 1
+    assert data["items"][0]["invoice_number"] == sale["invoice_number"]
+    summary = client.get("/api/customer/summary", headers=headers).json()
+    assert summary["total_sales"] == 1
+    assert summary["status_counts"]["completed"] == 1
+    assert client.get(f"/api/customer/sales/{sale['id']}/pdf", headers=headers).status_code == 200
+
+
+def test_portal_checkout_scoped_to_own_account(auth_headers):
+    cust_a = _make_customer(auth_headers, "Scoped Checkout A")
+    cust_b = _make_customer(auth_headers, "Scoped Checkout B")
+    _make_customer_account(auth_headers, "scopeco_a", customer_id=cust_a["id"]).json()
+    _make_customer_account(auth_headers, "scopeco_b", customer_id=cust_b["id"]).json()
+    prod = _make_product(auth_headers, "CO-SCOPE", unit_price=5.0, quantity=10)
+    sale = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 1}],
+        "payment_method": "cash",
+    }, headers=_login("scopeco_b")).json()
+    resp = client.get(f"/api/customer/sales/{sale['id']}", headers=_login("scopeco_a"))
+    assert resp.status_code == 404
