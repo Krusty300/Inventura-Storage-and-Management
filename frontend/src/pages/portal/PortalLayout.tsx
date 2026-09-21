@@ -1,26 +1,23 @@
-import { useCallback, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useMemo, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, Search } from "lucide-react";
+import { LogOut, Menu, Search } from "lucide-react";
 import api from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import NotificationBell from "../../components/NotificationBell";
 import CommandPalette from "../../components/CommandPalette";
-import ExpandableTabs, { type ExpandableTabsTab } from "../../components/ExpandableTabs";
+import PortalSidebar from "./PortalSidebar";
 import { CUSTOMER_PORTAL_NAV, SUPPLIER_PORTAL_NAV } from "../../portalNav";
 import type { CustomerPortalMe, PortalMe } from "../../types";
-
-const supplierTabs = SUPPLIER_PORTAL_NAV as ExpandableTabsTab<string>[];
-const customerTabs = CUSTOMER_PORTAL_NAV as ExpandableTabsTab<string>[];
 
 export default function PortalLayout() {
   const { user, logout, completeLogout } = useAuth();
   const isCustomer = user?.role === "customer";
   const [loggingOut, setLoggingOut] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const { data: supplierMe } = useQuery({
     queryKey: ["portal", "me"],
     queryFn: async () => (await api.get("/portal/me")).data as PortalMe,
@@ -39,13 +36,33 @@ export default function PortalLayout() {
     setTimeout(() => completeLogout(), 600);
   }, [logout, completeLogout]);
 
-  const tabs = isCustomer ? customerTabs : supplierTabs;
+  const tabs = isCustomer ? CUSTOMER_PORTAL_NAV : SUPPLIER_PORTAL_NAV;
+
+  const activeId = useMemo(() => {
+    let best: string | null = null;
+    let bestLength = -1;
+    for (const tab of tabs) {
+      if (pathname === tab.id) return tab.id;
+      if (pathname.startsWith(tab.id) && tab.id.length > bestLength) {
+        bestLength = tab.id.length;
+        best = tab.id;
+      }
+    }
+    return best;
+  }, [pathname, tabs]);
 
   return (
     <div className="min-h-screen bg-app flex flex-col">
       <header className="bg-surface border-b border-border sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="-ml-1 p-1.5 text-muted hover:text-ink rounded-lg md:hidden"
+              aria-label="Open navigation"
+            >
+              <Menu size={22} />
+            </button>
             <img
               src={me?.logo_url || getPlaceholder()}
               onError={onImageError}
@@ -91,17 +108,23 @@ export default function PortalLayout() {
         </div>
       </header>
 
-      <ExpandableTabs
-        value={pathname}
-        onChange={(to) => navigate(to)}
-        tabs={tabs}
-        ariaLabel="Portal navigation"
-        position="top"
-        matchByPrefix
-        className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 py-6"
-      >
-        <Outlet />
-      </ExpandableTabs>
+      <div className="flex flex-1 min-h-0">
+        <PortalSidebar
+          items={tabs}
+          activeId={activeId}
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          onLogout={handleLogout}
+          storeName={me?.store_name}
+          username={user?.username}
+          logoUrl={me?.logo_url}
+        />
+        <main className="flex-1 min-w-0">
+          <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-6">
+            <Outlet />
+          </div>
+        </main>
+      </div>
 
       {loggingOut && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-app/80 backdrop-blur-sm">
