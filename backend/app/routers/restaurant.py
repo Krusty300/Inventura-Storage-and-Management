@@ -1,6 +1,7 @@
 from math import ceil
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -60,7 +61,6 @@ router = APIRouter(prefix="/api/restaurant", tags=["restaurant"], dependencies=[
 
 CLOSED_STATUSES = ("settled", "cancelled")
 KITCHEN_ITEM_STATUSES = ("queued", "preparing", "ready", "served")
-KITCHEN_STAGES = ("queued", "preparing", "ready")
 
 
 def _selected_modifiers(db: Session, product: Product, modifiers: list[dict]) -> tuple[list[dict], float]:
@@ -75,11 +75,6 @@ def _selected_modifiers(db: Session, product: Product, modifiers: list[dict]) ->
         MenuModifierGroup.product_id == product.id, MenuModifierGroup.is_active == True  # noqa: E712
     ).all()
     groups_by_id = {g.id: g for g in groups}
-    if not modifiers:
-        for g in groups:
-            if g.is_required:
-                raise HTTPException(status_code=400, detail=f"'{g.name}' is required")
-        return [], 0.0
     selected: dict[int, list[MenuModifierOption]] = {}
     seen: set[int] = set()
     for entry in modifiers:
@@ -96,13 +91,13 @@ def _selected_modifiers(db: Session, product: Product, modifiers: list[dict]) ->
         selected.setdefault(group.id, []).append(option)
     result: list[dict] = []
     total_delta = 0.0
-    for gid, opts in selected.items():
-        group = groups_by_id[gid]
+    for group in groups:
+        opts = selected.get(group.id, [])
         count = len(opts)
-        if count > group.max_select:
-            raise HTTPException(status_code=400, detail=f"'{group.name}' allows at most {group.max_select} selection(s)")
         if group.is_required and count == 0:
             raise HTTPException(status_code=400, detail=f"'{group.name}' is required")
+        if count > group.max_select:
+            raise HTTPException(status_code=400, detail=f"'{group.name}' allows at most {group.max_select} selection(s)")
         if count < group.min_select:
             raise HTTPException(status_code=400, detail=f"'{group.name}' requires at least {group.min_select} selection(s)")
         for opt in opts:
@@ -326,9 +321,36 @@ def confirm_ticket_payment(db: Session, sale_id: int) -> None:
         return
     ticket.status = "settled"
     ticket.settled_at = datetime.now(timezone.utc)
+    completed = _complete_seated_reservations(db, ticket)
     db.commit()
     log_activity(db, 0, "system", "update", "restaurant_ticket", ticket.id,
                  f"Ticket {ticket.ticket_number} settled after mobile money payment")
+    broadcast_change("restaurant_ticket", "updated")
+    if completed is not None:
+        broadcast_change("restaurant_reservation", "updated")
+
+
+def fail_ticket_payment(db: Session, sale_id: int, reason: str = "payment failure") -> None:
+    """Revert a 'paying' ticket to 'open' after its mobile money payment failed.
+
+    The linked sale has already been cancelled and its stock restored by the
+    sales machinery, so unsend the ticket's items to keep the ledger coherent
+    and let the order be edited or re-settled.
+    """
+    ticket = db.query(RestaurantTicket).filter(
+        RestaurantTicket.sale_id == sale_id,
+        RestaurantTicket.status == "paying",
+    ).first()
+    if ticket is None:
+        return
+    for item in ticket.items:
+        item.status = "pending"
+        item.sent_at = None
+    ticket.status = "open"
+    _recompute_ticket_status(ticket)
+    db.commit()
+    log_activity(db, 0, "system", "update", "restaurant_ticket", ticket.id,
+                 f"Ticket {ticket.ticket_number} released to 'open' after {reason}")
     broadcast_change("restaurant_ticket", "updated")
 
 
@@ -556,7 +578,13 @@ def delete_modifier_option(group_id: int, option_id: int, db: Session = Depends(
 def list_tables(db: Session = Depends(get_db)):
     tables = db.query(RestaurantTable).options(
         joinedload(RestaurantTable.tickets),
-    ).order_by(RestaurantTable.number).all()
+    ).all()
+    def _natural_key(t: RestaurantTable) -> tuple:
+        match = re.match(r"^(\d+)(.*)$", t.number or "")
+        if match:
+            return (0, int(match.group(1)), match.group(2).lower())
+        return (1, 0, (t.number or "").lower())
+    tables.sort(key=_natural_key)
     outs = [RestaurantTableOut.model_validate(t) for t in tables]
     for t, out in zip(tables, outs):
         active = t.active_ticket
@@ -629,8 +657,46 @@ def delete_table(table_id: int, db: Session = Depends(get_db), user=Depends(requ
     return {"ok": True}
 
 
-RESERVATION_STATUSES = ("pending", "confirmed", "seated", "cancelled", "no_show")
+RESERVATION_STATUSES = ("pending", "confirmed", "seated", "completed", "cancelled", "no_show")
 RESERVATION_ACTIVE = ("pending", "confirmed", "seated")
+RESERVATION_CLOSED = ("completed", "cancelled", "no_show")
+
+
+def _apply_reservation_status(reservation: RestaurantReservation, target: str) -> None:
+    """Apply the permitted reservation state transitions, raising 400 on any violation."""
+    if target not in RESERVATION_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid reservation status '{target}'")
+    current = reservation.status
+    if current in RESERVATION_CLOSED:
+        raise HTTPException(status_code=400, detail="Reservation already closed")
+    if current == target:
+        return
+    if current == "seated" and target not in ("seated", "cancelled"):
+        raise HTTPException(status_code=400, detail="Seated guests can only be cancelled")
+    reservation.status = target
+
+
+def _require_seated_table_free(db: Session, reservation: RestaurantReservation) -> None:
+    """A table can only be seated once - reject seating onto a table with an unrelated open ticket."""
+    if reservation.table_id is None:
+        return
+    if _table_occupied(db, reservation.table_id, exclude_ticket_id=reservation.ticket_id):
+        raise HTTPException(status_code=400, detail="Table already has an open ticket")
+
+
+def _complete_seated_reservations(db: Session, ticket: RestaurantTicket) -> RestaurantReservation | None:
+    """Close out the seated reservation once its ticket is settled or cancelled."""
+    if not ticket.id:
+        return None
+    reservation = db.query(RestaurantReservation).filter(
+        RestaurantReservation.ticket_id == ticket.id,
+        RestaurantReservation.status == "seated",
+    ).first()
+    if reservation is None:
+        return None
+    reservation.status = "completed"
+    db.add(reservation)
+    return reservation
 
 
 def _reservation_loaded(db: Session, reservation_id: int) -> RestaurantReservation:
@@ -712,6 +778,61 @@ def list_reservations(
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 
+@router.get("/reservations/sheet")
+def reservations_day_sheet(date: str = Query("", description="YYYY-MM-DD in UTC"), db: Session = Depends(get_db)):
+    default_currency, default_symbol = get_currency_defaults(db)
+    store_name, store_lines, s = _store_header_lines(db)
+
+    q = db.query(RestaurantReservation).options(
+        joinedload(RestaurantReservation.table), joinedload(RestaurantReservation.user),
+    )
+    if date:
+        try:
+            day_start = _as_utc(datetime.strptime(date, "%Y-%m-%d"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+        day_end = day_start + timedelta(days=1)
+        q = q.filter(RestaurantReservation.reserved_at >= day_start, RestaurantReservation.reserved_at < day_end)
+    reservations = q.order_by(RestaurantReservation.reserved_at.asc()).all()
+
+    c, buf = new_canvas(f"Reservations {date or 'All'}")
+    base_dir = Path(__file__).resolve().parent.parent
+    meta = [
+        ("Date", day_start.strftime("%b %d, %Y") if date else "All dates / upcoming"),
+        ("Bookings", str(len(reservations))),
+    ]
+    body_y = draw_banner_header(c, "RESERVATIONS SHEET", meta, store_lines,
+                                logo_url=(s.logo_url if s else ""), base_dir=base_dir)
+
+    headers = ["Time", "Guest", "Party", "Table", "Phone", "Status"]
+    aligns = ["l", "l", "r", "l", "l", "l"]
+    col_widths = [70.0, 130.0, 45.0, 55.0, 90.0, 100.0]
+    rows = []
+    status_labels = {
+        "pending": "Pending", "confirmed": "Confirmed", "seated": "Seated",
+        "completed": "Completed", "cancelled": "Cancelled", "no_show": "No-show",
+    }
+    for r in reservations:
+        rows.append([
+            r.reserved_at.strftime("%H:%M"),
+            truncate_to_width(r.guest_name, 126.0),
+            str(r.guest_count),
+            r.table_number or "\u2014",
+            truncate_to_width(r.guest_phone or "\u2014", 86.0),
+            status_labels.get(r.status, r.status),
+        ])
+    y = draw_item_table(
+        c, MARGIN, body_y, headers, aligns, col_widths, rows,
+        on_page_break=lambda c: draw_banner_header(c, "RESERVATIONS SHEET", meta, store_lines,
+                                                   logo_url=(s.logo_url if s else ""), base_dir=base_dir),
+    )
+    draw_signoff(c, y, "Take a moment to confirm the evening's bookings")
+    draw_page_footer(c, 1, tax_id=(s.tax_id if s else ""))
+    return Response(render_pdf(c, buf), media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename=reservations-{date or 'all'}.pdf"
+    })
+
+
 @router.get("/reservations/{reservation_id}", response_model=ReservationOut)
 def get_reservation(reservation_id: int, db: Session = Depends(get_db)):
     return _reservation_loaded(db, reservation_id)
@@ -761,14 +882,12 @@ def create_reservation(data: ReservationCreate, db: Session = Depends(get_db), u
 @router.put("/reservations/{reservation_id}", response_model=ReservationOut)
 def update_reservation(reservation_id: int, data: ReservationUpdate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
     reservation = _reservation_loaded(db, reservation_id)
-    if reservation.status in ("cancelled", "no_show"):
-        raise HTTPException(status_code=400, detail="Cannot edit a cancelled or no-show reservation")
+    if reservation.status in RESERVATION_CLOSED:
+        raise HTTPException(status_code=400, detail="Cannot edit a closed reservation")
     updates = data.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     status = updates.get("status", reservation.status)
-    if status not in RESERVATION_STATUSES:
-        raise HTTPException(status_code=400, detail=f"Invalid reservation status '{status}'")
     if updates.get("guest_name") is not None:
         guest_name = updates["guest_name"].strip()
         if not guest_name:
@@ -787,9 +906,12 @@ def update_reservation(reservation_id: int, data: ReservationUpdate, db: Session
         conflict = _reservation_conflict(db, table_id, reserved_at, duration_minutes, exclude_id=reservation.id)
         if conflict is not None:
             raise HTTPException(status_code=400, detail="Table already has a booking in that time window")
+    _apply_reservation_status(reservation, status)
     for k, v in updates.items():
         setattr(reservation, k, v)
     reservation.reserved_at = reserved_at
+    if status == "seated":
+        _require_seated_table_free(db, reservation)
     db.commit()
     reservation = _reservation_loaded(db, reservation.id)
     log_activity(db, user.id, user.username, "update", "restaurant_reservation", reservation.id,
@@ -803,14 +925,9 @@ def update_reservation(reservation_id: int, data: ReservationUpdate, db: Session
 def update_reservation_status(reservation_id: int, data: ReservationStatusUpdate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
     reservation = _reservation_loaded(db, reservation_id)
     target = data.status
-    if target not in RESERVATION_STATUSES:
-        raise HTTPException(status_code=400, detail=f"Invalid reservation status '{target}'")
-    current = reservation.status
-    if current in ("cancelled", "no_show"):
-        raise HTTPException(status_code=400, detail="Reservation already closed")
-    if current == "seated" and target not in ("seated", "cancelled"):
-        raise HTTPException(status_code=400, detail="Seated guests can only be cancelled")
-    reservation.status = target
+    _apply_reservation_status(reservation, target)
+    if target == "seated":
+        _require_seated_table_free(db, reservation)
     db.commit()
     reservation = _reservation_loaded(db, reservation.id)
     log_activity(db, user.id, user.username, "update", "restaurant_reservation", reservation.id,
@@ -895,9 +1012,14 @@ def create_ticket(data: TicketCreate, db: Session = Depends(get_db), user=Depend
         ticket.guest_count = max(ticket.guest_count, reservation.guest_count)
         if not ticket.customer_name:
             ticket.customer_name = reservation.guest_name
+        if not ticket.notes and reservation.notes:
+            ticket.notes = reservation.notes
         reservation.status = "seated"
         reservation.ticket_id = ticket.id
         db.add(reservation)
+    if ticket.table_id is not None and _table_occupied(db, ticket.table_id, exclude_ticket_id=ticket.id):
+        table = get_or_404(RestaurantTable, ticket.table_id, db)
+        raise HTTPException(status_code=400, detail=f"Table '{table.number}' already has an open ticket")
     db.commit()
     ticket = load_ticket(db, ticket.id)
     log_activity(db, user.id, user.username, "create", "restaurant_ticket", ticket.id,
@@ -947,10 +1069,9 @@ def add_ticket_item(ticket_id: int, data: TicketItemCreate, db: Session = Depend
     mods, delta = _selected_modifiers(db, product, data.modifiers)
     if data.unit_price and data.unit_price > 0:
         base_price = data.unit_price
-        unit_price = data.unit_price
     else:
         base_price = resolve_price(db, product.id, None, quantity)
-        unit_price = round(base_price + delta, 2)
+    unit_price = round(base_price + delta, 2)
     existing = next((
         i for i in ticket.items
         if i.product_id == product.id and i.status == "pending"
@@ -967,6 +1088,7 @@ def add_ticket_item(ticket_id: int, data: TicketItemCreate, db: Session = Depend
             modifiers=mods or None, notes=data.notes, status="pending",
         ))
     _recompute_totals(db, ticket)
+    _recompute_ticket_status(ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
@@ -987,16 +1109,24 @@ def update_ticket_item(ticket_id: int, item_id: int, data: TicketItemUpdate, db:
     if item.status != "pending":
         raise HTTPException(status_code=400, detail="Only unsent items can be edited - the rest is with the kitchen")
     updates = data.model_dump(exclude_unset=True)
-    if "modifiers" in updates and updates["modifiers"] is not None:
-        mods, delta = _selected_modifiers(db, item.product, updates["modifiers"])
-        updates["modifiers"] = mods or None
-        if "unit_price" not in updates:
-            updates["unit_price"] = round(float(item.base_unit_price) + delta, 2)
+    if "modifiers" in updates:
+        if updates["modifiers"] is not None:
+            mods, delta = _selected_modifiers(db, item.product, updates["modifiers"])
+            updates["modifiers"] = mods or None
+            base = float(item.base_unit_price or resolve_price(db, item.product_id, None, item.quantity))
+            updates["base_unit_price"] = base
+            updates["unit_price"] = round(base + delta, 2)
+        else:
+            updates["modifiers"] = None
+            base = float(item.base_unit_price or item.unit_price)
+            updates["base_unit_price"] = base
+            updates["unit_price"] = round(base, 2)
     elif "unit_price" in updates:
         updates["base_unit_price"] = updates["unit_price"]
     for k, v in updates.items():
         setattr(item, k, v)
     _recompute_totals(db, ticket)
+    _recompute_ticket_status(ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
@@ -1019,6 +1149,7 @@ def remove_ticket_item(ticket_id: int, item_id: int, db: Session = Depends(get_d
     name = item.product_name
     db.delete(item)
     _recompute_totals(db, ticket)
+    _recompute_ticket_status(ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
@@ -1119,10 +1250,13 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail=str(exc))
 
     default_currency, default_symbol = get_currency_defaults(db)
-    payment = resolve_payment_details(
-        method, provider, None, None, None,
-        default_currency=default_currency, default_symbol=default_symbol,
-    )
+    try:
+        payment = resolve_payment_details(
+            method, provider, None, None, None,
+            default_currency=default_currency, default_symbol=default_symbol,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     is_mobile = method == "mobile_money"
     from app.routers.sales import generate_invoice_number
@@ -1144,15 +1278,18 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
     )
     db.add(sale)
     db.flush()
+    completed = None
     for item in ticket.items:
         db.add(SaleItem(sale_id=sale.id, product_id=item.product_id, quantity=item.quantity, unit_price=item.unit_price))
     _retag_ticket_movements(db, ticket, sale.invoice_number)
     ticket.sale_id = sale.id
+    ticket.tip_amount = round(float(data.tip_amount or 0.0), 2)
     if is_mobile:
         ticket.status = "paying"
     else:
         ticket.status = "settled"
         ticket.settled_at = datetime.now(timezone.utc)
+        completed = _complete_seated_reservations(db, ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
@@ -1160,6 +1297,8 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
     db.commit()
     broadcast_change("restaurant_ticket", "updated")
     broadcast_change("sale", "created")
+    if completed is not None:
+        broadcast_change("restaurant_reservation", "updated")
     if is_mobile:
         from app.services.notify import notify_admins
         notify_admins(db, f"Ticket {ticket.ticket_number} awaiting payment",
@@ -1188,6 +1327,7 @@ def cancel_ticket(ticket_id: int, db: Session = Depends(get_db), user=Depends(re
     else:
         _restore_ticket_stock(db, ticket, user.id, reason="Cancellation")
     ticket.status = "cancelled"
+    completed = _complete_seated_reservations(db, ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
@@ -1196,6 +1336,8 @@ def cancel_ticket(ticket_id: int, db: Session = Depends(get_db), user=Depends(re
     broadcast_change("restaurant_ticket", "updated")
     broadcast_change("stock_movement", "created")
     broadcast_change("product", "updated")
+    if completed is not None:
+        broadcast_change("restaurant_reservation", "updated")
     return ticket
 
 
@@ -1265,7 +1407,10 @@ def ticket_bill_pdf(ticket_id: int, db: Session = Depends(get_db)):
     if ticket.discount_amount:
         totals.append(("Discount", money(currency, -float(ticket.discount_amount))))
     totals.append((f"Tax ({tax_rate}%)", money(currency, ticket.tax_amount)))
-    y = draw_totals(c, BODY_RIGHT, y, totals, "Total", money(currency, ticket.total_amount))
+    if float(ticket.tip_amount or 0.0):
+        totals.append(("Tip", money(currency, float(ticket.tip_amount))))
+    payable = float(ticket.total_amount) + float(ticket.tip_amount or 0.0)
+    y = draw_totals(c, BODY_RIGHT, y, totals, "Total", money(currency, payable))
 
     status_notes = {
         "open": "Open ticket \u2014 not yet settled",

@@ -104,6 +104,7 @@ class TicketSettle(BaseModel):
     payment_provider: Optional[str] = None
     payment_phone: Optional[str] = None
     discount_amount: Optional[float] = Field(default=None, ge=0)
+    tip_amount: float = Field(default=0.0, ge=0, le=1_000_000)
     notes: str = ""
 
 
@@ -119,6 +120,7 @@ class TicketOut(BaseModel):
     discount_amount: float
     tax_amount: float
     total_amount: float
+    tip_amount: float = 0.0
     sale_id: Optional[int] = None
     notes: str
     opened_at: datetime

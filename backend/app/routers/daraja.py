@@ -149,6 +149,8 @@ async def stk_callback(request: Request, db=Depends(get_db)):
                     _restore_stock_for_sale(db, sale, reason="STK failure")
                     sale.status = "cancelled"
                     sale.payment_status = "cancelled"
+                    from app.routers.restaurant import fail_ticket_payment
+                    fail_ticket_payment(db, sale.id, reason="STK failure")
             from app.utils import log_activity, broadcast_change
             db.commit()
             log_activity(db, 0, "system", "update", "sale", sale.id, f"STK callback: {parsed['result_desc']}")

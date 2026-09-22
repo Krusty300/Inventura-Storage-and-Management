@@ -76,6 +76,7 @@ class RestaurantTicket(Base):
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     tax_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
+    tip_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id"), nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     opened_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
