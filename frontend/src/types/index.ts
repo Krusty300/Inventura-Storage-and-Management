@@ -1458,10 +1458,33 @@ export interface RestaurantTable {
   number: string;
   zone: string | null;
   capacity: number;
+  pos_x: number;
+  pos_y: number;
   is_active: boolean;
   status: "available" | "occupied";
   active_ticket_id: number | null;
   active_ticket_number: string | null;
+}
+
+export type ReservationStatus = "pending" | "confirmed" | "seated" | "cancelled" | "no_show";
+
+export interface RestaurantReservation {
+  id: number;
+  reservation_number: string;
+  table_id: number | null;
+  user_id: number;
+  guest_name: string;
+  guest_phone: string;
+  guest_count: number;
+  reserved_at: string;
+  duration_minutes: number;
+  status: ReservationStatus;
+  notes: string;
+  ticket_id: number | null;
+  created_at: string;
+  updated_at: string;
+  table_number: string;
+  username: string;
 }
 
 export interface RestaurantTicketItem {
