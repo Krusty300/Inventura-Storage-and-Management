@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import JSON, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -80,6 +80,8 @@ class RestaurantTicketItem(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
+    base_unit_price: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
+    modifiers: Mapped[list | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

@@ -25,6 +25,7 @@ class Product(SoftDeleteMixin, Base):
     reorder_level: Mapped[int] = mapped_column(Integer, default=10)
     is_serialized: Mapped[bool] = mapped_column(default=False)
     is_menu_item: Mapped[bool] = mapped_column(default=False, index=True)
+    menu_section_id: Mapped[int | None] = mapped_column(ForeignKey("menu_sections.id"), nullable=True, index=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True, index=True)
     location: Mapped[str] = mapped_column(String(100), default="")
     barcode: Mapped[str] = mapped_column(String(100), default="")
@@ -37,6 +38,8 @@ class Product(SoftDeleteMixin, Base):
 
     category = relationship("Category", back_populates="products")
     supplier = relationship("Supplier", back_populates="products")
+    menu_section = relationship("MenuSection", back_populates="products")
+    modifier_groups = relationship("MenuModifierGroup", back_populates="product", cascade="all, delete-orphan", order_by="MenuModifierGroup.sort_order")
     default_location = relationship("Location")
     stock_movements = relationship("StockMovement", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")

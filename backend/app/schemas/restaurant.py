@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class RestaurantTableCreate(BaseModel):
@@ -39,12 +39,14 @@ class TicketItemCreate(BaseModel):
     quantity: int = Field(gt=0)
     unit_price: float = Field(default=0.0, ge=0)
     notes: str = ""
+    modifiers: list[dict] = []
 
 
 class TicketItemUpdate(BaseModel):
     quantity: Optional[int] = Field(default=None, gt=0)
     unit_price: Optional[float] = Field(default=None, ge=0)
     notes: Optional[str] = None
+    modifiers: Optional[list[dict]] = None
 
 
 class TicketItemStatus(BaseModel):
@@ -56,6 +58,8 @@ class TicketItemOut(BaseModel):
     product_id: int
     quantity: int
     unit_price: float
+    base_unit_price: float = 0.0
+    modifiers: list[dict] = Field(default_factory=list)
     status: str
     sent_at: Optional[datetime] = None
     notes: str = ""
@@ -63,6 +67,11 @@ class TicketItemOut(BaseModel):
     product_image: str = ""
     sku: str = ""
     line_total: float = 0.0
+
+    @field_validator("modifiers", mode="before")
+    @classmethod
+    def _coerce_modifiers(cls, v):
+        return v or []
 
     class Config:
         from_attributes = True

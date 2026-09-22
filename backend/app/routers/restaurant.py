@@ -1,15 +1,30 @@
 from math import ceil
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.constants import MAX_PAGE_SIZE, currency_symbol as symbol_for
 from app.database import get_db
+from app.models.menu import MenuModifierGroup, MenuModifierOption, MenuSection
 from app.models.product import Product
 from app.models.restaurant import RestaurantTable, RestaurantTicket, RestaurantTicketItem
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
+from app.schemas.menu import (
+    MenuItemOut,
+    MenuModifierGroupCreate,
+    MenuModifierGroupOut,
+    MenuModifierGroupUpdate,
+    MenuModifierOptionCreate,
+    MenuModifierOptionOut,
+    MenuSectionCreate,
+    MenuSectionOut,
+    MenuSectionUpdate,
+    MenuSectionWithItems,
+)
 from app.schemas.restaurant import (
     KitchenTicketOut,
     RestaurantTableCreate,
@@ -28,6 +43,11 @@ from app.services import inventory
 from app.services.auth import require_permission
 from app.services.cache import settings_cache
 from app.services.payment_methods import resolve_payment_details
+from app.services.pdf_helpers import (
+    BODY_RIGHT, FONT, MARGIN, MUTED, draw_banner_header, draw_info_block,
+    draw_item_table, draw_notes, draw_page_footer, draw_signoff, draw_totals,
+    money, new_canvas, render_pdf, truncate_to_width,
+)
 from app.services.pricing import resolve_price
 from app.services.sequences import next_document_number
 from app.utils import get_or_404, log_activity, broadcast_change
@@ -37,6 +57,81 @@ router = APIRouter(prefix="/api/restaurant", tags=["restaurant"], dependencies=[
 CLOSED_STATUSES = ("settled", "cancelled")
 KITCHEN_ITEM_STATUSES = ("queued", "preparing", "ready", "served")
 KITCHEN_STAGES = ("queued", "preparing", "ready")
+
+
+def _selected_modifiers(db: Session, product: Product, modifiers: list[dict]) -> tuple[list[dict], float]:
+    """Validate a chosen set of modifier options against the product's active groups.
+
+    Returns the canonical modifier list (group/option ids + names + price deltas)
+    and the total price delta for the selection. Raises 400 on any violation.
+    """
+    groups = db.query(MenuModifierGroup).options(
+        joinedload(MenuModifierGroup.options),
+    ).filter(
+        MenuModifierGroup.product_id == product.id, MenuModifierGroup.is_active == True  # noqa: E712
+    ).all()
+    groups_by_id = {g.id: g for g in groups}
+    if not modifiers:
+        for g in groups:
+            if g.is_required:
+                raise HTTPException(status_code=400, detail=f"'{g.name}' is required")
+        return [], 0.0
+    selected: dict[int, list[MenuModifierOption]] = {}
+    seen: set[int] = set()
+    for entry in modifiers:
+        option_id = entry.get("option_id")
+        if not isinstance(option_id, int) or option_id in seen:
+            continue
+        seen.add(option_id)
+        option = db.get(MenuModifierOption, option_id)
+        if option is None or not option.is_active:
+            raise HTTPException(status_code=400, detail="Invalid modifier option selected")
+        group = groups_by_id.get(option.group_id)
+        if group is None:
+            raise HTTPException(status_code=400, detail="Modifier option does not belong to this menu item")
+        selected.setdefault(group.id, []).append(option)
+    result: list[dict] = []
+    total_delta = 0.0
+    for gid, opts in selected.items():
+        group = groups_by_id[gid]
+        count = len(opts)
+        if count > group.max_select:
+            raise HTTPException(status_code=400, detail=f"'{group.name}' allows at most {group.max_select} selection(s)")
+        if group.is_required and count == 0:
+            raise HTTPException(status_code=400, detail=f"'{group.name}' is required")
+        if count < group.min_select:
+            raise HTTPException(status_code=400, detail=f"'{group.name}' requires at least {group.min_select} selection(s)")
+        for opt in opts:
+            result.append({
+                "group_id": group.id, "group_name": group.name,
+                "option_id": opt.id, "name": opt.name, "price": float(opt.price_delta),
+            })
+            total_delta += float(opt.price_delta)
+    return result, round(total_delta, 2)
+
+
+def _item_modifier_line(item: RestaurantTicketItem) -> str:
+    mods: list[dict] = item.modifiers or []
+    return ", ".join(str(m.get("name", "")) for m in mods if m.get("name"))
+
+
+def _menu_item_out(product: Product) -> MenuItemOut:
+    image = ""
+    if product.images:
+        image = product.images[0].url
+    elif product.image_url:
+        image = product.image_url
+    return MenuItemOut(
+        id=product.id, name=product.name, display_name=product.display_name,
+        description=product.description, sku=product.sku,
+        unit_price=float(product.unit_price),
+        image_url=product.image_url, image=image,
+        section_id=product.menu_section_id,
+    )
+
+
+def _load_modifier_group(db: Session, group_id: int) -> MenuModifierGroup:
+    return get_or_404(MenuModifierGroup, group_id, db, options=[joinedload(MenuModifierGroup.options)])
 
 
 def generate_ticket_number(db: Session) -> str:
@@ -234,6 +329,222 @@ def confirm_ticket_payment(db: Session, sale_id: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Menu
+# ---------------------------------------------------------------------------
+
+@router.post("/menu-sections", response_model=MenuSectionOut, status_code=201)
+def create_menu_section(data: MenuSectionCreate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.create"))):
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Section name is required")
+    if db.query(MenuSection.id).filter(MenuSection.name == name).first():
+        raise HTTPException(status_code=400, detail=f"Menu section '{name}' already exists")
+    section = MenuSection(**data.model_dump(exclude=["name"]), name=name)
+    db.add(section)
+    db.flush()
+    log_activity(db, user.id, user.username, "create", "menu_section", section.id, f"Created menu section '{name}'")
+    db.commit()
+    broadcast_change("restaurant_menu", "created")
+    return section
+
+
+@router.put("/menu-sections/{section_id}", response_model=MenuSectionOut)
+def update_menu_section(section_id: int, data: MenuSectionUpdate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
+    section = get_or_404(MenuSection, section_id, db)
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "name" in updates:
+        name = (updates["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Section name is required")
+        dup = db.query(MenuSection.id).filter(MenuSection.name == name, MenuSection.id != section_id).first()
+        if dup:
+            raise HTTPException(status_code=400, detail=f"Menu section '{name}' already exists")
+        updates["name"] = name
+    for k, v in updates.items():
+        setattr(section, k, v)
+    db.commit()
+    db.refresh(section)
+    log_activity(db, user.id, user.username, "update", "menu_section", section.id,
+                 f"Updated menu section '{section.name}'")
+    db.commit()
+    broadcast_change("restaurant_menu", "updated")
+    return section
+
+
+@router.delete("/menu-sections/{section_id}")
+def delete_menu_section(section_id: int, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.delete"))):
+    section = get_or_404(MenuSection, section_id, db)
+    db.query(Product).filter(Product.menu_section_id == section.id).update({"menu_section_id": None})
+    log_activity(db, user.id, user.username, "delete", "menu_section", section.id,
+                 f"Deleted menu section '{section.name}'")
+    db.delete(section)
+    db.commit()
+    broadcast_change("restaurant_menu", "deleted")
+    broadcast_change("product", "updated")
+    return {"ok": True}
+
+
+@router.get("/menu-sections", response_model=list[MenuSectionOut])
+def list_menu_sections(db: Session = Depends(get_db)):
+    sections = db.query(MenuSection).options(joinedload(MenuSection.products)).order_by(
+        MenuSection.sort_order, MenuSection.name
+    ).all()
+    return sections
+
+
+@router.get("/menu", response_model=list[MenuSectionWithItems])
+def get_menu(db: Session = Depends(get_db)):
+    products = db.query(Product).options(
+        joinedload(Product.category), joinedload(Product.images), joinedload(Product.menu_section),
+    ).filter(
+        Product.is_active == True, Product.is_menu_item == True  # noqa: E712
+    ).order_by(Product.name).all()
+    sections = db.query(MenuSection).filter(
+        MenuSection.is_active == True  # noqa: E712
+    ).order_by(MenuSection.sort_order, MenuSection.name).all()
+    by_section: dict[int | None, list[MenuItemOut]] = {}
+    for p in products:
+        sid = p.menu_section_id if p.menu_section and p.menu_section.is_active else None
+        by_section.setdefault(sid, []).append(_menu_item_out(p))
+    result = []
+    for s in sections:
+        items = by_section.get(s.id, [])
+        result.append(MenuSectionWithItems(id=s.id, name=s.name, description=s.description, item_count=len(items), items=items))
+    unassigned = by_section.get(None, [])
+    if unassigned:
+        result.insert(0, MenuSectionWithItems(id=None, name="Uncategorized", description="Menu items without a section", item_count=len(unassigned), items=unassigned))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Menu modifiers
+# ---------------------------------------------------------------------------
+
+@router.get("/menu-items/{product_id}/modifiers", response_model=list[MenuModifierGroupOut])
+def list_modifier_groups(product_id: int, db: Session = Depends(get_db)):
+    get_or_404(Product, product_id, db)
+    return db.query(MenuModifierGroup).options(
+        joinedload(MenuModifierGroup.options),
+    ).filter(MenuModifierGroup.product_id == product_id).order_by(MenuModifierGroup.sort_order, MenuModifierGroup.id).all()
+
+
+@router.post("/menu-items/{product_id}/modifiers", response_model=MenuModifierGroupOut, status_code=201)
+def create_modifier_group(product_id: int, data: MenuModifierGroupCreate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.create"))):
+    product = get_or_404(Product, product_id, db)
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Group name is required")
+    if data.max_select < data.min_select:
+        raise HTTPException(status_code=400, detail="max_select cannot be less than min_select")
+    group = MenuModifierGroup(
+        product_id=product.id, name=name, min_select=data.min_select,
+        max_select=data.max_select, is_required=data.is_required,
+        sort_order=data.sort_order, is_active=data.is_active,
+    )
+    db.add(group)
+    db.flush()
+    for opt in data.options:
+        opt_name = opt.name.strip()
+        if not opt_name:
+            raise HTTPException(status_code=400, detail="Modifier option name is required")
+        group.options.append(MenuModifierOption(
+            name=opt_name, price_delta=opt.price_delta, sort_order=opt.sort_order, is_active=opt.is_active,
+        ))
+    log_activity(db, user.id, user.username, "create", "menu_modifier_group", group.id,
+                 f"Created modifier group '{name}' for '{product.display_name}'")
+    db.commit()
+    broadcast_change("restaurant_menu", "updated")
+    return _load_modifier_group(db, group.id)
+
+
+@router.put("/menu-modifier-groups/{group_id}", response_model=MenuModifierGroupOut)
+def update_modifier_group(group_id: int, data: MenuModifierGroupUpdate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
+    group = _load_modifier_group(db, group_id)
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "name" in updates:
+        name = (updates["name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Group name is required")
+        updates["name"] = name
+    if "min_select" in updates and "max_select" in updates and updates["max_select"] < updates["min_select"]:
+        raise HTTPException(status_code=400, detail="max_select cannot be less than min_select")
+    for k, v in updates.items():
+        setattr(group, k, v)
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "menu_modifier_group", group.id,
+                 f"Updated modifier group '{group.name}'")
+    db.commit()
+    broadcast_change("restaurant_menu", "updated")
+    return _load_modifier_group(db, group.id)
+
+
+@router.delete("/menu-modifier-groups/{group_id}")
+def delete_modifier_group(group_id: int, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.delete"))):
+    group = get_or_404(MenuModifierGroup, group_id, db)
+    name = group.name
+    log_activity(db, user.id, user.username, "delete", "menu_modifier_group", group_id,
+                 f"Deleted modifier group '{name}'")
+    db.delete(group)
+    db.commit()
+    broadcast_change("restaurant_menu", "updated")
+    return {"ok": True}
+
+
+@router.post("/menu-modifier-groups/{group_id}/options", response_model=MenuModifierOptionOut, status_code=201)
+def create_modifier_option(group_id: int, data: MenuModifierOptionCreate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.create"))):
+    group = get_or_404(MenuModifierGroup, group_id, db)
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Option name is required")
+    option = MenuModifierOption(name=name, price_delta=data.price_delta, sort_order=data.sort_order, is_active=data.is_active)
+    group.options.append(option)
+    db.flush()
+    log_activity(db, user.id, user.username, "create", "menu_modifier_option", option.id,
+                 f"Added modifier option '{name}' to '{group.name}'")
+    db.commit()
+    broadcast_change("restaurant_menu", "updated")
+    return option
+
+
+@router.put("/menu-modifier-groups/{group_id}/options/{option_id}", response_model=MenuModifierOptionOut)
+def update_modifier_option(group_id: int, option_id: int, data: MenuModifierOptionCreate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
+    option = get_or_404(MenuModifierOption, option_id, db, options=[joinedload(MenuModifierOption.group)])
+    if option.group_id != group_id:
+        raise HTTPException(status_code=400, detail="Option does not belong to this group")
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Option name is required")
+    option.name = name
+    option.price_delta = data.price_delta
+    option.sort_order = data.sort_order
+    option.is_active = data.is_active
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "menu_modifier_option", option.id,
+                 f"Updated modifier option '{name}'")
+    db.commit()
+    broadcast_change("restaurant_menu", "updated")
+    return option
+
+
+@router.delete("/menu-modifier-groups/{group_id}/options/{option_id}")
+def delete_modifier_option(group_id: int, option_id: int, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.delete"))):
+    option = get_or_404(MenuModifierOption, option_id, db, options=[joinedload(MenuModifierOption.group)])
+    if option.group_id != group_id:
+        raise HTTPException(status_code=400, detail="Option does not belong to this group")
+    name = option.name
+    log_activity(db, user.id, user.username, "delete", "menu_modifier_option", option_id,
+                 f"Deleted modifier option '{name}'")
+    db.delete(option)
+    db.commit()
+    broadcast_change("restaurant_menu", "updated")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # Tables
 # ---------------------------------------------------------------------------
 
@@ -411,18 +722,27 @@ def add_ticket_item(ticket_id: int, data: TicketItemCreate, db: Session = Depend
         raise HTTPException(status_code=400, detail=f"Cannot add items to a ticket with status '{ticket.status}'")
     product = _validate_menu_product(db, data.product_id)
     quantity = data.quantity
+    mods, delta = _selected_modifiers(db, product, data.modifiers)
     if data.unit_price and data.unit_price > 0:
+        base_price = data.unit_price
         unit_price = data.unit_price
     else:
-        unit_price = resolve_price(db, product.id, None, quantity)
-    existing = next((i for i in ticket.items if i.product_id == product.id and i.status == "pending" and i.notes == data.notes), None)
+        base_price = resolve_price(db, product.id, None, quantity)
+        unit_price = round(base_price + delta, 2)
+    existing = next((
+        i for i in ticket.items
+        if i.product_id == product.id and i.status == "pending"
+        and i.notes == data.notes and (i.modifiers or []) == mods
+    ), None)
     if existing is not None:
         existing.quantity += quantity
         existing.unit_price = unit_price
+        existing.base_unit_price = base_price
     else:
         ticket.items.append(RestaurantTicketItem(
             product_id=product.id, quantity=quantity,
-            unit_price=unit_price, notes=data.notes, status="pending",
+            unit_price=unit_price, base_unit_price=base_price,
+            modifiers=mods or None, notes=data.notes, status="pending",
         ))
     _recompute_totals(db, ticket)
     db.commit()
@@ -445,6 +765,13 @@ def update_ticket_item(ticket_id: int, item_id: int, data: TicketItemUpdate, db:
     if item.status != "pending":
         raise HTTPException(status_code=400, detail="Only unsent items can be edited - the rest is with the kitchen")
     updates = data.model_dump(exclude_unset=True)
+    if "modifiers" in updates and updates["modifiers"] is not None:
+        mods, delta = _selected_modifiers(db, item.product, updates["modifiers"])
+        updates["modifiers"] = mods or None
+        if "unit_price" not in updates:
+            updates["unit_price"] = round(float(item.base_unit_price) + delta, 2)
+    elif "unit_price" in updates:
+        updates["base_unit_price"] = updates["unit_price"]
     for k, v in updates.items():
         setattr(item, k, v)
     _recompute_totals(db, ticket)
@@ -648,6 +975,144 @@ def cancel_ticket(ticket_id: int, db: Session = Depends(get_db), user=Depends(re
     broadcast_change("stock_movement", "created")
     broadcast_change("product", "updated")
     return ticket
+
+
+# ---------------------------------------------------------------------------
+# Printing
+# ---------------------------------------------------------------------------
+
+def _store_header_lines(db: Session) -> tuple[str, list[str], "Settings | None"]:
+    s = db.query(Settings).first()
+    store_name = (s.store_name if s else None) or "My Store"
+    store_lines = [store_name] + [ln for ln in (
+        (s.address if s else None),
+        (s.phone if s else None),
+        (s.email if s else None),
+    ) if ln]
+    return store_name, store_lines, s
+
+
+@router.get("/tickets/{ticket_id}/bill")
+def ticket_bill_pdf(ticket_id: int, db: Session = Depends(get_db)):
+    ticket = load_ticket(db, ticket_id)
+    default_currency, default_symbol = get_currency_defaults(db)
+    store_name, store_lines, s = _store_header_lines(db)
+    currency = (s.currency_symbol if s and s.currency_symbol else default_symbol) or default_symbol
+
+    c, buf = new_canvas(f"Bill {ticket.ticket_number}")
+    base_dir = Path(__file__).resolve().parent.parent
+    meta = [
+        ("Ticket", ticket.ticket_number),
+        ("Date", ticket.opened_at.strftime("%b %d, %Y %H:%M")),
+        ("Server", ticket.username or "\u2014"),
+    ]
+    body_y = draw_banner_header(c, "RESTAURANT BILL", meta, store_lines,
+                                logo_url=(s.logo_url if s else ""), base_dir=base_dir)
+
+    info_lines = [ticket.table_number]
+    if ticket.customer_name:
+        info_lines.append(ticket.customer_name)
+    info_y = draw_info_block(c, MARGIN, body_y, "Table", info_lines)
+    guests_y = draw_info_block(c, BODY_RIGHT - 240, body_y, "Guests", [str(ticket.guest_count)])
+    y = min(info_y, guests_y)
+
+    headers = ["Item", "Qty", "Price", "Amount"]
+    aligns = ["l", "r", "r", "r"]
+    col_widths = [190.0, 40.0, 80.0, 90.0]
+    rows = []
+    for item in ticket.items:
+        name = item.product_name
+        detail = _item_modifier_line(item)
+        if detail:
+            name = f"{name} / {detail}"
+        rows.append([
+            truncate_to_width(name, 186.0),
+            str(item.quantity),
+            money(currency, item.unit_price),
+            money(currency, item.line_total),
+        ])
+
+    y = draw_item_table(
+        c, MARGIN, y, headers, aligns, col_widths, rows,
+        on_page_break=lambda c: draw_banner_header(c, "RESTAURANT BILL", meta, store_lines,
+                                                   logo_url=(s.logo_url if s else ""), base_dir=base_dir),
+    )
+
+    tax_rate = get_tax_rate(db)
+    totals = [("Subtotal", money(currency, ticket.subtotal))]
+    if ticket.discount_amount:
+        totals.append(("Discount", money(currency, -float(ticket.discount_amount))))
+    totals.append((f"Tax ({tax_rate}%)", money(currency, ticket.tax_amount)))
+    y = draw_totals(c, BODY_RIGHT, y, totals, "Total", money(currency, ticket.total_amount))
+
+    status_notes = {
+        "open": "Open ticket \u2014 not yet settled",
+        "paying": "Awaiting mobile money payment",
+        "settled": "Paid",
+        "cancelled": "Cancelled",
+    }
+    note = status_notes.get(ticket.status, ticket.status.title())
+    if ticket.status == "settled" and ticket.settled_at:
+        note += f" on {ticket.settled_at.strftime('%b %d, %Y %H:%M')}"
+    c.setFont(FONT, 9)
+    c.setFillColor(MUTED)
+    c.drawString(MARGIN, y, note)
+    y -= 14
+    draw_signoff(c, y, "Thank you for dining with us!")
+    draw_page_footer(c, 1, tax_id=(s.tax_id if s else ""))
+    return Response(render_pdf(c, buf), media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename=bill-{ticket.ticket_number}.pdf"
+    })
+
+
+@router.get("/tickets/{ticket_id}/kitchen")
+def kitchen_ticket_pdf(ticket_id: int, db: Session = Depends(get_db)):
+    ticket = load_ticket(db, ticket_id)
+    store_name, store_lines, s = _store_header_lines(db)
+
+    c, buf = new_canvas(f"Kitchen {ticket.ticket_number}")
+    base_dir = Path(__file__).resolve().parent.parent
+    meta = [
+        ("Table", ticket.table_number),
+        ("Guests", str(ticket.guest_count)),
+        ("Server", ticket.username or "\u2014"),
+    ]
+    body_y = draw_banner_header(c, "KITCHEN TICKET", meta, store_lines,
+                                logo_url=(s.logo_url if s else ""), base_dir=base_dir)
+
+    items = [i for i in ticket.items if i.status in KITCHEN_ITEM_STATUSES] or \
+        [i for i in ticket.items if i.status == "pending"]
+
+    headers = ["Qty", "Item", "Notes"]
+    aligns = ["r", "l", "l"]
+    col_widths = [36.0, 240.0, 124.0]
+    rows = []
+    for item in items:
+        notes = item.notes
+        detail = _item_modifier_line(item)
+        if notes and detail:
+            notes = f"{notes}; {detail}"
+        elif detail:
+            notes = detail
+        rows.append([
+            str(item.quantity),
+            truncate_to_width(item.product_name, 236.0),
+            truncate_to_width(notes or "\u2014", 120.0),
+        ])
+
+    y = draw_item_table(
+        c, MARGIN, body_y, headers, aligns, col_widths, rows,
+        on_page_break=lambda c: draw_banner_header(c, "KITCHEN TICKET", meta, store_lines,
+                                                   logo_url=(s.logo_url if s else ""), base_dir=base_dir),
+    )
+    if ticket.notes:
+        draw_notes(c, MARGIN, y, ticket.notes)
+        y -= 18
+    draw_signoff(c, y, "Fire the order")
+    draw_page_footer(c, 1, tax_id=(s.tax_id if s else ""))
+    return Response(render_pdf(c, buf), media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename=kitchen-{ticket.ticket_number}.pdf"
+    })
 
 
 @router.get("/kitchen/board", response_model=list[KitchenTicketOut])

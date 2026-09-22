@@ -12,6 +12,7 @@ from app.models.location import Location
 from app.models.lot import Lot
 from app.models.lot_link import LotLink
 from app.models.lpn import LPN
+from app.models.menu import MenuModifierGroup, MenuModifierOption, MenuSection
 from app.models.notification import Notification
 from app.models.order import Order, OrderItem
 from app.models.price_list import PriceList, PriceListItem
@@ -55,6 +56,9 @@ __all__ = [
     "Lot",
     "LotLink",
     "LPN",
+    "MenuModifierGroup",
+    "MenuModifierOption",
+    "MenuSection",
     "Notification",
     "Order",
     "OrderItem",

@@ -25,6 +25,7 @@ class ProductCreate(BaseModel):
     is_active: bool = True
     is_serialized: bool = False
     is_menu_item: bool = False
+    menu_section_id: Optional[int] = None
 
     @model_validator(mode="after")
     def _name_required_without_parent(self):
@@ -54,6 +55,7 @@ class ProductUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_serialized: Optional[bool] = None
     is_menu_item: Optional[bool] = None
+    menu_section_id: Optional[int] = None
 
 
 class ImageOut(BaseModel):
@@ -89,6 +91,7 @@ class ProductOut(BaseModel):
     is_active: bool
     is_serialized: bool = False
     is_menu_item: bool = False
+    menu_section_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     category_name: str = ""

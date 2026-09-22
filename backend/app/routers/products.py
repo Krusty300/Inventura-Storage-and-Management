@@ -19,6 +19,7 @@ from app.database import get_db
 from app.models.category import Category
 from app.models.location import Location
 from app.models.lot import Lot
+from app.models.menu import MenuSection
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
 from app.models.settings import Settings
@@ -117,6 +118,11 @@ def validate_refs(db: Session, category_id: Optional[int], supplier_id: Optional
 def validate_location_ref(db: Session, location_id: Optional[int]) -> None:
     if location_id is not None and not db.query(Location).filter(Location.id == location_id).first():
         raise HTTPException(status_code=400, detail=f"Location {location_id} does not exist")
+
+
+def validate_menu_section_ref(db: Session, menu_section_id: Optional[int]) -> None:
+    if menu_section_id is not None and not db.query(MenuSection).filter(MenuSection.id == menu_section_id).first():
+        raise HTTPException(status_code=400, detail=f"Menu section {menu_section_id} does not exist")
 
 
 def _normalize_path(text: str) -> str:
@@ -558,6 +564,7 @@ def get_product_by_barcode(barcode: str, db: Session = Depends(get_db)):
 def create_product(data: ProductCreate, db: Session = Depends(get_db), user=Depends(require_permission("products.create"))):
     validate_refs(db, data.category_id, data.supplier_id)
     validate_location_ref(db, data.location_id)
+    validate_menu_section_ref(db, data.menu_section_id)
     if db.query(Product).filter(Product.sku == data.sku).first():
         raise HTTPException(status_code=400, detail="SKU already exists")
     parent = None
@@ -652,6 +659,9 @@ def update_product(product_id: int, data: ProductUpdate, db: Session = Depends(g
     updates = data.model_dump(exclude_unset=True)
     validate_refs(db, updates.get("category_id"), updates.get("supplier_id"))
     validate_location_ref(db, updates.get("location_id"))
+    validate_menu_section_ref(db, updates.get("menu_section_id"))
+    if updates.get("menu_section_id") is not None:
+        updates.setdefault("is_menu_item", True)
     if updates.get("sku"):
         existing_sku = db.query(Product).filter(
             Product.sku == updates["sku"], Product.id != product_id
