@@ -14,11 +14,14 @@ class RestaurantTable(Base):
     number: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     zone: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     capacity: Mapped[int] = mapped_column(Integer, default=4)
+    pos_x: Mapped[int] = mapped_column(Integer, default=0)
+    pos_y: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
     tickets = relationship("RestaurantTicket", back_populates="table")
+    reservations = relationship("RestaurantReservation", back_populates="table", order_by="RestaurantReservation.id")
 
     @property
     def active_ticket(self) -> "RestaurantTicket | None":
@@ -26,6 +29,37 @@ class RestaurantTable(Base):
             if t.status not in ("settled", "cancelled"):
                 return t
         return None
+
+
+class RestaurantReservation(Base):
+    __tablename__ = "restaurant_reservations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    reservation_number: Mapped[str] = mapped_column(String(30), unique=True, nullable=False, index=True)
+    table_id: Mapped[int | None] = mapped_column(ForeignKey("restaurant_tables.id"), nullable=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    guest_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    guest_phone: Mapped[str] = mapped_column(String(40), default="")
+    guest_count: Mapped[int] = mapped_column(Integer, default=1)
+    reserved_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, index=True)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=90)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    ticket_id: Mapped[int | None] = mapped_column(ForeignKey("restaurant_tickets.id"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
+
+    table = relationship("RestaurantTable", back_populates="reservations")
+    user = relationship("User")
+    ticket = relationship("RestaurantTicket")
+
+    @property
+    def table_number(self) -> str:
+        return self.table.number if self.table else ""
+
+    @property
+    def username(self) -> str:
+        return self.user.username if self.user else ""
 
 
 class RestaurantTicket(Base):

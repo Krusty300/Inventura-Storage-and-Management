@@ -1,5 +1,5 @@
 from math import ceil
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,7 +10,7 @@ from app.constants import MAX_PAGE_SIZE, currency_symbol as symbol_for
 from app.database import get_db
 from app.models.menu import MenuModifierGroup, MenuModifierOption, MenuSection
 from app.models.product import Product
-from app.models.restaurant import RestaurantTable, RestaurantTicket, RestaurantTicketItem
+from app.models.restaurant import RestaurantReservation, RestaurantTable, RestaurantTicket, RestaurantTicketItem
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
 from app.schemas.menu import (
@@ -27,6 +27,10 @@ from app.schemas.menu import (
 )
 from app.schemas.restaurant import (
     KitchenTicketOut,
+    ReservationCreate,
+    ReservationOut,
+    ReservationStatusUpdate,
+    ReservationUpdate,
     RestaurantTableCreate,
     RestaurantTableOut,
     RestaurantTableUpdate,
@@ -625,6 +629,210 @@ def delete_table(table_id: int, db: Session = Depends(get_db), user=Depends(requ
     return {"ok": True}
 
 
+RESERVATION_STATUSES = ("pending", "confirmed", "seated", "cancelled", "no_show")
+RESERVATION_ACTIVE = ("pending", "confirmed", "seated")
+
+
+def _reservation_loaded(db: Session, reservation_id: int) -> RestaurantReservation:
+    return get_or_404(RestaurantReservation, reservation_id, db, options=[
+        joinedload(RestaurantReservation.table), joinedload(RestaurantReservation.user),
+    ])
+
+
+def _reservation_conflict(
+    db: Session, table_id: int | None, reserved_at: datetime,
+    duration_minutes: int, exclude_id: int | None = None,
+) -> RestaurantReservation | None:
+    """Return the first reservation overlapping the same table and time window."""
+    if table_id is None:
+        return None
+    start = reserved_at
+    end = reserved_at + timedelta(minutes=duration_minutes)
+    q = db.query(RestaurantReservation).filter(
+        RestaurantReservation.table_id == table_id,
+        RestaurantReservation.status.in_(RESERVATION_ACTIVE),
+    )
+    if exclude_id is not None:
+        q = q.filter(RestaurantReservation.id != exclude_id)
+    for other in q.all():
+        o_start = other.reserved_at
+        o_end = other.reserved_at + timedelta(minutes=other.duration_minutes)
+        if start < o_end and o_start < end:
+            return other
+    return None
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Reservations
+# ---------------------------------------------------------------------------
+
+@router.get("/reservations")
+def list_reservations(
+    date: str | None = Query(None, description="YYYY-MM-DD in UTC"),
+    status: str | None = Query(None),
+    table_id: int | None = Query(None),
+    search: str = Query(""),
+    upcoming_only: bool = Query(False),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+):
+    q = db.query(RestaurantReservation).options(
+        joinedload(RestaurantReservation.table), joinedload(RestaurantReservation.user),
+    )
+    if date:
+        try:
+            day_start = _as_utc(datetime.strptime(date, "%Y-%m-%d"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+        day_end = day_start + timedelta(days=1)
+        q = q.filter(RestaurantReservation.reserved_at >= day_start, RestaurantReservation.reserved_at < day_end)
+    if upcoming_only:
+        q = q.filter(RestaurantReservation.reserved_at >= datetime.now(timezone.utc))
+    if status:
+        q = q.filter(RestaurantReservation.status == status)
+    if table_id:
+        q = q.filter(RestaurantReservation.table_id == table_id)
+    if search:
+        needle = f"%{search.strip()}%"
+        q = q.filter(
+            RestaurantReservation.guest_name.ilike(needle)
+            | RestaurantReservation.guest_phone.ilike(needle)
+            | RestaurantReservation.reservation_number.ilike(needle)
+        )
+    total = q.count()
+    items = q.order_by(RestaurantReservation.reserved_at.desc()).offset(skip).limit(limit).all()
+    return {"items": [ReservationOut.model_validate(r) for r in items], "total": total,
+            "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
+
+
+@router.get("/reservations/{reservation_id}", response_model=ReservationOut)
+def get_reservation(reservation_id: int, db: Session = Depends(get_db)):
+    return _reservation_loaded(db, reservation_id)
+
+
+@router.post("/reservations", response_model=ReservationOut, status_code=201)
+def create_reservation(data: ReservationCreate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.create"))):
+    guest_name = data.guest_name.strip()
+    if not guest_name:
+        raise HTTPException(status_code=400, detail="Guest name is required")
+    reserved_at = _as_utc(data.reserved_at)
+    if data.table_id is not None:
+        table = get_or_404(RestaurantTable, data.table_id, db)
+        if not table.is_active:
+            raise HTTPException(status_code=400, detail=f"Table '{table.number}' is inactive")
+    conflict = _reservation_conflict(db, data.table_id, reserved_at, data.duration_minutes)
+    if conflict is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Table already booked for {conflict.guest_name} "
+                f"({conflict.reserved_at.strftime('%H:%M')}–"
+                f"{(conflict.reserved_at + timedelta(minutes=conflict.duration_minutes)).strftime('%H:%M')})"
+            ),
+        )
+    reservation = RestaurantReservation(
+        reservation_number=next_document_number(db, "reservation", "R-"),
+        table_id=data.table_id,
+        user_id=user.id,
+        guest_name=guest_name,
+        guest_phone=data.guest_phone.strip(),
+        guest_count=data.guest_count,
+        reserved_at=reserved_at,
+        duration_minutes=data.duration_minutes,
+        notes=data.notes,
+    )
+    db.add(reservation)
+    db.flush()
+    log_activity(db, user.id, user.username, "create", "restaurant_reservation", reservation.id,
+                 f"Booked {reservation.reservation_number} for {guest_name} ({reservation.guest_count} guests)")
+    db.commit()
+    reservation = _reservation_loaded(db, reservation.id)
+    broadcast_change("restaurant_reservation", "created")
+    return reservation
+
+
+@router.put("/reservations/{reservation_id}", response_model=ReservationOut)
+def update_reservation(reservation_id: int, data: ReservationUpdate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
+    reservation = _reservation_loaded(db, reservation_id)
+    if reservation.status in ("cancelled", "no_show"):
+        raise HTTPException(status_code=400, detail="Cannot edit a cancelled or no-show reservation")
+    updates = data.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    status = updates.get("status", reservation.status)
+    if status not in RESERVATION_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid reservation status '{status}'")
+    if updates.get("guest_name") is not None:
+        guest_name = updates["guest_name"].strip()
+        if not guest_name:
+            raise HTTPException(status_code=400, detail="Guest name is required")
+        updates["guest_name"] = guest_name
+    if updates.get("guest_phone") is not None:
+        updates["guest_phone"] = updates["guest_phone"].strip()
+    reserved_at = _as_utc(updates.get("reserved_at", reservation.reserved_at))
+    duration_minutes = updates.get("duration_minutes", reservation.duration_minutes)
+    table_id = updates.get("table_id", reservation.table_id)
+    if table_id is not None and (table_id != reservation.table_id or status not in RESERVATION_ACTIVE):
+        table = get_or_404(RestaurantTable, table_id, db)
+        if not table.is_active:
+            raise HTTPException(status_code=400, detail=f"Table '{table.number}' is inactive")
+    if status in RESERVATION_ACTIVE:
+        conflict = _reservation_conflict(db, table_id, reserved_at, duration_minutes, exclude_id=reservation.id)
+        if conflict is not None:
+            raise HTTPException(status_code=400, detail="Table already has a booking in that time window")
+    for k, v in updates.items():
+        setattr(reservation, k, v)
+    reservation.reserved_at = reserved_at
+    db.commit()
+    reservation = _reservation_loaded(db, reservation.id)
+    log_activity(db, user.id, user.username, "update", "restaurant_reservation", reservation.id,
+                 f"Updated {reservation.reservation_number}: {', '.join(f'{k}={v}' for k, v in updates.items())}")
+    db.commit()
+    broadcast_change("restaurant_reservation", "updated")
+    return reservation
+
+
+@router.post("/reservations/{reservation_id}/status", response_model=ReservationOut)
+def update_reservation_status(reservation_id: int, data: ReservationStatusUpdate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
+    reservation = _reservation_loaded(db, reservation_id)
+    target = data.status
+    if target not in RESERVATION_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid reservation status '{target}'")
+    current = reservation.status
+    if current in ("cancelled", "no_show"):
+        raise HTTPException(status_code=400, detail="Reservation already closed")
+    if current == "seated" and target not in ("seated", "cancelled"):
+        raise HTTPException(status_code=400, detail="Seated guests can only be cancelled")
+    reservation.status = target
+    db.commit()
+    reservation = _reservation_loaded(db, reservation.id)
+    log_activity(db, user.id, user.username, "update", "restaurant_reservation", reservation.id,
+                 f"{reservation.reservation_number} marked {target}")
+    db.commit()
+    broadcast_change("restaurant_reservation", "updated")
+    return reservation
+
+
+@router.delete("/reservations/{reservation_id}")
+def delete_reservation(reservation_id: int, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.delete"))):
+    reservation = _reservation_loaded(db, reservation_id)
+    if reservation.status == "seated" and reservation.ticket_id is not None:
+        raise HTTPException(status_code=400, detail="Cannot delete a seated reservation that has a ticket")
+    log_activity(db, user.id, user.username, "delete", "restaurant_reservation", reservation.id,
+                 f"Deleted {reservation.reservation_number} for {reservation.guest_name}")
+    db.delete(reservation)
+    db.commit()
+    broadcast_change("restaurant_reservation", "deleted")
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Tickets
 # ---------------------------------------------------------------------------
@@ -676,6 +884,20 @@ def create_ticket(data: TicketCreate, db: Session = Depends(get_db), user=Depend
         notes=data.notes,
     )
     db.add(ticket)
+    db.flush()
+    if data.reservation_id is not None:
+        reservation = get_or_404(RestaurantReservation, data.reservation_id, db)
+        if reservation.status not in ("pending", "confirmed", "seated"):
+            raise HTTPException(status_code=400, detail="Reservation is no longer active")
+        if data.table_id is not None and reservation.table_id not in (None, data.table_id):
+            raise HTTPException(status_code=400, detail="Reservation is booked for a different table")
+        ticket.table_id = reservation.table_id if reservation.table_id is not None else data.table_id
+        ticket.guest_count = max(ticket.guest_count, reservation.guest_count)
+        if not ticket.customer_name:
+            ticket.customer_name = reservation.guest_name
+        reservation.status = "seated"
+        reservation.ticket_id = ticket.id
+        db.add(reservation)
     db.commit()
     ticket = load_ticket(db, ticket.id)
     log_activity(db, user.id, user.username, "create", "restaurant_ticket", ticket.id,

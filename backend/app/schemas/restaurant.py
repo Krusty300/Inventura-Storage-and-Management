@@ -8,6 +8,8 @@ class RestaurantTableCreate(BaseModel):
     number: str
     zone: Optional[str] = None
     capacity: int = Field(default=4, ge=1, le=99)
+    pos_x: int = 0
+    pos_y: int = 0
     is_active: bool = True
 
 
@@ -15,6 +17,8 @@ class RestaurantTableUpdate(BaseModel):
     number: Optional[str] = None
     zone: Optional[str] = None
     capacity: Optional[int] = Field(default=None, ge=1, le=99)
+    pos_x: Optional[int] = None
+    pos_y: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -23,6 +27,8 @@ class RestaurantTableOut(BaseModel):
     number: str
     zone: Optional[str] = None
     capacity: int
+    pos_x: int = 0
+    pos_y: int = 0
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -79,6 +85,7 @@ class TicketItemOut(BaseModel):
 
 class TicketCreate(BaseModel):
     table_id: Optional[int] = None
+    reservation_id: Optional[int] = None
     guest_count: int = Field(default=1, ge=1, le=99)
     customer_name: str = ""
     notes: str = ""
@@ -136,6 +143,53 @@ class KitchenTicketOut(BaseModel):
     stage: str = ""
     earliest_sent_at: Optional[datetime] = None
     items: list[TicketItemOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class ReservationCreate(BaseModel):
+    table_id: Optional[int] = None
+    guest_name: str
+    guest_phone: str = ""
+    guest_count: int = Field(default=2, ge=1, le=99)
+    reserved_at: datetime
+    duration_minutes: int = Field(default=90, ge=15, le=1440)
+    notes: str = ""
+
+
+class ReservationUpdate(BaseModel):
+    table_id: Optional[int] = None
+    guest_name: Optional[str] = None
+    guest_phone: Optional[str] = None
+    guest_count: Optional[int] = Field(default=None, ge=1, le=99)
+    reserved_at: Optional[datetime] = None
+    duration_minutes: Optional[int] = Field(default=None, ge=15, le=1440)
+    notes: Optional[str] = None
+    status: Optional[str] = None
+
+
+class ReservationStatusUpdate(BaseModel):
+    status: str
+
+
+class ReservationOut(BaseModel):
+    id: int
+    reservation_number: str
+    table_id: Optional[int] = None
+    user_id: int
+    guest_name: str
+    guest_phone: str = ""
+    guest_count: int
+    reserved_at: datetime
+    duration_minutes: int = 90
+    status: str
+    notes: str = ""
+    ticket_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    table_number: str = ""
+    username: str = ""
 
     class Config:
         from_attributes = True

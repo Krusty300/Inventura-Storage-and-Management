@@ -21,7 +21,7 @@ from app.models.product_image import ProductImage
 from app.models.promotion import Promotion
 from app.models.quality_check import QualityCheck
 from app.models.receipt import Receipt, ReceiptItem
-from app.models.restaurant import RestaurantTable, RestaurantTicket, RestaurantTicketItem
+from app.models.restaurant import RestaurantReservation, RestaurantTable, RestaurantTicket, RestaurantTicketItem
 from app.models.sale import Sale, SaleItem
 from app.models.sales_channel import SalesChannel
 from app.models.serial_number import SerialNumber
@@ -70,6 +70,7 @@ __all__ = [
     "QualityCheck",
     "Receipt",
     "ReceiptItem",
+    "RestaurantReservation",
     "RestaurantTable",
     "RestaurantTicket",
     "RestaurantTicketItem",
