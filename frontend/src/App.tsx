@@ -52,6 +52,11 @@ const PriceLists = lazy(() => import("./pages/PriceLists"));
 const Promotions = lazy(() => import("./pages/Promotions"));
 const CustomerGroups = lazy(() => import("./pages/CustomerGroups"));
 const SalesChannels = lazy(() => import("./pages/SalesChannels"));
+const RestaurantFloor = lazy(() => import("./pages/restaurant/RestaurantFloor"));
+const RestaurantTickets = lazy(() => import("./pages/restaurant/RestaurantTickets"));
+const RestaurantTicketDetail = lazy(() => import("./pages/restaurant/RestaurantTicketDetail"));
+const RestaurantKitchen = lazy(() => import("./pages/restaurant/RestaurantKitchen"));
+const RestaurantTables = lazy(() => import("./pages/restaurant/RestaurantTables"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -169,6 +174,11 @@ function AppRoutes() {
           <Route path="/promotions" element={<PageBoundary><RequirePermission perm="promotions.view"><Promotions /></RequirePermission></PageBoundary>} />
           <Route path="/customer-groups" element={<PageBoundary><RequirePermission perm="customer_groups.view"><CustomerGroups /></RequirePermission></PageBoundary>} />
           <Route path="/sales-channels" element={<PageBoundary><RequirePermission perm="sales.view"><SalesChannels /></RequirePermission></PageBoundary>} />
+          <Route path="/restaurant" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantFloor /></RequirePermission></PageBoundary>} />
+          <Route path="/restaurant/tickets" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantTickets /></RequirePermission></PageBoundary>} />
+          <Route path="/restaurant/tickets/:id" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantTicketDetail /></RequirePermission></PageBoundary>} />
+          <Route path="/restaurant/kitchen" element={<PageBoundary><RequirePermission perm="restaurant.kitchen"><RestaurantKitchen /></RequirePermission></PageBoundary>} />
+          <Route path="/restaurant/tables" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantTables /></RequirePermission></PageBoundary>} />
           <Route path="/users" element={<PageBoundary><RequirePermission perm="users.view"><Users /></RequirePermission></PageBoundary>} />
           <Route path="/reports" element={<PageBoundary><RequirePermission perm="reports.view"><Reports /></RequirePermission></PageBoundary>} />
           <Route path="/activity-log" element={<PageBoundary><RequirePermission perm="activity.view"><ActivityLog /></RequirePermission></PageBoundary>} />

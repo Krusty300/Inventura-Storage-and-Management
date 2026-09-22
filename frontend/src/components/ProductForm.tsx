@@ -35,6 +35,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
     unit_price: "0", cost_price: "0", quantity: "0", reorder_level: "",
     location: "", barcode: "", batch_number: "", expiry_date: "", is_active: true,
     is_serialized: false,
+    is_menu_item: false,
   });
   const [attributes, setAttributes] = useState<AttrRow[]>([]);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -85,6 +86,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         expiry_date: product.expiry_date ? product.expiry_date.slice(0, 10) : "",
         is_active: product.is_active,
         is_serialized: product.is_serialized,
+        is_menu_item: product.is_menu_item ?? false,
       });
       setAttributes(product.attributes ? Object.entries(product.attributes).map(([key, value]) => ({ key, value })) : []);
       if (product.images?.length) {
@@ -187,7 +189,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
     setSaving(false);
   };
 
-  const field = (label: string, key: Exclude<keyof typeof form, "is_active" | "is_serialized">, type = "text", required = false) => (
+  const field = (label: string, key: Exclude<keyof typeof form, "is_active" | "is_serialized" | "is_menu_item">, type = "text", required = false) => (
     <div>
       <label className="block text-sm font-medium text-ink mb-1">{label}</label>
       <input
@@ -421,6 +423,24 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
                     { value: "0", label: "Inactive" },
                   ]}
                 />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1">Menu item (restaurant POS)</label>
+                <FittedSelect
+                  ariaLabel="Menu item (restaurant POS)"
+                  value={form.is_menu_item ? "1" : "0"}
+                  onChange={(v) => setForm({ ...form, is_menu_item: v === "1" })}
+                  disabled={form.is_serialized}
+                  options={[
+                    { value: "0", label: "No" },
+                    { value: "1", label: "Yes" },
+                  ]}
+                />
+                {form.is_serialized && (
+                  <p className="text-xs text-muted mt-1">Serialized products can't be menu items.</p>
+                )}
               </div>
             </div>
           </div>

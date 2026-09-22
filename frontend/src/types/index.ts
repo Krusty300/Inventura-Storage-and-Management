@@ -52,6 +52,7 @@ export interface Product {
   image_url: string;
   is_active: boolean;
   is_serialized: boolean;
+  is_menu_item?: boolean;
   created_at: string;
   updated_at: string;
   category_name: string;
@@ -1446,4 +1447,63 @@ export interface PricingResponse {
   tax_rate: number;
   tax_amount: number;
   total: number;
+}
+
+export type TicketItemStatus = "pending" | "queued" | "preparing" | "ready" | "served";
+export type TicketStatus = "open" | "preparing" | "ready" | "served" | "paying" | "settled" | "cancelled";
+
+export interface RestaurantTable {
+  id: number;
+  number: string;
+  zone: string | null;
+  capacity: number;
+  is_active: boolean;
+  status: "available" | "occupied";
+  active_ticket_id: number | null;
+  active_ticket_number: string | null;
+}
+
+export interface RestaurantTicketItem {
+  id: number;
+  product_id: number;
+  product_name: string;
+  product_image: string | null;
+  sku: string;
+  quantity: number;
+  unit_price: number;
+  status: TicketItemStatus;
+  notes: string;
+  sent_at: string | null;
+  created_at: string;
+}
+
+export interface RestaurantTicket {
+  id: number;
+  ticket_number: string;
+  table_id: number | null;
+  table_number: string;
+  username: string;
+  status: TicketStatus;
+  guest_count: number;
+  customer_name: string;
+  subtotal: number;
+  discount_amount: number;
+  tax_amount: number;
+  total_amount: number;
+  sale_id: number | null;
+  notes: string;
+  opened_at: string;
+  settled_at: string | null;
+  items: RestaurantTicketItem[];
+}
+
+export interface KitchenTicket {
+  id: number;
+  ticket_number: string;
+  table_number: string;
+  guest_count: number;
+  status: string;
+  stage: "queued" | "preparing" | "ready";
+  earliest_sent_at: string | null;
+  items: RestaurantTicketItem[];
 }
