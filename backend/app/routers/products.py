@@ -154,6 +154,7 @@ def list_products(
     expiry: Literal["", "expired", "expiring"] = "",
     low_stock: bool = False,
     include_variants: bool = False,
+    menu_only: bool = False,
     created_after: str | None = None,
     created_before: str | None = None,
     expiry_after: str | None = None,
@@ -182,6 +183,8 @@ def list_products(
     q = db.query(Product).options(*options).filter(Product.parent_id.is_(None), Product.is_deleted == False)  # noqa: E712
     if active_only:
         q = q.filter(Product.is_active == True)
+    if menu_only:
+        q = q.filter(Product.is_menu_item == True)
     if search:
         like = f"%{search}%"
         if include_variants:

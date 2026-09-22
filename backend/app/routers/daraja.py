@@ -86,6 +86,8 @@ def mock_stk_confirm(checkout_request_id: str = "", db=Depends(get_db), user=Dep
             raise HTTPException(status_code=400, detail=f"Sale payment status is '{sale.payment_status}' — can only confirm pending payments")
         sale.payment_status = "completed"
         sale.status = "completed"
+        from app.routers.restaurant import confirm_ticket_payment
+        confirm_ticket_payment(db, sale.id)
         from app.utils import log_activity, broadcast_change
         db.commit()
         log_activity(db, user.id, user.username, "update", "sale", sale.id, f"Mock STK confirmed for {sale.invoice_number}")
@@ -138,6 +140,8 @@ async def stk_callback(request: Request, db=Depends(get_db)):
                     receipt = parsed.get("mpesa_receipt_number", "")
                     if receipt:
                         sale.payment_reference = receipt
+                from app.routers.restaurant import confirm_ticket_payment
+                confirm_ticket_payment(db, sale.id)
             else:
                 sale.payment_status = "failed"
                 if sale.status == "pending":

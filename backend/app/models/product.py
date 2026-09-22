@@ -24,6 +24,7 @@ class Product(SoftDeleteMixin, Base):
     quantity: Mapped[int] = mapped_column(Integer, default=0)
     reorder_level: Mapped[int] = mapped_column(Integer, default=10)
     is_serialized: Mapped[bool] = mapped_column(default=False)
+    is_menu_item: Mapped[bool] = mapped_column(default=False, index=True)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True, index=True)
     location: Mapped[str] = mapped_column(String(100), default="")
     barcode: Mapped[str] = mapped_column(String(100), default="")

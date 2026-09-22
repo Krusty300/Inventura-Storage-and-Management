@@ -116,6 +116,13 @@ ALL_PERMISSIONS = frozenset({
     "promotions.create",
     "promotions.update",
     "promotions.delete",
+    "restaurant.view",
+    "restaurant.create",
+    "restaurant.update",
+    "restaurant.delete",
+    "restaurant.kitchen",
+    "restaurant.settle",
+    "restaurant.cancel",
     "customer_groups.view",
     "customer_groups.create",
     "customer_groups.update",
@@ -178,6 +185,12 @@ WORKER_PERMISSIONS = frozenset({
     "price_lists.view",
     "promotions.view",
     "customer_groups.view",
+    "restaurant.view",
+    "restaurant.create",
+    "restaurant.update",
+    "restaurant.kitchen",
+    "restaurant.settle",
+    "restaurant.cancel",
 })
 
 # Suppliers are external users: everything they can reach lives under the
