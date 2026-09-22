@@ -232,7 +232,7 @@ export default function Suppliers() {
           loading={isLoading}
           skeletonRows={5}
           noData={suppliers.length === 0}
-          empty={<EmptyState title={search ? "No matching suppliers" : "No suppliers"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Add your first supplier to start managing purchases."} actionLabel={search ? undefined : "Add Supplier"} onAction={search ? undefined : () => { setEditing(null); setShowForm(true); }} />}
+          empty={<EmptyState icon={<Building2 size={48} />} title={search ? "No matching suppliers" : "No suppliers"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Add your first supplier to start managing purchases."} actionLabel={search ? undefined : "Add Supplier"} onAction={search ? undefined : () => { setEditing(null); setShowForm(true); }} />}
         >
             {suppliers.map((s) => (
                 <tr key={s.id} className="hover:bg-app cursor-pointer" onClick={(e) => { const t = e.target as HTMLElement; if (t.closest("button") || t.closest("input") || t.closest("a")) return; setViewing(s); }}>

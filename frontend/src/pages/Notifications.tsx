@@ -132,9 +132,16 @@ export default function Notifications() {
         {isLoading ? (
           <div className="p-4"><Skeleton variant="rows" rows={8} cols={3} /></div>
         ) : items.length === 0 ? (
-          <div className="py-10">
-            <EmptyState title={tab === "unread" ? "No unread notifications" : "No notifications"} message={tab === "unread" ? "You're all caught up." : "New notifications will appear here."} />
-          </div>
+          <EmptyState
+            variant="block"
+            icon={
+              tab === "unread"
+                ? <CheckCheck size={32} />
+                : <Bell size={32} />
+            }
+            title={tab === "unread" ? "No unread notifications" : "No notifications"}
+            message={tab === "unread" ? "You're all caught up." : "New notifications will appear here."}
+          />
         ) : (
           <ul className="divide-y divide-border">
             {items.map((n) => {

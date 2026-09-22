@@ -288,7 +288,7 @@ export default function Customers() {
           loading={isLoading}
           skeletonRows={5}
           noData={customers.length === 0}
-          empty={<EmptyState title="No customers found" message="Add your first customer to get started." actionLabel="Add Customer" onAction={() => { setEditing(null); setShowForm(true); }} />}
+          empty={<EmptyState icon={<Users size={48} />} title={search ? "No matching customers" : "No customers found"} message={search ? "Try adjusting your search or filters." : "Add your first customer to get started."} actionLabel={search ? undefined : "Add Customer"} onAction={search ? undefined : () => { setEditing(null); setShowForm(true); }} />}
         >
             {customers.map((c) => (
                 <tr key={c.id} className="hover:bg-app cursor-pointer" onClick={(e) => { const t = e.target as HTMLElement; if (t.closest("button") || t.closest("input")) return; setViewing(c); }}>

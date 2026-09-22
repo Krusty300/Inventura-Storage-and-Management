@@ -124,7 +124,7 @@ export default function Boms() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : boms.length === 0 ? (
-              <EmptyState title={search ? "No matching BOMs" : "No BOMs yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create a bill of materials to define how a product is manufactured."} actionLabel={search ? undefined : "New BOM"} onAction={search ? undefined : openNew} />
+              <EmptyState icon={<Boxes size={48} />} title={search ? "No matching BOMs" : "No BOMs yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create a bill of materials to define how a product is manufactured."} actionLabel={search ? undefined : "New BOM"} onAction={search ? undefined : openNew} />
             ) : boms.map((b) => (
               <tr key={b.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(b)}>
                 <td className="px-4 py-3 font-medium">{b.name || b.product_name}</td>

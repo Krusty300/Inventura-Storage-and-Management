@@ -1,6 +1,6 @@
 import { useDateFormat } from "../hooks/useDateFormat";
 import { useState } from "react";
-import { Shield, ShieldOff, ShieldCheck, Eye, KeyRound, Trash2, UserCheck, Download, Clock, Check, Search, X, Truck } from "lucide-react";
+import { Shield, ShieldOff, ShieldCheck, Eye, KeyRound, Trash2, UserCheck, Download, Clock, Check, Search, X, Truck, UsersRound } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import type { Customer, PaginatedResponse, Supplier, User } from "../types";
@@ -280,7 +280,7 @@ export default function Users() {
               {pendingLoading ? (
                 <Skeleton rows={3} cols={5} />
               ) : pendingUsers.length === 0 ? (
-                <EmptyState title="No pending users" message="All registrations have been reviewed." />
+                <EmptyState icon={<Check size={48} />} title="No pending users" message="All registrations have been reviewed." />
               ) : pendingUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">{u.username}</td>
@@ -324,6 +324,7 @@ export default function Users() {
               <EmptyState title="Access denied" message="Only administrators can view and manage users." />
             ) : !users || users.length === 0 ? (
               <EmptyState
+                icon={<UsersRound size={48} />}
                 title={search ? "No matching users" : "No users found"}
                 message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Use Add User to create accounts for your team."}
                 actionLabel={search ? undefined : can("users.create") ? "Add User" : undefined}

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCheck, Truck, FileText, Loader2, Clock, Save } from "lucide-react";
+import { ArrowLeft, CheckCheck, Truck, FileText, Loader2, Clock, Save, ClipboardList } from "lucide-react";
 import api from "../../api/client";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import { formatCurrency } from "../../utils/currency";
 import { statusBadge } from "../../utils/statusBadges";
 import Skeleton from "../../components/Skeleton";
+import EmptyState from "../../components/EmptyState";
 import TextArea from "../../components/TextArea";
 import { errorMessage } from "../../utils/errors";
 import { useToast } from "../../context/ToastContext";
@@ -254,24 +255,28 @@ export default function PortalOrderDetail() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {order.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {item.product_image ? (
-                        <img src={item.product_image} alt="" className="h-9 w-9 rounded-lg object-cover border border-border shrink-0" loading="lazy" />
-                      ) : null}
-                      <div className="min-w-0">
-                        <p className="font-medium text-ink truncate">{item.product_name}</p>
-                        <p className="text-xs text-muted">{item.sku}</p>
+              {order.items.length === 0 ? (
+                <EmptyState variant="table" icon={<ClipboardList size={40} />} title="No line items" message="This purchase order has no line items yet." />
+              ) : (
+                order.items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {item.product_image ? (
+                          <img src={item.product_image} alt="" className="h-9 w-9 rounded-lg object-cover border border-border shrink-0" loading="lazy" />
+                        ) : null}
+                        <div className="min-w-0">
+                          <p className="font-medium text-ink truncate">{item.product_name}</p>
+                          <p className="text-xs text-muted">{item.sku}</p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">{item.quantity}</td>
-                  <td className="px-4 py-3 text-right hidden sm:table-cell">{formatCurrency(item.unit_price, currencySymbol)}</td>
-                  <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.quantity * item.unit_price, currencySymbol)}</td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3 text-right">{item.quantity}</td>
+                    <td className="px-4 py-3 text-right hidden sm:table-cell">{formatCurrency(item.unit_price, currencySymbol)}</td>
+                    <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.quantity * item.unit_price, currencySymbol)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

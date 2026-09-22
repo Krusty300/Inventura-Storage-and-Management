@@ -115,8 +115,11 @@ export default function CustomerInvoices() {
             noData={rows.length === 0}
             empty={
               <EmptyState
+                icon={<Receipt size={48} />}
                 title={search || status ? "No matching invoices" : "No invoices yet"}
                 message={search || status ? "Try adjusting your search or status filter." : "Invoices for your purchases will appear here."}
+                actionLabel={search || status ? undefined : "Browse catalog"}
+                onAction={search || status ? undefined : () => navigate("/portal/catalog")}
               />
             }
           >

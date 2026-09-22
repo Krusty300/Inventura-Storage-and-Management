@@ -6,6 +6,7 @@ import { useDateFormat } from "../../hooks/useDateFormat";
 import { formatCurrency } from "../../utils/currency";
 import { statusBadge } from "../../utils/statusBadges";
 import Skeleton from "../../components/Skeleton";
+import EmptyState from "../../components/EmptyState";
 import { errorMessage } from "../../utils/errors";
 import { useToast } from "../../context/ToastContext";
 import type { CustomerPortalMe, Sale } from "../../types";
@@ -122,14 +123,18 @@ export default function CustomerInvoiceDetail() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {sale.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-3 font-medium text-ink">{item.product_name || `Product #${item.product_id}`}</td>
-                  <td className="px-4 py-3 text-right">{item.quantity}</td>
-                  <td className="px-4 py-3 text-right hidden sm:table-cell">{formatCurrency(item.unit_price, currencySymbol)}</td>
-                  <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.line_total, currencySymbol)}</td>
-                </tr>
-              ))}
+              {sale.items.length === 0 ? (
+                <EmptyState variant="table" icon={<Receipt size={40} />} title="No line items" message="This invoice has no line items recorded." />
+              ) : (
+                sale.items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-4 py-3 font-medium text-ink">{item.product_name || `Product #${item.product_id}`}</td>
+                    <td className="px-4 py-3 text-right">{item.quantity}</td>
+                    <td className="px-4 py-3 text-right hidden sm:table-cell">{formatCurrency(item.unit_price, currencySymbol)}</td>
+                    <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.line_total, currencySymbol)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

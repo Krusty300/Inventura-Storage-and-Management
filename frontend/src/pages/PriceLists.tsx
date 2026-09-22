@@ -115,7 +115,7 @@ export default function PriceLists() {
               {isLoading ? (
                 <Skeleton rows={5} cols={6} />
               ) : priceLists.length === 0 ? (
-                <EmptyState title={search ? "No matching price lists" : "No price lists"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create your first price list to manage product pricing."} actionLabel={search ? undefined : "Add Price List"} onAction={search ? undefined : () => { setEditingId(null); setShowForm(true); }} />
+                <EmptyState icon={<Tag size={48} />} title={search ? "No matching price lists" : "No price lists"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create your first price list to manage product pricing."} actionLabel={search ? undefined : "Add Price List"} onAction={search ? undefined : () => { setEditingId(null); setShowForm(true); }} />
               ) : priceLists.map((pl) => (
                 <tr key={pl.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(pl)}>
                   <td className="px-4 py-3">

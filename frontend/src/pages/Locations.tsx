@@ -329,6 +329,7 @@ export default function Locations() {
       ) : visibleTree.length === 0 ? (
         <EmptyState
           variant="block"
+          icon={<FolderTree size={48} />}
           title={q ? "No matching locations" : "No locations yet"}
           message={q ? `Nothing matched "${search}".` : "Create zones, aisles, and bins to organize your warehouse."}
           actionLabel={q ? undefined : "Add Location"}

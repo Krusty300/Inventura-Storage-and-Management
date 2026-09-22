@@ -158,11 +158,12 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
         </div>
 
         {supplierId && supplierOrderable.length === 0 && !supplierProducts.length && (
-          <div className="border border-dashed border-border rounded-lg px-4 py-6">
+          <div className="border border-dashed border-border rounded-lg">
             <EmptyState
+              compact
               title="No orderable products"
               message="This supplier has no orderable products yet."
-              icon={<PackageX size={48} />}
+              icon={<PackageX size={20} />}
             />
           </div>
         )}
@@ -187,39 +188,45 @@ export default function OrderForm({ order, onClose, onSaved }: Props) {
               </button>
             </div>
           </div>
-          <div className="space-y-2">
-            {items.map((item, idx) => (
-              <div key={idx} className="flex gap-2 items-end">
-                <div className="flex-1 min-w-0">
-                  <FittedSelect
-                    ariaLabel="Product"
-                    value={item.product_id}
-                    onChange={(v) => updateItem(idx, "product_id", v)}
-                    options={[
-                      { value: "", label: "Select product" },
-                      ...dropdownOptions.map((p) => ({
-                        value: String(p.id),
-                        label: `${productLabel(p)}${p.is_serialized ? " (Serialized)" : ""} (${formatCurrency(p.cost_price, currencySymbol)})`,
-                      })),
-                    ]}
-                  />
+          {items.length === 0 ? (
+            <div className="border border-dashed border-border rounded-lg">
+              <EmptyState compact title="No items yet" message="Add a product with the Add Item button or scan a barcode." icon={<PackageX size={20} />} />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={idx} className="flex gap-2 items-end">
+                  <div className="flex-1 min-w-0">
+                    <FittedSelect
+                      ariaLabel="Product"
+                      value={item.product_id}
+                      onChange={(v) => updateItem(idx, "product_id", v)}
+                      options={[
+                        { value: "", label: "Select product" },
+                        ...dropdownOptions.map((p) => ({
+                          value: String(p.id),
+                          label: `${productLabel(p)}${p.is_serialized ? " (Serialized)" : ""} (${formatCurrency(p.cost_price, currencySymbol)})`,
+                        })),
+                      ]}
+                    />
+                  </div>
+                  <div className="w-16 sm:w-20">
+                    <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity}
+                      onChange={(e) => updateItem(idx, "quantity", e.target.value)} min="1" required />
+                  </div>
+                  <div className="w-20 sm:w-24">
+                    <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price}
+                      onChange={(e) => updateItem(idx, "unit_price", e.target.value)} step="0.01" required />
+                  </div>
+                  {items.length > 1 && (
+                    <button type="button" onClick={() => removeItem(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
-                <div className="w-16 sm:w-20">
-                  <input type="number" className="input text-sm" placeholder="Qty" value={item.quantity}
-                    onChange={(e) => updateItem(idx, "quantity", e.target.value)} min="1" required />
-                </div>
-                <div className="w-20 sm:w-24">
-                  <input type="number" className="input text-sm" placeholder="Price" value={item.unit_price}
-                    onChange={(e) => updateItem(idx, "unit_price", e.target.value)} step="0.01" required />
-                </div>
-                {items.length > 1 && (
-                  <button type="button" onClick={() => removeItem(idx)} className="p-2 text-faint hover:text-red-600 dark:text-red-400" aria-label="Remove item">
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>

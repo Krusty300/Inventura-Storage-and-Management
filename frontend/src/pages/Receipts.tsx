@@ -121,7 +121,7 @@ export default function Receipts() {
           skeletonRows={5}
           noData={receipts.length === 0}
           empty={
-              <EmptyState title={search ? "No matching receipts" : "No receipts yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Record receiving to bring stock into inventory."} actionLabel={search ? undefined : "Record Receipt"} onAction={search ? undefined : () => setShowForm(true)} />
+              <EmptyState icon={<PackagePlus size={48} />} title={search ? "No matching receipts" : "No receipts yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Record receiving to bring stock into inventory."} actionLabel={search ? undefined : "Record Receipt"} onAction={search ? undefined : () => setShowForm(true)} />
           }
         >
           {receipts.map((r) => (

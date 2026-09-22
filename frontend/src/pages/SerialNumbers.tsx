@@ -182,7 +182,7 @@ export default function SerialNumbers() {
             {isLoading ? (
               <Skeleton rows={5} cols={9} />
             ) : serials.length === 0 ? (
-              <EmptyState title={search || status ? "No matching serial numbers" : "No serial numbers yet"} message={search || status ? "Nothing matched your search or filters. Try adjusting them." : "Serialized products are tracked individually. Record a receipt for a serialized product to create serial numbers."} />
+              <EmptyState icon={<Fingerprint size={48} />} title={search || status ? "No matching serial numbers" : "No serial numbers yet"} message={search || status ? "Nothing matched your search or filters. Try adjusting them." : "Serialized products are tracked individually. Record a receipt for a serialized product to create serial numbers."} />
             ) : serials.map((s) => (
               <tr key={s.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium font-mono">{s.serial_number}</td>

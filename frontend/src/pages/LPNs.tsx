@@ -158,7 +158,7 @@ export default function LPNs() {
             ) : isError ? (
               <ErrorState onRetry={() => queryClient.invalidateQueries({ queryKey: ["lpns"] })} />
             ) : lpns.length === 0 ? (
-              <EmptyState title={search ? "No matching LPNs" : "No LPNs yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create LPNs to track pallets and totes through the warehouse."} actionLabel={search ? undefined : "Create LPN"} onAction={search ? undefined : () => setShowForm(true)} />
+              <EmptyState icon={<Container size={48} />} title={search ? "No matching LPNs" : "No LPNs yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create LPNs to track pallets and totes through the warehouse."} actionLabel={search ? undefined : "Create LPN"} onAction={search ? undefined : () => setShowForm(true)} />
             ) : lpns.map((l) => (
               <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(l); }}>
                 <td className="px-4 py-3">

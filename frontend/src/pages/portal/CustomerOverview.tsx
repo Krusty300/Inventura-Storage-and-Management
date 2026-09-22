@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Receipt, CircleDollarSign, ShoppingBag, Package } from "lucide-react";
+import { Receipt, CircleDollarSign, ShoppingBag } from "lucide-react";
 import api from "../../api/client";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import { formatCurrency } from "../../utils/currency";
@@ -82,7 +82,7 @@ export default function CustomerOverview() {
           </button>
         </div>
         {summary.recent_sales.length === 0 ? (
-          <EmptyState compact icon={<Package size={20} />} title="No invoices yet" message="Invoices for your purchases will appear here." />
+          <EmptyState compact icon={<Receipt size={20} />} title="No invoices yet" message="Invoices for your purchases will appear here." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

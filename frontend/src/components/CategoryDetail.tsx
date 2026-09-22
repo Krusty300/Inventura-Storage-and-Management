@@ -1,5 +1,5 @@
 import { useDateFormat } from "../hooks/useDateFormat";
-import { PackageSearch } from "lucide-react";
+import { PackageSearch, Truck } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import SlideOver from "./SlideOver";
@@ -131,7 +131,7 @@ export default function CategoryDetail({ category, onClose }: Props) {
           {suppliersLoading ? (
             <Skeleton variant="rows" rows={3} cols={4} />
           ) : supplierItems.length === 0 ? (
-            <p className="text-faint py-4 text-center">No suppliers supply products in this category.</p>
+            <EmptyState compact icon={<Truck size={20} />} title="No suppliers yet" message="Suppliers that stock products in this category will appear here." />
           ) : (
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm min-w-[400px]" aria-label="Suppliers for this category">

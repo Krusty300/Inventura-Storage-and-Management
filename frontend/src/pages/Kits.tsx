@@ -128,7 +128,7 @@ export default function Kits() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : kits.length === 0 ? (
-              <EmptyState title={search ? "No matching kits" : "No kits yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create a kit to bundle products into a sellable collection."} actionLabel={search ? undefined : "New Kit"} onAction={search ? undefined : openNew} />
+              <EmptyState icon={<Gift size={48} />} title={search ? "No matching kits" : "No kits yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create a kit to bundle products into a sellable collection."} actionLabel={search ? undefined : "New Kit"} onAction={search ? undefined : openNew} />
             ) : kits.map((k) => (
               <tr key={k.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(k)}>
                 <td className="px-4 py-3 font-medium">{k.name}</td>

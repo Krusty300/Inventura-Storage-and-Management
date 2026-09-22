@@ -273,37 +273,44 @@ export default function ProductDetail({ product, onClose, onAddVariant, onEdit }
             )}
           </div>
 
-        {(locations.length > 0 || unallocated > 0) && (
-          <div className="px-6 py-5 border-b border-dashed border-border">
+        <div className="px-6 py-5 border-b border-dashed border-border">
             <p className={sectionLabel}>
               {product.is_serialized ? "In-stock Serial Locations:" : "Stock Locations:"}
             </p>
-            <div className="flex flex-wrap gap-2 mt-3">
-              {locations.map((l) => (
-                <button
-                  key={l.location_id}
-                  onClick={() => navigate(`/locations?location=${l.location_id}`)}
-                  className="badge bg-subtle text-ink border border-border cursor-pointer hover:border-primary hover:text-primary dark:hover:text-primary inline-flex items-center gap-1"
-                  aria-label={`View location ${l.path}`}
-                >
-                  <MapPin size={12} />
-                  {l.path} ({l.count})
-                </button>
-              ))}
-              {unallocated > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowMoveUnallocated(true)}
-                  className="badge bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30 inline-flex items-center gap-1 cursor-pointer hover:border-amber-400"
-                  aria-label="Move unallocated stock"
-                >
-                  <PackageOpen size={12} />
-                  Unallocated ({unallocated})
-                </button>
-              )}
-            </div>
+            {locations.length === 0 && unallocated === 0 ? (
+              <EmptyState
+                compact
+                icon={<MapPin size={20} />}
+                title="No stock in locations"
+                message={product.is_serialized ? "Serialized units won't be picked until they're assigned to a location." : "Received stock will appear here once it's assigned to a location."}
+              />
+            ) : (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {locations.map((l) => (
+                  <button
+                    key={l.location_id}
+                    onClick={() => navigate(`/locations?location=${l.location_id}`)}
+                    className="badge bg-subtle text-ink border border-border cursor-pointer hover:border-primary hover:text-primary dark:hover:text-primary inline-flex items-center gap-1"
+                    aria-label={`View location ${l.path}`}
+                  >
+                    <MapPin size={12} />
+                    {l.path} ({l.count})
+                  </button>
+                ))}
+                {unallocated > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMoveUnallocated(true)}
+                    className="badge bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30 inline-flex items-center gap-1 cursor-pointer hover:border-amber-400"
+                    aria-label="Move unallocated stock"
+                  >
+                    <PackageOpen size={12} />
+                    Unallocated ({unallocated})
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-        )}
 
         {!product.is_serialized && quarantinedLots.length > 0 && (
           <div className="px-6 py-5 border-b border-dashed border-border">

@@ -91,7 +91,8 @@ export default function CustomerCatalog() {
         </div>
       ) : !data || data.items.length === 0 ? (
         <EmptyState
-          icon={<Package size={24} />}
+          variant="block"
+          icon={<Package size={32} />}
           title={search ? "No matching products" : "Catalog is empty"}
           message={search ? "Try adjusting your search." : "Products will appear here when they become available."}
         />

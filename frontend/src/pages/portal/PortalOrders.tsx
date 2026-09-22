@@ -118,8 +118,9 @@ export default function PortalOrders() {
             noData={rows.length === 0}
             empty={
               <EmptyState
+                icon={<ClipboardList size={48} />}
                 title={search || status ? "No matching orders" : "No orders yet"}
-                message={search || status ? "Try adjusting your search or status filter." : "Approved purchase orders for your company will appear here."}
+                message={search || status ? "Try adjusting your search or status filter." : "Approved purchase orders for your company will appear here. Contact the buyer if you're expecting an order."}
               />
             }
           >

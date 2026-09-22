@@ -142,7 +142,7 @@ export default function Lots() {
             {isLoading ? (
               <Skeleton rows={5} cols={10} />
             ) : lots.length === 0 ? (
-              <EmptyState title={search || status ? "No matching lots" : "No lots yet"} message={search || status ? "Nothing matched your search or filters. Try adjusting them." : "Lots are created automatically when you record a receipt or finish a work order with a lot number."} />
+              <EmptyState icon={<FlaskConical size={48} />} title={search || status ? "No matching lots" : "No lots yet"} message={search || status ? "Nothing matched your search or filters. Try adjusting them." : "Lots are created automatically when you record a receipt or finish a work order with a lot number."} />
             ) : lots.map((l) => (
               <tr key={l.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(l); }}>
                 <td className="px-4 py-3 font-medium">{l.lot_number}</td>

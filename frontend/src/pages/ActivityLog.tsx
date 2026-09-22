@@ -109,7 +109,7 @@ export default function ActivityLog() {
           skeletonRows={5}
           noData={logs.length === 0}
           empty={
-            <EmptyState title={search || entityFilter || actionFilter ? "No matching activity" : "No activity recorded"} message={search || entityFilter || actionFilter ? "Nothing matched your search or filters. Try adjusting them." : "Actions performed in the system will appear here."} />
+            <EmptyState icon={<History size={48} />} title={search || entityFilter || actionFilter ? "No matching activity" : "No activity recorded"} message={search || entityFilter || actionFilter ? "Nothing matched your search or filters. Try adjusting them." : "Actions performed in the system will appear here."} />
           }
         >
           {logs.map((log) => (

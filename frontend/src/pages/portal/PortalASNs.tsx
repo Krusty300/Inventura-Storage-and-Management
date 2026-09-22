@@ -113,6 +113,7 @@ export default function PortalASNs() {
             noData={rows.length === 0}
             empty={
               <EmptyState
+                icon={<PackageCheck size={48} />}
                 title={search || status ? "No matching shipments" : "No shipments yet"}
                 message={search || status ? "Try adjusting your search or status filter." : "Shipments raised against your purchase orders will appear here."}
               />

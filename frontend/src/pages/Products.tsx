@@ -589,7 +589,7 @@ export default function Products() {
               {isLoading ? (
                 <Skeleton rows={5} cols={14} />
               ) : rows.length === 0 ? (
-                <EmptyState title={search || categoryFilter || expiryFilter || lowStock ? "No matching products" : "No products found"} message={search || categoryFilter || expiryFilter || lowStock ? "Nothing matched your search or filters. Try adjusting them." : "Add your first product to start building inventory."} actionLabel={search || categoryFilter || expiryFilter || lowStock ? undefined : "Add Product"} onAction={search || categoryFilter || expiryFilter || lowStock ? undefined : () => { setEditing(null); setVariantParent(null); setShowForm(true); }} />
+                <EmptyState icon={<Package size={48} />} title={search || categoryFilter || expiryFilter || lowStock ? "No matching products" : "No products found"} message={search || categoryFilter || expiryFilter || lowStock ? "Nothing matched your search or filters. Try adjusting them." : "Add your first product to start building inventory."} actionLabel={search || categoryFilter || expiryFilter || lowStock ? undefined : "Add Product"} onAction={search || categoryFilter || expiryFilter || lowStock ? undefined : () => { setEditing(null); setVariantParent(null); setShowForm(true); }} />
               ) : rows.map((r) => {
                 const p = r.product;
                 const isGroup = r.kind === "parent" && hasVariants(p);

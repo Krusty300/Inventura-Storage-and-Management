@@ -93,6 +93,9 @@ export default function PortalOverview() {
       <div className="card overflow-hidden p-0">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold text-ink flex items-center gap-2"><Truck size={16} /> Recent orders</h2>
+          <button onClick={() => navigate("/portal/orders")} className="text-sm font-medium text-primary-strong dark:text-primary hover:underline">
+            View all
+          </button>
         </div>
         {summary.recent_orders.length === 0 ? (
           <EmptyState compact icon={<ClipboardList size={20} />} title="No orders yet" message="Approved purchase orders for your company will appear here." />
@@ -127,6 +130,9 @@ export default function PortalOverview() {
       <div className="card overflow-hidden p-0">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold text-ink flex items-center gap-2"><PackageCheck size={16} /> Recent shipments</h2>
+          <button onClick={() => navigate("/portal/asns")} className="text-sm font-medium text-primary-strong dark:text-primary hover:underline">
+            View all
+          </button>
         </div>
         {summary.recent_asns.length === 0 ? (
           <EmptyState compact icon={<PackageCheck size={20} />} title="No shipments yet" message="Shipments raised against your purchase orders will appear here." />

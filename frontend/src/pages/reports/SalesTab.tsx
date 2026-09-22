@@ -8,7 +8,7 @@ import { paymentLabel } from "../../utils/payments";
 import ReportSkeleton from "../../components/ReportSkeleton";
 import DatePicker from "../../components/DatePicker";
 import EmptyState from "../../components/EmptyState";
-import { Wallet, PackageSearch, Banknote } from "lucide-react";
+import { Wallet, PackageSearch, Banknote, Store, Smartphone } from "lucide-react";
 
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
 
@@ -154,57 +154,57 @@ export default function SalesTab({ symbol }: { symbol: string }) {
         </div>
       </div>
 
-      {channels.length > 0 && (
-        <div className="card overflow-hidden p-0">
-          <h3 className="text-lg font-semibold px-4 pt-4 pb-2">Sales by Channel</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-app text-left">
-                  <th scope="col" className="px-4 py-3 font-medium text-muted">Channel</th>
-                  <th scope="col" className="px-4 py-3 font-medium text-muted">Count</th>
-                  <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Total</th>
+      <div className="card overflow-hidden p-0">
+        <h3 className="text-lg font-semibold px-4 pt-4 pb-2">Sales by Channel</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-app text-left">
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Channel</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted">Count</th>
+                <th scope="col" className="px-4 py-3 font-medium text-muted text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {channels.length === 0 ? (
+                <EmptyState variant="table" icon={<Store size={40} />} title="No channel data" message="Channel breakdowns will appear once sales are recorded in this period." />
+              ) : channels.map((ch) => (
+                <tr key={ch.channel} className="hover:bg-app">
+                  <td className="px-4 py-3 font-medium">{ch.channel}</td>
+                  <td className="px-4 py-3">{ch.count}</td>
+                  <td className="px-4 py-3 text-right">{formatCurrency(ch.total, symbol)}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {channels.map((ch) => (
-                  <tr key={ch.channel} className="hover:bg-app">
-                    <td className="px-4 py-3 font-medium">{ch.channel}</td>
-                    <td className="px-4 py-3">{ch.count}</td>
-                    <td className="px-4 py-3 text-right">{formatCurrency(ch.total, symbol)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
-      {providers.length > 0 && (
-        <div className="card">
-          <h3 className="text-lg font-semibold mb-4">Mobile Money by Provider</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-app text-left">
-                  <th scope="col" className="px-4 py-2 font-medium text-muted">Provider</th>
-                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Count</th>
-                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Total</th>
+      <div className="card">
+        <h3 className="text-lg font-semibold mb-4">Mobile Money by Provider</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-app text-left">
+                <th scope="col" className="px-4 py-2 font-medium text-muted">Provider</th>
+                <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Count</th>
+                <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {providers.length === 0 ? (
+                <EmptyState variant="table" icon={<Smartphone size={40} />} title="No provider data" message="Mobile money provider breakdowns will appear once such payments are recorded in this period." />
+              ) : providers.map((p) => (
+                <tr key={p.provider}>
+                  <td className="px-4 py-2">{paymentLabel("mobile_money", p.provider)}</td>
+                  <td className="px-4 py-2 text-right">{p.count}</td>
+                  <td className="px-4 py-2 text-right">{formatCurrency(p.total, symbol)}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {providers.map((p) => (
-                  <tr key={p.provider}>
-                    <td className="px-4 py-2">{paymentLabel("mobile_money", p.provider)}</td>
-                    <td className="px-4 py-2 text-right">{p.count}</td>
-                    <td className="px-4 py-2 text-right">{formatCurrency(p.total, symbol)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
       {reconciliation && (
         <div className="card overflow-hidden p-0">

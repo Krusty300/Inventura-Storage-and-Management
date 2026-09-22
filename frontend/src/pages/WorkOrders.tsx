@@ -298,7 +298,7 @@ export default function WorkOrders() {
         kanbanLoading ? (
           renderKanbanSkeleton()
         ) : kanbanWos.length === 0 ? (
-          <EmptyState title={search || statusFilter ? "No matching work orders" : "No work orders yet"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Plan a work order to build a product from a BOM or component list."} actionLabel={search || statusFilter ? undefined : "New Work Order"} onAction={search || statusFilter ? undefined : openNew} />
+<EmptyState variant="table" icon={<Factory size={48} />} title={search || statusFilter ? "No matching work orders" : "No work orders yet"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Plan a work order to build a product from a BOM or component list."} actionLabel={search || statusFilter ? undefined : "New Work Order"} onAction={search || statusFilter ? undefined : openNew} />
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted">{kanbanTotal} work {kanbanTotal === 1 ? "order" : "orders"} across the pipeline</p>
@@ -328,7 +328,7 @@ export default function WorkOrders() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : wos.length === 0 ? (
-              <EmptyState title={search || statusFilter ? "No matching work orders" : "No work orders yet"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Plan a work order to build a product from a BOM or component list."} actionLabel={search || statusFilter ? undefined : "New Work Order"} onAction={search || statusFilter ? undefined : openNew} />
+<EmptyState compact icon={<Factory size={20} />} title={search || statusFilter ? "No matching work orders" : "No work orders yet"} message={search || statusFilter ? "Nothing matched your search or filters. Try adjusting them." : "Plan a work order to build a product from a BOM or component list."} actionLabel={search || statusFilter ? undefined : "New Work Order"} onAction={search || statusFilter ? undefined : openNew} />
             ) : wos.map((w) => (
               <tr key={w.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(w)}>
                 <td className="px-4 py-3 font-medium">{w.wo_number}</td>

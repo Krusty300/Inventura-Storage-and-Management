@@ -255,7 +255,7 @@ export default function LocationDetail({ location, onClose }: Props) {
         ) : tab === "stock" ? (
           <>
             {stockLines.length === 0 && serials.length === 0 && scrappedSerials.length === 0 ? (
-              <p className="text-muted py-4">No stock at this location.</p>
+              <EmptyState compact icon={<PackageOpen size={20} />} title="No stock at this location" message="Stock received at this location will appear here." />
             ) : (
               <>
             {stockLines.length > 0 && (
@@ -398,7 +398,7 @@ export default function LocationDetail({ location, onClose }: Props) {
           </>
         ) : tab === "lpns" ? (
           lpns.length === 0 ? (
-            <p className="text-muted py-4">No LPNs at this location.</p>
+            <EmptyState compact icon={<MapPin size={20} />} title="No LPNs at this location" message="LPNs created for this location will appear here." />
           ) : (
             <div className="overflow-x-auto max-h-72 overflow-y-auto border border-border rounded-lg">
               <table className="w-full text-sm" role="grid" aria-label="LPNs at location">

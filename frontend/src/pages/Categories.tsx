@@ -234,7 +234,7 @@ export default function Categories() {
           loading={isLoading}
           skeletonRows={5}
           noData={categories.length === 0}
-          empty={<EmptyState title="No categories" message="Create your first category to organize products." actionLabel="Add Category" onAction={() => { setEditing(null); setShowForm(true); }} />}
+          empty={<EmptyState icon={<FolderOpen size={48} />} title="No categories" message="Create your first category to organize products." actionLabel="Add Category" onAction={() => { setEditing(null); setShowForm(true); }} />}
         >
           {categories.map((c) => (
               <tr key={c.id} className="hover:bg-app">
@@ -258,7 +258,7 @@ export default function Categories() {
       ) : treeLoading ? (
         <Skeleton variant="rows" rows={5} cols={3} />
       ) : visibleTree.length === 0 ? (
-        <EmptyState title={q ? "No matching categories" : "No categories"} message={q ? `Nothing matched "${search}".` : "Create your first category to organize products."} actionLabel={q ? undefined : "Add Category"} onAction={q ? undefined : () => { setEditing(null); setShowForm(true); }} />
+        <EmptyState icon={<FolderOpen size={48} />} title={q ? "No matching categories" : "No categories"} message={q ? `Nothing matched "${search}".` : "Create your first category to organize products."} actionLabel={q ? undefined : "Add Category"} onAction={q ? undefined : () => { setEditing(null); setShowForm(true); }} />
       ) : (
         <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">

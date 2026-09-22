@@ -96,7 +96,7 @@ export default function Promotions() {
           skeletonRows={5}
           noData={promotions.length === 0}
           empty={
-                <EmptyState title={search ? "No matching promotions" : "No promotions"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create your first promotion to offer discounts."} actionLabel={search ? undefined : "Add Promotion"} onAction={search ? undefined : () => { setEditing(null); setShowForm(true); }} />
+                <EmptyState icon={<BadgePercent size={48} />} title={search ? "No matching promotions" : "No promotions"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create your first promotion to offer discounts."} actionLabel={search ? undefined : "Add Promotion"} onAction={search ? undefined : () => { setEditing(null); setShowForm(true); }} />
           }
         >
           {promotions.map((p) => (

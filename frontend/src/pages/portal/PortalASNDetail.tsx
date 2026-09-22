@@ -6,6 +6,7 @@ import { useDateFormat } from "../../hooks/useDateFormat";
 import { formatCurrency } from "../../utils/currency";
 import { statusBadge } from "../../utils/statusBadges";
 import Skeleton from "../../components/Skeleton";
+import EmptyState from "../../components/EmptyState";
 import { errorMessage } from "../../utils/errors";
 import { useToast } from "../../context/ToastContext";
 import type { ASN, PortalMe } from "../../types";
@@ -128,19 +129,23 @@ export default function PortalASNDetail() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {asn.items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="font-medium text-ink truncate">{item.product_name}</p>
-                      <p className="text-xs text-muted">{item.location_name || "No location"}</p>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">{item.expected_qty}</td>
-                  <td className="px-4 py-3 text-right">{item.received_qty}</td>
-                  <td className="px-4 py-3 text-right hidden sm:table-cell">{formatCurrency(item.unit_cost, currencySymbol)}</td>
-                </tr>
-              ))}
+              {asn.items.length === 0 ? (
+                <EmptyState variant="table" icon={<PackageCheck size={40} />} title="No line items" message="This shipment has no line items yet." />
+              ) : (
+                asn.items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-ink truncate">{item.product_name}</p>
+                        <p className="text-xs text-muted">{item.location_name || "No location"}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">{item.expected_qty}</td>
+                    <td className="px-4 py-3 text-right">{item.received_qty}</td>
+                    <td className="px-4 py-3 text-right hidden sm:table-cell">{formatCurrency(item.unit_cost, currencySymbol)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

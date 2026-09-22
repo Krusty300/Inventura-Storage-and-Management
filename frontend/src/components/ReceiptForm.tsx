@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, PackagePlus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP, PAGE_SIZE_PICKER } from "../utils/constants";
 import SlideOver from "./SlideOver";
+import EmptyState from "./EmptyState";
 import FittedSelect from "./FittedSelect";
 import DatePicker from "./DatePicker";
 import Skeleton from "./Skeleton";
@@ -330,18 +331,24 @@ export default function ReceiptForm({ onClose, onSaved }: Props) {
             </button>
           </div>
           <div className="divide-y divide-border max-h-[50vh] overflow-auto">
-            {rows.map((row, idx) => (
-              <ReceiptItemRow
-                key={idx}
-                row={row}
-                idx={idx}
-                productList={productList}
-                rowProducts={rowProducts}
-                locations={locations}
-                onChange={setRow}
-                onRemove={(i) => setRows(rows.filter((_, x) => x !== i))}
-              />
-            ))}
+            {rows.length === 0 ? (
+              <div className="m-3 border border-dashed border-border rounded-lg">
+                <EmptyState compact title="No items yet" message="Add a product with the Add Item button or scan a barcode." icon={<PackagePlus size={20} />} />
+              </div>
+            ) : (
+              rows.map((row, idx) => (
+                <ReceiptItemRow
+                  key={idx}
+                  row={row}
+                  idx={idx}
+                  productList={productList}
+                  rowProducts={rowProducts}
+                  locations={locations}
+                  onChange={setRow}
+                  onRemove={(i) => setRows(rows.filter((_, x) => x !== i))}
+                />
+              ))
+            )}
           </div>
         </div>
 

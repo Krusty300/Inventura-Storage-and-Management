@@ -123,7 +123,7 @@ export default function QualityChecks() {
             ) : isError ? (
               <ErrorState onRetry={refresh} />
             ) : checks.length === 0 ? (
-              <EmptyState title={search || result ? "No matching quality checks" : "No quality checks yet"} message={search || result ? "Nothing matched your search or filters. Try adjusting them." : "Record a QC result to keep stock quality controlled. Failing a check quarantines its lot when one is linked and blocks the affected stock until resolved."} actionLabel={search || result ? undefined : can("quality_checks.create") ? "New Check" : undefined} onAction={search || result ? undefined : can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
+              <EmptyState icon={<ShieldCheck size={48} />} title={search || result ? "No matching quality checks" : "No quality checks yet"} message={search || result ? "Nothing matched your search or filters. Try adjusting them." : "Record a QC result to keep stock quality controlled. Failing a check quarantines its lot when one is linked and blocks the affected stock until resolved."} actionLabel={search || result ? undefined : can("quality_checks.create") ? "New Check" : undefined} onAction={search || result ? undefined : can("quality_checks.create") ? () => { setEditing(null); setShowForm(true); } : undefined} />
             ) : checks.map((qc) => (
               <tr key={qc.id} className="hover:bg-app">
                 <td className="px-4 py-3 font-medium">{qc.qc_number}</td>

@@ -249,7 +249,7 @@ export default function Sales() {
           loading={isLoading}
           skeletonRows={5}
           noData={sales.length === 0}
-          empty={<EmptyState title={search || statusFilter || paymentFilter || channelFilter ? "No matching sales" : "No sales yet"} message={search || statusFilter || paymentFilter || channelFilter ? "Nothing matched your search or filters. Try adjusting them." : "Record your first sale to start tracking revenue."} actionLabel={search || statusFilter || paymentFilter || channelFilter ? undefined : "New Sale"} onAction={search || statusFilter || paymentFilter || channelFilter ? undefined : () => setShowForm(true)} />}
+          empty={<EmptyState icon={<ReceiptText size={48} />} title={search || statusFilter || paymentFilter || channelFilter ? "No matching sales" : "No sales yet"} message={search || statusFilter || paymentFilter || channelFilter ? "Nothing matched your search or filters. Try adjusting them." : "Record your first sale to start tracking revenue."} actionLabel={search || statusFilter || paymentFilter || channelFilter ? undefined : "New Sale"} onAction={search || statusFilter || paymentFilter || channelFilter ? undefined : () => setShowForm(true)} />}
         >
           {sales.map((s) => (
               <tr key={s.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(s); }}>

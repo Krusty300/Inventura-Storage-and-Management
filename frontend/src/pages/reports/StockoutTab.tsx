@@ -55,7 +55,7 @@ export default function StockoutTab() {
             </thead>
             <tbody className="divide-y divide-border">
               {data.items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-6"><EmptyState variant="table" icon={<PackageSearch size={48} />} title="No products" message="Products at stockout risk will appear here." /></td></tr>
+                <EmptyState variant="table" icon={<PackageSearch size={48} />} title="No products" message="Products at stockout risk will appear here." />
               ) : data.items.map((p) => (
                 <tr key={p.product_id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">{p.product_name}</td>

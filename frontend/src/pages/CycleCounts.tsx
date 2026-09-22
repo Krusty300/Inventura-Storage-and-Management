@@ -105,7 +105,7 @@ export default function CycleCounts() {
             ) : isError ? (
               <ErrorState onRetry={() => queryClient.invalidateQueries({ queryKey: ["cycle-counts"] })} />
             ) : counts.length === 0 ? (
-              <EmptyState title={search ? "No matching cycle counts" : "No cycle counts yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create a cycle count to verify on-hand stock against the system."} actionLabel={search ? undefined : "New Count"} onAction={search ? undefined : () => setShowForm(true)} />
+              <EmptyState icon={<ClipboardCheck size={48} />} title={search ? "No matching cycle counts" : "No cycle counts yet"} message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Create a cycle count to verify on-hand stock against the system."} actionLabel={search ? undefined : "New Count"} onAction={search ? undefined : () => setShowForm(true)} />
             ) : counts.map((c) => (
               <tr key={c.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(c); }}>
                 <td className="px-4 py-3 font-medium">{c.cc_number}</td>

@@ -87,6 +87,7 @@ export default function PortalReceipts() {
             noData={rows.length === 0}
             empty={
               <EmptyState
+                icon={<PackageOpen size={48} />}
                 title={search ? "No matching deliveries" : "No deliveries yet"}
                 message={search ? "Try adjusting your search." : "Goods received against your purchase orders will appear here."}
               />

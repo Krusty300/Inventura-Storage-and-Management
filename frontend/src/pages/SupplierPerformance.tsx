@@ -270,6 +270,7 @@ export default function SupplierPerformancePage() {
             noData={rows.length === 0}
             empty={
               <EmptyState
+                icon={<Building2 size={48} />}
                 title={search ? "No matching suppliers" : "No suppliers"}
                 message={search ? `Nothing matched "${search}". Try adjusting your search.` : "Add suppliers and received orders to start tracking performance."}
               />

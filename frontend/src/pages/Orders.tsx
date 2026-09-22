@@ -187,7 +187,7 @@ export default function Orders() {
           loading={isLoading}
           skeletonRows={5}
           noData={orders.length === 0}
-          empty={<EmptyState title={q.search || q.filters.status ? "No matching orders" : "No orders"} message={q.search || q.filters.status ? "Nothing matched your search or filters. Try adjusting them." : "Create a purchase order to start tracking deliveries."} actionLabel={q.search || q.filters.status ? undefined : "New Order"} onAction={q.search || q.filters.status ? undefined : () => setShowForm(true)} />}
+          empty={<EmptyState icon={<ShoppingCart size={48} />} title={q.search || q.filters.status ? "No matching orders" : "No orders"} message={q.search || q.filters.status ? "Nothing matched your search or filters. Try adjusting them." : "Create a purchase order to start tracking deliveries."} actionLabel={q.search || q.filters.status ? undefined : "New Order"} onAction={q.search || q.filters.status ? undefined : () => setShowForm(true)} />}
         >
           {orders.map((o) => (
               <tr key={o.id} className="hover:bg-app cursor-pointer" onClick={(e) => { if (!(e.target as HTMLElement).closest("button")) setViewing(o); }}>

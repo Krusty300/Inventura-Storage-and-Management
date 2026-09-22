@@ -143,7 +143,7 @@ export default function StockMovements() {
           skeletonRows={5}
           noData={movements.length === 0}
           empty={
-              <EmptyState title={search || movementType !== "all" ? "No matching movements" : "No movements recorded"} message={search || movementType !== "all" ? "Nothing matched your search or filters. Try adjusting them." : "Record a stock movement to start tracking inventory changes."} actionLabel={search || movementType !== "all" ? undefined : "Record Movement"} onAction={search || movementType !== "all" ? undefined : () => setShowForm(true)} />
+              <EmptyState icon={<ArrowLeftRight size={48} />} title={search || movementType !== "all" ? "No matching movements" : "No movements recorded"} message={search || movementType !== "all" ? "Nothing matched your search or filters. Try adjusting them." : "Record a stock movement to start tracking inventory changes."} actionLabel={search || movementType !== "all" ? undefined : "Record Movement"} onAction={search || movementType !== "all" ? undefined : () => setShowForm(true)} />
           }
         >
           {movements.map((m) => (

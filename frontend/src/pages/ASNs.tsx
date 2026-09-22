@@ -193,7 +193,7 @@ export default function ASNs() {
             {isLoading ? (
               <Skeleton rows={5} cols={6} />
             ) : asns.length === 0 ? (
-              <EmptyState title={search || status || supplierFilter ? "No matching ASNs" : "No ASNs yet"} message={search || status || supplierFilter ? "Nothing matched your search or filters. Try adjusting them." : "Create an advance shipping notice for incoming supplier shipments."} actionLabel={search || status || supplierFilter ? undefined : "New ASN"} onAction={search || status || supplierFilter ? undefined : () => setShowForm(true)} />
+              <EmptyState icon={<Truck size={48} />} title={search || status || supplierFilter ? "No matching ASNs" : "No ASNs yet"} message={search || status || supplierFilter ? "Nothing matched your search or filters. Try adjusting them." : "Create an advance shipping notice for incoming supplier shipments."} actionLabel={search || status || supplierFilter ? undefined : "New ASN"} onAction={search || status || supplierFilter ? undefined : () => setShowForm(true)} />
             ) : asns.map((a) => (
               <tr key={a.id} className="hover:bg-app cursor-pointer" onClick={() => setViewing(a)}>
                 <td className="px-4 py-3 font-medium">{a.asn_number}</td>
