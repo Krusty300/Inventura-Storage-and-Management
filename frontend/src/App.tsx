@@ -56,6 +56,7 @@ const RestaurantFloor = lazy(() => import("./pages/restaurant/RestaurantFloor"))
 const RestaurantTickets = lazy(() => import("./pages/restaurant/RestaurantTickets"));
 const RestaurantTicketDetail = lazy(() => import("./pages/restaurant/RestaurantTicketDetail"));
 const RestaurantKitchen = lazy(() => import("./pages/restaurant/RestaurantKitchen"));
+const RestaurantMenu = lazy(() => import("./pages/restaurant/RestaurantMenu"));
 const RestaurantTables = lazy(() => import("./pages/restaurant/RestaurantTables"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -178,6 +179,7 @@ function AppRoutes() {
           <Route path="/restaurant/tickets" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantTickets /></RequirePermission></PageBoundary>} />
           <Route path="/restaurant/tickets/:id" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantTicketDetail /></RequirePermission></PageBoundary>} />
           <Route path="/restaurant/kitchen" element={<PageBoundary><RequirePermission perm="restaurant.kitchen"><RestaurantKitchen /></RequirePermission></PageBoundary>} />
+          <Route path="/restaurant/menu" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantMenu /></RequirePermission></PageBoundary>} />
           <Route path="/restaurant/tables" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantTables /></RequirePermission></PageBoundary>} />
           <Route path="/users" element={<PageBoundary><RequirePermission perm="users.view"><Users /></RequirePermission></PageBoundary>} />
           <Route path="/reports" element={<PageBoundary><RequirePermission perm="reports.view"><Reports /></RequirePermission></PageBoundary>} />

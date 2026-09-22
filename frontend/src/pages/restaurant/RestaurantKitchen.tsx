@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChefHat, Play, CheckCircle2, Clock } from "lucide-react";
+import { ChefHat, Play, CheckCircle2, Clock, Printer } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { KitchenTicket, RestaurantTicketItem } from "../../types";
@@ -8,6 +8,7 @@ import EmptyState from "../../components/EmptyState";
 import { useToast } from "../../context/ToastContext";
 import { useRealtime } from "../../context/RealtimeContext";
 import { errorMessage } from "../../utils/errors";
+import { printBlob } from "../../utils/download";
 
 const STAGES: { key: "queued" | "preparing" | "ready"; label: string; tone: string }[] = [
   { key: "queued", label: "Queued", tone: "border-t-muted/50" },
@@ -76,6 +77,15 @@ export default function RestaurantKitchen() {
     return map;
   }, [board]);
 
+  const printKitchen = async (ticketId: number) => {
+    try {
+      const { data } = await api.get(`/restaurant/tickets/${ticketId}/kitchen`, { responseType: "blob" });
+      printBlob(data);
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Cannot print kitchen ticket"), "error");
+    }
+  };
+
   if (isError) {
     return (
       <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
@@ -138,11 +148,16 @@ export default function RestaurantKitchen() {
                                 {t.table_number} · {t.guest_count} guest{t.guest_count === 1 ? "" : "s"}
                               </div>
                             </div>
-                            {t.earliest_sent_at && (
-                              <span className="flex items-center gap-1 text-xs text-muted shrink-0">
-                                <Clock size={12} /> {elapsedMin(t.earliest_sent_at)}m
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button onClick={() => printKitchen(t.id)} className="p-1.5 rounded-md bg-app text-muted hover:text-primary" aria-label={`Print ${t.ticket_number}`}>
+                                <Printer size={14} />
+                              </button>
+                              {t.earliest_sent_at && (
+                                <span className="flex items-center gap-1 text-xs text-muted">
+                                  <Clock size={12} /> {elapsedMin(t.earliest_sent_at)}m
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <ul className="divide-y divide-border">
                             {t.items.filter((i) => i.status !== "pending").map((item) => {

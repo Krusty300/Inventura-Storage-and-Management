@@ -53,6 +53,7 @@ export interface Product {
   is_active: boolean;
   is_serialized: boolean;
   is_menu_item?: boolean;
+  menu_section_id?: number | null;
   created_at: string;
   updated_at: string;
   category_name: string;
@@ -1471,10 +1472,71 @@ export interface RestaurantTicketItem {
   sku: string;
   quantity: number;
   unit_price: number;
+  base_unit_price?: number;
+  modifiers?: ModifierSelection[];
   status: TicketItemStatus;
   notes: string;
   sent_at: string | null;
   created_at: string;
+  line_total?: number;
+}
+
+export interface ModifierSelection {
+  option_id: number;
+  name: string;
+  group_id: number;
+  group_name: string;
+  price: number;
+}
+
+export interface MenuModifierOption {
+  id: number;
+  name: string;
+  price_delta: number;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface MenuModifierGroup {
+  id: number;
+  product_id: number;
+  name: string;
+  min_select: number;
+  max_select: number;
+  is_required: boolean;
+  sort_order: number;
+  is_active: boolean;
+  option_count?: number;
+  options: MenuModifierOption[];
+}
+
+export interface MenuSection {
+  id: number;
+  name: string;
+  description: string;
+  sort_order: number;
+  is_active: boolean;
+  item_count: number;
+}
+
+export interface MenuItem {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string;
+  sku: string;
+  unit_price: number;
+  image_url: string;
+  image: string;
+  section_id: number | null;
+}
+
+export interface MenuSectionWithItems {
+  id: number | null;
+  name: string;
+  description: string;
+  item_count: number;
+  items: MenuItem[];
 }
 
 export interface RestaurantTicket {

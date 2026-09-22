@@ -3,7 +3,7 @@ import { Plus, Trash2, Upload, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "../api/client";
 import { PAGE_SIZE_LOOKUP } from "../utils/constants";
-import type { Category, Location, Product, ProductImage, Supplier } from "../types";
+import type { Category, Location, MenuSection, Product, ProductImage, Supplier } from "../types";
 import { useToast } from "../context/ToastContext";
 import { useSettings } from "../hooks/useSettings";
 import SlideOver from "./SlideOver";
@@ -36,6 +36,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
     location: "", barcode: "", batch_number: "", expiry_date: "", is_active: true,
     is_serialized: false,
     is_menu_item: false,
+    menu_section_id: "",
   });
   const [attributes, setAttributes] = useState<AttrRow[]>([]);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -57,6 +58,10 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
   const { data: locations = [] } = useQuery<Location[]>({
     queryKey: ["locations", "lookup"],
     queryFn: async () => (await api.get("/locations", { params: { limit: PAGE_SIZE_LOOKUP } })).data.items,
+  });
+  const { data: menuSections = [] } = useQuery<MenuSection[]>({
+    queryKey: ["restaurant-menu-sections", "lookup"],
+    queryFn: async () => (await api.get("/restaurant/menu-sections")).data,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -87,6 +92,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
         is_active: product.is_active,
         is_serialized: product.is_serialized,
         is_menu_item: product.is_menu_item ?? false,
+        menu_section_id: product.menu_section_id?.toString() || "",
       });
       setAttributes(product.attributes ? Object.entries(product.attributes).map(([key, value]) => ({ key, value })) : []);
       if (product.images?.length) {
@@ -128,6 +134,7 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
       quantity: parseInt(form.quantity) || 0,
       reorder_level: form.reorder_level === "" ? undefined : Math.max(0, parseInt(form.reorder_level) || 0),
       expiry_date: form.expiry_date || null,
+      menu_section_id: form.menu_section_id ? Number(form.menu_section_id) : null,
     };
     if (isVariantMode) {
       const attrs: Record<string, string> = {};
@@ -442,6 +449,20 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
                   <p className="text-xs text-muted mt-1">Serialized products can't be menu items.</p>
                 )}
               </div>
+              {form.is_menu_item && !form.is_serialized && (
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1">Menu section</label>
+                  <FittedSelect
+                    ariaLabel="Menu section"
+                    value={form.menu_section_id}
+                    onChange={(v) => setForm({ ...form, menu_section_id: v })}
+                    options={[
+                      { value: "", label: "Uncategorized" },
+                      ...menuSections.map((s) => ({ value: s.id.toString(), label: s.name })),
+                    ]}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
