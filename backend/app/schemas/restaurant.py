@@ -144,6 +144,7 @@ class KitchenTicketOut(BaseModel):
     status: str
     stage: str = ""
     earliest_sent_at: Optional[datetime] = None
+    notes: str = ""
     items: list[TicketItemOut] = []
 
     class Config:

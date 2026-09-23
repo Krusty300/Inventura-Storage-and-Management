@@ -1433,7 +1433,7 @@ def ticket_bill_pdf(ticket_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/tickets/{ticket_id}/kitchen")
-def kitchen_ticket_pdf(ticket_id: int, db: Session = Depends(get_db)):
+def kitchen_ticket_pdf(ticket_id: int, item_ids: str = Query("", description="Comma-separated item ids to reprint only"), db: Session = Depends(get_db)):
     ticket = load_ticket(db, ticket_id)
     store_name, store_lines, s = _store_header_lines(db)
 
@@ -1447,8 +1447,12 @@ def kitchen_ticket_pdf(ticket_id: int, db: Session = Depends(get_db)):
     body_y = draw_banner_header(c, "KITCHEN TICKET", meta, store_lines,
                                 logo_url=(s.logo_url if s else ""), base_dir=base_dir)
 
-    items = [i for i in ticket.items if i.status in KITCHEN_ITEM_STATUSES] or \
+    candidates = [i for i in ticket.items if i.status in KITCHEN_ITEM_STATUSES] or \
         [i for i in ticket.items if i.status == "pending"]
+    if item_ids:
+        wanted = {int(x) for x in item_ids.split(",") if x.strip().isdigit()}
+        candidates = [i for i in candidates if i.id in wanted]
+    items = candidates
 
     headers = ["Qty", "Item", "Notes"]
     aligns = ["r", "l", "l"]
@@ -1503,7 +1507,7 @@ def kitchen_board(db: Session = Depends(get_db)):
         earliest = min((i.sent_at for i in sent if i.sent_at is not None), default=None)
         out = KitchenTicketOut(
             id=t.id, ticket_number=t.ticket_number, table_number=t.table_number,
-            guest_count=t.guest_count, status=t.status,
+            guest_count=t.guest_count, status=t.status, notes=t.notes,
             earliest_sent_at=earliest, items=[TicketItemOut.model_validate(i) for i in t.items],
         )
         out.stage = stage
