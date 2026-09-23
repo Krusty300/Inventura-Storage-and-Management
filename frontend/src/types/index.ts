@@ -1466,7 +1466,7 @@ export interface RestaurantTable {
   active_ticket_number: string | null;
 }
 
-export type ReservationStatus = "pending" | "confirmed" | "seated" | "cancelled" | "no_show";
+export type ReservationStatus = "pending" | "confirmed" | "seated" | "completed" | "cancelled" | "no_show";
 
 export interface RestaurantReservation {
   id: number;
@@ -1575,6 +1575,7 @@ export interface RestaurantTicket {
   discount_amount: number;
   tax_amount: number;
   total_amount: number;
+  tip_amount: number;
   sale_id: number | null;
   notes: string;
   opened_at: string;
@@ -1590,5 +1591,6 @@ export interface KitchenTicket {
   status: string;
   stage: "queued" | "preparing" | "ready";
   earliest_sent_at: string | null;
+  notes: string;
   items: RestaurantTicketItem[];
 }

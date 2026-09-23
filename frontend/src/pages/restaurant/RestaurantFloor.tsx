@@ -76,10 +76,15 @@ export default function RestaurantFloor() {
 
   const openTicket = useMutation({
     mutationFn: async (tableId: number | null) => {
-      const active = tableId === null ? null : (reservations ?? []).find((r) => r.table_id === tableId && isActiveNow(r, Date.now()));
-      const payload = tableId === null ? {} : { table_id: tableId };
-      if (active) (payload as { reservation_id: number }).reservation_id = active.id;
-      const { data } = await api.post("/restaurant/tickets", payload);
+      if (tableId === null) {
+        const { data } = await api.post("/restaurant/tickets", {});
+        return data;
+      }
+      const now = Date.now();
+      const active = (reservations ?? []).find(
+        (r) => r.table_id === tableId && (r.status === "pending" || r.status === "confirmed" || r.status === "seated") && isActiveNow(r, now),
+      );
+      const { data } = await api.post("/restaurant/tickets", active ? { reservation_id: active.id } : { table_id: tableId });
       return data;
     },
     onSuccess: (ticket) => {
@@ -91,6 +96,7 @@ export default function RestaurantFloor() {
     onError: (err: unknown) => {
       addToast(errorMessage(err, "Cannot open ticket"), "error");
     },
+    onSettled: () => setOpening(false),
   });
 
   const moveMutation = useMutation({
@@ -112,8 +118,7 @@ export default function RestaurantFloor() {
   }, [tables]);
 
   const hasPositions = (tables ?? []).some((t) => t.pos_x !== 0 || t.pos_y !== 0);
-  const effectiveView = view === "plan" ? (hasPositions ? "plan" : "grid") : "grid";
-  const currentlyPlan = effectiveView === "plan";
+  const currentlyPlan = view === "plan";
 
   const reservationsByTable = useMemo(() => {
     const map = new Map<number, RestaurantReservation[]>();
@@ -189,7 +194,7 @@ export default function RestaurantFloor() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {hasPositions && (
+          {(tables ?? []).length > 0 && (
             <div className="flex rounded-lg overflow-hidden border border-border-strong" role="group" aria-label="Floor view">
               <button
                 onClick={() => setView("grid")}
@@ -247,7 +252,11 @@ export default function RestaurantFloor() {
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-muted flex items-center gap-1.5">
               <Move size={14} className="text-faint" />
-              {can("restaurant.update") ? "Drag any table to rearrange the floor plan." : "Floor plan preview."}
+              {can("restaurant.update")
+                ? hasPositions
+                  ? "Drag any table to rearrange the floor plan."
+                  : "All tables start stacked at the top-left — drag them into place."
+                : "Floor plan preview."}
             </p>
             <span className="text-xs text-faint">Positions are saved automatically</span>
           </div>
@@ -280,7 +289,7 @@ export default function RestaurantFloor() {
                     else if (can("restaurant.create")) openTicket.mutate(t.id);
                   }}
                   className={`group absolute select-none text-left rounded-xl border-2 p-3 transition ${t.status === "occupied" ? "border-primary/70 bg-primary-soft/40 cursor-pointer" : "border-border-strong bg-card hover:border-primary/50 cursor-move"}`}
-                  style={{ left: pos.x, top: pos.y, width: 156 }}
+                  style={{ left: pos.x, top: pos.y, width: 156, touchAction: "none" }}
                   aria-label={`Table ${t.number} — ${t.status}`}
                 >
                   <div className="flex items-center justify-between gap-2">

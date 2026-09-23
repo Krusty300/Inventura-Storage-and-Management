@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChefHat, Play, CheckCircle2, Clock, Printer } from "lucide-react";
+import { ChefHat, CheckCircle2, Clock, Printer } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { KitchenTicket, RestaurantTicketItem } from "../../types";
@@ -49,6 +49,29 @@ export default function RestaurantKitchen() {
     refetchInterval: 15_000,
   });
 
+  const [advancing, setAdvancing] = useState<`${number}:${number}` | null>(null);
+  const [newOrder, setNewOrder] = useState<string | null>(null);
+  const seenRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!board) return;
+    const fresh = board.filter((t) => !seenRef.current.has(t.id));
+    const firstLoad = seenRef.current.size === 0;
+    for (const t of fresh) {
+      seenRef.current.add(t.id);
+      if (!firstLoad) {
+        addToast(`New order ${t.ticket_number} (${t.table_number})`, "info");
+        setNewOrder(`${t.ticket_number} · ${t.table_number}`);
+      }
+    }
+  }, [board, addToast]);
+
+  useEffect(() => {
+    if (!newOrder) return;
+    const timer = window.setTimeout(() => setNewOrder(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [newOrder]);
+
   const advance = useMutation({
     mutationFn: async ({ ticketId, itemId, status }: { ticketId: number; itemId: number; status: string }) => {
       const { data } = await api.put(`/restaurant/tickets/${ticketId}/items/${itemId}/status`, { status });
@@ -61,11 +84,18 @@ export default function RestaurantKitchen() {
       queryClient.invalidateQueries({ queryKey: ["restaurant-floor"] });
     },
     onError: (err: unknown) => addToast(errorMessage(err, "Cannot update item"), "error"),
+    onSettled: () => setAdvancing(null),
   });
+
+  const startAdvance = (ticketId: number, itemId: number, status: string) => {
+    setAdvancing(`${ticketId}:${itemId}`);
+    advance.mutate({ ticketId, itemId, status });
+  };
 
   const nextStep = (status: ItemStatus): string | null => {
     if (status === "queued") return "preparing";
     if (status === "preparing") return "ready";
+    if (status === "ready") return "served";
     return null;
   };
 
@@ -86,6 +116,18 @@ export default function RestaurantKitchen() {
     }
   };
 
+  const reprintItem = async (ticketId: number, itemId: number) => {
+    try {
+      const { data } = await api.get(`/restaurant/tickets/${ticketId}/kitchen`, {
+        params: { item_ids: String(itemId) },
+        responseType: "blob",
+      });
+      printBlob(data);
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Cannot reprint item"), "error");
+    }
+  };
+
   if (isError) {
     return (
       <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-sm">
@@ -103,10 +145,17 @@ export default function RestaurantKitchen() {
           </div>
           <div className="min-w-0">
             <h1 className="text-xl sm:text-2xl font-bold text-ink">Kitchen Display</h1>
-            <p className="text-sm text-muted mt-1">Move tickets through queued → preparing → ready.</p>
+            <p className="text-sm text-muted mt-1">Move items through queued → preparing → ready, then mark served.</p>
           </div>
         </div>
       </div>
+
+      {newOrder && (
+        <div className="flex items-center gap-2 text-sm font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-4 py-3 rounded-lg border border-emerald-200 dark:border-emerald-500/20">
+          <Clock size={16} />
+          New order in the kitchen: {newOrder}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid gap-4 lg:grid-cols-3">
@@ -147,6 +196,7 @@ export default function RestaurantKitchen() {
                               <div className="text-xs text-muted mt-0.5">
                                 {t.table_number} · {t.guest_count} guest{t.guest_count === 1 ? "" : "s"}
                               </div>
+                              {t.notes && <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">Note: {t.notes}</div>}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <button onClick={() => printKitchen(t.id)} className="p-1.5 rounded-md bg-app text-muted hover:text-primary" aria-label={`Print ${t.ticket_number}`}>
@@ -165,21 +215,29 @@ export default function RestaurantKitchen() {
                               return (
                                 <li key={item.id} className="py-2 flex items-center justify-between gap-2">
                                   <div className="min-w-0">
-                                    <div className="text-sm text-ink font-medium">
+                                    <div className="text-sm text-ink font-medium flex items-center gap-2">
                                       {item.quantity} × {item.product_name}
+                                      <button
+                                        onClick={() => reprintItem(t.id, item.id)}
+                                        className="p-1 rounded-md bg-app text-faint hover:text-primary"
+                                        aria-label={`Reprint ${item.product_name}`}
+                                        title="Reprint this item"
+                                      >
+                                        <Printer size={12} />
+                                      </button>
                                     </div>
                                     {item.notes && <div className="text-xs text-muted truncate">Note: {item.notes}</div>}
                                   </div>
                                   {next ? (
                                     <button
-                                      onClick={() => advance.mutate({ ticketId: t.id, itemId: item.id, status: next })}
-                                      disabled={advance.isPending}
+                                      onClick={() => startAdvance(t.id, item.id, next)}
+                                      disabled={advancing !== null && advancing !== `${t.id}:${item.id}`}
                                       className={`btn-secondary text-xs px-2.5 py-1 flex items-center gap-1 shrink-0 ${
-                                        next === "ready" ? "text-emerald-600 dark:text-emerald-400" : ""
+                                        next === "ready" || next === "served" ? "text-emerald-600 dark:text-emerald-400" : ""
                                       }`}
                                     >
-                                      {next === "ready" ? <CheckCircle2 size={13} /> : <Play size={13} />}
-                                      {next === "ready" ? "Ready" : "Start"}
+                                      <CheckCircle2 size={13} />
+                                      {next === "served" ? "Serve" : next === "ready" ? "Ready" : "Start"}
                                     </button>
                                   ) : (
                                     <span className="badge badge-success shrink-0">Done</span>

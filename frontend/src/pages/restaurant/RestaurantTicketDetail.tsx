@@ -2,17 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   UtensilsCrossed, Search, Plus, Minus, Trash2, Send, ChefHat, CheckCheck,
-  Banknote, Printer, X,
+  Banknote, Printer, X, Pencil, StickyNote,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type {
-  MenuItem, MenuModifierGroup, MenuSectionWithItems, RestaurantTicket,
+  MenuItem, MenuModifierGroup, MenuSectionWithItems, Product, RestaurantTicket,
 } from "../../types";
 import EmptyState from "../../components/EmptyState";
 import Modal from "../../components/Modal";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import PaymentMethodPicker from "../../components/PaymentMethodPicker";
+import BarcodeScanner from "../../components/BarcodeScanner";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { useRealtime } from "../../context/RealtimeContext";
@@ -46,6 +47,7 @@ export default function RestaurantTicketDetail() {
   const [menuSearch, setMenuSearch] = useState("");
   const [showSettle, setShowSettle] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [editTicket, setEditTicket] = useState(false);
   const [modifierProduct, setModifierProduct] = useState<MenuItem | null>(null);
   const { menu: menuBlocks = [] } = useMenuData(menuSearch);
 
@@ -77,14 +79,24 @@ export default function RestaurantTicketDetail() {
   };
 
   const addItem = useMutation({
-    mutationFn: async ({ productId, quantity, modifiers }: { productId: number; quantity: number; modifiers?: { group_id: number; option_id: number }[] }) => {
+    mutationFn: async ({ productId, quantity, modifiers, notes }: { productId: number; quantity: number; modifiers?: { group_id: number; option_id: number }[]; notes?: string }) => {
       const payload: Record<string, unknown> = { product_id: productId, quantity };
       if (modifiers?.length) payload.modifiers = modifiers;
+      if (notes?.trim()) payload.notes = notes.trim();
       const { data } = await api.post(`/restaurant/tickets/${ticketId}/items`, payload);
       return data;
     },
     onSuccess: () => { invalidate(); },
     onError: (err: unknown) => addToast(errorMessage(err, "Cannot add item"), "error"),
+  });
+
+  const updateTicket = useMutation({
+    mutationFn: async (fields: { customer_name?: string; guest_count?: number; notes?: string }) => {
+      const { data } = await api.put(`/restaurant/tickets/${ticketId}`, fields);
+      return data as RestaurantTicket;
+    },
+    onSuccess: () => { invalidate(); addToast("Ticket updated", "success"); },
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot update ticket"), "error"),
   });
 
   const updateItem = useMutation({
@@ -133,6 +145,15 @@ export default function RestaurantTicketDetail() {
   });
 
   const menuProducts = useMemo(() => menuBlocks.flatMap((b) => b.items), [menuBlocks]);
+
+  const onBarcode = (p: Product) => {
+    const match = menuProducts.find((m) => m.id === p.id);
+    if (!match) {
+      addToast(`${p.display_name || p.sku} is not on the menu`, "error");
+      return;
+    }
+    setModifierProduct(match);
+  };
   const pendingItems = (ticket?.items ?? []).filter((i) => i.status === "pending");
   const canEdit = ticket && !["settled", "cancelled", "paying"].includes(ticket.status);
 
@@ -174,6 +195,11 @@ export default function RestaurantTicketDetail() {
             <p className="text-sm text-muted mt-1">
               {ticket.table_number} · {ticket.guest_count} guest{ticket.guest_count === 1 ? "" : "s"} · opened {formatDateTime(ticket.opened_at)} · {ticket.username}
             </p>
+            {ticket.notes && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                <StickyNote size={12} /> {ticket.notes}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -184,9 +210,14 @@ export default function RestaurantTicketDetail() {
             <Printer size={16} /> Kitchen
           </button>
           {canEdit && can("restaurant.update") && (
-            <button onClick={() => { setConfirmCancel(true); }} className="btn-secondary" aria-label={`Cancel ${ticket.ticket_number}`}>
-              <X size={16} /> Cancel
-            </button>
+            <>
+              <button onClick={() => setEditTicket(true)} className="btn-secondary" aria-label={`Edit ${ticket.ticket_number}`}>
+                <Pencil size={16} /> Edit
+              </button>
+              <button onClick={() => { setConfirmCancel(true); }} className="btn-secondary" aria-label={`Cancel ${ticket.ticket_number}`}>
+                <X size={16} /> Cancel
+              </button>
+            </>
           )}
           {canEdit && can("restaurant.settle") && (
             <button onClick={() => setShowSettle(true)} className="btn-primary flex items-center gap-1.5">
@@ -209,6 +240,9 @@ export default function RestaurantTicketDetail() {
                 aria-label="Search menu"
               />
             </div>
+            <div className="mb-4">
+              <BarcodeScanner onProductFound={onBarcode} placeholder="Scan barcode..." />
+            </div>
             {menuProducts.length === 0 ? (
               <EmptyState
                 variant="block"
@@ -222,9 +256,12 @@ export default function RestaurantTicketDetail() {
                   <button
                     key={p.id}
                     onClick={() => { setModifierProduct(p); }}
-                    className="card p-4 text-left hover:bg-app transition flex items-center justify-between gap-3"
+                    className="card p-3 text-left hover:bg-app transition flex items-center gap-3"
                   >
-                    <div className="min-w-0">
+                    {p.image_url && (
+                      <img src={p.image_url} alt="" className="w-12 h-12 rounded-lg object-cover bg-app shrink-0" loading="lazy" />
+                    )}
+                    <div className="min-w-0 flex-1">
                       <div className="font-medium text-ink truncate">{p.display_name}</div>
                       <div className="text-xs text-muted mt-0.5">{currencyAmount(p.unit_price)}</div>
                     </div>
@@ -276,6 +313,7 @@ export default function RestaurantTicketDetail() {
               <div className="flex justify-between text-muted"><span>Subtotal</span><span className="tabular-nums">{currencyAmount(ticket.subtotal)}</span></div>
               {ticket.discount_amount > 0 && <div className="flex justify-between text-muted"><span>Discount</span><span className="tabular-nums">-{currencyAmount(ticket.discount_amount)}</span></div>}
               {ticket.tax_amount > 0 && <div className="flex justify-between text-muted"><span>Tax</span><span className="tabular-nums">{currencyAmount(ticket.tax_amount)}</span></div>}
+              {ticket.tip_amount > 0 && <div className="flex justify-between text-muted"><span>Tip</span><span className="tabular-nums">{currencyAmount(ticket.tip_amount)}</span></div>}
               <div className="flex justify-between font-semibold text-ink pt-1"><span>Total</span><span className="tabular-nums">{currencyAmount(ticket.total_amount)}</span></div>
             </div>
             {can("restaurant.create") && pendingItems.length > 0 && (
@@ -320,7 +358,7 @@ export default function RestaurantTicketDetail() {
         <div className="card p-5 text-center">
           <CheckCheck size={32} className="mx-auto mb-3 text-emerald-600 dark:text-emerald-400" />
           <h2 className="text-lg font-bold text-ink">Ticket settled</h2>
-          <p className="text-sm text-muted mt-1">Settled {formatDateTime(ticket.settled_at)} for {currencyAmount(ticket.total_amount)}.</p>
+          <p className="text-sm text-muted mt-1">Settled {formatDateTime(ticket.settled_at)} for {currencyAmount(ticket.total_amount)}{ticket.tip_amount > 0 && ` plus a ${currencyAmount(ticket.tip_amount)} tip`}.</p>
         </div>
       )}
 
@@ -351,13 +389,23 @@ export default function RestaurantTicketDetail() {
           product={modifierProduct}
           symbol={symbol}
           onClose={() => setModifierProduct(null)}
-          onAdd={(productId, quantity, modifiers) => {
-            addItem.mutate({ productId, quantity, modifiers });
+          onAdd={(productId, quantity, modifiers, notes) => {
+            addItem.mutate({ productId, quantity, modifiers, notes });
             setModifierProduct(null);
             addToast("Item added to order", "success");
           }}
         />
       )}
+
+      <EditTicketModal
+        open={editTicket}
+        ticket={ticket}
+        onClose={() => setEditTicket(false)}
+        onSave={(fields) => {
+          updateTicket.mutate(fields);
+          setEditTicket(false);
+        }}
+      />
 
       <ConfirmDialog
         open={confirmCancel}
@@ -399,11 +447,12 @@ function ModifierModal({ product, symbol, onClose, onAdd }: {
   product: MenuItem;
   symbol: string;
   onClose: () => void;
-  onAdd: (productId: number, quantity: number, modifiers: { group_id: number; option_id: number }[]) => void;
+  onAdd: (productId: number, quantity: number, modifiers: { group_id: number; option_id: number }[], notes?: string) => void;
 }) {
   const { addToast } = useToast();
   const [selections, setSelections] = useState<Record<number, number[]>>({});
   const [quantity, setQuantity] = useState(1);
+  const [notes, setNotes] = useState("");
 
   const { data: groups, isLoading } = useQuery({
     queryKey: ["restaurant-modifier-groups", product.id],
@@ -436,13 +485,14 @@ function ModifierModal({ product, symbol, onClose, onAdd }: {
 
   const handleAdd = () => {
     for (const g of groupList) {
-      if (g.is_required && chosen(g.id).length < Math.max(g.min_select, 1)) {
-        addToast(`Select at least ${Math.max(g.min_select, 1)} option for ${g.name}`, "error");
+      const minimum = Math.max(g.min_select, g.is_required ? 1 : 0);
+      if (chosen(g.id).length < minimum) {
+        addToast(`Select at least ${minimum} option${minimum === 1 ? "" : "s"} for ${g.name}`, "error");
         return;
       }
     }
     const modifiers = groupList.flatMap((g) => chosen(g.id).map((oid) => ({ group_id: g.id, option_id: oid })));
-    onAdd(product.id, quantity, modifiers);
+    onAdd(product.id, quantity, modifiers, notes.trim() || undefined);
   };
 
   return (
@@ -461,7 +511,7 @@ function ModifierModal({ product, symbol, onClose, onAdd }: {
                   {g.name}
                   {g.is_required && <span className="text-xs text-red-600 dark:text-red-400 ml-1">required</span>}
                 </span>
-                <span className="text-xs text-muted">{chosen(g.id).length}/{g.max_select}</span>
+                <span className="text-xs text-muted">{chosen(g.id).length}/{g.max_select}{g.min_select > 0 && ` · min ${g.min_select}`}</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {g.options.filter((o) => o.is_active).map((o) => (
@@ -489,13 +539,69 @@ function ModifierModal({ product, symbol, onClose, onAdd }: {
             <div className="font-semibold text-ink tabular-nums">{symbol}{lineTotal.toFixed(2)}</div>
           </div>
         </div>
-      </div>
+      <label className="block text-sm font-medium text-ink mb-1" htmlFor="mod-notes">Note to kitchen (optional)</label>
+          <textarea
+            id="mod-notes"
+            className="input min-h-[64px]"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. no onions, well done..."
+            maxLength={500}
+          />
+        </div>
       <div className="flex justify-end gap-2 pt-4">
         <button onClick={onClose} className="btn-secondary">Cancel</button>
         <button onClick={handleAdd} className="btn-primary flex items-center gap-1.5">
           <Plus size={16} /> Add to Order
         </button>
       </div>
+    </Modal>
+  );
+}
+
+function EditTicketModal({ open, ticket, onClose, onSave }: {
+  open: boolean;
+  ticket: RestaurantTicket;
+  onClose: () => void;
+  onSave: (fields: { customer_name: string; guest_count: number; notes: string }) => void;
+}) {
+  const [customerName, setCustomerName] = useState("");
+  const [guestCount, setGuestCount] = useState(1);
+  const [notes, setNotes] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setCustomerName(ticket.customer_name || "");
+      setGuestCount(ticket.guest_count);
+      setNotes(ticket.notes || "");
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({ customer_name: customerName.trim(), guest_count: guestCount, notes: notes.trim() });
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Edit ${ticket.ticket_number}`}>
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-customer">Customer / booking name</label>
+          <input id="edit-customer" className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in" maxLength={120} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-guests">Guest count</label>
+          <input id="edit-guests" className="input w-32" type="number" min={1} max={99} value={guestCount} onChange={(e) => setGuestCount(Math.max(1, parseInt(e.target.value) || 1))} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-notes">Notes (allergies, requests)</label>
+          <textarea id="edit-notes" className="input min-h-[80px]" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" className="btn-primary">Save Changes</button>
+        </div>
+      </form>
     </Modal>
   );
 }
@@ -510,16 +616,47 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
   const [provider, setProvider] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
   const [discount, setDiscount] = useState("");
+  const [tip, setTip] = useState("");
+  const [tendered, setTendered] = useState("");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
+  const fmt = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  useEffect(() => {
+    if (open) {
+      setMethod("cash");
+      setProvider(null);
+      setPhone("");
+      setDiscount(ticket.discount_amount > 0 ? String(ticket.discount_amount) : "");
+      setTip("");
+      setTendered("");
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const discountValue = parseFloat(discount) || 0;
-  const total = Math.max(ticket.total_amount - discountValue, 0);
+  const cappedDiscount = Math.min(discountValue, ticket.subtotal);
+  const taxRate = settings?.tax_rate ?? 0;
+  const taxable = Math.max(ticket.subtotal - cappedDiscount, 0);
+  const total = Math.round((taxable + (taxable * taxRate) / 100) * 100) / 100;
+  const tipValue = parseFloat(tip) || 0;
+  const due = total + tipValue;
+  const tenderValue = parseFloat(tendered) || 0;
+  const isCash = method === "cash";
+  const change = isCash && tenderValue >= due ? tenderValue - due : 0;
+  const short = isCash && tenderValue > 0 && tenderValue < due ? due - tenderValue : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (discountValue > ticket.subtotal) {
+      addToast("Discount cannot exceed the ticket subtotal", "error");
+      return;
+    }
+    if (isCash && tenderValue < due) {
+      addToast(`Tendered value is short by ${fmt(short)}`, "error");
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = { payment_method: method };
@@ -527,7 +664,8 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
         payload.payment_provider = provider;
         payload.payment_phone = phone.trim();
       }
-      if (discountValue > 0) payload.discount_amount = discountValue;
+      if (cappedDiscount > 0) payload.discount_amount = cappedDiscount;
+      if (tipValue > 0) payload.tip_amount = tipValue;
       const { data } = await api.post(`/restaurant/tickets/${ticket.id}/settle`, payload);
       const updated = data as RestaurantTicket;
       const methodLabel = paymentLabel(method, provider);
@@ -593,9 +731,57 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
             inputMode="decimal"
           />
         </div>
-        <div className="flex justify-between font-semibold text-ink border-t border-border pt-3">
-          <span>Total to collect</span>
-          <span className="tabular-nums">{symbol}{total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-tip">Tip ({symbol})</label>
+          <input
+            id="settle-tip"
+            className="input"
+            value={tip}
+            onChange={(e) => setTip(e.target.value)}
+            placeholder="0.00"
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+          />
+        </div>
+        {isCash && (
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-tendered">Cash tendered ({symbol})</label>
+            <input
+              id="settle-tendered"
+              className="input"
+              value={tendered}
+              onChange={(e) => setTendered(e.target.value)}
+              placeholder="0.00"
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+            />
+          </div>
+        )}
+        <div className="border-t border-border pt-3 space-y-1.5">
+          <div className="flex justify-between text-muted">
+            <span>Total to collect</span>
+            <span className="tabular-nums">{fmt(total)}</span>
+          </div>
+          {tipValue > 0 && (
+            <div className="flex justify-between text-muted">
+              <span>Tip</span>
+              <span className="tabular-nums">{fmt(tipValue)}</span>
+            </div>
+          )}
+          {isCash && tenderValue > 0 && (
+            <div className={`flex justify-between font-medium ${short > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+              <span>{short > 0 ? "Short" : "Change due"}</span>
+              <span className="tabular-nums">{fmt(short > 0 ? short : change)}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-semibold text-ink pt-1">
+            <span>{isCash ? "Cash to collect" : "Total to collect"}</span>
+            <span className="tabular-nums">{fmt(due)}</span>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>

@@ -10,7 +10,7 @@ import Pagination from "../../components/Pagination";
 import FittedSelect from "../../components/FittedSelect";
 import { useDebounce } from "../../hooks/useDebounce";
 import { usePageSize } from "../../hooks/usePageSize";
-import { formatDate } from "../../utils/date";
+import { formatDateTime } from "../../utils/date";
 import { useSettings } from "../../hooks/useSettings";
 import { useAuth } from "../../context/AuthContext";
 import { errorMessage } from "../../utils/errors";
@@ -138,7 +138,7 @@ export default function RestaurantTickets() {
               <td className="px-4 py-3">
                 <span className={`badge ${STATUS_BADGE[t.status] ?? "badge-neutral"}`}>{t.status}</span>
               </td>
-              <td className="px-4 py-3 text-muted">{formatDate(t.opened_at)}</td>
+              <td className="px-4 py-3 text-muted">{formatDateTime(t.opened_at)}</td>
               <td className="px-4 py-3 text-right font-medium tabular-nums">{symbol}{t.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               <td className="px-4 py-3 text-right">
                 {t.status === "open" && can("restaurant.create") && (

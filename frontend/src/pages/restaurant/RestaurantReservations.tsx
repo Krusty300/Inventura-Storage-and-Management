@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarClock, Pencil, Phone, Trash2, Users } from "lucide-react";
+import { CalendarClock, Pencil, Phone, Printer, Trash2, Users } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { RestaurantReservation, ReservationStatus, RestaurantTable } from "../../types";
@@ -11,12 +11,14 @@ import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { errorMessage } from "../../utils/errors";
 import { formatDateTime } from "../../utils/date";
+import { printBlob } from "../../utils/download";
 
 const STATUSES: { value: ReservationStatus | ""; label: string; cls: string }[] = [
   { value: "", label: "All", cls: "" },
   { value: "pending", label: "Pending", cls: "badge-warning" },
   { value: "confirmed", label: "Confirmed", cls: "badge-info" },
   { value: "seated", label: "Seated", cls: "badge-success" },
+  { value: "completed", label: "Completed", cls: "badge-neutral" },
   { value: "cancelled", label: "Cancelled", cls: "badge-neutral" },
   { value: "no_show", label: "No-show", cls: "badge-danger" },
 ];
@@ -25,7 +27,8 @@ const STATUS_BADGE: Record<ReservationStatus, string> = {
   pending: "badge-warning",
   confirmed: "badge-info",
   seated: "badge-success",
-  cancelled: "badge-neutral",
+  completed: "badge-neutral",
+  cancelled: "badge-danger",
   no_show: "badge-danger",
 };
 
@@ -50,6 +53,7 @@ export default function RestaurantReservations() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<RestaurantReservation | null>(null);
   const [deleting, setDeleting] = useState<RestaurantReservation | null>(null);
+  const [flipping, setFlipping] = useState<{ id: number; label: string; status: ReservationStatus } | null>(null);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["restaurant-reservations", status, date, search, limit],
@@ -94,23 +98,40 @@ export default function RestaurantReservations() {
 
   const activePills = useMemo(() => STATUSES.filter((s) => !s.value || ACTIVE.includes(s.value)), []);
 
-  const actions = (r: RestaurantReservation): { label: string; status: ReservationStatus; cls: string }[] => {
+  const actions = (r: RestaurantReservation): { label: string; status: ReservationStatus; cls: string; confirm?: boolean }[] => {
     if (!can("restaurant.update")) return [];
     if (r.status === "pending") return [
       { label: "Confirm", status: "confirmed", cls: "text-primary-strong dark:text-primary font-medium" },
       { label: "Seat", status: "seated", cls: "text-success font-medium" },
-      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400" },
-      { label: "No-show", status: "no_show", cls: "text-red-600 dark:text-red-400" },
+      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400", confirm: true },
+      { label: "No-show", status: "no_show", cls: "text-red-600 dark:text-red-400", confirm: true },
     ];
     if (r.status === "confirmed") return [
       { label: "Seat", status: "seated", cls: "text-success font-medium" },
-      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400" },
-      { label: "No-show", status: "no_show", cls: "text-red-600 dark:text-red-400" },
+      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400", confirm: true },
+      { label: "No-show", status: "no_show", cls: "text-red-600 dark:text-red-400", confirm: true },
     ];
     if (r.status === "seated") return [
-      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400" },
+      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400", confirm: true },
     ];
     return [];
+  };
+
+  const requestStatus = (r: RestaurantReservation, a: { label: string; status: ReservationStatus; confirm?: boolean }) => {
+    if (a.confirm) {
+      setFlipping({ id: r.id, label: a.label.toLowerCase(), status: a.status });
+    } else {
+      statusMutation.mutate({ id: r.id, status: a.status });
+    }
+  };
+
+  const printDaySheet = async () => {
+    try {
+      const { data } = await api.get("/restaurant/reservations/sheet", { params: { date }, responseType: "blob" });
+      printBlob(data);
+    } catch (err: unknown) {
+      addToast(errorMessage(err, "Cannot print reservations sheet"), "error");
+    }
   };
 
   return (
@@ -126,9 +147,14 @@ export default function RestaurantReservations() {
           </div>
         </div>
         {can("restaurant.create") && (
-          <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
-            New Reservation
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={printDaySheet} className="btn-secondary flex items-center gap-1.5" aria-label="Print reservations day sheet">
+              <Printer size={16} /> Day Sheet
+            </button>
+            <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn-primary">
+              New Reservation
+            </button>
+          </div>
         )}
       </div>
 
@@ -156,6 +182,12 @@ export default function RestaurantReservations() {
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${status === "no_show" ? "badge-danger" : "text-muted hover:bg-app"}`}
           >
             No-show
+          </button>
+          <button
+            onClick={() => setStatus("completed")}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition ${status === "completed" ? "badge-neutral" : "text-muted hover:bg-app"}`}
+          >
+            Completed
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 ml-auto">
@@ -253,7 +285,7 @@ export default function RestaurantReservations() {
                     {actions(r).map((a) => (
                       <button
                         key={a.status}
-                        onClick={() => statusMutation.mutate({ id: r.id, status: a.status })}
+                        onClick={() => requestStatus(r, a)}
                         className={`text-sm ${a.cls}`}
                       >
                         {a.label}
@@ -305,6 +337,19 @@ export default function RestaurantReservations() {
         message={`Delete ${deleting?.reservation_number} for ${deleting?.guest_name}?`}
         onConfirm={() => { if (deleting) deleteMutation.mutate(deleting.id); setDeleting(null); }}
         onCancel={() => setDeleting(null)}
+      />
+
+      <ConfirmDialog
+        open={!!flipping}
+        title="Confirm Reservation Change"
+        message={`Mark this reservation as ${flipping?.status === "no_show" ? "a no-show" : "cancelled"}? This cannot be undone.`}
+        confirmLabel={flipping ? flipping.label[0].toUpperCase() + flipping.label.slice(1) : "Yes"}
+        confirmClass={flipping?.status === "cancelled" || flipping?.status === "no_show" ? "btn-danger" : "btn-primary"}
+        onConfirm={() => {
+          if (flipping) statusMutation.mutate({ id: flipping.id, status: flipping.status });
+          setFlipping(null);
+        }}
+        onCancel={() => setFlipping(null)}
       />
     </div>
   );
