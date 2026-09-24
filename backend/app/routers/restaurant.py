@@ -1,19 +1,22 @@
 from math import ceil
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+import io
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.constants import MAX_PAGE_SIZE, currency_symbol as symbol_for
 from app.database import get_db
+from app.models import BOM, BOMItem
 from app.models.menu import MenuModifierGroup, MenuModifierOption, MenuSection
 from app.models.product import Product
 from app.models.restaurant import RestaurantReservation, RestaurantTable, RestaurantTicket, RestaurantTicketItem
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
+from app.models.user import User
 from app.schemas.menu import (
     MenuItemOut,
     MenuModifierGroupCreate,
@@ -27,6 +30,8 @@ from app.schemas.menu import (
     MenuSectionWithItems,
 )
 from app.schemas.restaurant import (
+    GuestOrderCreate,
+    GuestOrderOut,
     KitchenTicketOut,
     ReservationCreate,
     ReservationOut,
@@ -45,8 +50,9 @@ from app.schemas.restaurant import (
     TicketUpdate,
 )
 from app.services import inventory
-from app.services.auth import require_permission
+from app.services.auth import hash_password, require_permission
 from app.services.cache import settings_cache
+from app.services.httpratelimit import limiter
 from app.services.payment_methods import resolve_payment_details
 from app.services.pdf_helpers import (
     BODY_RIGHT, FONT, MARGIN, MUTED, draw_banner_header, draw_info_block,
@@ -59,8 +65,30 @@ from app.utils import get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/restaurant", tags=["restaurant"], dependencies=[Depends(require_permission("restaurant.view"))])
 
+# Public guest-facing endpoints (QR table ordering). Kept on a separate router
+# because route-level `dependencies=[]` cannot override router-level auth.
+public_router = APIRouter(prefix="/api/restaurant", tags=["restaurant"], dependencies=[])
+
 CLOSED_STATUSES = ("settled", "cancelled")
 KITCHEN_ITEM_STATUSES = ("queued", "preparing", "ready", "served")
+
+
+def _system_user(db: Session) -> User:
+    """Return the system user used to attribute guest (QR) orders, creating it on first use."""
+    user = db.query(User).filter(User.username == "system").first()
+    if user:
+        return user
+    user = User(
+        username="system",
+        email="system@local.invalid",
+        password_hash=hash_password("system"),
+        role="admin",
+        is_approved=True,
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+    return user
 
 
 def _selected_modifiers(db: Session, product: Product, modifiers: list[dict]) -> tuple[list[dict], float]:
@@ -234,6 +262,47 @@ def _validate_menu_product(db: Session, product_id: int) -> Product:
     return product
 
 
+def _active_bom_for(db: Session, product_id: int):
+    return db.query(BOM).filter(
+        BOM.product_id == product_id, BOM.is_active == True, BOM.is_deleted == False  # noqa: E712
+    ).order_by(BOM.id.desc()).first()
+
+
+def _blowdown_rows(db: Session, item: RestaurantTicketItem) -> list[tuple[int, int]]:
+    """Return [(product_id, quantity)] stock to consume for a ticket item.
+
+    When the menu item has an active BOM (recipe), the dish's own quantity is
+    ignored on-purpose and the component quantities are consumed instead.
+    """
+    bom = _active_bom_for(db, item.product_id)
+    if bom is None:
+        return [(item.product_id, item.quantity)]
+    rows = []
+    for comp in bom.items:
+        component = comp.product
+        rows.append((component.id, comp.quantity * item.quantity))
+    return rows
+
+
+def _send_item_stock(db: Session, item: RestaurantTicketItem, user_id: int, location_label: str) -> None:
+    """Consume stock for one ticket item, honoring its recipe (BOM) if present."""
+    for product_id, need in _blowdown_rows(db, item):
+        try:
+            allocation = inventory.allocate_lots(db, product_id=product_id, quantity=need)
+        except inventory.InventoryError:
+            db.rollback()
+            product = db.get(Product, product_id)
+            raise HTTPException(status_code=400, detail=f"Insufficient stock: {product.display_name if product else f'Product {product_id}'} (need {need})")
+        for lot_id, take, location_id, lpn_id in allocation:
+            inventory.post_journal_entry(
+                db, product_id=product_id, user_id=user_id,
+                quantity_change=-take, movement_type=inventory.SALE,
+                lot_id=lot_id, from_location_id=location_id, lpn_id=lpn_id,
+                reference_type="sale", reference=item.ticket.ticket_number,
+                notes=f"{item.ticket.ticket_number} sent to kitchen ({location_label})",
+            )
+
+
 def _send_pending_items(db: Session, ticket: RestaurantTicket, user_id: int) -> None:
     """Send every pending item to the kitchen and decrement stock for it.
 
@@ -244,57 +313,48 @@ def _send_pending_items(db: Session, ticket: RestaurantTicket, user_id: int) -> 
     pending = [i for i in ticket.items if i.status == "pending"]
     if not pending:
         return
+    location_label = ticket.table_number
     for item in pending:
-        try:
-            allocation = inventory.allocate_lots(db, product_id=item.product_id, quantity=item.quantity)
-        except inventory.InventoryError:
-            db.rollback()
-            raise HTTPException(status_code=400, detail=f"Insufficient stock: {item.product_name} (need {item.quantity})")
-        for lot_id, take, location_id, lpn_id in allocation:
-            inventory.post_journal_entry(
-                db, product_id=item.product_id, user_id=user_id,
-                quantity_change=-take, movement_type=inventory.SALE,
-                lot_id=lot_id, from_location_id=location_id, lpn_id=lpn_id,
-                reference_type="sale", reference=ticket.ticket_number,
-                notes=f"{ticket.ticket_number} sent to kitchen ({ticket.table_number})",
-            )
+        _send_item_stock(db, item, user_id, location_label)
         item.status = "queued"
         item.sent_at = datetime.now(timezone.utc)
 
 
 def _restore_ticket_stock(db: Session, ticket: RestaurantTicket, user_id: int, reason: str) -> None:
-    """Reverse SALE movements posted for a cancelled ticket (sale not yet created)."""
+    """Reverse SALE movements posted for a cancelled ticket (sale not yet created).
+
+    Reverses every outgoing sale movement for the ticket (handles recipe/BOM
+    blowdowns where components - not the menu product - were consumed).
+    """
     ref = f"{reason} {ticket.ticket_number}"
-    for item in ticket.items:
-        if item.status == "pending":
-            continue
-        movements = db.query(inventory.StockMovement).filter(
-            inventory.StockMovement.reference_type == "sale",
-            inventory.StockMovement.reference == ticket.ticket_number,
-            inventory.StockMovement.product_id == item.product_id,
-            inventory.StockMovement.quantity_change < 0,
-        ).order_by(inventory.StockMovement.id).all()
-        restored = 0
-        for m in movements:
-            if restored >= item.quantity:
-                break
-            take = min(-m.quantity_change, item.quantity - restored)
+    movements = db.query(inventory.StockMovement).filter(
+        inventory.StockMovement.reference_type == "sale",
+        inventory.StockMovement.reference == ticket.ticket_number,
+        inventory.StockMovement.quantity_change < 0,
+    ).order_by(inventory.StockMovement.id).all()
+    if not movements and ticket.items:
+        # Legacy fallback: no movements recorded (pre-blowdown data). Restore
+        # each sent item's own product quantity so a cancel never loses stock.
+        for item in ticket.items:
+            if item.status == "pending":
+                continue
             inventory.post_journal_entry(
                 db, product_id=item.product_id, user_id=user_id,
-                quantity_change=take, movement_type=inventory.SALE_RETURN,
-                from_location_id=m.from_location_id,
-                lot_id=m.lot_id, lpn_id=m.lpn_id,
+                quantity_change=item.quantity, movement_type=inventory.SALE_RETURN,
                 reference_type="sale_return", reference=ref,
                 notes=f"Ticket {reason.lower()} - stock restored",
             )
-            restored += take
-        if restored < item.quantity:
-            inventory.post_journal_entry(
-                db, product_id=item.product_id, user_id=user_id,
-                quantity_change=item.quantity - restored, movement_type=inventory.SALE_RETURN,
-                reference_type="sale_return", reference=ref,
-                notes=f"Ticket {reason.lower()} - stock restored",
-            )
+        return
+    for m in movements:
+        restore = -m.quantity_change
+        inventory.post_journal_entry(
+            db, product_id=m.product_id, user_id=user_id,
+            quantity_change=restore, movement_type=inventory.SALE_RETURN,
+            from_location_id=m.from_location_id,
+            lot_id=m.lot_id, lpn_id=m.lpn_id,
+            reference_type="sale_return", reference=ref,
+            notes=f"Ticket {reason.lower()} - stock restored",
+        )
 
 
 def _retag_ticket_movements(db: Session, ticket: RestaurantTicket, invoice_number: str) -> None:
@@ -1513,3 +1573,285 @@ def kitchen_board(db: Session = Depends(get_db)):
         out.stage = stage
         outs.append(out)
     return outs
+
+
+# ---------------------------------------------------------------------------
+# QR ordering (public guest flow)
+# ---------------------------------------------------------------------------
+
+def _guest_ticket_base(db: Session, table_id: int | None) -> RestaurantTicket | None:
+    """Return the live (usable) ticket for a table, or None."""
+    if table_id is None:
+        return None
+    return db.query(RestaurantTicket).filter(
+        RestaurantTicket.table_id == table_id,
+        ~RestaurantTicket.status.in_(CLOSED_STATUSES),
+        RestaurantTicket.status != "paying",
+    ).order_by(RestaurantTicket.id.desc()).first()
+
+
+def _guest_out(ticket: RestaurantTicket) -> GuestOrderOut:
+    return GuestOrderOut(
+        id=ticket.id, ticket_number=ticket.ticket_number,
+        table_id=ticket.table_id, table_number=ticket.table_number,
+        status=ticket.status, guest_count=ticket.guest_count,
+        guest_name=ticket.customer_name, subtotal=float(ticket.subtotal),
+        total_amount=float(ticket.total_amount), opened_at=ticket.opened_at,
+        items=[TicketItemOut.model_validate(i) for i in ticket.items if i.status in KITCHEN_ITEM_STATUSES],
+    )
+
+
+@public_router.get("/public/menu", response_model=list[MenuSectionWithItems])
+def public_menu(db: Session = Depends(get_db)):
+    return get_menu(db)
+
+
+@public_router.get("/public/menu-items/{product_id}/modifiers", response_model=list[MenuModifierGroupOut])
+def public_menu_item_modifiers(product_id: int, db: Session = Depends(get_db)):
+    product = get_or_404(Product, product_id, db)
+    if not product.is_menu_item or not product.is_active:
+        raise HTTPException(status_code=404, detail=f"Menu item '{product.display_name}' is not available")
+    return db.query(MenuModifierGroup).options(
+        joinedload(MenuModifierGroup.options),
+    ).filter(
+        MenuModifierGroup.product_id == product_id, MenuModifierGroup.is_active == True  # noqa: E712
+    ).order_by(MenuModifierGroup.sort_order, MenuModifierGroup.id).all()
+
+
+@public_router.get("/public/tables/{table_id}", response_model=RestaurantTableOut)
+def public_table(table_id: int, db: Session = Depends(get_db)):
+    table = get_or_404(RestaurantTable, table_id, db)
+    if not table.is_active:
+        raise HTTPException(status_code=404, detail=f"Table '{table.number}' is inactive")
+    out = RestaurantTableOut.model_validate(table)
+    active = table.active_ticket
+    if active is not None:
+        out.status = "occupied"
+        out.active_ticket_id = active.id
+        out.active_ticket_number = active.ticket_number
+    return out
+
+
+@public_router.post("/public/orders", response_model=GuestOrderOut, status_code=201)
+@limiter.limit("30/minute")
+def guest_create_order(request: Request, data: GuestOrderCreate, db: Session = Depends(get_db)):
+    system = _system_user(db)
+
+    if data.table_id is None:
+        raise HTTPException(status_code=400, detail="A table is required to place a guest order")
+    table = get_or_404(RestaurantTable, data.table_id, db)
+    if not table.is_active:
+        raise HTTPException(status_code=400, detail=f"Table '{table.number}' is inactive")
+
+    # Modifier validation happens once per product before any ticket is touched.
+    for item in data.items:
+        product = _validate_menu_product(db, item.product_id)
+        _selected_modifiers(db, product, item.modifiers)
+
+    ticket = _guest_ticket_base(db, table.id)
+    if ticket is None:
+        ticket = RestaurantTicket(
+            ticket_number=generate_ticket_number(db),
+            table_id=table.id, user_id=system.id, status="open",
+            guest_count=data.guest_count, customer_name=data.guest_name.strip(),
+            notes=data.notes,
+        )
+        db.add(ticket)
+        db.flush()
+
+    for item in data.items:
+        product = _validate_menu_product(db, item.product_id)
+        mods, delta = _selected_modifiers(db, product, item.modifiers)
+        base_price = resolve_price(db, product.id, None, item.quantity)
+        unit_price = round(base_price + delta, 2)
+        existing = next((
+            i for i in ticket.items
+            if i.product_id == product.id and i.status == "pending"
+            and i.notes == item.notes and (i.modifiers or []) == mods
+        ), None)
+        if existing is not None:
+            existing.quantity += item.quantity
+            existing.unit_price = unit_price
+            existing.base_unit_price = base_price
+        else:
+            ticket.items.append(RestaurantTicketItem(
+                product_id=product.id, quantity=item.quantity,
+                unit_price=unit_price, base_unit_price=base_price,
+                modifiers=mods or None, notes=item.notes, status="pending",
+            ))
+    db.flush()
+
+    _recompute_totals(db, ticket)
+    _send_items_for_guest = [i for i in ticket.items if i.status == "pending"]
+    _send_pending_items(db, ticket, system.id)
+    _recompute_ticket_status(ticket)
+    db.commit()
+
+    ticket = load_ticket(db, ticket.id)
+    log_activity(db, system.id, "system", "create", "restaurant_ticket", ticket.id,
+                 f"Guest order {ticket.ticket_number} placed at table {ticket.table_number} ({len(_send_items_for_guest)} item(s))")
+    db.commit()
+    broadcast_change("restaurant_ticket", "updated")
+    broadcast_change("stock_movement", "created")
+    broadcast_change("product", "updated")
+    return _guest_out(ticket)
+
+
+@public_router.get("/public/orders/{ticket_id}", response_model=GuestOrderOut)
+def guest_order_status(ticket_id: int, db: Session = Depends(get_db)):
+    ticket = load_ticket(db, ticket_id)
+    return _guest_out(ticket)
+
+
+# ---------------------------------------------------------------------------
+# Recipes (menu-item BOMs)
+# ---------------------------------------------------------------------------
+
+@router.get("/recipes")
+def list_menu_recipes(db: Session = Depends(get_db)):
+    """Recipe summary for every active menu item (matching staff menu view).
+
+    recipe_cost is the per-unit ingredient cost from the item's active BOM, or
+    0 when no recipe is attached. Margin % is vs the menu sale price.
+    """
+    products = db.query(Product).filter(
+        Product.is_active == True, Product.is_menu_item == True  # noqa: E712
+    ).order_by(Product.name).all()
+    boms = db.query(BOM).options(
+        joinedload(BOM.items).joinedload(BOMItem.product),
+    ).filter(BOM.is_active == True, BOM.is_deleted == False).all()  # noqa: E712
+    by_product: dict[int, BOM] = {}
+    for b in boms:
+        by_product.setdefault(b.product_id, b)
+
+    results = []
+    for p in products:
+        bom = by_product.get(p.id)
+        unit_cost = 0.0
+        components = []
+        if bom is not None and not bom.items:
+            bom = None
+        if bom is not None:
+            unit_cost = bom.total_cost
+            components = [{
+                "id": i.id, "product_id": i.product_id,
+                "product_name": i.product_name, "quantity": i.quantity,
+            } for i in bom.items]
+        price = float(p.unit_price or 0.0)
+        margin = price - unit_cost
+        margin_pct = round(margin / unit_cost * 100, 1) if unit_cost > 0 else 0.0
+        results.append({
+            "product_id": p.id,
+            "name": p.display_name,
+            "sku": p.sku,
+            "price": price,
+            "has_recipe": bom is not None,
+            "recipe_id": bom.id if bom else None,
+            "recipe_name": bom.name if bom else "",
+            "recipe_cost": round(unit_cost, 2),
+            "margin": round(margin, 2),
+            "margin_pct": margin_pct,
+            "component_count": len(components),
+            "components": components,
+        })
+    return results
+
+
+# ---------------------------------------------------------------------------
+# QR sheet (staff print)
+# ---------------------------------------------------------------------------
+
+@router.get("/qr-sheet")
+def qr_sheet(base: str = Query("", description="Public base URL for guest ordering (e.g. https://menu.example.com)"), db: Session = Depends(get_db)):
+    """Render a print-ready sheet of QR codes, one per active table."""
+    tables = db.query(RestaurantTable).order_by(RestaurantTable.number).all()
+    active_tables = [t for t in tables if t.is_active]
+    if not active_tables:
+        raise HTTPException(status_code=400, detail="No active tables to print QR codes for")
+
+    store_name, store_lines, settings = _store_header_lines(db)
+    base_url = (base or "").rstrip("/")
+
+    from reportlab.lib.units import inch
+    from reportlab.graphics import renderPDF
+    import qrcode as qr_pkg
+    import qrcode.image.svg
+    from svglib.svglib import svg2rlg
+
+    c, buf = new_canvas("QR Codes")
+    base_dir = Path(__file__).resolve().parent.parent
+    body_y = draw_banner_header(c, "TABLE QR CODES", [
+        ("Venue", store_name), ("Tables", str(len(active_tables))),
+    ], store_lines, logo_url=(settings.logo_url if settings else ""), base_dir=base_dir)
+
+    from app.services.pdf_helpers import BODY_LEFT, BODY_CENTER, BODY_RIGHT, BOLD, FAINT, FONT, INK, MUTED
+
+    cell_w = 1.9 * inch
+    cell_h = 2.1 * inch
+    gap = 0.35 * inch
+    left = BODY_LEFT + 0.1 * inch
+    page_h = 11 * inch
+    bottom = 0.9 * inch
+    grid_w = BODY_RIGHT - left
+    cols = max(int(grid_w // (cell_w + gap)), 1)
+    usable_rows = int((body_y - bottom) // (cell_h + gap))
+    if usable_rows < 1:
+        raise HTTPException(status_code=500, detail="Page too small to render QR codes")
+
+    def _draw_qr(url: str, x: float, y: float, size: float) -> None:
+        try:
+            img = qr_pkg.make(url, image_factory=qrcode.image.svg.SvgPathImage)
+            drawing = svg2rlg(io.BytesIO(img.to_string().encode("utf-8")))
+            scale = min(size / drawing.width, size / drawing.height) * 0.92
+            drawing.scale(scale, scale)
+            c.saveState()
+            c.translate(x, y)
+            renderPDF.draw(drawing, c, 0, 0)
+            c.restoreState()
+        except Exception:
+            c.setFont(FONT, 7)
+            c.setFillColor(MUTED)
+            c.drawString(x, y + size / 4, "QR unavailable")
+
+    for idx, t in enumerate(active_tables):
+        row = idx // cols
+        col = idx % cols
+        cell_page = row // usable_rows
+        cell_row = row % usable_rows
+        x = left + col * (cell_w + gap)
+        y_top = body_y - cell_row * (cell_h + gap)
+        if cell_page == 0:
+            y = y_top
+        else:
+            c.showPage()
+            body_y = draw_banner_header(c, "TABLE QR CODES", [
+                ("Venue", store_name), ("Tables", str(len(active_tables))),
+            ], store_lines, logo_url=(settings.logo_url if settings else ""), base_dir=base_dir)
+            y = body_y - cell_row * (cell_h + gap)
+
+        if not base_url:
+            url = f"/order/table/{t.id}"
+        else:
+            url = f"{base_url}/order/table/{t.id}"
+
+        # Card outline.
+        c.setStrokeColor(FAINT)
+        c.setLineWidth(1)
+        c.roundRect(x, y - cell_h, cell_w - 0.1 * inch, cell_h - 0.15 * inch, 6, stroke=1, fill=0)
+
+        c.setFont(BOLD, 11)
+        c.setFillColor(INK)
+        c.drawString(x + 0.12 * inch, y - 0.32 * inch, f"Table {t.number}")
+
+        qr_size = 1.25 * inch
+        qx = x + (cell_w - 0.1 * inch - qr_size) / 2
+        _draw_qr(url, qx, y - 0.5 * inch - qr_size, qr_size)
+
+        c.setFont(FONT, 7)
+        c.setFillColor(MUTED)
+        c.drawCentredString(x + (cell_w - 0.1 * inch) / 2, y - cell_h + 0.16 * inch, f"/order/table/{t.id}")
+
+    pdf = render_pdf(c, buf)
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": "inline; filename=table-qr-codes.pdf"
+    })

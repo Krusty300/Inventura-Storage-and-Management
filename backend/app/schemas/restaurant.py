@@ -151,6 +151,38 @@ class KitchenTicketOut(BaseModel):
         from_attributes = True
 
 
+class GuestOrderItem(BaseModel):
+    product_id: int
+    quantity: int = Field(gt=0, le=99)
+    notes: str = ""
+    modifiers: list[dict] = []
+
+
+class GuestOrderCreate(BaseModel):
+    table_id: Optional[int] = None
+    guest_name: str = ""
+    guest_count: int = Field(default=1, ge=1, le=99)
+    notes: str = ""
+    items: list[GuestOrderItem] = Field(min_length=1, max_length=50)
+
+
+class GuestOrderOut(BaseModel):
+    id: int
+    ticket_number: str
+    table_id: Optional[int] = None
+    table_number: str = ""
+    status: str
+    guest_count: int
+    guest_name: str = ""
+    subtotal: float
+    total_amount: float
+    opened_at: datetime
+    items: list[TicketItemOut] = []
+
+    class Config:
+        from_attributes = True
+
+
 class ReservationCreate(BaseModel):
     table_id: Optional[int] = None
     guest_name: str
