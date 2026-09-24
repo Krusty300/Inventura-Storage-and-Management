@@ -7,7 +7,7 @@ import { formatCurrency } from "../../utils/currency";
 import { errorMessage } from "../../utils/errors";
 import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
-import Modal from "../../components/Modal";
+import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import type { MenuSectionWithItems, MenuItem, MenuModifierGroup, RestaurantTable, RestaurantTicketItem } from "../../types";
 
 export interface GuestOrderOut {
@@ -99,8 +99,18 @@ function ModifierSheet({ product, onClose, onAdd }: {
   };
 
   return (
-    <Modal open onClose={onClose} title={product.display_name}>
-      <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+    <RestaurantSlideOver
+      open
+      onClose={onClose}
+      title={product.display_name}
+      breadcrumb={`Add ${product.display_name}`}
+      footer={
+        <button onClick={handleAdd} className="btn-primary w-full">
+          Add {quantity} × {formatCurrency(unitPrice * quantity)}
+        </button>
+      }
+    >
+      <div className="space-y-5">
         <div className="text-sm text-muted">Each · {formatCurrency(unitPrice)}</div>
 
         {isLoading ? (
@@ -164,12 +174,8 @@ function ModifierSheet({ product, onClose, onAdd }: {
         {error && (
           <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-3 py-2 rounded-lg text-sm">{error}</div>
         )}
-
-        <button onClick={handleAdd} className="btn-primary w-full">
-          Add {quantity} × {formatCurrency(unitPrice * quantity)}
-        </button>
       </div>
-    </Modal>
+    </RestaurantSlideOver>
   );
 }
 
@@ -381,13 +387,21 @@ export default function GuestOrder() {
             <ul className="divide-y divide-border">
               {cart.map((l) => (
                 <li key={l.key} className="py-2.5 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-ink">{l.product.display_name} × {l.quantity}</p>
-                    {l.modifierNames.length > 0 && (
-                      <p className="text-xs text-muted mt-0.5 line-clamp-1">{l.modifierNames.join(", ")}</p>
-                    )}
-                    {l.notes && <p className="text-xs text-faint mt-0.5 line-clamp-1">Note: {l.notes}</p>}
-                    <p className="text-sm font-bold text-ink mt-0.5">{formatCurrency((l.product.unit_price + l.extras) * l.quantity)}</p>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <img
+                      src={l.product.image || l.product.image_url || getPlaceholder()}
+                      alt=""
+                      onError={onImageError}
+                      className="h-12 w-12 shrink-0 rounded-lg object-cover bg-subtle"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink">{l.product.display_name} × {l.quantity}</p>
+                      {l.modifierNames.length > 0 && (
+                        <p className="text-xs text-muted mt-0.5 line-clamp-1">{l.modifierNames.join(", ")}</p>
+                      )}
+                      {l.notes && <p className="text-xs text-faint mt-0.5 line-clamp-1">Note: {l.notes}</p>}
+                      <p className="text-sm font-bold text-ink mt-0.5">{formatCurrency((l.product.unit_price + l.extras) * l.quantity)}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => setLineQty(l.key, -1)} className="p-1 rounded-md border border-border text-muted hover:text-ink" aria-label="Decrease"><Minus size={13} /></button>

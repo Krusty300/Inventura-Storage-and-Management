@@ -15,6 +15,7 @@ import ConfirmDialog from "../../components/ConfirmDialog";
 import PaymentMethodPicker from "../../components/PaymentMethodPicker";
 import BarcodeScanner from "../../components/BarcodeScanner";
 import RestaurantMenuProductDetail from "../../components/restaurant/RestaurantMenuProductDetail";
+import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -330,12 +331,22 @@ export default function RestaurantTicketDetail() {
               <ul className="divide-y divide-border">
                 {pendingItems.map((item) => (
                   <li key={item.id} className="py-3 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-medium text-ink">{item.product_name}</div>
-                      {item.modifiers?.length ? (
-                        <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
-                      ) : null}
-                      <div className="text-xs text-muted mt-0.5">{currencyAmount(item.unit_price)} each</div>
+                    <div className="flex items-start gap-3 min-w-0">
+                      <img
+                        src={item.product_image || getPlaceholder()}
+                        alt=""
+                        className="h-10 w-10 shrink-0 rounded-lg object-cover bg-app"
+                        loading="lazy"
+                        decoding="async"
+                        onError={onImageError}
+                      />
+                      <div className="min-w-0">
+                        <div className="font-medium text-ink">{item.product_name}</div>
+                        {item.modifiers?.length ? (
+                          <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
+                        ) : null}
+                        <div className="text-xs text-muted mt-0.5">{currencyAmount(item.unit_price)} each</div>
+                      </div>
                     </div>
                     {can("restaurant.update") ? (
                       <div className="flex items-center gap-2">
@@ -589,8 +600,21 @@ function ModifierModal({ product, symbol, onClose, onAdd }: {
   };
 
   return (
-    <Modal open onClose={onClose} title={product.display_name}>
-      <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+    <RestaurantSlideOver
+      open
+      onClose={onClose}
+      title={product.display_name}
+      breadcrumb={`Add ${product.display_name}`}
+      footer={
+        <>
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={handleAdd} className="btn-primary flex items-center gap-1.5">
+            <Plus size={16} /> Add to Order
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-5">
         <div className="text-sm text-muted">Base {symbol}{product.unit_price.toFixed(2)} per unit.</div>
         {isLoading ? (
           <div className="card p-4 animate-pulse h-16" />
@@ -633,22 +657,16 @@ function ModifierModal({ product, symbol, onClose, onAdd }: {
           </div>
         </div>
       <label className="block text-sm font-medium text-ink mb-1" htmlFor="mod-notes">Note to kitchen (optional)</label>
-          <textarea
-            id="mod-notes"
-            className="input min-h-[64px]"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. no onions, well done..."
-            maxLength={500}
-          />
-        </div>
-      <div className="flex justify-end gap-2 pt-4">
-        <button onClick={onClose} className="btn-secondary">Cancel</button>
-        <button onClick={handleAdd} className="btn-primary flex items-center gap-1.5">
-          <Plus size={16} /> Add to Order
-        </button>
+        <textarea
+          id="mod-notes"
+          className="input min-h-[64px]"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="e.g. no onions, well done..."
+          maxLength={500}
+        />
       </div>
-    </Modal>
+    </RestaurantSlideOver>
   );
 }
 
@@ -676,8 +694,19 @@ function EditTicketModal({ open, ticket, onClose, onSave }: {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={`Edit ${ticket.ticket_number}`}>
-      <form onSubmit={submit} className="space-y-4">
+    <RestaurantSlideOver
+      open={open}
+      onClose={onClose}
+      title={`Edit ${ticket.ticket_number}`}
+      breadcrumb={`Edit ${ticket.ticket_number}`}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" form="edit-ticket-form" className="btn-primary">Save Changes</button>
+        </>
+      }
+    >
+      <form id="edit-ticket-form" onSubmit={submit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-customer">Customer / booking name</label>
           <input id="edit-customer" className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in" maxLength={120} />
@@ -690,12 +719,8 @@ function EditTicketModal({ open, ticket, onClose, onSave }: {
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-notes">Notes (allergies, requests)</label>
           <textarea id="edit-notes" className="input min-h-[80px]" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />
         </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" className="btn-primary">Save Changes</button>
-        </div>
       </form>
-    </Modal>
+    </RestaurantSlideOver>
   );
 }
 

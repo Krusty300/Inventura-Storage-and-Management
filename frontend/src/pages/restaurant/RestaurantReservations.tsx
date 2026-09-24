@@ -5,9 +5,9 @@ import api from "../../api/client";
 import type { RestaurantReservation, ReservationStatus, RestaurantTable } from "../../types";
 import Table from "../../components/Table";
 import EmptyState from "../../components/EmptyState";
-import Modal from "../../components/Modal";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import RestaurantReservationDetail from "../../components/restaurant/RestaurantReservationDetail";
+import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import { RESERVATION_STATUS_BADGE, reservationActions } from "../../components/restaurant/reservationStatus";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -393,8 +393,19 @@ function ReservationForm({
   const activeTables = tables.filter((t) => t.is_active);
 
   return (
-    <Modal open onClose={onClose} title={reservation ? `Edit ${reservation.reservation_number}` : "New Reservation"}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <RestaurantSlideOver
+      open
+      onClose={onClose}
+      title={reservation ? `Edit ${reservation.reservation_number}` : "New Reservation"}
+      breadcrumb={reservation ? `Edit ${reservation.reservation_number}` : "New reservation"}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" form="reservation-form" disabled={saving || !guestName.trim()} className="btn-primary">{saving ? "Saving..." : reservation ? "Update" : "Create"}</button>
+        </>
+      }
+    >
+      <form id="reservation-form" onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-guest">Guest name *</label>
           <input id="res-guest" className="input" value={guestName} onChange={(e) => setGuestName(e.target.value)} required placeholder="e.g. Alice Banda" maxLength={120} />
@@ -434,11 +445,7 @@ function ReservationForm({
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-notes">Notes</label>
           <textarea id="res-notes" className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Allergies, celebration, special requests..." maxLength={500} />
         </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !guestName.trim()} className="btn-primary">{saving ? "Saving..." : reservation ? "Update" : "Create"}</button>
-        </div>
       </form>
-    </Modal>
+    </RestaurantSlideOver>
   );
 }

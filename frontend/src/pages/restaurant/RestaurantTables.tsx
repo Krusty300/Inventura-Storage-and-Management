@@ -5,8 +5,8 @@ import api from "../../api/client";
 import type { RestaurantTable } from "../../types";
 import Table from "../../components/Table";
 import EmptyState from "../../components/EmptyState";
-import Modal from "../../components/Modal";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { errorMessage } from "../../utils/errors";
@@ -168,8 +168,19 @@ function TableForm({ table, onClose, onSaved }: { table: RestaurantTable | null;
   };
 
   return (
-    <Modal open onClose={onClose} title={table ? `Edit Table ${table.number}` : "New Table"}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <RestaurantSlideOver
+      open
+      onClose={onClose}
+      title={table ? `Edit Table ${table.number}` : "New Table"}
+      breadcrumb={table ? `Edit table ${table.number}` : "New table"}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" form="table-form" disabled={saving || !number.trim()} className="btn-primary">{saving ? "Saving..." : table ? "Update" : "Create"}</button>
+        </>
+      }
+    >
+      <form id="table-form" onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="table-number">Table number *</label>
           <input id="table-number" className="input" value={number} onChange={(e) => setNumber(e.target.value)} required placeholder="e.g. T1, Bar 2, 12" maxLength={20} />
@@ -186,11 +197,7 @@ function TableForm({ table, onClose, onSaved }: { table: RestaurantTable | null;
           <input type="checkbox" className="rounded border-border-strong" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} id="table-active" />
           <label htmlFor="table-active" className="text-sm text-ink">Active</label>
         </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !number.trim()} className="btn-primary">{saving ? "Saving..." : table ? "Update" : "Create"}</button>
-        </div>
       </form>
-    </Modal>
+    </RestaurantSlideOver>
   );
 }

@@ -4,9 +4,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { MenuItem, MenuModifierGroup, MenuSection, MenuSectionWithItems } from "../../types";
 import EmptyState from "../../components/EmptyState";
-import Modal from "../../components/Modal";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import RestaurantMenuProductDetail from "../../components/restaurant/RestaurantMenuProductDetail";
+import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -255,8 +255,19 @@ function SectionForm({ section, onClose, onSaved }: { section: MenuSection | nul
   };
 
   return (
-    <Modal open onClose={onClose} title={section ? `Edit Section: ${section.name}` : "New Menu Section"}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <RestaurantSlideOver
+      open
+      onClose={onClose}
+      title={section ? `Edit Section: ${section.name}` : "New Menu Section"}
+      breadcrumb={section ? `Edit ${section.name}` : "New menu section"}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" form="section-form" disabled={saving || !name.trim()} className="btn-primary">{saving ? "Saving..." : section ? "Update" : "Create"}</button>
+        </>
+      }
+    >
+      <form id="section-form" onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="section-name">Name *</label>
           <input id="section-name" className="input" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Starters, Mains, Drinks" maxLength={100} />
@@ -275,12 +286,8 @@ function SectionForm({ section, onClose, onSaved }: { section: MenuSection | nul
             <label htmlFor="section-active" className="text-sm text-ink">Active</label>
           </div>
         </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || !name.trim()} className="btn-primary">{saving ? "Saving..." : section ? "Update" : "Create"}</button>
-        </div>
       </form>
-    </Modal>
+    </RestaurantSlideOver>
   );
 }
 
@@ -394,8 +401,13 @@ function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () =
   const groupList = groups ?? [];
 
   return (
-    <Modal open onClose={onClose} title={`Modifiers: ${product.display_name}`}>
-      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+    <RestaurantSlideOver
+      open
+      onClose={onClose}
+      title={`Modifiers: ${product.display_name}`}
+      breadcrumb={`Modifiers for ${product.display_name}`}
+    >
+      <div className="space-y-4">
         {isLoading ? (
           <div className="card p-4 animate-pulse h-16" />
         ) : groupList.length === 0 && editingGroupId === null ? (
@@ -520,6 +532,6 @@ function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () =
         onConfirm={() => { if (deletingGroup) deleteGroup.mutate(deletingGroup.id); setDeletingGroup(null); }}
         onCancel={() => setDeletingGroup(null)}
       />
-    </Modal>
+    </RestaurantSlideOver>
   );
 }
