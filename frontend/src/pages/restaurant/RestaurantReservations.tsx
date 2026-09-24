@@ -7,6 +7,8 @@ import Table from "../../components/Table";
 import EmptyState from "../../components/EmptyState";
 import Modal from "../../components/Modal";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import RestaurantReservationDetail from "../../components/restaurant/RestaurantReservationDetail";
+import { RESERVATION_STATUS_BADGE, reservationActions } from "../../components/restaurant/reservationStatus";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { errorMessage } from "../../utils/errors";
@@ -22,15 +24,6 @@ const STATUSES: { value: ReservationStatus | ""; label: string; cls: string }[] 
   { value: "cancelled", label: "Cancelled", cls: "badge-neutral" },
   { value: "no_show", label: "No-show", cls: "badge-danger" },
 ];
-
-const STATUS_BADGE: Record<ReservationStatus, string> = {
-  pending: "badge-warning",
-  confirmed: "badge-info",
-  seated: "badge-success",
-  completed: "badge-neutral",
-  cancelled: "badge-danger",
-  no_show: "badge-danger",
-};
 
 const ACTIVE: ReservationStatus[] = ["pending", "confirmed", "seated"];
 
@@ -54,6 +47,7 @@ export default function RestaurantReservations() {
   const [editing, setEditing] = useState<RestaurantReservation | null>(null);
   const [deleting, setDeleting] = useState<RestaurantReservation | null>(null);
   const [flipping, setFlipping] = useState<{ id: number; label: string; status: ReservationStatus } | null>(null);
+  const [detail, setDetail] = useState<RestaurantReservation | null>(null);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["restaurant-reservations", status, date, search, limit],
@@ -97,25 +91,6 @@ export default function RestaurantReservations() {
   });
 
   const activePills = useMemo(() => STATUSES.filter((s) => !s.value || ACTIVE.includes(s.value)), []);
-
-  const actions = (r: RestaurantReservation): { label: string; status: ReservationStatus; cls: string; confirm?: boolean }[] => {
-    if (!can("restaurant.update")) return [];
-    if (r.status === "pending") return [
-      { label: "Confirm", status: "confirmed", cls: "text-primary-strong dark:text-primary font-medium" },
-      { label: "Seat", status: "seated", cls: "text-success font-medium" },
-      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400", confirm: true },
-      { label: "No-show", status: "no_show", cls: "text-red-600 dark:text-red-400", confirm: true },
-    ];
-    if (r.status === "confirmed") return [
-      { label: "Seat", status: "seated", cls: "text-success font-medium" },
-      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400", confirm: true },
-      { label: "No-show", status: "no_show", cls: "text-red-600 dark:text-red-400", confirm: true },
-    ];
-    if (r.status === "seated") return [
-      { label: "Cancel", status: "cancelled", cls: "text-red-600 dark:text-red-400", confirm: true },
-    ];
-    return [];
-  };
 
   const requestStatus = (r: RestaurantReservation, a: { label: string; status: ReservationStatus; confirm?: boolean }) => {
     if (a.confirm) {
@@ -246,7 +221,7 @@ export default function RestaurantReservations() {
           }
         >
           {(data?.items ?? []).map((r) => (
-            <tr key={r.id} className="hover:bg-app">
+            <tr key={r.id} className="hover:bg-app cursor-pointer" onClick={() => setDetail(r)}>
               <td className="px-4 py-3">
                 <div className="font-medium text-ink">{r.guest_name}</div>
                 <div className="flex items-center gap-1 text-xs text-muted mt-0.5">
@@ -277,15 +252,15 @@ export default function RestaurantReservations() {
                 <div className="text-xs text-muted mt-0.5">{r.duration_minutes} min</div>
               </td>
               <td className="px-4 py-3">
-                <span className={`badge ${STATUS_BADGE[r.status]}`}>{r.status}</span>
+                <span className={`badge ${RESERVATION_STATUS_BADGE[r.status]}`}>{r.status}</span>
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center justify-end gap-4">
                   <div className="flex gap-3">
-                    {actions(r).map((a) => (
+                    {reservationActions(r, can("restaurant.update")).map((a) => (
                       <button
                         key={a.status}
-                        onClick={() => requestStatus(r, a)}
+                        onClick={(e) => { e.stopPropagation(); requestStatus(r, a); }}
                         className={`text-sm ${a.cls}`}
                       >
                         {a.label}
@@ -293,12 +268,12 @@ export default function RestaurantReservations() {
                     ))}
                   </div>
                   {can("restaurant.update") && r.status !== "cancelled" && r.status !== "no_show" && (
-                    <button onClick={() => { setEditing(r); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit reservation ${r.reservation_number}`}>
+                    <button onClick={(e) => { e.stopPropagation(); setEditing(r); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit reservation ${r.reservation_number}`}>
                       <Pencil size={16} />
                     </button>
                   )}
                   {can("restaurant.delete") && (
-                    <button onClick={() => setDeleting(r)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete reservation ${r.reservation_number}`}>
+                    <button onClick={(e) => { e.stopPropagation(); setDeleting(r); }} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete reservation ${r.reservation_number}`}>
                       <Trash2 size={16} />
                     </button>
                   )}
@@ -330,6 +305,15 @@ export default function RestaurantReservations() {
           }}
         />
       )}
+
+      <RestaurantReservationDetail
+        reservation={detail}
+        canUpdate={can("restaurant.update")}
+        canDelete={can("restaurant.delete")}
+        onClose={() => setDetail(null)}
+        onEdit={() => { if (detail) { setEditing(detail); setDetail(null); setShowForm(true); } }}
+        onDelete={() => { if (detail) { setDeleting(detail); setDetail(null); } }}
+      />
 
       <ConfirmDialog
         open={!!deleting}

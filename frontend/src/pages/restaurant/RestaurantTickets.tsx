@@ -8,6 +8,7 @@ import Table from "../../components/Table";
 import EmptyState from "../../components/EmptyState";
 import Pagination from "../../components/Pagination";
 import FittedSelect from "../../components/FittedSelect";
+import RestaurantTicketDetailDrawer from "../../components/restaurant/RestaurantTicketDetailDrawer";
 import { useDebounce } from "../../hooks/useDebounce";
 import { usePageSize } from "../../hooks/usePageSize";
 import { formatDateTime } from "../../utils/date";
@@ -40,6 +41,7 @@ export default function RestaurantTickets() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
+  const [detail, setDetail] = useState<RestaurantTicket | null>(null);
   const { pageSize, setPageSize } = usePageSize();
   const { can } = useAuth();
   const navigate = useNavigate();
@@ -131,7 +133,7 @@ export default function RestaurantTickets() {
             <tr
               key={t.id}
               className="hover:bg-app cursor-pointer"
-              onClick={() => navigate(`/restaurant/tickets/${t.id}`)}
+              onClick={() => setDetail(t)}
             >
               <td className="px-4 py-3 font-medium">{t.ticket_number}</td>
               <td className="px-4 py-3 text-muted">{t.table_number}</td>
@@ -158,6 +160,11 @@ export default function RestaurantTickets() {
         onPageChange={setPage}
         pageSize={pageSize}
         onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+      />
+
+      <RestaurantTicketDetailDrawer
+        ticket={detail}
+        onClose={() => setDetail(null)}
       />
     </div>
   );

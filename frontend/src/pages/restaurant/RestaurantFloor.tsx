@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { RestaurantTable, RestaurantReservation } from "../../types";
 import EmptyState from "../../components/EmptyState";
+import RestaurantReservationDetail from "../../components/restaurant/RestaurantReservationDetail";
+import RestaurantTableDetail from "../../components/restaurant/RestaurantTableDetail";
 import { printBlob } from "../../utils/download";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -30,6 +32,21 @@ function isActiveNow(r: RestaurantReservation, nowMs: number): boolean {
   return nowMs >= start && nowMs < end;
 }
 
+function ReservationBadge({ reservation, onOpen }: { reservation: RestaurantReservation; onOpen: () => void }) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={(e) => { e.stopPropagation(); e.preventDefault(); onOpen(); }}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onOpen(); } }}
+      className={`badge ${RESERVATION_BADGE[reservation.status]} cursor-pointer hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+      title={`View ${reservation.guest_name}'s reservation`}
+    >
+      {reservation.status === "pending" ? "Booking" : "Reserved"} {reservationLabel(reservation)}
+    </span>
+  );
+}
+
 export default function RestaurantFloor() {
   const navigate = useNavigate();
   const { can } = useAuth();
@@ -40,6 +57,8 @@ export default function RestaurantFloor() {
   const [opening, setOpening] = useState(false);
   const [view, setView] = useState<"plan" | "grid">("grid");
   const [override, setOverride] = useState<Record<number, { x: number; y: number }>>({});
+  const [reservationDetail, setReservationDetail] = useState<RestaurantReservation | null>(null);
+  const [tableDetail, setTableDetail] = useState<RestaurantTable | null>(null);
   const dragRef = useRef<{ id: number; grabX: number; grabY: number } | null>(null);
   const draggedRef = useRef(false);
   const planRef = useRef<HTMLDivElement | null>(null);
@@ -300,8 +319,7 @@ export default function RestaurantFloor() {
                   onPointerDown={(e) => startDrag(e, t)}
                   onClick={() => {
                     if (draggedRef.current) return;
-                    if (t.status === "occupied") navigate(`/restaurant/tickets/${t.active_ticket_id}`);
-                    else if (can("restaurant.create")) openTicket.mutate(t.id);
+                    setTableDetail(t);
                   }}
                   className={`group absolute select-none text-left rounded-xl border-2 p-3 transition ${t.status === "occupied" ? "border-primary/70 bg-primary-soft/40 cursor-pointer" : "border-border-strong bg-card hover:border-primary/50 cursor-move"}`}
                   style={{ left: pos.x, top: pos.y, width: 156, touchAction: "none" }}
@@ -316,9 +334,7 @@ export default function RestaurantFloor() {
                   <div className="text-xs text-muted mt-0.5">Seats {t.capacity}</div>
                   {badge && (
                     <div className="mt-2 space-y-1">
-                      <span className={`badge ${RESERVATION_BADGE[badge.status]}`}>
-                        {badge.status === "pending" ? "Booking" : "Reserved"} {reservationLabel(badge)}
-                      </span>
+                      <ReservationBadge reservation={badge} onOpen={() => setReservationDetail(badge)} />
                     </div>
                   )}
                   {t.status === "occupied" && (
@@ -342,12 +358,8 @@ export default function RestaurantFloor() {
                 return (
                   <button
                     key={t.id}
-                    onClick={() => {
-                      if (t.status === "occupied") navigate(`/restaurant/tickets/${t.active_ticket_id}`);
-                      else if (can("restaurant.create")) openTicket.mutate(t.id);
-                    }}
-                    disabled={t.status === "available" && !can("restaurant.create")}
-                    className={`card p-4 text-left transition ${t.status === "occupied" ? "ring-2 ring-primary/60" : "hover:bg-app"} ${t.status === "available" && !can("restaurant.create") ? "cursor-default opacity-70" : "cursor-pointer"}`}
+                    onClick={() => setTableDetail(t)}
+                    className={`card p-4 text-left transition ${t.status === "occupied" ? "ring-2 ring-primary/60" : "hover:bg-app"} cursor-pointer`}
                     aria-label={`Table ${t.number} — ${t.status}`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -361,9 +373,7 @@ export default function RestaurantFloor() {
                     </div>
                     {badge ? (
                       <div className="mt-3 space-y-1.5">
-                        <span className={`badge ${RESERVATION_BADGE[badge.status]}`}>
-                          {badge.status === "pending" ? "Booking" : "Reserved"} {reservationLabel(badge)}
-                        </span>
+                        <ReservationBadge reservation={badge} onOpen={() => setReservationDetail(badge)} />
                       </div>
                     ) : t.status === "occupied" ? (
                       <div className="mt-3 flex items-center gap-2 text-sm text-muted">
@@ -394,6 +404,22 @@ export default function RestaurantFloor() {
           </div>
         ))
       )}
+
+      <RestaurantReservationDetail
+        reservation={reservationDetail}
+        canUpdate={can("restaurant.update")}
+        canDelete={false}
+        onClose={() => setReservationDetail(null)}
+      />
+
+      <RestaurantTableDetail
+        table={tableDetail}
+        reservations={tableDetail ? reservationsByTable.get(tableDetail.id) ?? [] : []}
+        canCreate={can("restaurant.create")}
+        onClose={() => setTableDetail(null)}
+        onOpenTicket={(tableId) => openTicket.mutate(tableId)}
+        onOpenReservation={(r) => setReservationDetail(r)}
+      />
     </div>
   );
 }

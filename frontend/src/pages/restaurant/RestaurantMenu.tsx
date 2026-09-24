@@ -6,6 +6,8 @@ import type { MenuItem, MenuModifierGroup, MenuSection, MenuSectionWithItems } f
 import EmptyState from "../../components/EmptyState";
 import Modal from "../../components/Modal";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import RestaurantMenuProductDetail from "../../components/restaurant/RestaurantMenuProductDetail";
+import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { errorMessage } from "../../utils/errors";
@@ -20,6 +22,7 @@ export default function RestaurantMenu() {
   const [editingSection, setEditingSection] = useState<MenuSection | null>(null);
   const [deletingSection, setDeletingSection] = useState<MenuSection | null>(null);
   const [modifierItem, setModifierItem] = useState<MenuItem | null>(null);
+  const [viewingProduct, setViewingProduct] = useState<MenuItem | null>(null);
 
   const invalidateMenu = () => {
     MENU_QUERIES.forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
@@ -136,7 +139,19 @@ export default function RestaurantMenu() {
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     {block.items.map((item) => (
-                      <div key={item.id} className="card p-4 flex flex-col gap-3">
+                      <div
+                        key={item.id}
+                        className="card p-4 flex flex-col gap-3 cursor-pointer hover:bg-app transition"
+                        onClick={() => setViewingProduct(item)}
+                      >
+                        <img
+                          src={item.image || item.image_url || getPlaceholder()}
+                          alt={item.display_name}
+                          loading="lazy"
+                          decoding="async"
+                          onError={onImageError}
+                          className="w-full h-24 rounded-lg object-cover bg-app"
+                        />
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-medium text-ink truncate">{item.display_name}</div>
@@ -144,7 +159,7 @@ export default function RestaurantMenu() {
                           </div>
                           {can("restaurant.update") && (
                             <button
-                              onClick={() => setModifierItem(item)}
+                              onClick={(e) => { e.stopPropagation(); setModifierItem(item); }}
                               className="btn-secondary text-xs px-2.5 py-1 shrink-0"
                               aria-label={`Edit modifiers for ${item.display_name}`}
                             >
@@ -158,10 +173,10 @@ export default function RestaurantMenu() {
                             <select
                               className="input text-xs py-1 flex-1"
                               value={item.section_id ?? ""}
-                              onChange={(e) => assignSection.mutate({
+                              onChange={(e) => { e.stopPropagation(); assignSection.mutate({
                                 productId: item.id,
                                 sectionId: e.target.value ? Number(e.target.value) : null,
-                              })}
+                              }); }}
                               aria-label={`Section for ${item.display_name}`}
                             >
                               <option value="">Uncategorized</option>
@@ -195,6 +210,11 @@ export default function RestaurantMenu() {
           onClose={() => { setModifierItem(null); invalidateMenu(); }}
         />
       )}
+
+      <RestaurantMenuProductDetail
+        menuItem={viewingProduct}
+        onClose={() => setViewingProduct(null)}
+      />
 
       <ConfirmDialog
         open={!!deletingSection}

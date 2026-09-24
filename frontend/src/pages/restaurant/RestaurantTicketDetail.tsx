@@ -14,6 +14,8 @@ import Modal from "../../components/Modal";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import PaymentMethodPicker from "../../components/PaymentMethodPicker";
 import BarcodeScanner from "../../components/BarcodeScanner";
+import RestaurantMenuProductDetail from "../../components/restaurant/RestaurantMenuProductDetail";
+import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { useRealtime } from "../../context/RealtimeContext";
@@ -49,6 +51,7 @@ export default function RestaurantTicketDetail() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [editTicket, setEditTicket] = useState(false);
   const [modifierProduct, setModifierProduct] = useState<MenuItem | null>(null);
+  const [menuProductDetail, setMenuProductDetail] = useState<MenuItem | null>(null);
   const [voidItem, setVoidItem] = useState<RestaurantTicketItem | null>(null);
   const [showSplit, setShowSplit] = useState(false);
   const { menu: menuBlocks = [] } = useMenuData(menuSearch);
@@ -287,14 +290,25 @@ export default function RestaurantTicketDetail() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {menuProducts.map((p) => (
-                  <button
+                  <div
                     key={p.id}
                     onClick={() => { setModifierProduct(p); }}
-                    className="card p-3 text-left hover:bg-app transition flex items-center gap-3"
+                    className="card p-3 text-left hover:bg-app transition flex items-center gap-3 cursor-pointer"
                   >
-                    {p.image_url && (
-                      <img src={p.image_url} alt="" className="w-12 h-12 rounded-lg object-cover bg-app shrink-0" loading="lazy" />
-                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMenuProductDetail(p); }}
+                      className="shrink-0 rounded-lg overflow-hidden bg-app focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`View ${p.display_name} details`}
+                    >
+                      <img
+                        src={p.image || p.image_url || getPlaceholder()}
+                        alt=""
+                        className="w-12 h-12 object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        onError={onImageError}
+                      />
+                    </button>
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-ink truncate">{p.display_name}</div>
                       <div className="text-xs text-muted mt-0.5">{currencyAmount(p.unit_price)}</div>
@@ -302,7 +316,7 @@ export default function RestaurantTicketDetail() {
                     <span className="p-2 rounded-lg bg-primary-soft text-primary-strong dark:text-primary shrink-0">
                       <Plus size={16} />
                     </span>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -470,6 +484,11 @@ export default function RestaurantTicketDetail() {
           }}
         />
       )}
+
+      <RestaurantMenuProductDetail
+        menuItem={menuProductDetail}
+        onClose={() => setMenuProductDetail(null)}
+      />
 
       <EditTicketModal
         open={editTicket}
