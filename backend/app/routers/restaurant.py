@@ -45,8 +45,10 @@ from app.schemas.restaurant import (
     TicketItemOut,
     TicketItemStatus,
     TicketItemUpdate,
+    TicketItemVoidCreate,
     TicketOut,
     TicketSettle,
+    TicketSplitCreate,
     TicketUpdate,
 )
 from app.services import inventory
@@ -208,7 +210,7 @@ def _table_occupied(db: Session, table_id: int, exclude_ticket_id: int | None = 
 
 
 def _recompute_totals(db: Session, ticket: RestaurantTicket, discount_amount: float | None = None) -> None:
-    subtotal = round(sum(float(i.unit_price) * i.quantity for i in ticket.items), 2)
+    subtotal = round(sum(float(i.unit_price) * i.quantity for i in ticket.items if i.status != "voided"), 2)
     discount = float(ticket.discount_amount) if discount_amount is None else float(discount_amount)
     if discount > subtotal:
         raise HTTPException(status_code=400, detail="Discount cannot exceed the ticket subtotal")
@@ -229,6 +231,8 @@ def _recompute_ticket_status(ticket: RestaurantTicket) -> None:
     any_ready = False
     any_preparing = False
     for item in ticket.items:
+        if item.status == "voided":
+            continue
         if item.status == "pending":
             all_served = False
             continue
@@ -320,6 +324,73 @@ def _send_pending_items(db: Session, ticket: RestaurantTicket, user_id: int) -> 
         item.sent_at = datetime.now(timezone.utc)
 
 
+def _restore_item_stock(db: Session, ticket: RestaurantTicket, item: RestaurantTicketItem, user_id: int, reason: str) -> None:
+    """Reverse the SALE movements belonging to a single voided item.
+
+    Rebuilds the item's blowdown rows and reverses matching outgoing sale
+    movements for the ticket so stock returns to the exact lots/locations the
+    kitchen consumed (BOM-aware). Voided movements are cut out of the ticket's
+    reference (full rows re-referenced, partial rows split) so a later cancel,
+    settle, or refund never restores the same stock twice.
+    """
+    ref = f"{reason} {ticket.ticket_number}"
+    rows = _blowdown_rows(db, item) if item.status in KITCHEN_ITEM_STATUSES else [(item.product_id, item.quantity)]
+    by_product: dict[int, int] = {}
+    for product_id, need in rows:
+        by_product[product_id] = by_product.get(product_id, 0) + need
+    movements = db.query(inventory.StockMovement).filter(
+        inventory.StockMovement.reference_type == "sale",
+        inventory.StockMovement.reference == ticket.ticket_number,
+        inventory.StockMovement.quantity_change < 0,
+    ).order_by(inventory.StockMovement.id).all()
+    if not movements:
+        # Legacy fallback: no movements recorded (pre-blowdown data). Restore
+        # the item's own product quantity so a void never loses stock.
+        inventory.post_journal_entry(
+            db, product_id=item.product_id, user_id=user_id,
+            quantity_change=item.quantity, movement_type=inventory.SALE_RETURN,
+            reference_type="sale_return", reference=ref,
+            notes=f"Ticket {reason.lower()} - stock restored",
+        )
+        return
+    for m in movements:
+        need = by_product.get(m.product_id)
+        if need is None or need <= 0:
+            continue
+        take = min(need, -m.quantity_change)
+        if -m.quantity_change == take:
+            m.reference = ref
+        else:
+            # Partial row split: keep the ticket's share, move the voided share
+            # to the void reference so neither cancel nor settle double-counts.
+            m.quantity_change = m.quantity_change + take
+            db.add(inventory.StockMovement(
+                product_id=m.product_id, user_id=user_id,
+                quantity_change=-take, movement_type=inventory.SALE,
+                from_location_id=m.from_location_id, to_location_id=m.to_location_id,
+                lot_id=m.lot_id, lpn_id=m.lpn_id, serial_id=m.serial_id,
+                reference_type="sale", reference=ref,
+                notes=f"Ticket {reason.lower()} - voided portion",
+            ))
+        inventory.post_journal_entry(
+            db, product_id=m.product_id, user_id=user_id,
+            quantity_change=take, movement_type=inventory.SALE_RETURN,
+            from_location_id=m.from_location_id,
+            lot_id=m.lot_id, lpn_id=m.lpn_id,
+            reference_type="sale_return", reference=ref,
+            notes=f"Ticket {reason.lower()} - stock restored",
+        )
+        by_product[m.product_id] = need - take
+    for product_id, remaining in by_product.items():
+        if remaining > 0:
+            inventory.post_journal_entry(
+                db, product_id=product_id, user_id=user_id,
+                quantity_change=remaining, movement_type=inventory.SALE_RETURN,
+                reference_type="sale_return", reference=ref,
+                notes=f"Ticket {reason.lower()} - stock restored",
+            )
+
+
 def _restore_ticket_stock(db: Session, ticket: RestaurantTicket, user_id: int, reason: str) -> None:
     """Reverse SALE movements posted for a cancelled ticket (sale not yet created).
 
@@ -336,7 +407,7 @@ def _restore_ticket_stock(db: Session, ticket: RestaurantTicket, user_id: int, r
         # Legacy fallback: no movements recorded (pre-blowdown data). Restore
         # each sent item's own product quantity so a cancel never loses stock.
         for item in ticket.items:
-            if item.status == "pending":
+            if item.status == "pending" or item.status == "voided":
                 continue
             inventory.post_journal_entry(
                 db, product_id=item.product_id, user_id=user_id,
@@ -1219,6 +1290,99 @@ def remove_ticket_item(ticket_id: int, item_id: int, db: Session = Depends(get_d
     return ticket
 
 
+@router.post("/tickets/{ticket_id}/items/{item_id}/void", response_model=TicketOut)
+def void_ticket_item(ticket_id: int, item_id: int, data: TicketItemVoidCreate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
+    ticket = load_ticket(db, ticket_id)
+    if ticket.status in CLOSED_STATUSES or ticket.status == "paying":
+        raise HTTPException(status_code=400, detail=f"Cannot void items on a ticket with status '{ticket.status}'")
+    item = next((i for i in ticket.items if i.id == item_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Ticket item not found")
+    if item.status == "voided":
+        raise HTTPException(status_code=400, detail="Item is already voided")
+    reason = (data.reason or "").strip()
+    was_sent = item.status in KITCHEN_ITEM_STATUSES
+    if was_sent:
+        _restore_item_stock(db, ticket, item, user.id, reason="Void")
+    item.status = "voided"
+    item.voided_by = user.id
+    item.voided_at = datetime.now(timezone.utc)
+    item.void_reason = reason or None
+    _recompute_totals(db, ticket)
+    _recompute_ticket_status(ticket)
+    db.commit()
+    ticket = load_ticket(db, ticket.id)
+    log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
+                 f"Voided '{item.product_name}' from {ticket.ticket_number}"
+                 + (f" ({item.quantity}) - {reason}" if reason else ""))
+    db.commit()
+    broadcast_change("restaurant_ticket", "updated")
+    if was_sent:
+        broadcast_change("product", "updated")
+        broadcast_change("stock_movement", "created")
+    return ticket
+
+
+@router.post("/tickets/{ticket_id}/split", response_model=TicketOut, status_code=201)
+def split_ticket(ticket_id: int, data: TicketSplitCreate, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
+    ticket = load_ticket(db, ticket_id)
+    if ticket.status in CLOSED_STATUSES or ticket.status == "paying":
+        raise HTTPException(status_code=400, detail=f"Cannot split a ticket with status '{ticket.status}'")
+    if not data.item_ids:
+        raise HTTPException(status_code=400, detail="Select at least one item to move to the new bill")
+    allowed = {i.id for i in ticket.items if i.status != "voided"}
+    moving = set(data.item_ids)
+    unknown = moving - allowed
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Item(s) {sorted(unknown)} are not on this ticket")
+    if len(moving) >= len(allowed):
+        raise HTTPException(status_code=400, detail="Keep at least one item on the original bill")
+    if data.table_id is not None and data.table_id != ticket.table_id and _table_occupied(db, data.table_id):
+        raise HTTPException(status_code=400, detail="Target table already has an open ticket")
+
+    table_id = data.table_id if data.table_id is not None else ticket.table_id
+    guest_count = data.guest_count if data.guest_count is not None else ticket.guest_count
+    customer_name = (data.customer_name or "").strip() or ticket.customer_name
+    parent = ticket.split_parent  # if this ticket is already a split
+    root = ticket if ticket.split_parent_id is None else parent
+    split_group = root.split_group or f"SPL-{root.id}"
+    root.split_group = split_group
+
+    child = RestaurantTicket(
+        ticket_number=generate_ticket_number(db),
+        table_id=table_id,
+        user_id=user.id,
+        status="open",
+        guest_count=guest_count,
+        customer_name=customer_name,
+        notes=(data.notes or "").strip() or f"Split of {ticket.ticket_number}",
+        split_group=split_group,
+        split_parent_id=root.id,
+    )
+    db.add(child)
+    db.flush()
+    for item in ticket.items:
+        if item.id in moving:
+            child.items.append(item)
+    parent_subtotal = round(sum(float(i.unit_price) * i.quantity for i in ticket.items if i.id not in moving and i.status != "voided"), 2)
+    if float(ticket.discount_amount) > parent_subtotal:
+        ticket.discount_amount = parent_subtotal
+    _recompute_totals(db, ticket)
+    _recompute_ticket_status(ticket)
+    _recompute_totals(db, child)
+    _recompute_ticket_status(child)
+    db.commit()
+    ticket = load_ticket(db, ticket.id)
+    child = load_ticket(db, child.id)
+    log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
+                 f"Split {ticket.ticket_number}: moved {len(moving)} item(s) to {child.ticket_number}")
+    log_activity(db, user.id, user.username, "create", "restaurant_ticket", child.id,
+                 f"Created {child.ticket_number} as split of {ticket.ticket_number}")
+    db.commit()
+    broadcast_change("restaurant_ticket", "updated")
+    return child
+
+
 @router.post("/tickets/{ticket_id}/send", response_model=TicketOut)
 def send_ticket_to_kitchen(ticket_id: int, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.create"))):
     ticket = load_ticket(db, ticket_id)
@@ -1299,6 +1463,10 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
     # Every remaining unsent item joins the sale (stock consumed at settlement).
     _send_pending_items(db, ticket, user.id)
 
+    billable = [i for i in ticket.items if i.status != "voided"]
+    if not billable:
+        raise HTTPException(status_code=400, detail="Cannot settle a ticket with only voided items")
+
     discount = float(ticket.discount_amount) if data.discount_amount is None else float(data.discount_amount)
     _recompute_totals(db, ticket, discount_amount=discount)
 
@@ -1340,6 +1508,8 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
     db.flush()
     completed = None
     for item in ticket.items:
+        if item.status == "voided":
+            continue
         db.add(SaleItem(sale_id=sale.id, product_id=item.product_id, quantity=item.quantity, unit_price=item.unit_price))
     _retag_ticket_movements(db, ticket, sale.invoice_number)
     ticket.sale_id = sale.id
@@ -1445,6 +1615,8 @@ def ticket_bill_pdf(ticket_id: int, db: Session = Depends(get_db)):
     col_widths = [190.0, 40.0, 80.0, 90.0]
     rows = []
     for item in ticket.items:
+        if item.status == "voided":
+            continue
         name = item.product_name
         detail = _item_modifier_line(item)
         if detail:
@@ -1568,7 +1740,7 @@ def kitchen_board(db: Session = Depends(get_db)):
         out = KitchenTicketOut(
             id=t.id, ticket_number=t.ticket_number, table_number=t.table_number,
             guest_count=t.guest_count, status=t.status, notes=t.notes,
-            earliest_sent_at=earliest, items=[TicketItemOut.model_validate(i) for i in t.items],
+            earliest_sent_at=earliest, items=[TicketItemOut.model_validate(i) for i in t.items if i.status != "voided"],
         )
         out.stage = stage
         outs.append(out)
@@ -1580,9 +1752,22 @@ def kitchen_board(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 def _guest_ticket_base(db: Session, table_id: int | None) -> RestaurantTicket | None:
-    """Return the live (usable) ticket for a table, or None."""
+    """Return the live (usable) ticket for a table, or None.
+
+    With split bills a table may hold several open tickets; the root ticket
+    (split_parent_id IS NULL) remains the canonical bill for guest (QR)
+    ordering so new orders keep landing on the master bill, not a slice.
+    """
     if table_id is None:
         return None
+    root = db.query(RestaurantTicket).filter(
+        RestaurantTicket.table_id == table_id,
+        RestaurantTicket.split_parent_id.is_(None),
+        ~RestaurantTicket.status.in_(CLOSED_STATUSES),
+        RestaurantTicket.status != "paying",
+    ).order_by(RestaurantTicket.id.desc()).first()
+    if root is not None:
+        return root
     return db.query(RestaurantTicket).filter(
         RestaurantTicket.table_id == table_id,
         ~RestaurantTicket.status.in_(CLOSED_STATUSES),

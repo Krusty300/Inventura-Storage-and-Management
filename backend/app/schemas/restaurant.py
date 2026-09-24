@@ -59,6 +59,18 @@ class TicketItemStatus(BaseModel):
     status: str
 
 
+class TicketItemVoidCreate(BaseModel):
+    reason: str = Field(default="", max_length=200)
+
+
+class TicketSplitCreate(BaseModel):
+    table_id: Optional[int] = None
+    guest_count: Optional[int] = Field(default=None, ge=1, le=99)
+    customer_name: str = ""
+    item_ids: list[int] = Field(min_length=1)
+    notes: str = ""
+
+
 class TicketItemOut(BaseModel):
     id: int
     product_id: int
@@ -73,6 +85,8 @@ class TicketItemOut(BaseModel):
     product_image: str = ""
     sku: str = ""
     line_total: float = 0.0
+    voided_at: Optional[datetime] = None
+    void_reason: Optional[str] = None
 
     @field_validator("modifiers", mode="before")
     @classmethod
@@ -123,6 +137,9 @@ class TicketOut(BaseModel):
     tip_amount: float = 0.0
     sale_id: Optional[int] = None
     notes: str
+    split_group: Optional[str] = None
+    split_parent_id: Optional[int] = None
+    split_parent_number: str = ""
     opened_at: datetime
     settled_at: Optional[datetime] = None
     created_at: datetime

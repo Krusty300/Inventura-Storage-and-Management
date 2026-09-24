@@ -79,6 +79,8 @@ class RestaurantTicket(Base):
     tip_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     sale_id: Mapped[int | None] = mapped_column(ForeignKey("sales.id"), nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
+    split_group: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    split_parent_id: Mapped[int | None] = mapped_column(ForeignKey("restaurant_tickets.id"), nullable=True, index=True)
     opened_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
     settled_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
@@ -87,6 +89,7 @@ class RestaurantTicket(Base):
     table = relationship("RestaurantTable", back_populates="tickets")
     user = relationship("User")
     sale = relationship("Sale")
+    split_parent = relationship("RestaurantTicket", remote_side=[id], foreign_keys=[split_parent_id])
     items = relationship(
         "RestaurantTicketItem",
         back_populates="ticket",
@@ -103,8 +106,12 @@ class RestaurantTicket(Base):
         return self.user.username if self.user else ""
 
     @property
+    def split_parent_number(self) -> str:
+        return self.split_parent.ticket_number if self.split_parent else ""
+
+    @property
     def item_count(self) -> int:
-        return sum(i.quantity for i in self.items)
+        return sum(i.quantity for i in self.items if i.status != "voided")
 
 
 class RestaurantTicketItem(Base):
@@ -120,6 +127,9 @@ class RestaurantTicketItem(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    voided_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    voided_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now())
 
     ticket = relationship("RestaurantTicket", back_populates="items")
