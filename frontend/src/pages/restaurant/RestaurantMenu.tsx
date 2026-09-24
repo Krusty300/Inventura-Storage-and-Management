@@ -10,6 +10,7 @@ import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
+import { useSettings } from "../../hooks/useSettings";
 import { errorMessage } from "../../utils/errors";
 
 const MENU_QUERIES = ["restaurant-menu", "restaurant-menu-sections", "menu-products", "products", "restaurant-ticket"];
@@ -18,6 +19,9 @@ export default function RestaurantMenu() {
   const { can } = useAuth();
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  const { data: settings } = useSettings();
+  const symbol = settings?.currency_symbol ?? "$";
+  const currencyAmount = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const [showSectionForm, setShowSectionForm] = useState(false);
   const [editingSection, setEditingSection] = useState<MenuSection | null>(null);
   const [deletingSection, setDeletingSection] = useState<MenuSection | null>(null);
@@ -155,7 +159,7 @@ export default function RestaurantMenu() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-medium text-ink truncate">{item.display_name}</div>
-                            <div className="text-xs text-muted mt-0.5">{item.sku} · ${item.unit_price.toFixed(2)}</div>
+                            <div className="text-xs text-muted mt-0.5">{item.sku} · {currencyAmount(item.unit_price)}</div>
                           </div>
                           {can("restaurant.update") && (
                             <button
@@ -168,7 +172,10 @@ export default function RestaurantMenu() {
                           )}
                         </div>
                         {can("restaurant.update") && (
-                          <label className="flex items-center gap-2 text-xs text-muted">
+                          <label
+                            className="flex items-center gap-2 text-xs text-muted"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             Section
                             <select
                               className="input text-xs py-1 flex-1"
@@ -300,6 +307,9 @@ interface OptionRow {
 function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () => void }) {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  const { data: settings } = useSettings();
+  const symbol = settings?.currency_symbol ?? "$";
+  const currencyAmount = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const [saving, setSaving] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
   const [form, setForm] = useState<{ name: string; min_select: number; max_select: number; is_required: boolean; options: OptionRow[] }>({
@@ -437,7 +447,7 @@ function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () =
                 {group.options.map((o) => (
                   <li key={o.id} className="flex justify-between text-sm text-muted">
                     <span>{o.name}{!o.is_active && " (hidden)"}</span>
-                    <span className="tabular-nums">{o.price_delta >= 0 ? "+" : "-"}${Math.abs(o.price_delta).toFixed(2)}</span>
+                    <span className="tabular-nums">{o.price_delta >= 0 ? "+" : "-"}{currencyAmount(Math.abs(o.price_delta))}</span>
                   </li>
                 ))}
               </ul>

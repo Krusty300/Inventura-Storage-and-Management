@@ -7,6 +7,7 @@ import { formatCurrency } from "../../utils/currency";
 import { errorMessage } from "../../utils/errors";
 import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
+import { useSettings } from "../../hooks/useSettings";
 import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import type { MenuSectionWithItems, MenuItem, MenuModifierGroup, RestaurantTable, RestaurantTicketItem } from "../../types";
 
@@ -45,6 +46,8 @@ function ModifierSheet({ product, onClose, onAdd }: {
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
+  const { data: settings } = useSettings();
+  const symbol = settings?.currency_symbol ?? "$";
 
   const { data: groups, isLoading } = useQuery({
     queryKey: ["public-modifiers", product.id],
@@ -63,6 +66,7 @@ function ModifierSheet({ product, onClose, onAdd }: {
     const g = groupList.find((x) => x.id === gid);
     if (!g) return;
     const cur = chosen(gid);
+    setError("");
     if (cur.includes(oid)) {
       setSelections({ ...selections, [gid]: cur.filter((x) => x !== oid) });
     } else if (cur.length >= g.max_select) {
@@ -106,12 +110,12 @@ function ModifierSheet({ product, onClose, onAdd }: {
       breadcrumb={`Add ${product.display_name}`}
       footer={
         <button onClick={handleAdd} className="btn-primary w-full">
-          Add {quantity} × {formatCurrency(unitPrice * quantity)}
+          Add {quantity} × {formatCurrency(unitPrice * quantity, symbol)}
         </button>
       }
     >
       <div className="space-y-5">
-        <div className="text-sm text-muted">Each · {formatCurrency(unitPrice)}</div>
+        <div className="text-sm text-muted">Each · {formatCurrency(unitPrice, symbol)}</div>
 
         {isLoading ? (
           <div className="card p-4 animate-pulse h-16" />
@@ -182,6 +186,8 @@ function ModifierSheet({ product, onClose, onAdd }: {
 export default function GuestOrder() {
   const { tableId } = useParams();
   const tid = tableId ? Number(tableId) : null;
+  const { data: settings } = useSettings();
+  const symbol = settings?.currency_symbol ?? "$";
   const [cart, setCart] = useState<CartLine[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(CART_KEY) ?? "[]") as CartLine[];
@@ -249,10 +255,9 @@ export default function GuestOrder() {
   });
 
   const setLineQty = (key: string, delta: number) => {
-    setCart((prev) => prev.flatMap((l) => {
-      if (l.key !== key) return [l];
-      const next = l.quantity + delta;
-      return next <= 0 || next > 99 ? [] : [{ ...l, quantity: next }];
+    setCart((prev) => prev.map((l) => {
+      if (l.key !== key) return l;
+      return { ...l, quantity: Math.min(99, Math.max(1, l.quantity + delta)) };
     }));
   };
 
@@ -280,7 +285,7 @@ export default function GuestOrder() {
               </div>
               <div className="rounded-lg bg-app px-2 py-2">
                 <p className="text-xs text-muted">Total</p>
-                <p className="font-bold text-ink">{formatCurrency(order.total_amount)}</p>
+                <p className="font-bold text-ink">{formatCurrency(order.total_amount, symbol)}</p>
               </div>
             </div>
             <div className="mt-4 flex items-center justify-center gap-1.5 text-sm text-muted">
@@ -312,7 +317,7 @@ export default function GuestOrder() {
             </ul>
             <div className="border-t border-border mt-4 pt-3 flex justify-between text-sm">
               <span className="text-muted">Total (incl. tax)</span>
-              <span className="font-bold text-ink">{formatCurrency(order.total_amount)}</span>
+              <span className="font-bold text-ink">{formatCurrency(order.total_amount, symbol)}</span>
             </div>
           </div>
 
@@ -358,7 +363,7 @@ export default function GuestOrder() {
                   >
                     <div className="h-16 w-16 shrink-0 rounded-lg bg-subtle-strong overflow-hidden">
                       <img
-                        src={item.image_url || item.image ? entityImageUrl(item.image_url || item.image) : getPlaceholder()}
+                        src={item.image || item.image_url ? entityImageUrl(item.image || item.image_url) : getPlaceholder()}
                         alt={item.display_name}
                         onError={onImageError}
                         className="h-full w-full object-cover"
@@ -367,7 +372,7 @@ export default function GuestOrder() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-ink leading-snug">{item.display_name}</p>
                       {item.description && <p className="text-xs text-muted mt-0.5 line-clamp-2">{item.description}</p>}
-                      <p className="text-sm font-bold text-primary-strong dark:text-primary mt-1">{formatCurrency(item.unit_price)}</p>
+                      <p className="text-sm font-bold text-primary-strong dark:text-primary mt-1">{formatCurrency(item.unit_price, symbol)}</p>
                     </div>
                   </button>
                 ))}
@@ -400,7 +405,7 @@ export default function GuestOrder() {
                         <p className="text-xs text-muted mt-0.5 line-clamp-1">{l.modifierNames.join(", ")}</p>
                       )}
                       {l.notes && <p className="text-xs text-faint mt-0.5 line-clamp-1">Note: {l.notes}</p>}
-                      <p className="text-sm font-bold text-ink mt-0.5">{formatCurrency((l.product.unit_price + l.extras) * l.quantity)}</p>
+                      <p className="text-sm font-bold text-ink mt-0.5">{formatCurrency((l.product.unit_price + l.extras) * l.quantity, symbol)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -433,7 +438,7 @@ export default function GuestOrder() {
 
           <div className="flex justify-between items-center mt-4 border-t border-border pt-3">
             <span className="text-sm text-muted">Subtotal</span>
-            <span className="font-bold text-ink">{formatCurrency(subtotal)}</span>
+            <span className="font-bold text-ink">{formatCurrency(subtotal, symbol)}</span>
           </div>
 
           {mutation.isError && (
@@ -453,7 +458,7 @@ export default function GuestOrder() {
                 Placing order…
               </>
             ) : (
-              `Send order · ${formatCurrency(subtotal)}`
+              `Send order · ${formatCurrency(subtotal, symbol)}`
             )}
           </button>
           {!canOrder && !mutation.isPending && (

@@ -76,6 +76,7 @@ export default function RestaurantReservations() {
       addToast("Reservation updated", "success");
       queryClient.invalidateQueries({ queryKey: ["restaurant-reservations"] });
       queryClient.invalidateQueries({ queryKey: ["restaurant-floor"] });
+      queryClient.invalidateQueries({ queryKey: ["restaurant-floor-reservations"] });
     },
     onError: (err: unknown) => addToast(errorMessage(err, "Cannot update reservation"), "error"),
   });
@@ -86,6 +87,7 @@ export default function RestaurantReservations() {
       addToast("Reservation deleted", "success");
       queryClient.invalidateQueries({ queryKey: ["restaurant-reservations"] });
       queryClient.invalidateQueries({ queryKey: ["restaurant-floor"] });
+      queryClient.invalidateQueries({ queryKey: ["restaurant-floor-reservations"] });
     },
     onError: (err: unknown) => addToast(errorMessage(err, "Cannot delete reservation"), "error"),
   });
@@ -102,7 +104,8 @@ export default function RestaurantReservations() {
 
   const printDaySheet = async () => {
     try {
-      const { data } = await api.get("/restaurant/reservations/sheet", { params: { date }, responseType: "blob" });
+      const sheetDate = date || new Date().toISOString().slice(0, 10);
+      const { data } = await api.get("/restaurant/reservations/sheet", { params: { date: sheetDate }, responseType: "blob" });
       printBlob(data);
     } catch (err: unknown) {
       addToast(errorMessage(err, "Cannot print reservations sheet"), "error");

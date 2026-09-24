@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { UtensilsCrossed, Search } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { PaginatedResponse, RestaurantTicket } from "../../types";
 import Table from "../../components/Table";
@@ -13,6 +13,7 @@ import { useDebounce } from "../../hooks/useDebounce";
 import { usePageSize } from "../../hooks/usePageSize";
 import { formatDateTime } from "../../utils/date";
 import { useSettings } from "../../hooks/useSettings";
+import { useRealtime } from "../../context/RealtimeContext";
 import { useAuth } from "../../context/AuthContext";
 import { errorMessage } from "../../utils/errors";
 
@@ -45,9 +46,20 @@ export default function RestaurantTickets() {
   const { pageSize, setPageSize } = usePageSize();
   const { can } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { subscribe } = useRealtime();
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
   const debouncedSearch = useDebounce(search, 300);
+
+  useEffect(() => {
+    const unsub = subscribe((msg) => {
+      if (msg.entity === "restaurant_ticket") {
+        queryClient.invalidateQueries({ queryKey: ["restaurant-tickets"] });
+      }
+    });
+    return unsub;
+  }, [subscribe, queryClient]);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["restaurant-tickets", debouncedSearch, status, page, pageSize],

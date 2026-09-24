@@ -120,8 +120,16 @@ export default function RestaurantFloor() {
   });
 
   const moveMutation = useMutation({
-    mutationFn: ({ id, pos_x, pos_y }: { id: number; pos_x: number; pos_y: number }) =>
-      api.put(`/restaurant/tables/${id}`, { pos_x, pos_y }),
+    mutationFn: async ({ id, pos_x, pos_y }: { id: number; pos_x: number; pos_y: number }) => {
+      await api.put(`/restaurant/tables/${id}`, { pos_x, pos_y });
+      return { id, pos_x, pos_y };
+    },
+    onSuccess: ({ id, pos_x, pos_y }) => {
+      queryClient.setQueryData<RestaurantTable[]>(["restaurant-floor"], (old) =>
+        old?.map((t) => (t.id === id ? { ...t, pos_x, pos_y } : t)) ?? old,
+      );
+      queryClient.invalidateQueries({ queryKey: ["restaurant-floor"] });
+    },
     onError: (err: unknown) => addToast(errorMessage(err, "Cannot save table position"), "error"),
   });
 
@@ -195,8 +203,9 @@ export default function RestaurantFloor() {
     if (moved && pos) moveMutation.mutate({ id: d.id, pos_x: pos.x, pos_y: pos.y });
   };
 
-  const available = (tables ?? []).filter((t) => t.status === "available").length;
-  const occupied = (tables ?? []).filter((t) => t.status === "occupied").length;
+  const activeTables = (tables ?? []).filter((t) => t.is_active);
+  const available = activeTables.filter((t) => t.status === "available").length;
+  const occupied = activeTables.filter((t) => t.status === "occupied").length;
 
   return (
     <div className="space-y-6">
@@ -418,7 +427,7 @@ export default function RestaurantFloor() {
         canCreate={can("restaurant.create")}
         onClose={() => setTableDetail(null)}
         onOpenTicket={(tableId) => openTicket.mutate(tableId)}
-        onOpenReservation={(r) => setReservationDetail(r)}
+        onOpenReservation={(r) => { setTableDetail(null); setReservationDetail(r); }}
       />
     </div>
   );

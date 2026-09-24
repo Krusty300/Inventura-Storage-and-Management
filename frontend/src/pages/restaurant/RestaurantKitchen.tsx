@@ -175,7 +175,7 @@ export default function RestaurantKitchen() {
           {STAGES.map((stage) => {
             const tickets = byStage[stage.key] ?? [];
             return (
-              <section key={stage.key} className={`card overflow-hidden p-0 border-t-4 ${stage.tone}`}>
+              <section key={stage.key} className={`card rounded-none overflow-hidden p-0 border-t-4 ${stage.tone}`}>
                 <header className="px-4 py-3 bg-app flex items-center justify-between">
                   <h2 className="font-semibold text-ink">{stage.label}</h2>
                   <span className="badge badge-neutral">{tickets.length}</span>
@@ -187,7 +187,7 @@ export default function RestaurantKitchen() {
                     tickets.map((t) => {
                       const readyCount = t.items.filter((i) => i.status === "ready").length;
                       return (
-                        <article key={t.id} className="card p-4 space-y-3 border border-border">
+                        <article key={t.id} className="card rounded-none p-4 space-y-3 border border-border">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <button onClick={() => navigate(`/restaurant/tickets/${t.id}`)} className="font-bold text-ink hover:text-primary">

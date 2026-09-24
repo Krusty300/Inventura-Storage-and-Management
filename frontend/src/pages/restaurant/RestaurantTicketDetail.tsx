@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   UtensilsCrossed, Search, Plus, Minus, Trash2, Send, ChefHat, CheckCheck,
-  Banknote, Printer, X, Pencil, StickyNote, Ban, Scissors,
+  StickyNote, Ban, Scissors,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
@@ -238,28 +238,28 @@ export default function RestaurantTicketDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/bill`)} className="btn-secondary flex items-center gap-1.5" aria-label={`Print bill for ${ticket.ticket_number}`}>
-            <Printer size={16} /> Bill
+          <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/bill`)} className="btn-secondary" aria-label={`Print bill for ${ticket.ticket_number}`}>
+            Bill
           </button>
-          <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/kitchen`)} className="btn-secondary flex items-center gap-1.5" aria-label={`Print kitchen ticket for ${ticket.ticket_number}`}>
-            <Printer size={16} /> Kitchen
+          <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/kitchen`)} className="btn-secondary" aria-label={`Print kitchen ticket for ${ticket.ticket_number}`}>
+            Kitchen
           </button>
           {canEdit && can("restaurant.update") && (
             <>
-              <button onClick={() => setShowSplit(true)} className="btn-secondary flex items-center gap-1.5" aria-label={`Split ${ticket.ticket_number}`}>
-                <Scissors size={16} /> Split
+              <button onClick={() => setShowSplit(true)} className="btn-secondary" aria-label={`Split ${ticket.ticket_number}`}>
+                Split
               </button>
               <button onClick={() => setEditTicket(true)} className="btn-secondary" aria-label={`Edit ${ticket.ticket_number}`}>
-                <Pencil size={16} /> Edit
+                Edit
               </button>
               <button onClick={() => { setConfirmCancel(true); }} className="btn-secondary" aria-label={`Cancel ${ticket.ticket_number}`}>
-                <X size={16} /> Cancel
+                Cancel
               </button>
             </>
           )}
           {canEdit && can("restaurant.settle") && (
-            <button onClick={() => setShowSettle(true)} className="btn-primary flex items-center gap-1.5">
-              <Banknote size={16} /> Settle · {currencyAmount(ticket.total_amount)}
+            <button onClick={() => setShowSettle(true)} className="btn-primary">
+              Settle · {currencyAmount(ticket.total_amount)}
             </button>
           )}
         </div>
@@ -391,9 +391,9 @@ export default function RestaurantTicketDetail() {
         <div className="card p-5">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <h2 className="font-semibold text-ink">Kitchen</h2>
-            {ticket.items.length > 0 && ticket.items.every((i) => i.status === "served") && can("restaurant.update") && (
+            {ticket.items.some((i) => i.status === "ready") && can("restaurant.update") && (
               <button onClick={() => serve.mutate()} disabled={serve.isPending} className="btn-secondary flex items-center gap-1.5">
-                <CheckCheck size={16} /> Mark Served
+                <CheckCheck size={16} /> {serve.isPending ? "Marking served…" : "Mark Served"}
               </button>
             )}
           </div>
@@ -447,6 +447,14 @@ export default function RestaurantTicketDetail() {
         </div>
       )}
 
+      {ticket.status === "cancelled" && (
+        <div className="card p-5 text-center">
+          <Ban size={32} className="mx-auto mb-3 text-red-600 dark:text-red-400" />
+          <h2 className="text-lg font-bold text-ink">Ticket cancelled</h2>
+          <p className="text-sm text-muted mt-1">This ticket was cancelled and can no longer be modified or served.</p>
+        </div>
+      )}
+
       <VoidItemModal
         open={voidItem !== null}
         item={voidItem}
@@ -487,8 +495,10 @@ export default function RestaurantTicketDetail() {
         <ModifierModal
           product={modifierProduct}
           symbol={symbol}
+          isPending={addItem.isPending}
           onClose={() => setModifierProduct(null)}
           onAdd={(productId, quantity, modifiers, notes) => {
+            if (addItem.isPending) return;
             addItem.mutate({ productId, quantity, modifiers, notes });
             setModifierProduct(null);
             addToast("Item added to order", "success");
@@ -547,9 +557,10 @@ function useMenuData(search: string) {
   return { menu: filtered };
 }
 
-function ModifierModal({ product, symbol, onClose, onAdd }: {
+function ModifierModal({ product, symbol, isPending, onClose, onAdd }: {
   product: MenuItem;
   symbol: string;
+  isPending: boolean;
   onClose: () => void;
   onAdd: (productId: number, quantity: number, modifiers: { group_id: number; option_id: number }[], notes?: string) => void;
 }) {
@@ -608,8 +619,8 @@ function ModifierModal({ product, symbol, onClose, onAdd }: {
       footer={
         <>
           <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleAdd} className="btn-primary flex items-center gap-1.5">
-            <Plus size={16} /> Add to Order
+          <button onClick={handleAdd} disabled={isPending} className="btn-primary flex items-center gap-1.5">
+            <Plus size={16} /> {isPending ? "Adding…" : "Add to Order"}
           </button>
         </>
       }
