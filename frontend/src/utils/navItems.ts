@@ -128,6 +128,7 @@ export const navGroups: NavGroup[] = [
       { to: "/restaurant/tickets", icon: UtensilsCrossed, label: "Tickets", perm: "restaurant.view" },
       { to: "/restaurant/kitchen", icon: ChefHat, label: "Kitchen", perm: "restaurant.kitchen" },
       { to: "/restaurant/menu", icon: BookOpen, label: "Menu", perm: "restaurant.view" },
+      { to: "/restaurant/recipes", icon: ChefHat, label: "Recipes", perm: "restaurant.view" },
       { to: "/restaurant/tables", icon: Store, label: "Tables", perm: "restaurant.view" },
     ],
   },

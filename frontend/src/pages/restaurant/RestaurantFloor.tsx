@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutGrid, RefreshCw, Plus, CookingPot, Move, MapPin } from "lucide-react";
+import { LayoutGrid, RefreshCw, Plus, CookingPot, Move, MapPin, QrCode } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { RestaurantTable, RestaurantReservation } from "../../types";
 import EmptyState from "../../components/EmptyState";
+import { printBlob } from "../../utils/download";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { useRealtime } from "../../context/RealtimeContext";
@@ -212,6 +213,20 @@ export default function RestaurantFloor() {
           )}
           <button onClick={() => queryClient.invalidateQueries({ queryKey: ["restaurant-floor"] })} className="btn-secondary" aria-label="Refresh floor map">
             <RefreshCw size={16} />
+          </button>
+          <button
+            onClick={() => {
+              const base = window.location.origin;
+              void api
+                .get("/restaurant/qr-sheet", { params: { base }, responseType: "blob" })
+                .then(({ data }) => printBlob(data))
+                .catch((err: unknown) => addToast(errorMessage(err, "Cannot generate QR codes"), "error"));
+            }}
+            className="btn-secondary flex items-center gap-1.5"
+            aria-label="Print table QR codes"
+          >
+            <QrCode size={16} />
+            QR Codes
           </button>
           {can("restaurant.create") && (
             <button

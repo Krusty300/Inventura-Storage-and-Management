@@ -695,6 +695,44 @@ export interface PaymentReconciliation {
   pending_refunds: number;
 }
 
+export interface RestaurantSummary {
+  total_revenue: number;
+  total_tips: number;
+  ticket_count: number;
+  average_ticket: number;
+  total_covers: number;
+  average_covers_per_ticket: number;
+  by_payment_method: { method: string; count: number; total: number; tips: number }[];
+  by_hour_of_day: { hour: number; count: number; total: number }[];
+  top_tables: { table: string; count: number; total: number; covers: number }[];
+  top_items: { product_id: number; name: string; quantity_sold: number; revenue: number }[];
+  reservations_total: number;
+  reservations_completed: number;
+}
+
+export interface RestaurantDailyTrends {
+  start_date: string;
+  end_date: string;
+  daily: { date: string; ticket_count: number; revenue: number; tips: number; covers: number }[];
+  totals: { ticket_count: number; revenue: number; tips: number; covers: number };
+  top_tables: { table: string; count: number; total: number }[];
+}
+
+export interface RestaurantRecipeRow {
+  product_id: number;
+  name: string;
+  sku: string;
+  price: number;
+  has_recipe: boolean;
+  recipe_id: number | null;
+  recipe_name: string;
+  recipe_cost: number;
+  margin: number;
+  margin_pct: number;
+  component_count: number;
+  components: { id: number; product_id: number; product_name: string; quantity: number }[];
+}
+
 export interface Location {
   id: number;
   code: string | null;

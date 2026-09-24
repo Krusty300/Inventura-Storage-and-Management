@@ -16,6 +16,7 @@ const StockoutTab = lazy(() => import("./reports/StockoutTab"));
 const CustomersTab = lazy(() => import("./reports/CustomersTab"));
 const SuppliersTab = lazy(() => import("./reports/SuppliersTab"));
 const ManufacturingCostTab = lazy(() => import("./reports/ManufacturingCostTab"));
+const RestaurantTab = lazy(() => import("./reports/RestaurantTab"));
 
 const tabs = [
   { key: "valuation", label: "Valuation" },
@@ -24,6 +25,7 @@ const tabs = [
   { key: "profit", label: "Profit" },
   { key: "orders", label: "Orders" },
   { key: "sales", label: "Sales" },
+  { key: "restaurant", label: "Restaurant" },
   { key: "aging", label: "Aging" },
   { key: "stockout", label: "Stockout Risk" },
   { key: "customers", label: "Top Customers" },
@@ -87,6 +89,7 @@ export default function Reports() {
         {activeTab === "stockout" && <StockoutTab />}
         {activeTab === "customers" && <CustomersTab symbol={currencySymbol} />}
         {activeTab === "suppliers" && <SuppliersTab symbol={currencySymbol} />}
+        {activeTab === "restaurant" && <RestaurantTab symbol={currencySymbol} />}
         {activeTab === "manufacturing-cost" && <ManufacturingCostTab symbol={currencySymbol} />}
       </Suspense>
     </div>

@@ -59,6 +59,8 @@ const RestaurantKitchen = lazy(() => import("./pages/restaurant/RestaurantKitche
 const RestaurantMenu = lazy(() => import("./pages/restaurant/RestaurantMenu"));
 const RestaurantReservations = lazy(() => import("./pages/restaurant/RestaurantReservations"));
 const RestaurantTables = lazy(() => import("./pages/restaurant/RestaurantTables"));
+const RestaurantRecipes = lazy(() => import("./pages/restaurant/Recipes"));
+const GuestOrder = lazy(() => import("./pages/restaurant/GuestOrder"));
 const Exceptions = lazy(() => import("./pages/Exceptions"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -129,6 +131,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/login" element={user ? <Navigate to={user.role === "supplier" || user.role === "customer" ? "/portal" : "/"} replace /> : <Login />} />
         <Route path="/register" element={user ? <Navigate to={user.role === "supplier" || user.role === "customer" ? "/portal" : "/"} replace /> : <Register />} />
+        <Route path="/order/table/:tableId" element={<PageBoundary><GuestOrder /></PageBoundary>} />
         <Route
           path="/"
           element={
@@ -181,6 +184,7 @@ function AppRoutes() {
           <Route path="/restaurant/tickets/:id" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantTicketDetail /></RequirePermission></PageBoundary>} />
           <Route path="/restaurant/kitchen" element={<PageBoundary><RequirePermission perm="restaurant.kitchen"><RestaurantKitchen /></RequirePermission></PageBoundary>} />
           <Route path="/restaurant/menu" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantMenu /></RequirePermission></PageBoundary>} />
+          <Route path="/restaurant/recipes" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantRecipes /></RequirePermission></PageBoundary>} />
           <Route path="/restaurant/reservations" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantReservations /></RequirePermission></PageBoundary>} />
           <Route path="/restaurant/tables" element={<PageBoundary><RequirePermission perm="restaurant.view"><RestaurantTables /></RequirePermission></PageBoundary>} />
           <Route path="/users" element={<PageBoundary><RequirePermission perm="users.view"><Users /></RequirePermission></PageBoundary>} />
