@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   UtensilsCrossed, Search, Plus, Minus, Trash2, Send, ChefHat, CheckCheck,
-  Banknote, Printer, X, Pencil, StickyNote,
+  Banknote, Printer, X, Pencil, StickyNote, Ban, Scissors,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type {
-  MenuItem, MenuModifierGroup, MenuSectionWithItems, Product, RestaurantTicket,
+  MenuItem, MenuModifierGroup, MenuSectionWithItems, Product, RestaurantTicket, RestaurantTicketItem,
 } from "../../types";
 import EmptyState from "../../components/EmptyState";
 import Modal from "../../components/Modal";
@@ -49,6 +49,8 @@ export default function RestaurantTicketDetail() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [editTicket, setEditTicket] = useState(false);
   const [modifierProduct, setModifierProduct] = useState<MenuItem | null>(null);
+  const [voidItem, setVoidItem] = useState<RestaurantTicketItem | null>(null);
+  const [showSplit, setShowSplit] = useState(false);
   const { menu: menuBlocks = [] } = useMenuData(menuSearch);
 
   useEffect(() => {
@@ -115,6 +117,35 @@ export default function RestaurantTicketDetail() {
     },
     onSuccess: () => { invalidate(); addToast("Item removed", "success"); },
     onError: (err: unknown) => addToast(errorMessage(err, "Cannot remove item"), "error"),
+  });
+
+  const voidItemMutation = useMutation({
+    mutationFn: async ({ itemId, reason }: { itemId: number; reason?: string }) => {
+      const { data } = await api.post(`/restaurant/tickets/${ticketId}/items/${itemId}/void`, { reason: reason ?? "" });
+      return data;
+    },
+    onSuccess: () => { invalidate(); addToast("Item voided", "success"); },
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot void item"), "error"),
+  });
+
+  const splitTicket = useMutation({
+    mutationFn: async ({ itemIds, tableId, guestCount, customerName, notes }: {
+      itemIds: number[]; tableId?: number | null; guestCount?: number | null; customerName?: string; notes?: string;
+    }) => {
+      const payload: Record<string, unknown> = { item_ids: itemIds };
+      if (tableId) payload.table_id = tableId;
+      if (guestCount) payload.guest_count = guestCount;
+      if (customerName) payload.customer_name = customerName;
+      if (notes) payload.notes = notes;
+      const { data } = await api.post(`/restaurant/tickets/${ticketId}/split`, payload);
+      return data as RestaurantTicket;
+    },
+    onSuccess: (child) => {
+      invalidate();
+      addToast(`Split ${ticket?.ticket_number ?? ""} — new bill ${child.ticket_number}`, "success");
+      navigate(`/restaurant/tickets/${child.id}`);
+    },
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot split ticket"), "error"),
   });
 
   const sendToKitchen = useMutation({
@@ -211,6 +242,9 @@ export default function RestaurantTicketDetail() {
           </button>
           {canEdit && can("restaurant.update") && (
             <>
+              <button onClick={() => setShowSplit(true)} className="btn-secondary flex items-center gap-1.5" aria-label={`Split ${ticket.ticket_number}`}>
+                <Scissors size={16} /> Split
+              </button>
               <button onClick={() => setEditTicket(true)} className="btn-secondary" aria-label={`Edit ${ticket.ticket_number}`}>
                 <Pencil size={16} /> Edit
               </button>
@@ -301,6 +335,9 @@ export default function RestaurantTicketDetail() {
                         <button onClick={() => removeItem.mutate(item.id)} className="p-1 rounded-md text-faint hover:text-red-600 dark:text-red-400" aria-label={`Remove ${item.product_name}`}>
                           <Trash2 size={14} />
                         </button>
+                        <button onClick={() => setVoidItem(item)} className="p-1 rounded-md text-faint hover:text-red-600 dark:text-red-400" aria-label={`Void ${item.product_name}`}>
+                          <Ban size={14} />
+                        </button>
                       </div>
                     ) : (
                       <span className="text-sm tabular-nums">×{item.quantity}</span>
@@ -337,17 +374,33 @@ export default function RestaurantTicketDetail() {
           </div>
           <ul className="divide-y divide-border">
             {ticket.items.map((item) => (
-              <li key={item.id} className="py-3 flex items-center justify-between gap-3">
+              <li key={item.id} className={`py-3 flex items-center justify-between gap-3 ${item.status === "voided" ? "opacity-60" : ""}`}>
                 <div>
-                  <div className="font-medium text-ink">{item.product_name}</div>
+                  <div className={`font-medium ${item.status === "voided" ? "text-muted line-through" : "text-ink"}`}>{item.product_name}</div>
                   {item.modifiers?.length ? (
                     <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
                   ) : null}
                   <div className="text-xs text-muted mt-0.5">×{item.quantity} · {currencyAmount(item.unit_price)}</div>
+                  {item.status === "voided" && item.void_reason && (
+                    <div className="text-xs text-red-600 dark:text-red-400 mt-0.5">Voided: {item.void_reason}</div>
+                  )}
                 </div>
-                <span className={`badge ${item.status === "served" ? "badge-success" : item.status === "ready" ? "badge-warning" : item.status === "preparing" ? "badge-info" : "badge-neutral"}`}>
-                  {item.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  {item.status === "voided" ? (
+                    <span className="badge badge-danger">voided</span>
+                  ) : (
+                    <>
+                      <span className={`badge ${item.status === "served" ? "badge-success" : item.status === "ready" ? "badge-warning" : item.status === "preparing" ? "badge-info" : "badge-neutral"}`}>
+                        {item.status}
+                      </span>
+                      {canEdit && can("restaurant.update") && (
+                        <button onClick={() => setVoidItem(item)} className="p-1 rounded-md text-faint hover:text-red-600 dark:text-red-400" aria-label={`Void ${item.product_name}`}>
+                          <Ban size={14} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -368,6 +421,27 @@ export default function RestaurantTicketDetail() {
           <p className="text-sm text-muted mt-1">The ticket settles automatically once the STK payment is confirmed.</p>
         </div>
       )}
+
+      <VoidItemModal
+        open={voidItem !== null}
+        item={voidItem}
+        onClose={() => setVoidItem(null)}
+        onConfirm={(reason) => {
+          if (!voidItem) return;
+          voidItemMutation.mutate({ itemId: voidItem.id, reason });
+          setVoidItem(null);
+        }}
+      />
+
+      <SplitBillModal
+        open={showSplit}
+        ticket={ticket}
+        onClose={() => setShowSplit(false)}
+        onSplit={(payload) => {
+          setShowSplit(false);
+          splitTicket.mutate(payload);
+        }}
+      />
 
       <SettleModal
         open={showSettle}
@@ -787,6 +861,211 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
           <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
           <button type="submit" disabled={saving || (method === "mobile_money" && !phone.trim())} className="btn-primary">
             {saving ? "Settling..." : method === "mobile_money" ? "Collect Payment" : "Settle Now"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function VoidItemModal({ open, item, onClose, onConfirm }: {
+  open: boolean;
+  item: RestaurantTicketItem | null;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    if (open) setReason("");
+  }, [open]);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!item) return;
+    if (item.status !== "pending" && !reason.trim()) {
+      addToast("A reason is required when voiding an item sent to the kitchen", "error");
+      return;
+    }
+    onConfirm(reason.trim());
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Void Item">
+      {item && (
+        <form onSubmit={submit} className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 shrink-0">
+              <Ban size={18} />
+            </div>
+            <div>
+              <div className="font-medium text-ink">{item.product_name}</div>
+              <div className="text-xs text-muted">×{item.quantity} · {item.status === "pending" ? "not yet sent" : `already sent to kitchen (${item.status})`}</div>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1" htmlFor="void-reason">
+              Reason {item.status === "pending" ? "(optional)" : "*"}
+            </label>
+            <textarea
+              id="void-reason"
+              className="input min-h-[80px]"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. customer changed mind, overcooked..."
+              maxLength={200}
+            />
+            <p className="text-xs text-muted mt-1">{item.status === "pending" ? "Pending items haven't used stock — no stock will be returned." : "Stock will be returned to the kitchen inventory."}</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" className="btn-danger flex items-center gap-1.5">
+              <Ban size={16} /> Void Item
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function SplitBillModal({ open, ticket, onClose, onSplit }: {
+  open: boolean;
+  ticket: RestaurantTicket;
+  onClose: () => void;
+  onSplit: (payload: { itemIds: number[]; tableId?: number | null; guestCount?: number | null; customerName?: string; notes?: string }) => void;
+}) {
+  const [selected, setSelected] = useState<number[]>([]);
+  const [tableId, setTableId] = useState<number | null>(null);
+  const [guestCount, setGuestCount] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [notes, setNotes] = useState("");
+  const { data: settings } = useSettings();
+  const { addToast } = useToast();
+  const symbol = settings?.currency_symbol ?? "$";
+
+  useEffect(() => {
+    if (open) {
+      setSelected([]);
+      setTableId(null);
+      setGuestCount("");
+      setCustomerName("");
+      setNotes("");
+    }
+  }, [open]);
+
+  const active = ticket.items.filter((i) => i.status !== "voided");
+  const allChecked = selected.length > 0 && selected.length === active.length;
+  const toMoveAmount = active.filter((i) => selected.includes(i.id)).reduce((sum, i) => sum + (i.line_total ?? i.unit_price * i.quantity), 0);
+  const keepAmount = active.reduce((sum, i) => sum + (i.line_total ?? i.unit_price * i.quantity), 0) - toMoveAmount;
+
+  const toggle = (id: number) => {
+    setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  };
+  const toggleAll = () => {
+    if (allChecked) setSelected([]);
+    else setSelected(active.map((i) => i.id));
+  };
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selected.length === 0) {
+      addToast("Select at least one item to move to the new bill", "error");
+      return;
+    }
+    if (selected.length === active.length) {
+      addToast("Keep at least one item on the original bill", "error");
+      return;
+    }
+    onSplit({
+      itemIds: selected,
+      tableId,
+      guestCount: guestCount ? Number(guestCount) : null,
+      customerName: customerName.trim() || undefined,
+      notes: notes.trim() || undefined,
+    });
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Split ${ticket.ticket_number}`}>
+      <form onSubmit={submit} className="space-y-4">
+        <p className="text-sm text-muted">Move selected items to a new bill. Stock already sent to the kitchen stays attributed to the original ticket.</p>
+        {active.length === 0 && (
+          <p className="text-sm text-red-600 dark:text-red-400">Nothing to split — this ticket has no active items.</p>
+        )}
+        {active.length > 1 && (
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" onClick={toggleAll} className="btn-secondary text-xs px-3 py-1.5">
+              {allChecked ? "Clear all" : "Select all"}
+            </button>
+            <span className="text-xs text-muted">{selected.length} to move</span>
+          </div>
+        )}
+        <ul className="divide-y divide-border border border-border rounded-lg max-h-[280px] overflow-y-auto">
+          {active.map((item) => (
+            <li key={item.id}>
+              <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-app transition">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(item.id)}
+                  onChange={() => toggle(item.id)}
+                  className="accent-primary-strong"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-ink text-sm truncate">{item.product_name}</div>
+                  <div className="text-xs text-muted">×{item.quantity} · {symbol}{item.unit_price.toFixed(2)}</div>
+                </div>
+                <span className="text-sm tabular-nums text-muted">{symbol}{(item.line_total ?? item.unit_price * item.quantity).toFixed(2)}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1" htmlFor="split-guests">Guest count (optional)</label>
+            <input
+              id="split-guests"
+              className="input"
+              type="number"
+              min={1}
+              max={99}
+              value={guestCount}
+              onChange={(e) => setGuestCount(e.target.value)}
+              placeholder={String(ticket.guest_count)}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1" htmlFor="split-customer">Customer / booking name</label>
+            <input
+              id="split-customer"
+              className="input"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              placeholder={ticket.customer_name || "Walk-in"}
+              maxLength={120}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1" htmlFor="split-notes">Notes (optional)</label>
+          <input
+            id="split-notes"
+            className="input"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. Split of [ticket]"
+            maxLength={2000}
+          />
+        </div>
+        <div className="border-t border-border pt-3 space-y-1.5 text-sm">
+          <div className="flex justify-between text-muted"><span>Moving to new bill</span><span className="tabular-nums">{symbol}{toMoveAmount.toFixed(2)}</span></div>
+          <div className="flex justify-between text-muted"><span>Staying on this bill</span><span className="tabular-nums">{symbol}{keepAmount.toFixed(2)}</span></div>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" disabled={active.length === 0 || selected.length === 0} className="btn-primary flex items-center gap-1.5">
+            <Scissors size={16} /> Split Bill
           </button>
         </div>
       </form>

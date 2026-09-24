@@ -1488,7 +1488,7 @@ export interface PricingResponse {
   total: number;
 }
 
-export type TicketItemStatus = "pending" | "queued" | "preparing" | "ready" | "served";
+export type TicketItemStatus = "pending" | "queued" | "preparing" | "ready" | "served" | "voided";
 export type TicketStatus = "open" | "preparing" | "ready" | "served" | "paying" | "settled" | "cancelled";
 
 export interface RestaurantTable {
@@ -1540,6 +1540,8 @@ export interface RestaurantTicketItem {
   sent_at: string | null;
   created_at: string;
   line_total?: number;
+  voided_at?: string | null;
+  void_reason?: string | null;
 }
 
 export interface ModifierSelection {
@@ -1618,6 +1620,9 @@ export interface RestaurantTicket {
   notes: string;
   opened_at: string;
   settled_at: string | null;
+  split_group?: string | null;
+  split_parent_id?: number | null;
+  split_parent_number?: string | null;
   items: RestaurantTicketItem[];
 }
 
