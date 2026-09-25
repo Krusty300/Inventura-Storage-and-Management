@@ -11,6 +11,7 @@ import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { useSettings } from "../../hooks/useSettings";
+import { formatCurrency } from "../../utils/currency";
 import { errorMessage } from "../../utils/errors";
 
 const MENU_QUERIES = ["restaurant-menu", "restaurant-menu-sections", "menu-products", "products", "restaurant-ticket"];
@@ -21,7 +22,6 @@ export default function RestaurantMenu() {
   const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
-  const currencyAmount = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const [showSectionForm, setShowSectionForm] = useState(false);
   const [editingSection, setEditingSection] = useState<MenuSection | null>(null);
   const [deletingSection, setDeletingSection] = useState<MenuSection | null>(null);
@@ -159,7 +159,7 @@ export default function RestaurantMenu() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-medium text-ink truncate">{item.display_name}</div>
-                            <div className="text-xs text-muted mt-0.5">{item.sku} · {currencyAmount(item.unit_price)}</div>
+                            <div className="text-xs text-muted mt-0.5">{item.sku} · {formatCurrency(item.unit_price, symbol)}</div>
                           </div>
                           {can("restaurant.update") && (
                             <button
@@ -309,7 +309,6 @@ function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () =
   const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
-  const currencyAmount = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const [saving, setSaving] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
   const [form, setForm] = useState<{ name: string; min_select: number; max_select: number; is_required: boolean; options: OptionRow[] }>({
@@ -447,7 +446,7 @@ function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () =
                 {group.options.map((o) => (
                   <li key={o.id} className="flex justify-between text-sm text-muted">
                     <span>{o.name}{!o.is_active && " (hidden)"}</span>
-                    <span className="tabular-nums">{o.price_delta >= 0 ? "+" : "-"}{currencyAmount(Math.abs(o.price_delta))}</span>
+                    <span className="tabular-nums">{o.price_delta >= 0 ? "+" : "-"}{formatCurrency(Math.abs(o.price_delta), symbol)}</span>
                   </li>
                 ))}
               </ul>

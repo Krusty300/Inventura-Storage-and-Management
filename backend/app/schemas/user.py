@@ -22,7 +22,7 @@ class UserCreate(BaseModel):
     @field_validator("role")
     @classmethod
     def _validate_role(cls, v: str) -> str:
-        allowed = {"admin", "manager", "worker"}
+        allowed = {"admin", "manager", "worker", "customer"}
         if v not in allowed:
             raise ValueError(f"Role must be one of: {', '.join(sorted(allowed))}")
         return v

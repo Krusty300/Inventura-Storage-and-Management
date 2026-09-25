@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Banknote, CreditCard, Landmark, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Banknote, CreditCard, Landmark, Minus, Plus, ShoppingCart, Smartphone, Trash2 } from "lucide-react";
 import api from "../../api/client";
 import { useCustomerCart } from "../../context/CustomerCartContext";
 import { useToast } from "../../context/ToastContext";
@@ -9,6 +9,7 @@ import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { formatCurrency } from "../../utils/currency";
 import { errorMessage } from "../../utils/errors";
+import { MOBILE_MONEY_PROVIDERS } from "../../utils/payments";
 import EmptyState from "../../components/EmptyState";
 import type { CustomerPortalMe, PricingResponse, Sale } from "../../types";
 
@@ -16,7 +17,15 @@ const PAYMENT_METHODS = [
   { value: "cash", label: "Cash", icon: Banknote, hint: "Pay on pickup or delivery" },
   { value: "card", label: "Card", icon: CreditCard, hint: "Pay by card" },
   { value: "transfer", label: "Bank Transfer", icon: Landmark, hint: "Pay by bank transfer" },
+  { value: "mobile_money", label: "Mobile Money", icon: Smartphone, hint: "M-Pesa / Airtel Money prompt sent to your phone" },
 ];
+
+interface StkPushResult {
+  success: boolean;
+  checkout_request_id: string;
+  merchant_request_id: string;
+  message: string;
+}
 
 export default function CustomerCart() {
   const navigate = useNavigate();
@@ -24,6 +33,8 @@ export default function CustomerCart() {
   const { addToast } = useToast();
   const { items, setQuantity, remove, clear } = useCustomerCart();
   const [method, setMethod] = useState("cash");
+  const [provider, setProvider] = useState("m-pesa");
+  const [phone, setPhone] = useState("");
   const [reference, setReference] = useState("");
 
   const { data: me } = useQuery({
@@ -69,14 +80,35 @@ export default function CustomerCart() {
         items: items.map((it) => ({ product_id: it.product.id, quantity: it.quantity })),
         payment_method: method,
       };
-      if (reference.trim()) payload.payment_reference = reference.trim();
+      if (method === "mobile_money") {
+        payload.payment_provider = provider;
+        payload.payment_phone = phone.trim();
+      } else if (reference.trim()) {
+        payload.payment_reference = reference.trim();
+      }
       const { data } = await api.post("/customer/checkout", payload);
-      return data as Sale;
+      const sale = data as Sale;
+      let push: { ok: boolean; message: string } | null = null;
+      if (method === "mobile_money") {
+        try {
+          const { data: stk } = await api.post(`/customer/checkout/${sale.id}/stk`);
+          push = { ok: (stk as StkPushResult).success !== false, message: (stk as StkPushResult).message };
+        } catch (err) {
+          push = { ok: false, message: errorMessage(err, "Payment prompt could not be sent") };
+        }
+      }
+      return { sale, push };
     },
-    onSuccess: (sale) => {
+    onSuccess: ({ sale, push }) => {
       clear();
       queryClient.invalidateQueries({ queryKey: ["customer"] });
-      addToast(`Order ${sale.invoice_number} placed`, "success");
+      if (push == null) {
+        addToast(`Order ${sale.invoice_number} placed`, "success");
+      } else if (push.ok) {
+        addToast(`Order ${sale.invoice_number} placed — check your phone for the payment prompt`, "success");
+      } else {
+        addToast(`Order ${sale.invoice_number} placed — ${push.message}`, "info");
+      }
       navigate(`/portal/invoices/${sale.id}`);
     },
   });
@@ -105,7 +137,8 @@ export default function CustomerCart() {
     );
   }
 
-  const canSubmit = items.length > 0 && !mutation.isPending && !pricingLoading && !pricingError;
+  const phoneValid = phone.trim().length >= 9;
+  const canSubmit = items.length > 0 && !mutation.isPending && !pricingLoading && !pricingError && (method !== "mobile_money" || phoneValid);
 
   return (
     <div className="space-y-6">
@@ -206,7 +239,46 @@ export default function CustomerCart() {
               );
             })}
           </div>
-          {method !== "cash" && (
+          {method === "mobile_money" && (
+            <>
+              <div>
+                <span className="text-xs font-medium text-muted">Provider</span>
+                <div className="grid grid-cols-3 gap-2 mt-1.5" role="radiogroup" aria-label="Mobile money provider">
+                  {MOBILE_MONEY_PROVIDERS.map((p) => {
+                    const active = provider === p.value;
+                    return (
+                      <button
+                        key={p.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setProvider(p.value)}
+                        className={`text-center rounded-lg border px-2 py-1.5 text-sm transition-colors ${
+                          active
+                            ? "border-primary-strong bg-primary-soft dark:bg-primary/10 text-primary-strong dark:text-primary"
+                            : "border-border text-muted hover:border-primary-soft"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <label className="block">
+                <span className="text-xs font-medium text-muted">M-Pesa / Airtel phone</span>
+                <input
+                  className={`input mt-1.5 ${!phoneValid && phone.trim() ? "border-red-500" : ""}`}
+                  placeholder="07xx xxx xxx"
+                  inputMode="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <span className="text-[11px] text-muted mt-1 inline-block">A payment prompt will be sent to this number.</span>
+              </label>
+            </>
+          )}
+          {method !== "cash" && method !== "mobile_money" && (
             <label className="block">
               <span className="text-xs font-medium text-muted">Reference / transaction ID (optional)</span>
               <input

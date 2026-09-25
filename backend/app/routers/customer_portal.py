@@ -44,6 +44,7 @@ from app.services.notify import notify_admins, notify_low_stock
 from app.services.password_policy import validate_password
 from app.services.payment_methods import resolve_payment_details
 from app.services.pricing import resolve_price
+from app.services.sales_channels import ONLINE_STORE_CHANNEL, get_or_create_channel
 from app.utils import detect_image_ext, get_or_404, log_activity, broadcast_change
 
 router = APIRouter(prefix="/api/customer", tags=["customer portal"])
@@ -87,6 +88,7 @@ class CheckoutRequest(BaseModel):
     payment_method: str = "cash"
     payment_provider: Optional[str] = None
     payment_reference: Optional[str] = None
+    payment_phone: Optional[str] = None
 
     @model_validator(mode="after")
     def _validate_items_not_empty(self):
@@ -193,7 +195,7 @@ def customer_summary(
     total_spent = 0.0
     for status, count, total in rows:
         status_counts[status] = int(count)
-        if status in ("completed", "pending"):
+        if status == "completed":
             total_spent += float(total)
     recent = (
         db.query(Sale).options(joinedload(Sale.items))
@@ -335,14 +337,11 @@ def customer_checkout(
 
     Prices are always re-resolved server-side through ``resolve_price`` for this
     customer; the client never supplies ``unit_price``. Stock, quality checks,
-    and serialization rules mirror the staff sale path, and the sale lands as
-    ``completed`` (cash/card/transfer only for now).
+    and serialization rules mirror the staff sale path. Cash/card/transfer land
+    as ``completed`` immediately; mobile money lands as ``pending`` with the
+    phone captured so the customer can authorize the STK push via
+    ``POST /checkout/{sale_id}/stk``.
     """
-    if data.payment_method not in ("cash", "card", "transfer"):
-        raise HTTPException(
-            status_code=400,
-            detail="Mobile money checkout is not available yet - choose cash, card, or bank transfer",
-        )
     try:
         default_currency, default_symbol = get_currency_defaults(db)
         payment = resolve_payment_details(
@@ -351,6 +350,9 @@ def customer_checkout(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    is_mobile = data.payment_method == "mobile_money"
+    if is_mobile and not (data.payment_phone or "").strip():
+        raise HTTPException(status_code=400, detail="A phone number is required for mobile money checkout")
 
     product_ids = list({item.product_id for item in data.items})
     products = {p.id: p for p in db.query(Product).filter(Product.id.in_(product_ids)).all()}
@@ -378,24 +380,26 @@ def customer_checkout(
 
     tax_rate = get_tax_rate(db)
     tax_amount = subtotal * tax_rate / 100
+    phone = (data.payment_phone or "").strip() or None
+    channel = get_or_create_channel(db, name=ONLINE_STORE_CHANNEL, type="webstore")
     sale = Sale(
         invoice_number=generate_invoice_number(db),
         customer_id=customer.id,
         user_id=user.id,
-        channel_id=None,
+        channel_id=channel.id,
         subtotal=subtotal,
         discount_amount=0.0,
         tax_amount=tax_amount,
         total_amount=subtotal + tax_amount,
-        status="completed",
+        status="pending" if is_mobile else "completed",
         payment_method=data.payment_method,
         payment_provider=payment["provider"],
         payment_reference=(data.payment_reference or "").strip() or None,
-        payment_phone=None,
+        payment_phone=phone,
         payment_provider_amount=None,
         currency=payment["currency"],
         currency_symbol=payment["currency_symbol"],
-        payment_status=None,
+        payment_status="pending" if is_mobile else None,
     )
     db.add(sale)
     db.flush()
@@ -472,6 +476,53 @@ def customer_sale_detail(
     customer: Customer = Depends(require_customer),
 ):
     return _get_portal_sale(db, customer, sale_id)
+
+
+@router.post("/checkout/{sale_id}/stk")
+def customer_checkout_stk(
+    sale_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    customer: Customer = Depends(require_customer),
+):
+    """Initiate the M-PESA STK push for the customer's own pending order.
+
+    Runs the same ``stk_push`` service as the staff flow but is scoped to sales
+    owned by the linked customer, requires a mobile-money sale still awaiting
+    payment, and records the resulting checkout request id so the standard
+    Daraja callback (``/api/daraja/callback/stk``) completes the sale.
+    """
+    from app.services.daraja import stk_push
+
+    sale = _get_portal_sale(db, customer, sale_id)
+    if sale.payment_method != "mobile_money":
+        raise HTTPException(status_code=400, detail="This order was not paid with mobile money")
+    if sale.status != "pending" or sale.payment_status != "pending":
+        raise HTTPException(status_code=400, detail="This order is not awaiting payment")
+    phone = (sale.payment_phone or "").strip()
+    if phone.startswith("0"):
+        phone = "254" + phone[1:]
+    if not phone.startswith("254") or len(phone) < 10:
+        raise HTTPException(status_code=400, detail="A valid payment phone is required for mobile money")
+
+    result = stk_push(
+        phone=phone,
+        amount=float(sale.total_amount),
+        reference=sale.invoice_number,
+        description=f"{sale.invoice_number}",
+        account_ref=str(customer.id),
+    )
+    checkout_id = result.get("checkout_request_id", "")
+    if checkout_id:
+        sale.payment_checkout_request_id = checkout_id
+        db.commit()
+        broadcast_change("sale", "updated")
+    return {
+        "success": result.get("response_code") == "0",
+        "checkout_request_id": checkout_id,
+        "merchant_request_id": result.get("merchant_request_id", ""),
+        "message": result.get("response_description", ""),
+    }
 
 
 @router.get("/sales/{sale_id}/pdf")

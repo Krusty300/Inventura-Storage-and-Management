@@ -4,6 +4,7 @@ import type { RestaurantTicket } from "../../types";
 import RestaurantSlideOver from "./RestaurantSlideOver";
 import { formatDateTime } from "../../utils/date";
 import { useSettings } from "../../hooks/useSettings";
+import { formatCurrency } from "../../utils/currency";
 
 const STATUS_BADGE: Record<string, string> = {
   open: "badge-neutral",
@@ -36,7 +37,7 @@ export default function RestaurantTicketDetailDrawer({ ticket, onClose }: Props)
   if (!ticket) return null;
   const t = ticket;
 
-  const money = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const money = (n: number) => formatCurrency(n, symbol);
 
   return (
     <RestaurantSlideOver

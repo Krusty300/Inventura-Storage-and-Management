@@ -430,17 +430,50 @@ def test_portal_checkout_card_and_transfer(auth_headers):
     assert resp.json()["payment_method"] == "transfer"
 
 
-def test_portal_checkout_rejects_mobile_money(auth_headers):
+def test_portal_checkout_mobile_money(auth_headers):
     customer = _make_customer(auth_headers, "MoMo Customer")
     _make_customer_account(auth_headers, "momocust", customer_id=customer["id"]).json()
     prod = _make_product(auth_headers, "CO-MOMO", unit_price=10.0)
     headers = _login("momocust")
+
+    resp = client.post("/api/customer/checkout", json={
+        "items": [{"product_id": prod["id"], "quantity": 1}],
+        "payment_method": "mobile_money", "payment_provider": "m-pesa",
+        "payment_phone": "0712345678",
+    }, headers=headers)
+    assert resp.status_code == 201, resp.text
+    sale = resp.json()
+    assert sale["payment_method"] == "mobile_money"
+    assert sale["status"] == "pending"
+    assert sale["payment_status"] == "pending"
+    assert sale["payment_phone"] == "0712345678"
+
+    resp = client.post(f"/api/customer/checkout/{sale['id']}/stk", headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True
+    assert body["checkout_request_id"]
+
+    detail = client.get(f"/api/customer/sales/{sale['id']}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["payment_checkout_request_id"] == body["checkout_request_id"]
+
+    resp = client.post(f"/api/customer/checkout/{sale['id']}/stk", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["checkout_request_id"]
+
+
+def test_portal_checkout_mobile_money_requires_phone(auth_headers):
+    customer = _make_customer(auth_headers, "MoMo Phone Customer")
+    _make_customer_account(auth_headers, "momophone", customer_id=customer["id"]).json()
+    prod = _make_product(auth_headers, "CO-MOMOPH", unit_price=10.0)
+    headers = _login("momophone")
     resp = client.post("/api/customer/checkout", json={
         "items": [{"product_id": prod["id"], "quantity": 1}],
         "payment_method": "mobile_money", "payment_provider": "m-pesa",
     }, headers=headers)
     assert resp.status_code == 400
-    assert "Mobile money" in resp.json()["detail"]
+    assert "phone" in resp.json()["detail"].lower()
 
 
 def test_portal_checkout_rejects_provider_for_cash(auth_headers):

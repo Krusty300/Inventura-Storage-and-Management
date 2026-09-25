@@ -16,6 +16,7 @@ import { MOBILE_MONEY_PROVIDERS, paymentLabel } from "../utils/payments";
 import { getPlaceholder, onImageError } from "../utils/placeholders";
 import { productImageUrl } from "../utils/images";
 import FittedSelect from "./FittedSelect";
+import CustomerPicker from "./CustomerPicker";
 import PasswordInput from "./PasswordInput";
 import TextArea from "./TextArea";
 import PaymentMethodPicker from "./PaymentMethodPicker";
@@ -1141,15 +1142,10 @@ export default function SaleForm({ onClose, onSaved }: Props) {
               <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-3">
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1.5">Customer</label>
-                  <FittedSelect
-                    ariaLabel="Customer"
-                    value={customerId}
-                    onChange={setCustomerId}
+                  <CustomerPicker
+                    value={customerId ? parseInt(customerId) : null}
+                    onChange={(id) => setCustomerId(id ? String(id) : "")}
                     disabled={formDisabled}
-                    options={[
-                      { value: "", label: "Walk-in" },
-                      ...customers.map((c) => ({ value: String(c.id), label: c.name })),
-                    ]}
                   />
                   {customerId && (() => {
                     const c = customers.find((x) => String(x.id) === customerId);

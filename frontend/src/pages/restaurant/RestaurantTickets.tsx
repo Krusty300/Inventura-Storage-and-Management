@@ -12,6 +12,7 @@ import RestaurantTicketDetailDrawer from "../../components/restaurant/Restaurant
 import { useDebounce } from "../../hooks/useDebounce";
 import { usePageSize } from "../../hooks/usePageSize";
 import { formatDateTime } from "../../utils/date";
+import { formatCurrency } from "../../utils/currency";
 import { useSettings } from "../../hooks/useSettings";
 import { useRealtime } from "../../context/RealtimeContext";
 import { useAuth } from "../../context/AuthContext";
@@ -153,7 +154,7 @@ export default function RestaurantTickets() {
                 <span className={`badge ${STATUS_BADGE[t.status] ?? "badge-neutral"}`}>{t.status}</span>
               </td>
               <td className="px-4 py-3 text-muted">{formatDateTime(t.opened_at)}</td>
-              <td className="px-4 py-3 text-right font-medium tabular-nums">{symbol}{t.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <td className="px-4 py-3 text-right font-medium tabular-nums">{formatCurrency(t.total_amount, symbol)}</td>
               <td className="px-4 py-3 text-right">
                 {t.status === "open" && can("restaurant.create") && (
                   <button className="btn-secondary text-xs px-2.5 py-1" onClick={(e) => { e.stopPropagation(); navigate(`/restaurant/tickets/${t.id}`); }}>

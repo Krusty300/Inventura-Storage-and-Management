@@ -3131,6 +3131,8 @@ def create_sales_channels(db):
         SalesChannel(name="M-Pesa Till", type="store", is_active=True),
         SalesChannel(name="Wholesale Desk", type="b2b", is_active=True),
         SalesChannel(name="Tele-Sales", type="marketplace", is_active=True),
+        SalesChannel(name="Restaurant (Dine-in)", type="restaurant", is_active=True),
+        SalesChannel(name="Restaurant (Guest Order)", type="restaurant", is_active=True),
     ]
     db.add_all(channels)
     db.commit()

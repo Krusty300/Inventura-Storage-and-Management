@@ -11,7 +11,7 @@ from app.services.auth import require_permission
 from app.services.soft_delete import register, soft_delete
 from app.utils import get_or_404, log_activity, broadcast_change
 
-CHANNEL_TYPES = {"store", "webstore", "marketplace", "b2b"}
+CHANNEL_TYPES = {"store", "webstore", "marketplace", "b2b", "restaurant"}
 
 router = APIRouter(
     prefix="/api/sales-channels",

@@ -1,13 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, FileText, Receipt } from "lucide-react";
+import { ArrowLeft, FileText, Receipt, Smartphone } from "lucide-react";
 import api from "../../api/client";
 import { useDateFormat } from "../../hooks/useDateFormat";
 import { formatCurrency } from "../../utils/currency";
 import { statusBadge } from "../../utils/statusBadges";
+import { paymentLabel, providerLabel } from "../../utils/payments";
+import { errorMessage } from "../../utils/errors";
 import Skeleton from "../../components/Skeleton";
 import EmptyState from "../../components/EmptyState";
-import { errorMessage } from "../../utils/errors";
 import { useToast } from "../../context/ToastContext";
 import type { CustomerPortalMe, Sale } from "../../types";
 
@@ -32,6 +33,26 @@ export default function CustomerInvoiceDetail() {
     queryKey: ["customer", "sale", invoiceId],
     queryFn: async () => (await api.get(`/customer/sales/${invoiceId}`)).data as Sale,
   });
+
+  const queryClient = useQueryClient();
+  const stkMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/customer/checkout/${invoiceId}/stk`);
+      return data as { success: boolean; message: string };
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["customer", "sale", invoiceId] });
+      addToast(
+        res.success
+          ? "Payment prompt sent — check your phone"
+          : (res.message || "Payment prompt could not be sent"),
+        res.success ? "success" : "error",
+      );
+    },
+    onError: (err: unknown) => addToast(errorMessage(err, "Payment prompt could not be sent"), "error"),
+  });
+
+  const awaitingMobileMoney = sale?.payment_method === "mobile_money" && sale.status === "pending" && sale.payment_status === "pending";
 
   const downloadPdf = async () => {
     try {
@@ -90,7 +111,7 @@ export default function CustomerInvoiceDetail() {
         <dl className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 border-t border-border pt-5 text-sm">
           <div>
             <dt className="text-xs font-medium text-faint uppercase tracking-wide mb-0.5">Payment method</dt>
-            <dd className="font-semibold text-ink">{sale.payment_method || "—"}</dd>
+            <dd className="font-semibold text-ink">{paymentLabel(sale.payment_method ?? "", sale.payment_provider)}</dd>
           </div>
           <div>
             <dt className="text-xs font-medium text-faint uppercase tracking-wide mb-0.5">Payment status</dt>
@@ -100,7 +121,39 @@ export default function CustomerInvoiceDetail() {
             <dt className="text-xs font-medium text-faint uppercase tracking-wide mb-0.5">Issued by</dt>
             <dd className="font-medium text-ink">{sale.username || "—"}</dd>
           </div>
+          {sale.payment_method === "mobile_money" && sale.payment_phone && (
+            <div>
+              <dt className="text-xs font-medium text-faint uppercase tracking-wide mb-0.5">Payment phone</dt>
+              <dd className="font-medium text-ink">{sale.payment_phone}</dd>
+            </div>
+          )}
+          {sale.payment_method === "mobile_money" && sale.payment_provider && (
+            <div>
+              <dt className="text-xs font-medium text-faint uppercase tracking-wide mb-0.5">Provider</dt>
+              <dd className="font-medium text-ink">{providerLabel(sale.payment_provider)}</dd>
+            </div>
+          )}
         </dl>
+
+        {awaitingMobileMoney && (
+          <div className="mt-4 border-t border-border pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm text-muted flex items-start gap-2">
+              <Smartphone size={16} className="mt-0.5 shrink-0" />
+              <span>This order is awaiting the mobile money prompt. Approve the payment on your phone to complete it.</span>
+            </p>
+            <button
+              onClick={() => stkMutation.mutate()}
+              disabled={stkMutation.isPending}
+              className="btn-primary inline-flex items-center gap-1.5 shrink-0 justify-center"
+            >
+              {stkMutation.isPending ? (
+                <><span className="h-4 w-4 rounded bg-white/40 animate-pulse" /> Sending prompt...</>
+              ) : (
+                <><Smartphone size={16} /> Resend payment prompt</>
+              )}
+            </button>
+          </div>
+        )}
 
         {sale.notes && (
           <p className="text-sm text-muted mt-4 border-t border-border pt-4">{sale.notes}</p>

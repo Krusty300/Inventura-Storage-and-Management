@@ -11,6 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.activity_log import ActivityLog
 from app.models.asn import ASN
+from app.models.customer import Customer
 from app.models.cycle_count import CycleCount
 from app.models.notification import Notification
 from app.models.order import Order
@@ -143,6 +144,11 @@ def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
         existing.is_active = True
         existing.last_login_at = None
         db.flush()
+        if existing.role == "customer" and existing.customer_id is None:
+            customer = Customer(name=existing.username.strip()[:200], email=existing.email, phone="")
+            db.add(customer)
+            db.flush()
+            existing.customer_id = customer.id
         from app.services.notify import notify_admins
         notify_admins(
             db,
@@ -163,16 +169,23 @@ def register(req: UserCreate, request: Request, db: Session = Depends(get_db)):
             },
         )
     is_first_user = db.query(User).count() == 0
+    is_customer = req.role == "customer"
+    role = "admin" if is_first_user else ("customer" if is_customer else "worker")
     user = User(
         username=req.username,
         email=req.email,
         password_hash=hash_password(req.password),
-        role="admin" if is_first_user else "worker",
+        role=role,
         is_approved=is_first_user,
         last_login_at=datetime.now(timezone.utc) if is_first_user else None,
     )
     db.add(user)
     db.flush()
+    if role == "customer":
+        customer = Customer(name=req.username.strip()[:200], email=req.email, phone="")
+        db.add(customer)
+        db.flush()
+        user.customer_id = customer.id
     if is_first_user:
         jti = _create_session(db, user, request)
         db.commit()

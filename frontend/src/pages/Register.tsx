@@ -151,10 +151,15 @@ export default function Register() {
             options={[
               { value: "worker", label: "Worker" },
               { value: "manager", label: "Manager" },
+              { value: "customer", label: "Customer (shop / order online)" },
             ]}
             ariaLabel="Role"
           />
-          <p className="mt-1 text-xs text-muted">Admin approval is required before you can sign in.</p>
+          <p className="mt-1 text-xs text-muted">
+            {role === "customer"
+              ? "Customers get a portal to shop, reorder and track invoices."
+              : "Admin approval is required before you can sign in."}
+          </p>
         </div>
         <button type="submit" className="btn-primary w-full" disabled={submitting}>
           {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Register"}

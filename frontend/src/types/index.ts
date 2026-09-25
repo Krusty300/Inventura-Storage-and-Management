@@ -1611,6 +1611,7 @@ export interface RestaurantTicket {
   status: TicketStatus;
   guest_count: number;
   customer_name: string;
+  customer_phone: string;
   subtotal: number;
   discount_amount: number;
   tax_amount: number;

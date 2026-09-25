@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.constants import MAX_PAGE_SIZE, currency_symbol as symbol_for
 from app.database import get_db
 from app.models import BOM, BOMItem
+from app.models.customer import Customer
 from app.models.menu import MenuModifierGroup, MenuModifierOption, MenuSection
 from app.models.product import Product
 from app.models.restaurant import RestaurantReservation, RestaurantTable, RestaurantTicket, RestaurantTicketItem
@@ -56,6 +57,11 @@ from app.services.auth import hash_password, require_permission
 from app.services.cache import settings_cache
 from app.services.httpratelimit import limiter
 from app.services.payment_methods import resolve_payment_details
+from app.services.sales_channels import (
+    RESTAURANT_DINE_IN_CHANNEL,
+    RESTAURANT_GUEST_ORDER_CHANNEL,
+    get_or_create_channel,
+)
 from app.services.pdf_helpers import (
     BODY_RIGHT, FONT, MARGIN, MUTED, draw_banner_header, draw_info_block,
     draw_item_table, draw_notes, draw_page_footer, draw_signoff, draw_totals,
@@ -91,6 +97,57 @@ def _system_user(db: Session) -> User:
     db.add(user)
     db.flush()
     return user
+
+
+def _normalize_phone(value: str) -> str:
+    """Trim a contact phone into an E.164-ish form (leading 0 -> 254)."""
+    phone = re.sub(r"[^\d+]", "", value or "")
+    if phone.startswith("0"):
+        phone = "254" + phone[1:]
+    return phone
+
+
+def _resolve_customer(db: Session, name: str, phone: str) -> int | None:
+    """Find (or create) the Customer for a dine-in contact; returns its id or None.
+
+    Phone is the authoritative key. If no exact normalized match is stored we
+    fall back to the trailing digits so legacy 07xx/254xx entries still link.
+    A new customer row is only created when both a phone and a name are present
+    (the minimum a POS has on screen). Without a phone, name-only matching is an
+    exact case-insensitive hit so we never mis-attribute a guest.
+    """
+    phone = _normalize_phone(phone)
+    name = (name or "").strip()
+    if phone:
+        customer = (
+            db.query(Customer)
+            .filter(Customer.phone == phone, Customer.is_deleted == False)  # noqa: E712
+            .first()
+        )
+        suffix = phone[-9:]
+        if customer is None and suffix:
+            customer = (
+                db.query(Customer)
+                .filter(
+                    Customer.phone != "",
+                    Customer.phone.like(f"%{suffix}"),
+                    Customer.is_deleted == False,  # noqa: E712
+                )
+                .first()
+            )
+        if customer is None and name:
+            customer = Customer(name=name[:200], phone=phone, email="")
+            db.add(customer)
+            db.flush()
+        return customer.id if customer is not None else None
+    if name:
+        customer = (
+            db.query(Customer)
+            .filter(Customer.name.ilike(name), Customer.is_deleted == False)  # noqa: E712
+            .first()
+        )
+        return customer.id if customer is not None else None
+    return None
 
 
 def _selected_modifiers(db: Session, product: Product, modifiers: list[dict]) -> tuple[list[dict], float]:
@@ -1129,6 +1186,7 @@ def create_ticket(data: TicketCreate, db: Session = Depends(get_db), user=Depend
         status="open",
         guest_count=data.guest_count,
         customer_name=data.customer_name.strip(),
+        customer_phone=(data.customer_phone or "").strip(),
         notes=data.notes,
     )
     db.add(ticket)
@@ -1143,6 +1201,8 @@ def create_ticket(data: TicketCreate, db: Session = Depends(get_db), user=Depend
         ticket.guest_count = max(ticket.guest_count, reservation.guest_count)
         if not ticket.customer_name:
             ticket.customer_name = reservation.guest_name
+        if not ticket.customer_phone and reservation.guest_phone:
+            ticket.customer_phone = reservation.guest_phone
         if not ticket.notes and reservation.notes:
             ticket.notes = reservation.notes
         reservation.status = "seated"
@@ -1178,6 +1238,8 @@ def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_
                 raise HTTPException(status_code=400, detail=f"Table '{table.number}' already has an open ticket")
     if updates.get("customer_name") is not None:
         updates["customer_name"] = updates["customer_name"].strip()
+    if updates.get("customer_phone") is not None:
+        updates["customer_phone"] = updates["customer_phone"].strip()
     for k, v in updates.items():
         setattr(ticket, k, v)
     _recompute_totals(db, ticket, discount_amount=data.discount_amount)
@@ -1343,6 +1405,7 @@ def split_ticket(ticket_id: int, data: TicketSplitCreate, db: Session = Depends(
     table_id = data.table_id if data.table_id is not None else ticket.table_id
     guest_count = data.guest_count if data.guest_count is not None else ticket.guest_count
     customer_name = (data.customer_name or "").strip() or ticket.customer_name
+    customer_phone = (data.customer_phone or "").strip() or ticket.customer_phone
     parent = ticket.split_parent  # if this ticket is already a split
     root = ticket if ticket.split_parent_id is None else parent
     split_group = root.split_group or f"SPL-{root.id}"
@@ -1355,6 +1418,7 @@ def split_ticket(ticket_id: int, data: TicketSplitCreate, db: Session = Depends(
         status="open",
         guest_count=guest_count,
         customer_name=customer_name,
+        customer_phone=customer_phone,
         notes=(data.notes or "").strip() or f"Split of {ticket.ticket_number}",
         split_group=split_group,
         split_parent_id=root.id,
@@ -1488,9 +1552,39 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
 
     is_mobile = method == "mobile_money"
     from app.routers.sales import generate_invoice_number
+
+    # Attribute the sale to a customer + restaurant channel when we can.
+    customer_phone = (data.customer_phone or "").strip() or (data.payment_phone or "").strip() or ticket.customer_phone
+    if not customer_phone and ticket.id:
+        reservation = db.query(RestaurantReservation).filter(
+            RestaurantReservation.ticket_id == ticket.id,
+            RestaurantReservation.status.in_(("seated", "confirmed", "completed")),
+        ).first()
+        if reservation is not None and reservation.guest_phone:
+            customer_phone = reservation.guest_phone
+    customer_name = (ticket.customer_name or "").strip()
+    customer_id = None
+    if data.customer_id is not None:
+        linked = db.get(Customer, data.customer_id)
+        if linked is None or linked.is_deleted or not linked.is_active:
+            raise HTTPException(status_code=400, detail="Selected customer is unavailable")
+        customer_id = linked.id
+    else:
+        customer_id = _resolve_customer(db, customer_name, customer_phone)
+    if customer_phone:
+        ticket.customer_phone = customer_phone
+    is_guest_order = ticket.user_id == _system_user(db).id
+    channel = get_or_create_channel(
+        db,
+        name=RESTAURANT_GUEST_ORDER_CHANNEL if is_guest_order else RESTAURANT_DINE_IN_CHANNEL,
+        type="restaurant",
+    )
+
     sale = Sale(
         invoice_number=generate_invoice_number(db),
         user_id=user.id,
+        customer_id=customer_id,
+        channel_id=channel.id,
         subtotal=ticket.subtotal,
         discount_amount=ticket.discount_amount,
         tax_amount=ticket.tax_amount,
@@ -1780,7 +1874,8 @@ def _guest_out(ticket: RestaurantTicket) -> GuestOrderOut:
         id=ticket.id, ticket_number=ticket.ticket_number,
         table_id=ticket.table_id, table_number=ticket.table_number,
         status=ticket.status, guest_count=ticket.guest_count,
-        guest_name=ticket.customer_name, subtotal=float(ticket.subtotal),
+        guest_name=ticket.customer_name, guest_phone=ticket.customer_phone,
+        subtotal=float(ticket.subtotal),
         total_amount=float(ticket.total_amount), opened_at=ticket.opened_at,
         items=[TicketItemOut.model_validate(i) for i in ticket.items if i.status in KITCHEN_ITEM_STATUSES],
     )
@@ -1839,10 +1934,15 @@ def guest_create_order(request: Request, data: GuestOrderCreate, db: Session = D
             ticket_number=generate_ticket_number(db),
             table_id=table.id, user_id=system.id, status="open",
             guest_count=data.guest_count, customer_name=data.guest_name.strip(),
+            customer_phone=(data.guest_phone or "").strip(),
             notes=data.notes,
         )
         db.add(ticket)
         db.flush()
+    elif (ticket.customer_name or "").strip() == "" and data.guest_name.strip():
+        ticket.customer_name = data.guest_name.strip()
+    if (data.guest_phone or "").strip():
+        ticket.customer_phone = (data.guest_phone or "").strip()
 
     for item in data.items:
         product = _validate_menu_product(db, item.product_id)

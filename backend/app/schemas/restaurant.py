@@ -67,6 +67,7 @@ class TicketSplitCreate(BaseModel):
     table_id: Optional[int] = None
     guest_count: Optional[int] = Field(default=None, ge=1, le=99)
     customer_name: str = ""
+    customer_phone: str = ""
     item_ids: list[int] = Field(min_length=1)
     notes: str = ""
 
@@ -102,6 +103,7 @@ class TicketCreate(BaseModel):
     reservation_id: Optional[int] = None
     guest_count: int = Field(default=1, ge=1, le=99)
     customer_name: str = ""
+    customer_phone: str = ""
     notes: str = ""
 
 
@@ -109,6 +111,7 @@ class TicketUpdate(BaseModel):
     table_id: Optional[int] = None
     guest_count: Optional[int] = Field(default=None, ge=1, le=99)
     customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
     discount_amount: Optional[float] = Field(default=None, ge=0)
     notes: Optional[str] = None
 
@@ -117,6 +120,8 @@ class TicketSettle(BaseModel):
     payment_method: str = "cash"
     payment_provider: Optional[str] = None
     payment_phone: Optional[str] = None
+    customer_id: Optional[int] = None
+    customer_phone: Optional[str] = None
     discount_amount: Optional[float] = Field(default=None, ge=0)
     tip_amount: float = Field(default=0.0, ge=0, le=1_000_000)
     notes: str = ""
@@ -130,6 +135,7 @@ class TicketOut(BaseModel):
     status: str
     guest_count: int
     customer_name: str
+    customer_phone: str = ""
     subtotal: float
     discount_amount: float
     tax_amount: float
@@ -178,6 +184,7 @@ class GuestOrderItem(BaseModel):
 class GuestOrderCreate(BaseModel):
     table_id: Optional[int] = None
     guest_name: str = ""
+    guest_phone: str = ""
     guest_count: int = Field(default=1, ge=1, le=99)
     notes: str = ""
     items: list[GuestOrderItem] = Field(min_length=1, max_length=50)
@@ -191,6 +198,7 @@ class GuestOrderOut(BaseModel):
     status: str
     guest_count: int
     guest_name: str = ""
+    guest_phone: str = ""
     subtotal: float
     total_amount: float
     opened_at: datetime

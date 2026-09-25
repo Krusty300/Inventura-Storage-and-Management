@@ -19,6 +19,7 @@ export interface GuestOrderOut {
   status: string;
   guest_count: number;
   guest_name: string;
+  guest_phone: string;
   subtotal: number;
   total_amount: number;
   opened_at: string;
@@ -197,6 +198,7 @@ export default function GuestOrder() {
   });
   const [pick, setPick] = useState<MenuItem | null>(null);
   const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
   const [guestCount, setGuestCount] = useState(1);
   const [placed, setPlaced] = useState<GuestOrderOut | null>(null);
 
@@ -236,6 +238,7 @@ export default function GuestOrder() {
       const { data } = await api.post("/restaurant/public/orders", {
         table_id: tid,
         guest_name: guestName.trim(),
+        guest_phone: guestPhone.trim(),
         guest_count: guestCount,
         items: cart.map((l) => ({
           product_id: l.product.id,
@@ -424,6 +427,11 @@ export default function GuestOrder() {
               <label className="block mt-4">
                 <span className="text-xs font-medium text-muted">Your name (optional)</span>
                 <input className="input mt-1" value={guestName} maxLength={80} onChange={(e) => setGuestName(e.target.value)} placeholder="e.g. Alex" />
+              </label>
+              <label className="block mt-3">
+                <span className="text-xs font-medium text-muted">Phone (optional)</span>
+                <input className="input mt-1" value={guestPhone} maxLength={40} onChange={(e) => setGuestPhone(e.target.value)} placeholder="0712 345 678" inputMode="tel" />
+                <span className="text-[11px] text-muted mt-1 inline-block">Use standard format (e.g. 07xx…). Not shared via this screen.</span>
               </label>
               <label className="block mt-3">
                 <span className="text-xs font-medium text-muted">People at your table</span>

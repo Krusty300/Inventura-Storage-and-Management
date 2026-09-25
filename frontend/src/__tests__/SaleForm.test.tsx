@@ -59,21 +59,28 @@ describe("SaleForm", () => {
     })));
   });
 
-  it("loads customer names into the customer dropdown", async () => {
+  it("picks a customer via the searchable combobox and attaches them to the sale", async () => {
     getMock.mockImplementation((url: string) => {
-      if (url === "/customers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Corp", phone: "", email: "", address: "", customer_type: "wholesale", notes: "", is_active: true, created_at: "", updated_at: "" }] } });
-      if (url === "/products") return Promise.resolve({ data: { items: [] } });
-    if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD", tax_rate: 10 } });
+      if (url === "/customers") return Promise.resolve({ data: { items: [{ id: 1, name: "Acme Corp", phone: "0712345678", email: "", address: "", customer_type: "wholesale", notes: "", is_active: true, created_at: "", updated_at: "" }] } });
+      if (url === "/products") return Promise.resolve({ data: { items: [makeProduct({ id: 7, name: "Widget", sku: "SKU-7", unit_price: 10 })] } });
+      if (url === "/settings") return Promise.resolve({ data: { currency_symbol: "$", currency_code: "USD", tax_rate: 10 } });
       if (url === "/quality-checks") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       if (url === "/promotions") return Promise.resolve({ data: { items: [], total: 0, page: 1, pages: 1 } });
       if (url === "/sales-channels/all") return Promise.resolve({ data: [] });
       return Promise.reject(new Error(`Unexpected call: ${url}`));
     });
+    postMock.mockResolvedValue({ data: {} });
     renderWithProviders(<SaleForm onClose={() => {}} onSaved={() => {}} />);
-    expect(await screen.findByRole("option", { name: "Acme Corp" })).toBeInTheDocument();
-    const customerSelect = screen.getByLabelText("Customer");
-    fireEvent.change(customerSelect, { target: { value: "1" } });
-    expect(customerSelect).toHaveValue("Acme Corp");
+
+    const combobox = await screen.findByRole("combobox", { name: "Customer" });
+    fireEvent.change(combobox, { target: { value: "Acme" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Acme Corp/ }));
+
+    fireEvent.click(await screen.findByRole("button", { name: /Widget/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Complete Sale/ }));
+    await vi.waitFor(() => expect(postMock).toHaveBeenCalledWith("/sales", expect.objectContaining({
+      customer_id: 1,
+    })));
   });
 
   it("blocks submission when the cart is empty", async () => {

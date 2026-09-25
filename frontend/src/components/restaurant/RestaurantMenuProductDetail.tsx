@@ -5,6 +5,7 @@ import type { MenuItem, MenuModifierGroup, Product } from "../../types";
 import RestaurantSlideOver from "./RestaurantSlideOver";
 import ImageCarousel from "../ImageCarousel";
 import { useSettings } from "../../hooks/useSettings";
+import { formatCurrency } from "../../utils/currency";
 
 interface Props {
   menuItem: MenuItem | null;
@@ -29,7 +30,7 @@ export default function RestaurantMenuProductDetail({ menuItem, onClose }: Props
 
   if (!menuItem) return null;
 
-  const price = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const price = (n: number) => formatCurrency(n, symbol);
 
   return (
     <RestaurantSlideOver

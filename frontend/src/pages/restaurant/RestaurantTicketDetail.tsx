@@ -12,6 +12,7 @@ import type {
 import EmptyState from "../../components/EmptyState";
 import Modal from "../../components/Modal";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import CustomerPicker from "../../components/CustomerPicker";
 import PaymentMethodPicker from "../../components/PaymentMethodPicker";
 import BarcodeScanner from "../../components/BarcodeScanner";
 import RestaurantMenuProductDetail from "../../components/restaurant/RestaurantMenuProductDetail";
@@ -24,6 +25,7 @@ import { useSettings } from "../../hooks/useSettings";
 import { formatDateTime } from "../../utils/date";
 import { paymentLabel } from "../../utils/payments";
 import { errorMessage } from "../../utils/errors";
+import { formatCurrency } from "../../utils/currency";
 import { printBlob } from "../../utils/download";
 
 const TICKET_BADGE: Record<string, string> = {
@@ -97,7 +99,7 @@ export default function RestaurantTicketDetail() {
   });
 
   const updateTicket = useMutation({
-    mutationFn: async (fields: { customer_name?: string; guest_count?: number; notes?: string }) => {
+    mutationFn: async (fields: { customer_name?: string; customer_phone?: string; guest_count?: number; notes?: string }) => {
       const { data } = await api.put(`/restaurant/tickets/${ticketId}`, fields);
       return data as RestaurantTicket;
     },
@@ -192,8 +194,6 @@ export default function RestaurantTicketDetail() {
   const pendingItems = (ticket?.items ?? []).filter((i) => i.status === "pending");
   const canEdit = ticket && !["settled", "cancelled", "paying"].includes(ticket.status);
 
-  const currencyAmount = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
   const printPdf = async (path: string) => {
     try {
       const { data } = await api.get(path, { responseType: "blob" });
@@ -259,7 +259,7 @@ export default function RestaurantTicketDetail() {
           )}
           {canEdit && can("restaurant.settle") && (
             <button onClick={() => setShowSettle(true)} className="btn-primary">
-              Settle · {currencyAmount(ticket.total_amount)}
+              Settle · {formatCurrency(ticket.total_amount, symbol)}
             </button>
           )}
         </div>
@@ -312,7 +312,7 @@ export default function RestaurantTicketDetail() {
                     </button>
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-ink truncate">{p.display_name}</div>
-                      <div className="text-xs text-muted mt-0.5">{currencyAmount(p.unit_price)}</div>
+                      <div className="text-xs text-muted mt-0.5">{formatCurrency(p.unit_price, symbol)}</div>
                     </div>
                     <span className="p-2 rounded-lg bg-primary-soft text-primary-strong dark:text-primary shrink-0">
                       <Plus size={16} />
@@ -345,7 +345,7 @@ export default function RestaurantTicketDetail() {
                         {item.modifiers?.length ? (
                           <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
                         ) : null}
-                        <div className="text-xs text-muted mt-0.5">{currencyAmount(item.unit_price)} each</div>
+                        <div className="text-xs text-muted mt-0.5">{formatCurrency(item.unit_price, symbol)} each</div>
                       </div>
                     </div>
                     {can("restaurant.update") ? (
@@ -372,11 +372,11 @@ export default function RestaurantTicketDetail() {
               </ul>
             )}
             <div className="mt-auto pt-2 space-y-1 text-sm border-t border-border">
-              <div className="flex justify-between text-muted"><span>Subtotal</span><span className="tabular-nums">{currencyAmount(ticket.subtotal)}</span></div>
-              {ticket.discount_amount > 0 && <div className="flex justify-between text-muted"><span>Discount</span><span className="tabular-nums">-{currencyAmount(ticket.discount_amount)}</span></div>}
-              {ticket.tax_amount > 0 && <div className="flex justify-between text-muted"><span>Tax</span><span className="tabular-nums">{currencyAmount(ticket.tax_amount)}</span></div>}
-              {ticket.tip_amount > 0 && <div className="flex justify-between text-muted"><span>Tip</span><span className="tabular-nums">{currencyAmount(ticket.tip_amount)}</span></div>}
-              <div className="flex justify-between font-semibold text-ink pt-1"><span>Total</span><span className="tabular-nums">{currencyAmount(ticket.total_amount)}</span></div>
+              <div className="flex justify-between text-muted"><span>Subtotal</span><span className="tabular-nums">{formatCurrency(ticket.subtotal, symbol)}</span></div>
+              {ticket.discount_amount > 0 && <div className="flex justify-between text-muted"><span>Discount</span><span className="tabular-nums">-{formatCurrency(ticket.discount_amount, symbol)}</span></div>}
+              {ticket.tax_amount > 0 && <div className="flex justify-between text-muted"><span>Tax</span><span className="tabular-nums">{formatCurrency(ticket.tax_amount, symbol)}</span></div>}
+              {ticket.tip_amount > 0 && <div className="flex justify-between text-muted"><span>Tip</span><span className="tabular-nums">{formatCurrency(ticket.tip_amount, symbol)}</span></div>}
+              <div className="flex justify-between font-semibold text-ink pt-1"><span>Total</span><span className="tabular-nums">{formatCurrency(ticket.total_amount, symbol)}</span></div>
             </div>
             {can("restaurant.create") && pendingItems.length > 0 && (
               <button onClick={() => sendToKitchen.mutate()} disabled={sendToKitchen.isPending} className="btn-primary w-full flex items-center justify-center gap-1.5">
@@ -405,7 +405,7 @@ export default function RestaurantTicketDetail() {
                   {item.modifiers?.length ? (
                     <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
                   ) : null}
-                  <div className="text-xs text-muted mt-0.5">×{item.quantity} · {currencyAmount(item.unit_price)}</div>
+                  <div className="text-xs text-muted mt-0.5">×{item.quantity} · {formatCurrency(item.unit_price, symbol)}</div>
                   {item.status === "voided" && item.void_reason && (
                     <div className="text-xs text-red-600 dark:text-red-400 mt-0.5">Voided: {item.void_reason}</div>
                   )}
@@ -436,7 +436,7 @@ export default function RestaurantTicketDetail() {
         <div className="card p-5 text-center">
           <CheckCheck size={32} className="mx-auto mb-3 text-emerald-600 dark:text-emerald-400" />
           <h2 className="text-lg font-bold text-ink">Ticket settled</h2>
-          <p className="text-sm text-muted mt-1">Settled {formatDateTime(ticket.settled_at)} for {currencyAmount(ticket.total_amount)}{ticket.tip_amount > 0 && ` plus a ${currencyAmount(ticket.tip_amount)} tip`}.</p>
+          <p className="text-sm text-muted mt-1">Settled {formatDateTime(ticket.settled_at)} for {formatCurrency(ticket.total_amount, symbol)}{ticket.tip_amount > 0 && ` plus a ${formatCurrency(ticket.tip_amount, symbol)} tip`}.</p>
         </div>
       )}
 
@@ -685,15 +685,17 @@ function EditTicketModal({ open, ticket, onClose, onSave }: {
   open: boolean;
   ticket: RestaurantTicket;
   onClose: () => void;
-  onSave: (fields: { customer_name: string; guest_count: number; notes: string }) => void;
+  onSave: (fields: { customer_name: string; customer_phone: string; guest_count: number; notes: string }) => void;
 }) {
   const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [guestCount, setGuestCount] = useState(1);
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
     if (open) {
       setCustomerName(ticket.customer_name || "");
+      setCustomerPhone(ticket.customer_phone || "");
       setGuestCount(ticket.guest_count);
       setNotes(ticket.notes || "");
     }
@@ -701,7 +703,12 @@ function EditTicketModal({ open, ticket, onClose, onSave }: {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ customer_name: customerName.trim(), guest_count: guestCount, notes: notes.trim() });
+    onSave({
+      customer_name: customerName.trim(),
+      customer_phone: customerPhone.trim(),
+      guest_count: guestCount,
+      notes: notes.trim(),
+    });
   };
 
   return (
@@ -719,8 +726,25 @@ function EditTicketModal({ open, ticket, onClose, onSave }: {
     >
       <form id="edit-ticket-form" onSubmit={submit} className="space-y-4">
         <div>
+          <label className="block text-sm font-medium text-ink mb-1">Customer</label>
+          <CustomerPicker
+            value={null}
+            onChange={() => {}}
+            onSelectCustomer={(c) => {
+              setCustomerName(c.name);
+              setCustomerPhone(c.phone || "");
+            }}
+            placeholder={customerName ? `Search to change — now ${customerName}` : "Search a customer to attach this bill..."}
+          />
+          <p className="text-xs text-muted mt-1">Picking a customer fills the booking name and contact phone.</p>
+        </div>
+        <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-customer">Customer / booking name</label>
           <input id="edit-customer" className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in" maxLength={120} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-customer-phone">Contact phone</label>
+          <input id="edit-customer-phone" className="input" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="0712 345 678" inputMode="tel" maxLength={40} />
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-guests">Guest count</label>
@@ -744,6 +768,8 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
   const [method, setMethod] = useState("cash");
   const [provider, setProvider] = useState<string | null>(null);
   const [phone, setPhone] = useState("");
+  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [customerPhone, setCustomerPhone] = useState("");
   const [discount, setDiscount] = useState("");
   const [tip, setTip] = useState("");
   const [tendered, setTendered] = useState("");
@@ -751,13 +777,14 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
   const { addToast } = useToast();
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
-  const fmt = (n: number) => `${symbol}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   useEffect(() => {
     if (open) {
       setMethod("cash");
       setProvider(null);
       setPhone("");
+      setCustomerId(null);
+      setCustomerPhone(ticket.customer_phone || "");
       setDiscount(ticket.discount_amount > 0 ? String(ticket.discount_amount) : "");
       setTip("");
       setTendered("");
@@ -783,12 +810,14 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
       return;
     }
     if (isCash && tenderValue < due) {
-      addToast(`Tendered value is short by ${fmt(short)}`, "error");
+      addToast(`Tendered value is short by ${formatCurrency(short, symbol)}`, "error");
       return;
     }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = { payment_method: method };
+      if (customerId != null) payload.customer_id = customerId;
+      if (customerPhone.trim()) payload.customer_phone = customerPhone.trim();
       if (method === "mobile_money") {
         payload.payment_provider = provider;
         payload.payment_phone = phone.trim();
@@ -823,6 +852,33 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
   return (
     <Modal open={open} onClose={onClose} title={`Settle ${ticket.ticket_number}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="rounded-lg border border-border bg-app p-3 space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1">Customer</label>
+            <CustomerPicker
+              value={customerId}
+              onChange={setCustomerId}
+              onSelectCustomer={(c) => {
+                setCustomerPhone(c.phone || "");
+                if (method === "mobile_money" && !phone.trim()) setPhone(c.phone || "");
+              }}
+              placeholder={customerPhone ? `Linked contact: ${customerPhone}` : "Search customer to attribute this sale..."}
+            />
+            <p className="text-xs text-muted mt-1">Attaching a customer records the sale on their account.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-customer-phone">Contact phone</label>
+            <input
+              id="settle-customer-phone"
+              className="input"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              placeholder="0712 345 678"
+              inputMode="tel"
+              maxLength={40}
+            />
+          </div>
+        </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-method">Payment method</label>
           <PaymentMethodPicker
@@ -893,23 +949,23 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
         <div className="border-t border-border pt-3 space-y-1.5">
           <div className="flex justify-between text-muted">
             <span>Total to collect</span>
-            <span className="tabular-nums">{fmt(total)}</span>
+            <span className="tabular-nums">{formatCurrency(total, symbol)}</span>
           </div>
           {tipValue > 0 && (
             <div className="flex justify-between text-muted">
               <span>Tip</span>
-              <span className="tabular-nums">{fmt(tipValue)}</span>
+              <span className="tabular-nums">{formatCurrency(tipValue, symbol)}</span>
             </div>
           )}
           {isCash && tenderValue > 0 && (
             <div className={`flex justify-between font-medium ${short > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
               <span>{short > 0 ? "Short" : "Change due"}</span>
-              <span className="tabular-nums">{fmt(short > 0 ? short : change)}</span>
+              <span className="tabular-nums">{formatCurrency(short > 0 ? short : change, symbol)}</span>
             </div>
           )}
           <div className="flex justify-between font-semibold text-ink pt-1">
             <span>{isCash ? "Cash to collect" : "Total to collect"}</span>
-            <span className="tabular-nums">{fmt(due)}</span>
+            <span className="tabular-nums">{formatCurrency(due, symbol)}</span>
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-1">
