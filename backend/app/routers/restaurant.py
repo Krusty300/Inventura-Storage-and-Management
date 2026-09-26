@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import io
 import re
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -764,18 +765,28 @@ def delete_modifier_option(group_id: int, option_id: int, db: Session = Depends(
 
 @router.get("/tables", response_model=list[RestaurantTableOut])
 def list_tables(db: Session = Depends(get_db)):
-    tables = db.query(RestaurantTable).options(
-        joinedload(RestaurantTable.tickets),
-    ).all()
+    tables = db.query(RestaurantTable).all()
     def _natural_key(t: RestaurantTable) -> tuple:
         match = re.match(r"^(\d+)(.*)$", t.number or "")
         if match:
             return (0, int(match.group(1)), match.group(2).lower())
         return (1, 0, (t.number or "").lower())
     tables.sort(key=_natural_key)
+
+    active_by_table: dict[int, RestaurantTicket] = {}
+    if tables:
+        active = db.query(RestaurantTicket).options(
+            joinedload(RestaurantTicket.user),
+        ).filter(
+            RestaurantTicket.table_id.in_([t.id for t in tables]),
+            ~RestaurantTicket.status.in_(("settled", "cancelled")),
+        ).order_by(RestaurantTicket.id.asc()).all()
+        for t in active:
+            active_by_table.setdefault(t.table_id, t)
+
     outs = [RestaurantTableOut.model_validate(t) for t in tables]
     for t, out in zip(tables, outs):
-        active = t.active_ticket
+        active = active_by_table.get(t.id)
         if active is not None:
             out.status = "occupied"
             out.active_ticket_id = active.id
@@ -1147,6 +1158,8 @@ def list_tickets(
     search: str = Query(""),
     status: str | None = Query(None),
     table_id: int | None = Query(None),
+    start_date: str | None = Query(None, description="YYYY-MM-DD filter on opened_at (inclusive)"),
+    end_date: str | None = Query(None, description="YYYY-MM-DD filter on opened_at (inclusive)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -1160,6 +1173,18 @@ def list_tickets(
         q = q.filter(RestaurantTicket.status == status)
     if table_id:
         q = q.filter(RestaurantTicket.table_id == table_id)
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="start_date must be YYYY-MM-DD")
+        q = q.filter(RestaurantTicket.opened_at >= start)
+    if end_date:
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="end_date must be YYYY-MM-DD")
+        q = q.filter(RestaurantTicket.opened_at < end)
     total = q.count()
     items = q.order_by(RestaurantTicket.id.desc()).offset(skip).limit(limit).all()
     return {"items": [TicketOut.model_validate(t) for t in items], "total": total,
@@ -1759,7 +1784,7 @@ def ticket_bill_pdf(ticket_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/tickets/{ticket_id}/kitchen")
-def kitchen_ticket_pdf(ticket_id: int, item_ids: str = Query("", description="Comma-separated item ids to reprint only"), db: Session = Depends(get_db)):
+def kitchen_ticket_pdf(ticket_id: int, item_ids: str = Query("", description="Comma-separated item ids to reprint only"), db: Session = Depends(get_db), user=Depends(require_permission("restaurant.kitchen"))):
     ticket = load_ticket(db, ticket_id)
     store_name, store_lines, s = _store_header_lines(db)
 
@@ -1813,7 +1838,7 @@ def kitchen_ticket_pdf(ticket_id: int, item_ids: str = Query("", description="Co
 
 
 @router.get("/kitchen/board", response_model=list[KitchenTicketOut])
-def kitchen_board(db: Session = Depends(get_db)):
+def kitchen_board(db: Session = Depends(get_db), user=Depends(require_permission("restaurant.kitchen"))):
     tickets = db.query(RestaurantTicket).options(
         joinedload(RestaurantTicket.items).joinedload(RestaurantTicketItem.product),
         joinedload(RestaurantTicket.table),
@@ -1871,7 +1896,7 @@ def _guest_ticket_base(db: Session, table_id: int | None) -> RestaurantTicket | 
 
 def _guest_out(ticket: RestaurantTicket) -> GuestOrderOut:
     return GuestOrderOut(
-        id=ticket.id, ticket_number=ticket.ticket_number,
+        id=ticket.id, token=ticket.guest_token or "", ticket_number=ticket.ticket_number,
         table_id=ticket.table_id, table_number=ticket.table_number,
         status=ticket.status, guest_count=ticket.guest_count,
         guest_name=ticket.customer_name, guest_phone=ticket.customer_phone,
@@ -1882,12 +1907,14 @@ def _guest_out(ticket: RestaurantTicket) -> GuestOrderOut:
 
 
 @public_router.get("/public/menu", response_model=list[MenuSectionWithItems])
-def public_menu(db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def public_menu(request: Request, db: Session = Depends(get_db)):
     return get_menu(db)
 
 
 @public_router.get("/public/menu-items/{product_id}/modifiers", response_model=list[MenuModifierGroupOut])
-def public_menu_item_modifiers(product_id: int, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def public_menu_item_modifiers(request: Request, product_id: int, db: Session = Depends(get_db)):
     product = get_or_404(Product, product_id, db)
     if not product.is_menu_item or not product.is_active:
         raise HTTPException(status_code=404, detail=f"Menu item '{product.display_name}' is not available")
@@ -1899,7 +1926,8 @@ def public_menu_item_modifiers(product_id: int, db: Session = Depends(get_db)):
 
 
 @public_router.get("/public/tables/{table_id}", response_model=RestaurantTableOut)
-def public_table(table_id: int, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def public_table(request: Request, table_id: int, db: Session = Depends(get_db)):
     table = get_or_404(RestaurantTable, table_id, db)
     if not table.is_active:
         raise HTTPException(status_code=404, detail=f"Table '{table.number}' is inactive")
@@ -1935,12 +1963,16 @@ def guest_create_order(request: Request, data: GuestOrderCreate, db: Session = D
             table_id=table.id, user_id=system.id, status="open",
             guest_count=data.guest_count, customer_name=data.guest_name.strip(),
             customer_phone=(data.guest_phone or "").strip(),
+            guest_token=secrets.token_urlsafe(24),
             notes=data.notes,
         )
         db.add(ticket)
         db.flush()
-    elif (ticket.customer_name or "").strip() == "" and data.guest_name.strip():
-        ticket.customer_name = data.guest_name.strip()
+    else:
+        if (ticket.customer_name or "").strip() == "" and data.guest_name.strip():
+            ticket.customer_name = data.guest_name.strip()
+        if not ticket.guest_token:
+            ticket.guest_token = secrets.token_urlsafe(24)
     if (data.guest_phone or "").strip():
         ticket.customer_phone = (data.guest_phone or "").strip()
 
@@ -1982,9 +2014,12 @@ def guest_create_order(request: Request, data: GuestOrderCreate, db: Session = D
     return _guest_out(ticket)
 
 
-@public_router.get("/public/orders/{ticket_id}", response_model=GuestOrderOut)
-def guest_order_status(ticket_id: int, db: Session = Depends(get_db)):
-    ticket = load_ticket(db, ticket_id)
+@public_router.get("/public/orders/{token}", response_model=GuestOrderOut)
+@limiter.limit("30/minute")
+def guest_order_status(request: Request, token: str, db: Session = Depends(get_db)):
+    ticket = db.query(RestaurantTicket).filter(RestaurantTicket.guest_token == token).first()
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Order not found")
     return _guest_out(ticket)
 
 
@@ -2024,7 +2059,7 @@ def list_menu_recipes(db: Session = Depends(get_db)):
             } for i in bom.items]
         price = float(p.unit_price or 0.0)
         margin = price - unit_cost
-        margin_pct = round(margin / unit_cost * 100, 1) if unit_cost > 0 else 0.0
+        margin_pct = round(margin / price * 100, 1) if price > 0 else 0.0
         results.append({
             "product_id": p.id,
             "name": p.display_name,

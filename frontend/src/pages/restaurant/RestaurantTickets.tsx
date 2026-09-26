@@ -42,6 +42,8 @@ const STATUS_BADGE: Record<string, string> = {
 export default function RestaurantTickets() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<RestaurantTicket | null>(null);
   const { pageSize, setPageSize } = usePageSize();
@@ -63,7 +65,7 @@ export default function RestaurantTickets() {
   }, [subscribe, queryClient]);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["restaurant-tickets", debouncedSearch, status, page, pageSize],
+    queryKey: ["restaurant-tickets", debouncedSearch, status, fromDate, toDate, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = {
         skip: ((page - 1) * pageSize).toString(),
@@ -71,6 +73,8 @@ export default function RestaurantTickets() {
       };
       if (debouncedSearch) params.search = debouncedSearch;
       if (status) params.status = status;
+      if (fromDate) params.start_date = fromDate;
+      if (toDate) params.end_date = toDate;
       const { data } = await api.get("/restaurant/tickets", { params });
       return data as PaginatedResponse<RestaurantTicket>;
     },
@@ -116,6 +120,29 @@ export default function RestaurantTickets() {
           maxWidth={180}
           options={STATUS_FILTERS}
         />
+        <input
+          className="input w-auto"
+          type="date"
+          value={fromDate}
+          onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
+          aria-label="Opened from"
+        />
+        <input
+          className="input w-auto"
+          type="date"
+          value={toDate}
+          onChange={(e) => { setToDate(e.target.value); setPage(1); }}
+          aria-label="Opened to"
+        />
+        {(fromDate || toDate) && (
+          <button
+            className="btn-secondary text-sm"
+            onClick={() => { setFromDate(""); setToDate(""); setPage(1); }}
+            aria-label="Clear date filters"
+          >
+            Clear dates
+          </button>
+        )}
       </div>
 
       <div className="card overflow-hidden p-0">

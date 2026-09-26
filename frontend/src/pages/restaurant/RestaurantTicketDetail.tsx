@@ -7,7 +7,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type {
-  MenuItem, MenuModifierGroup, MenuSectionWithItems, Product, RestaurantTicket, RestaurantTicketItem,
+  Customer, MenuItem, MenuModifierGroup, MenuSectionWithItems, Product, RestaurantTicket, RestaurantTicketItem,
 } from "../../types";
 import EmptyState from "../../components/EmptyState";
 import Modal from "../../components/Modal";
@@ -241,9 +241,11 @@ export default function RestaurantTicketDetail() {
           <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/bill`)} className="btn-secondary" aria-label={`Print bill for ${ticket.ticket_number}`}>
             Bill
           </button>
-          <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/kitchen`)} className="btn-secondary" aria-label={`Print kitchen ticket for ${ticket.ticket_number}`}>
-            Kitchen
-          </button>
+          {can("restaurant.kitchen") && (
+            <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/kitchen`)} className="btn-secondary" aria-label={`Print kitchen ticket for ${ticket.ticket_number}`}>
+              Kitchen
+            </button>
+          )}
           {canEdit && can("restaurant.update") && (
             <>
               <button onClick={() => setShowSplit(true)} className="btn-secondary" aria-label={`Split ${ticket.ticket_number}`}>
@@ -778,6 +780,19 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
 
+  const lookupName = (ticket.customer_name || "").trim();
+  const lookupPhone = (ticket.customer_phone || "").trim();
+  const { data: customerMatches } = useQuery({
+    queryKey: ["settle-customer-lookup", open, lookupName, lookupPhone],
+    queryFn: async () => {
+      const q = lookupPhone || lookupName;
+      if (!q) return [] as Customer[];
+      const { data } = await api.get("/customers", { params: { search: q, limit: 8, skip: 0 } });
+      return (data.items ?? []) as Customer[];
+    },
+    enabled: open && (!!lookupName || !!lookupPhone),
+  });
+
   useEffect(() => {
     if (open) {
       setMethod("cash");
@@ -790,6 +805,19 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
       setTendered("");
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open) return;
+    const matches = customerMatches ?? [];
+    const name = lookupName.toLowerCase();
+    const phoneDigits = (s: string) => (s || "").replace(/\D+/g, "").slice(-9);
+    const target = phoneDigits(lookupPhone);
+    const match =
+      (target && matches.find((c) => phoneDigits(c.phone) === target)) ||
+      (name && matches.find((c) => c.name.toLowerCase() === name)) ||
+      (matches.length === 1 ? matches[0] : null);
+    if (match) setCustomerId(match.id);
+  }, [open, customerMatches, lookupName, lookupPhone]);
 
   const discountValue = parseFloat(discount) || 0;
   const cappedDiscount = Math.min(discountValue, ticket.subtotal);
@@ -837,7 +865,11 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
           account_ref: updated.ticket_number,
         }).catch(() => null);
         if (stk?.data?.success) {
-          api.put(`/sales/${updated.sale_id}/checkout-id`, { checkout_request_id: stk.data.checkout_request_id }).catch(() => {});
+          try {
+            await api.put(`/sales/${updated.sale_id}/checkout-id`, { checkout_request_id: stk.data.checkout_request_id });
+          } catch {
+            addToast("Payment prompt sent, but tracking the request failed. Verify in the Sales page.", "info");
+          }
         } else {
           addToast("Sale created — please push the STK request from the Sales page", "info");
         }

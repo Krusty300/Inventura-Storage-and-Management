@@ -192,6 +192,7 @@ class GuestOrderCreate(BaseModel):
 
 class GuestOrderOut(BaseModel):
     id: int
+    token: str = ""
     ticket_number: str
     table_id: Optional[int] = None
     table_number: str = ""
@@ -212,7 +213,7 @@ class ReservationCreate(BaseModel):
     table_id: Optional[int] = None
     guest_name: str
     guest_phone: str = ""
-    guest_count: int = Field(default=2, ge=1, le=99)
+    guest_count: int = Field(default=1, ge=1, le=99)
     reserved_at: datetime
     duration_minutes: int = Field(default=90, ge=15, le=1440)
     notes: str = ""

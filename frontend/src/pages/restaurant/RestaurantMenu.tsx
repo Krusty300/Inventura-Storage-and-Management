@@ -394,7 +394,7 @@ function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () =
         }
         for (const id of originalIds) {
           if (!keptIds.has(id)) {
-            await api.delete(`/restaurant/menu-modifier-groups/${editingGroupId}/options/${id}`).catch(() => {});
+            await api.delete(`/restaurant/menu-modifier-groups/${editingGroupId}/options/${id}`);
           }
         }
         addToast("Modifier group updated", "success");

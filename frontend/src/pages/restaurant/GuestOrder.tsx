@@ -13,6 +13,7 @@ import type { MenuSectionWithItems, MenuItem, MenuModifierGroup, RestaurantTable
 
 export interface GuestOrderOut {
   id: number;
+  token: string;
   ticket_number: string;
   table_id: number | null;
   table_number: string;
@@ -36,7 +37,15 @@ interface CartLine {
   extras: number;
 }
 
-const CART_KEY = "guest-cart";
+const CART_KEY_PREFIX = "guest-cart";
+
+function loadCart(key: string): CartLine[] {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "[]") as CartLine[];
+  } catch {
+    return [];
+  }
+}
 
 function ModifierSheet({ product, onClose, onAdd }: {
   product: MenuItem;
@@ -189,12 +198,10 @@ export default function GuestOrder() {
   const tid = tableId ? Number(tableId) : null;
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
+  const CART_KEY = `${CART_KEY_PREFIX}-${tid ?? "shared"}`;
   const [cart, setCart] = useState<CartLine[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(CART_KEY) ?? "[]") as CartLine[];
-    } catch {
-      return [];
-    }
+    localStorage.removeItem(CART_KEY_PREFIX);
+    return loadCart(CART_KEY);
   });
   const [pick, setPick] = useState<MenuItem | null>(null);
   const [guestName, setGuestName] = useState("");
@@ -204,7 +211,7 @@ export default function GuestOrder() {
 
   useEffect(() => {
     localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  }, [cart]);
+  }, [cart, CART_KEY]);
 
   const { data: table, isLoading: tableLoading, error: tableError } = useQuery({
     queryKey: ["public-table", tid],
@@ -218,9 +225,9 @@ export default function GuestOrder() {
   });
 
   const { data: order, refetch: refetchOrder } = useQuery({
-    queryKey: ["public-order", placed?.id],
-    queryFn: async () => (await api.get(`/restaurant/public/orders/${placed!.id}`)).data as GuestOrderOut,
-    enabled: placed != null,
+    queryKey: ["public-order", placed?.token],
+    queryFn: async () => (await api.get(`/restaurant/public/orders/${placed!.token}`)).data as GuestOrderOut,
+    enabled: placed != null && !!placed.token,
     refetchInterval: 6000,
   });
 

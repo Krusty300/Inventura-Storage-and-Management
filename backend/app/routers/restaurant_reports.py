@@ -79,7 +79,7 @@ def restaurant_summary(
         .select_from(RestaurantTicketItem)
         .join(RestaurantTicket, RestaurantTicketItem.ticket_id == RestaurantTicket.id)
         .outerjoin(ProductOut, ProductOut.id == RestaurantTicketItem.product_id)
-        .filter(RestaurantTicket.status == "settled")
+.filter(RestaurantTicket.status == "settled", RestaurantTicketItem.status != "voided")
     )
     if start:
         item_rows = item_rows.filter(RestaurantTicket.settled_at >= start)

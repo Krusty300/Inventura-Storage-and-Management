@@ -69,6 +69,42 @@ def test_restaurant_summary_report_aggregates_settled_tickets(auth_headers):
     assert any(top["name"] == product["name"] and top["quantity_sold"] == 2 for top in summary["top_items"][:1])
 
 
+def test_summary_top_items_excludes_voided(auth_headers):
+    sold = _create_menu_product(auth_headers, f"TOPV{uuid.uuid4().hex[:4]}", qty=10, price=100.0)
+    voided = _create_menu_product(auth_headers, f"TOPD{uuid.uuid4().hex[:4]}", qty=10, price=60.0)
+    ticket = _open_ticket(auth_headers)
+    _add_item(auth_headers, ticket["id"], sold["id"], quantity=2)
+    _add_item(auth_headers, ticket["id"], voided["id"], quantity=2)
+    assert client.post(f"/api/restaurant/tickets/{ticket['id']}/send", headers=auth_headers).status_code == 200
+    voided_item = _item_ids(auth_headers, ticket["id"])[voided["id"]]
+    resp = client.post(
+        f"/api/restaurant/tickets/{ticket['id']}/items/{voided_item}/void",
+        json={"reason": "Comp"}, headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    _settle_ticket(auth_headers, ticket["id"])
+
+    summary = client.get("/api/reports/restaurant-summary", headers=auth_headers).json()
+    top = {t["product_id"]: t for t in summary["top_items"]}
+    assert top[sold["id"]]["quantity_sold"] == 2
+    assert voided["id"] not in top
+
+
+def test_tickets_list_date_range_filter(auth_headers):
+    ticket = _open_ticket(auth_headers)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    future = (datetime.now(timezone.utc) + timedelta(days=365)).strftime("%Y-%m-%d")
+
+    matched = client.get("/api/restaurant/tickets", params={"start_date": today, "end_date": today}, headers=auth_headers).json()
+    assert any(t["id"] == ticket["id"] for t in matched["items"])
+
+    none = client.get("/api/restaurant/tickets", params={"start_date": future, "end_date": future}, headers=auth_headers).json()
+    assert none["total"] == 0 or all(t["id"] != ticket["id"] for t in none["items"])
+
+    bad = client.get("/api/restaurant/tickets", params={"start_date": "not-a-date"}, headers=auth_headers)
+    assert bad.status_code == 400
+
+
 def test_restaurant_summary_date_range_filters(auth_headers):
     product = _create_menu_product(auth_headers, f"REP2{uuid.uuid4().hex[:4]}", qty=10, price=50.0)
     ticket = _open_ticket(auth_headers)
@@ -135,8 +171,12 @@ def test_guest_order_creates_and_sends_ticket(auth_headers):
     assert resp2.status_code == 201, resp2.text
     assert resp2.json()["id"] == order["id"]
 
-    status = client.get(f"/api/restaurant/public/orders/{order['id']}").json()
+    status = client.get(f"/api/restaurant/public/orders/{order['token']}").json()
     assert status["ticket_number"] == order["ticket_number"]
+
+    # The unauthenticated order lookup must be token-gated, not id-gated.
+    assert client.get(f"/api/restaurant/public/orders/{order['id']}").status_code == 404
+    assert client.get("/api/restaurant/public/orders/wrong-token").status_code == 404
 
     # Guest order needs stock: kitchen send consumed it.
     kitchen = client.get("/api/restaurant/kitchen/board", headers=auth_headers).json()
@@ -200,7 +240,7 @@ def test_recipes_list_with_cost_and_margin(auth_headers):
     assert row["recipe_cost"] == 40.0
     assert row["component_count"] == 1
     assert row["margin"] == 160.0
-    assert row["margin_pct"] == pytest.approx(400.0)
+    assert row["margin_pct"] == pytest.approx(80.0)  # margin vs sale price, not cost
 
 
 def test_recipe_blowdown_consumes_components_not_dish(auth_headers):

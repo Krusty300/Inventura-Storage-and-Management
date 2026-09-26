@@ -73,6 +73,7 @@ class RestaurantTicket(Base):
     guest_count: Mapped[int] = mapped_column(Integer, default=1)
     customer_name: Mapped[str] = mapped_column(String(120), default="")
     customer_phone: Mapped[str] = mapped_column(String(40), default="")
+    guest_token: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     subtotal: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
     tax_amount: Mapped[float] = mapped_column(Numeric(10, 2), default=0.0)
