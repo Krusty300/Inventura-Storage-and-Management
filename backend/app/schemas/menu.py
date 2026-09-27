@@ -95,6 +95,7 @@ class MenuItemOut(BaseModel):
     image_url: str = ""
     image: str = ""
     section_id: Optional[int] = None
+    available: bool = True
 
 
 class MenuSectionWithItems(BaseModel):

@@ -17,6 +17,8 @@ class RestaurantTable(Base):
     pos_x: Mapped[int] = mapped_column(Integer, default=0)
     pos_y: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(default=True)
+    service_requested_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    service_request: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), onupdate=func.now())
 
@@ -129,6 +131,8 @@ class RestaurantTicketItem(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    ready_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    served_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     voided_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
     voided_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -156,3 +160,29 @@ class RestaurantTicketItem(Base):
     @property
     def line_total(self) -> float:
         return float(self.unit_price) * self.quantity
+
+
+class RestaurantShiftClose(Base):
+    """Cash-drawer reconciliation for one cashier's shift."""
+
+    __tablename__ = "restaurant_shift_closes"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    period_start: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    period_end: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    ticket_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_sales: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    expected_cash: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    counted_cash: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    variance: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    cash_tips: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0)
+    breakdown: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    notes: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, server_default=func.now(), index=True)
+
+    user = relationship("User")
+
+    @property
+    def username(self) -> str:
+        return self.user.username if self.user else ""

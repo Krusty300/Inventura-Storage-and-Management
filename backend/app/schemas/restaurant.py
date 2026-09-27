@@ -35,9 +35,18 @@ class RestaurantTableOut(BaseModel):
     status: str = "available"
     active_ticket_id: Optional[int] = None
     active_ticket_number: str = ""
+    active_ticket_username: str = ""
+    service_requested_at: Optional[datetime] = None
+    service_request: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class GuestServiceRequest(BaseModel):
+    """Guest-side service flag raised from the QR menu."""
+
+    request: str = Field(default="waiter", max_length=20)
 
 
 class TicketItemCreate(BaseModel):
@@ -163,6 +172,7 @@ class KitchenTicketOut(BaseModel):
     id: int
     ticket_number: str
     table_number: str = ""
+    table_zone: str = ""
     guest_count: int
     status: str
     stage: str = ""
@@ -251,6 +261,45 @@ class ReservationOut(BaseModel):
     updated_at: datetime
     table_number: str = ""
     username: str = ""
+
+    class Config:
+        from_attributes = True
+
+
+class ShiftPreview(BaseModel):
+    period_start: datetime
+    period_end: datetime
+    ticket_count: int = 0
+    total_sales: float = 0.0
+    expected_cash: float = 0.0
+    cash_tips: float = 0.0
+    open_tickets: int = 0
+    paying_tickets: int = 0
+    by_method: dict[str, dict] = {}
+
+
+class ShiftCloseCreate(BaseModel):
+    counted_cash: float = Field(ge=0)
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
+    notes: str = Field(default="", max_length=300)
+
+
+class ShiftCloseOut(BaseModel):
+    id: int
+    user_id: int
+    username: str = ""
+    period_start: datetime
+    period_end: datetime
+    ticket_count: int = 0
+    total_sales: float = 0.0
+    expected_cash: float = 0.0
+    counted_cash: float = 0.0
+    variance: float = 0.0
+    cash_tips: float = 0.0
+    breakdown: Optional[dict] = None
+    notes: str = ""
+    created_at: datetime
 
     class Config:
         from_attributes = True

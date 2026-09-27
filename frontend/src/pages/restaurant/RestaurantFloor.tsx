@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { RestaurantTable, RestaurantReservation } from "../../types";
 import EmptyState from "../../components/EmptyState";
+import FittedSelect from "../../components/FittedSelect";
 import RestaurantReservationDetail from "../../components/restaurant/RestaurantReservationDetail";
 import RestaurantTableDetail from "../../components/restaurant/RestaurantTableDetail";
 import { printBlob } from "../../utils/download";
@@ -17,6 +18,12 @@ const RESERVATION_BADGE: Record<string, string> = {
   pending: "badge-warning",
   confirmed: "badge-info",
   seated: "badge-success",
+};
+
+const SERVICE_LABELS: Record<string, string> = {
+  waiter: "Calls waiter",
+  bill: "Bill requested",
+  assistance: "Needs assistance",
 };
 
 function reservationLabel(r: RestaurantReservation): string {
@@ -49,11 +56,13 @@ function ReservationBadge({ reservation, onOpen }: { reservation: RestaurantRese
 
 export default function RestaurantFloor() {
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const { subscribe } = useRealtime();
 
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [zoneFilter, setZoneFilter] = useState("");
   const [opening, setOpening] = useState(false);
   const [view, setView] = useState<"plan" | "grid">("grid");
   const [override, setOverride] = useState<Record<number, { x: number; y: number }>>({});
@@ -119,6 +128,18 @@ export default function RestaurantFloor() {
     onSettled: () => setOpening(false),
   });
 
+  const clearService = useMutation({
+    mutationFn: async (tableId: number) => {
+      await api.post(`/restaurant/tables/${tableId}/service-request/clear`);
+      return tableId;
+    },
+    onSuccess: (tableId) => {
+      addToast(`Cleared service request for table ${tableId}`, "success");
+      queryClient.invalidateQueries({ queryKey: ["restaurant-floor"] });
+    },
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot clear service request"), "error"),
+  });
+
   const moveMutation = useMutation({
     mutationFn: async ({ id, pos_x, pos_y }: { id: number; pos_x: number; pos_y: number }) => {
       await api.put(`/restaurant/tables/${id}`, { pos_x, pos_y });
@@ -133,9 +154,24 @@ export default function RestaurantFloor() {
     onError: (err: unknown) => addToast(errorMessage(err, "Cannot save table position"), "error"),
   });
 
+  const activeTables = (tables ?? []).filter((t) => t.is_active);
+  const zoneOptions = useMemo(() => {
+    const zones = new Set<string>();
+    for (const t of tables ?? []) {
+      if (t.zone) zones.add(t.zone);
+    }
+    return [{ value: "", label: "All zones" }, ...[...zones].sort().map((z) => ({ value: z, label: z }))];
+  }, [tables]);
+  const zoneTables = zoneFilter
+    ? (tables ?? []).filter((t) => (t.zone || "Main") === zoneFilter)
+    : (tables ?? []);
+  const renderedTables = onlyMine
+    ? zoneTables.filter((t) => t.active_ticket_username === user?.username)
+    : zoneTables;
+
   const byZone = useMemo(() => {
     const zones = new Map<string, RestaurantTable[]>();
-    for (const t of tables ?? []) {
+    for (const t of renderedTables) {
       const zone = t.zone || "Main";
       const list = zones.get(zone) ?? [];
       list.push(t);
@@ -143,7 +179,7 @@ export default function RestaurantFloor() {
     }
     if (zones.size === 0) zones.set("Main", []);
     return zones;
-  }, [tables]);
+  }, [renderedTables]);
 
   const hasPositions = (tables ?? []).some((t) => t.pos_x !== 0 || t.pos_y !== 0);
   const currentlyPlan = view === "plan";
@@ -203,7 +239,6 @@ export default function RestaurantFloor() {
     if (moved && pos) moveMutation.mutate({ id: d.id, pos_x: pos.x, pos_y: pos.y });
   };
 
-  const activeTables = (tables ?? []).filter((t) => t.is_active);
   const available = activeTables.filter((t) => t.status === "available").length;
   const occupied = activeTables.filter((t) => t.status === "occupied").length;
 
@@ -238,6 +273,27 @@ export default function RestaurantFloor() {
                 Plan
               </button>
             </div>
+          )}
+          {zoneOptions.length > 1 && (
+            <FittedSelect
+              value={zoneFilter}
+              onChange={setZoneFilter}
+              ariaLabel="Filter by zone"
+              maxWidth={200}
+              options={zoneOptions}
+            />
+          )}
+          {user && (
+            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer select-none" aria-label="Show only my tables">
+              <input
+                type="checkbox"
+                checked={onlyMine}
+                onChange={(e) => setOnlyMine(e.target.checked)}
+                className="accent-primary-strong"
+                aria-label="Show only my tables"
+              />
+              <span className="hidden sm:inline">Only mine</span>
+            </label>
           )}
           <button onClick={() => queryClient.invalidateQueries({ queryKey: ["restaurant-floor"] })} className="btn-secondary" aria-label="Refresh floor map">
             <RefreshCw size={16} />
@@ -319,7 +375,7 @@ export default function RestaurantFloor() {
                 backgroundSize: "24px 24px",
               }}
             />
-            {(tables ?? []).map((t) => {
+            {(renderedTables).map((t) => {
               const pos = positioned(t);
               const badge = upcomingBadge(t);
               return (
@@ -341,6 +397,21 @@ export default function RestaurantFloor() {
                     </span>
                   </div>
                   <div className="text-xs text-muted mt-0.5">Seats {t.capacity}</div>
+                  {t.zone && <div className="text-xs text-faint mt-0.5">{t.zone}</div>}
+                  {t.service_request && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="badge badge-danger">{SERVICE_LABELS[t.service_request] ?? "Needs service"}</span>
+                      {can("restaurant.update") && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); clearService.mutate(t.id); }}
+                          className="text-xs text-primary hover:text-primary-strong underline"
+                          aria-label={`Clear service request for table ${t.number}`}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {badge && (
                     <div className="mt-2 space-y-1">
                       <ReservationBadge reservation={badge} onOpen={() => setReservationDetail(badge)} />
@@ -375,6 +446,21 @@ export default function RestaurantFloor() {
                       <div>
                         <div className="font-bold text-lg text-ink">{t.number}</div>
                         <div className="text-xs text-muted mt-0.5">Seats {t.capacity}</div>
+                        {t.zone && <div className="text-xs text-faint mt-0.5">{t.zone}</div>}
+                        {t.service_request && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="badge badge-danger">{SERVICE_LABELS[t.service_request] ?? "Needs service"}</span>
+                            {can("restaurant.update") && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); clearService.mutate(t.id); }}
+                                className="text-xs text-primary hover:text-primary-strong underline"
+                                aria-label={`Clear service request for table ${t.number}`}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <span className={`badge ${t.status === "occupied" ? "badge-warning" : "badge-success"}`}>
                         {t.status === "occupied" ? "Occupied" : "Free"}

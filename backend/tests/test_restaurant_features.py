@@ -519,3 +519,41 @@ def test_split_second_child_reuses_group(auth_headers):
     parent = client.get(f"/api/restaurant/tickets/{ticket['id']}", headers=auth_headers).json()
     assert parent["split_group"] == child1["split_group"]
     assert parent["total_amount"] == 40.0
+
+
+def test_stale_paying_ticket_is_auto_cancelled(auth_headers):
+    from tests.conftest import TestingSessionLocal
+    from app.models.restaurant import RestaurantTicket
+
+    product = _create_menu_product(auth_headers, f"STALE{uuid.uuid4().hex[:4]}", qty=5, price=80.0)
+    ticket = _open_ticket(auth_headers)
+    _add_item(auth_headers, ticket["id"], product["id"], quantity=1)
+
+    resp = client.post(
+        f"/api/restaurant/tickets/{ticket['id']}/settle",
+        json={"payment_method": "mobile_money", "payment_provider": "m-pesa"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "paying"
+    sale_id = resp.json()["sale_id"]
+    assert sale_id is not None
+
+    db = TestingSessionLocal()
+    try:
+        db_ticket = db.query(RestaurantTicket).filter(RestaurantTicket.id == ticket["id"]).first()
+        db_ticket.updated_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+        db.commit()
+    finally:
+        db.close()
+
+    listed = client.get("/api/restaurant/tickets", headers=auth_headers).json()
+    reaped = next((t for t in listed["items"] if t["id"] == ticket["id"]), None)
+    assert reaped is not None
+    assert reaped["status"] == "cancelled"
+
+    sale = client.get(f"/api/sales/{sale_id}", headers=auth_headers).json()
+    assert sale["status"] == "cancelled"
+
+    prod = client.get(f"/api/products/{product['id']}", headers=auth_headers).json()
+    assert prod["quantity"] == 5

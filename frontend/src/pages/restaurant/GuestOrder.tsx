@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Minus, Plus, ShoppingBag, Trash2, UtensilsCrossed, Clock3 } from "lucide-react";
+import { Minus, Plus, ShoppingBag, Trash2, UtensilsCrossed, Clock3, BellRing, ReceiptText } from "lucide-react";
 import api from "../../api/client";
 import { formatCurrency } from "../../utils/currency";
 import { errorMessage } from "../../utils/errors";
@@ -208,6 +208,7 @@ export default function GuestOrder() {
   const [guestPhone, setGuestPhone] = useState("");
   const [guestCount, setGuestCount] = useState(1);
   const [placed, setPlaced] = useState<GuestOrderOut | null>(null);
+  const [serviceSent, setServiceSent] = useState<"waiter" | "bill" | null>(null);
 
   useEffect(() => {
     localStorage.setItem(CART_KEY, JSON.stringify(cart));
@@ -272,6 +273,17 @@ export default function GuestOrder() {
   };
 
   const removeLine = (key: string) => setCart((prev) => prev.filter((l) => l.key !== key));
+
+  const serviceMutation = useMutation({
+    mutationFn: async (kind: "waiter" | "bill") => {
+      if (tid == null) throw new Error("Table not found");
+      return (await api.post(`/restaurant/public/tables/${tid}/service-request`, { request: kind })).data as RestaurantTable;
+    },
+    onSuccess: (_d, kind) => {
+      setServiceSent(kind);
+      window.setTimeout(() => setServiceSent(null), 8000);
+    },
+  });
 
   if (placed && order) {
     const serving = order.items;
@@ -353,6 +365,31 @@ export default function GuestOrder() {
           <p className="text-sm text-muted mt-1">
             {tableLoading ? "Checking table..." : table ? `Table ${table.number} · seats ${table.capacity}` : tableError ? "Table unavailable" : "Table not found"}
           </p>
+          {tid != null && (
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <button
+                onClick={() => serviceMutation.mutate("waiter")}
+                disabled={serviceMutation.isPending || serviceSent === "waiter"}
+                className="btn-secondary text-sm"
+                aria-label="Call waiter"
+              >
+                <BellRing size={15} />
+                {serviceSent === "waiter" ? "Waiter notified" : "Call waiter"}
+              </button>
+              <button
+                onClick={() => serviceMutation.mutate("bill")}
+                disabled={serviceMutation.isPending || serviceSent === "bill"}
+                className="btn-secondary text-sm"
+                aria-label="Request the bill"
+              >
+                <ReceiptText size={15} />
+                {serviceSent === "bill" ? "Bill requested" : "Request bill"}
+              </button>
+            </div>
+          )}
+          {serviceMutation.isError && (
+            <p className="text-xs text-red-600 dark:text-red-400 mt-2">Could not reach the floor. Please call a waiter.</p>
+          )}
         </header>
 
         {tableLoading || menuLoading ? (
@@ -369,7 +406,8 @@ export default function GuestOrder() {
                   <button
                     key={item.id}
                     onClick={() => setPick(item)}
-                    className="w-full card p-3.5 flex items-center gap-3 text-left"
+                    disabled={item.available === false}
+                    className="w-full card p-3.5 flex items-center gap-3 text-left disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <div className="h-16 w-16 shrink-0 rounded-lg bg-subtle-strong overflow-hidden">
                       <img
@@ -382,7 +420,9 @@ export default function GuestOrder() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-ink leading-snug">{item.display_name}</p>
                       {item.description && <p className="text-xs text-muted mt-0.5 line-clamp-2">{item.description}</p>}
-                      <p className="text-sm font-bold text-primary-strong dark:text-primary mt-1">{formatCurrency(item.unit_price, symbol)}</p>
+                      <p className="text-sm font-bold text-primary-strong dark:text-primary mt-1">
+                        {item.available === false ? <span className="text-red-600 dark:text-red-400">Out of stock</span> : formatCurrency(item.unit_price, symbol)}
+                      </p>
                     </div>
                   </button>
                 ))}

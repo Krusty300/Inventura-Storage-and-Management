@@ -44,10 +44,11 @@ export default function RestaurantTickets() {
   const [status, setStatus] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [onlyMine, setOnlyMine] = useState(false);
   const [page, setPage] = useState(1);
   const [detail, setDetail] = useState<RestaurantTicket | null>(null);
   const { pageSize, setPageSize } = usePageSize();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { subscribe } = useRealtime();
@@ -65,7 +66,7 @@ export default function RestaurantTickets() {
   }, [subscribe, queryClient]);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["restaurant-tickets", debouncedSearch, status, fromDate, toDate, page, pageSize],
+    queryKey: ["restaurant-tickets", debouncedSearch, status, fromDate, toDate, onlyMine, page, pageSize],
     queryFn: async () => {
       const params: Record<string, string> = {
         skip: ((page - 1) * pageSize).toString(),
@@ -75,6 +76,7 @@ export default function RestaurantTickets() {
       if (status) params.status = status;
       if (fromDate) params.start_date = fromDate;
       if (toDate) params.end_date = toDate;
+      if (onlyMine && user) params.staff_id = String(user.id);
       const { data } = await api.get("/restaurant/tickets", { params });
       return data as PaginatedResponse<RestaurantTicket>;
     },
@@ -143,6 +145,16 @@ export default function RestaurantTickets() {
             Clear dates
           </button>
         )}
+        <label className="flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={onlyMine}
+            onChange={(e) => { setOnlyMine(e.target.checked); setPage(1); }}
+            className="accent-primary-strong"
+            aria-label="Show only my tickets"
+          />
+          Only mine
+        </label>
       </div>
 
       <div className="card overflow-hidden p-0">

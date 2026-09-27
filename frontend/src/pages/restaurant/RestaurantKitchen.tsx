@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { KitchenTicket, RestaurantTicketItem } from "../../types";
 import EmptyState from "../../components/EmptyState";
+import FittedSelect from "../../components/FittedSelect";
 import { useToast } from "../../context/ToastContext";
 import { useRealtime } from "../../context/RealtimeContext";
 import { errorMessage } from "../../utils/errors";
@@ -51,7 +52,16 @@ export default function RestaurantKitchen() {
 
   const [advancing, setAdvancing] = useState<`${number}:${number}` | null>(null);
   const [newOrder, setNewOrder] = useState<string | null>(null);
+  const [zoneFilter, setZoneFilter] = useState("");
   const seenRef = useRef<Set<number>>(new Set());
+
+  const zoneOptions = useMemo(() => {
+    const zones = new Set<string>();
+    for (const t of board ?? []) {
+      if (t.table_zone) zones.add(t.table_zone);
+    }
+    return [{ value: "", label: "All zones" }, ...[...zones].sort().map((z) => ({ value: z, label: z }))];
+  }, [board]);
 
   useEffect(() => {
     if (!board) return;
@@ -102,10 +112,14 @@ export default function RestaurantKitchen() {
   const byStage = useMemo(() => {
     const map: Record<string, KitchenTicket[]> = { queued: [], preparing: [], ready: [] };
     for (const t of board ?? []) {
+      if (zoneFilter && t.table_zone !== zoneFilter) continue;
       (map[t.stage] ??= []).push(t);
     }
+    for (const list of Object.values(map)) {
+      list.sort((a, b) => (a.table_zone || "zz").localeCompare(b.table_zone || "zz") || a.ticket_number.localeCompare(b.ticket_number));
+    }
     return map;
-  }, [board]);
+  }, [board, zoneFilter]);
 
   const printKitchen = async (ticketId: number) => {
     try {
@@ -148,6 +162,15 @@ export default function RestaurantKitchen() {
             <p className="text-sm text-muted mt-1">Move items through queued → preparing → ready, then mark served.</p>
           </div>
         </div>
+        {zoneOptions.length > 1 && (
+          <FittedSelect
+            value={zoneFilter}
+            onChange={setZoneFilter}
+            ariaLabel="Filter by zone"
+            maxWidth={200}
+            options={zoneOptions}
+          />
+        )}
       </div>
 
       {newOrder && (
@@ -194,7 +217,9 @@ export default function RestaurantKitchen() {
                                 {t.ticket_number}
                               </button>
                               <div className="text-xs text-muted mt-0.5">
-                                {t.table_number} · {t.guest_count} guest{t.guest_count === 1 ? "" : "s"}
+                                {t.table_number}
+                                {t.table_zone && <span className="badge badge-neutral ml-2">{t.table_zone}</span>}
+                                <span className="ml-2">{t.guest_count} guest{t.guest_count === 1 ? "" : "s"}</span>
                               </div>
                               {t.notes && <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">Note: {t.notes}</div>}
                             </div>

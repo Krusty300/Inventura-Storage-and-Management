@@ -7,6 +7,7 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.constants import MAX_PAGE_SIZE, currency_symbol as symbol_for
@@ -15,7 +16,7 @@ from app.models import BOM, BOMItem
 from app.models.customer import Customer
 from app.models.menu import MenuModifierGroup, MenuModifierOption, MenuSection
 from app.models.product import Product
-from app.models.restaurant import RestaurantReservation, RestaurantTable, RestaurantTicket, RestaurantTicketItem
+from app.models.restaurant import RestaurantReservation, RestaurantShiftClose, RestaurantTable, RestaurantTicket, RestaurantTicketItem
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
 from app.models.user import User
@@ -34,6 +35,7 @@ from app.schemas.menu import (
 from app.schemas.restaurant import (
     GuestOrderCreate,
     GuestOrderOut,
+    GuestServiceRequest,
     KitchenTicketOut,
     ReservationCreate,
     ReservationOut,
@@ -42,6 +44,9 @@ from app.schemas.restaurant import (
     RestaurantTableCreate,
     RestaurantTableOut,
     RestaurantTableUpdate,
+    ShiftCloseCreate,
+    ShiftCloseOut,
+    ShiftPreview,
     TicketCreate,
     TicketItemCreate,
     TicketItemOut,
@@ -202,7 +207,7 @@ def _item_modifier_line(item: RestaurantTicketItem) -> str:
     return ", ".join(str(m.get("name", "")) for m in mods if m.get("name"))
 
 
-def _menu_item_out(product: Product) -> MenuItemOut:
+def _menu_item_out(product: Product, available: bool = True) -> MenuItemOut:
     image = ""
     if product.images:
         image = product.images[0].url
@@ -214,6 +219,7 @@ def _menu_item_out(product: Product) -> MenuItemOut:
         unit_price=float(product.unit_price),
         image_url=product.image_url, image=image,
         section_id=product.menu_section_id,
+        available=available,
     )
 
 
@@ -620,9 +626,10 @@ def get_menu(db: Session = Depends(get_db)):
         MenuSection.is_active == True  # noqa: E712
     ).order_by(MenuSection.sort_order, MenuSection.name).all()
     by_section: dict[int | None, list[MenuItemOut]] = {}
+    sellable = inventory.sellable_qty_by_product(db, [p.id for p in products])
     for p in products:
         sid = p.menu_section_id if p.menu_section and p.menu_section.is_active else None
-        by_section.setdefault(sid, []).append(_menu_item_out(p))
+        by_section.setdefault(sid, []).append(_menu_item_out(p, sellable.get(p.id, 0) > 0))
     result = []
     for s in sections:
         items = by_section.get(s.id, [])
@@ -791,6 +798,7 @@ def list_tables(db: Session = Depends(get_db)):
             out.status = "occupied"
             out.active_ticket_id = active.id
             out.active_ticket_number = active.ticket_number
+            out.active_ticket_username = active.username
     return outs
 
 
@@ -1158,12 +1166,14 @@ def list_tickets(
     search: str = Query(""),
     status: str | None = Query(None),
     table_id: int | None = Query(None),
+    staff_id: int | None = Query(None, description="Only tickets served by this staff member"),
     start_date: str | None = Query(None, description="YYYY-MM-DD filter on opened_at (inclusive)"),
     end_date: str | None = Query(None, description="YYYY-MM-DD filter on opened_at (inclusive)"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
+    _reap_stale_paying(db)
     q = db.query(RestaurantTicket).options(
         joinedload(RestaurantTicket.table), joinedload(RestaurantTicket.user),
     )
@@ -1173,6 +1183,8 @@ def list_tickets(
         q = q.filter(RestaurantTicket.status == status)
     if table_id:
         q = q.filter(RestaurantTicket.table_id == table_id)
+    if staff_id:
+        q = q.filter(RestaurantTicket.user_id == staff_id)
     if start_date:
         try:
             start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -1193,6 +1205,7 @@ def list_tickets(
 
 @router.get("/tickets/{ticket_id}", response_model=TicketOut)
 def get_ticket(ticket_id: int, db: Session = Depends(get_db)):
+    _reap_stale_paying(db)
     return load_ticket(db, ticket_id)
 
 
@@ -1508,6 +1521,10 @@ def update_item_status(ticket_id: int, item_id: int, data: TicketItemStatus, db:
     if data.status not in allowed:
         raise HTTPException(status_code=400, detail=f"Invalid transition '{item.status}' -> '{data.status}'")
     item.status = data.status
+    if data.status == "ready" and item.ready_at is None:
+        item.ready_at = datetime.now(timezone.utc)
+    if data.status == "served" and item.served_at is None:
+        item.served_at = datetime.now(timezone.utc)
     _recompute_ticket_status(ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
@@ -1526,8 +1543,11 @@ def serve_ticket(ticket_id: int, db: Session = Depends(get_db), user=Depends(req
     ready = [i for i in ticket.items if i.status == "ready"]
     if not ready:
         raise HTTPException(status_code=400, detail="No ready items to serve")
+    now = datetime.now(timezone.utc)
     for item in ready:
         item.status = "served"
+        if item.served_at is None:
+            item.served_at = now
     _recompute_ticket_status(ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
@@ -1538,8 +1558,57 @@ def serve_ticket(ticket_id: int, db: Session = Depends(get_db), user=Depends(req
     return ticket
 
 
+def _reap_stale_paying(db: Session, timeout_minutes: int = 10) -> int:
+    """Cancel 'paying' tickets whose mobile-money payment never confirmed.
+
+    The Daraja callback normally settles the linked sale within a minute or
+    two. If it never fires (abandoned payment, network failure, retry loop),
+    the ticket would sit in 'paying' forever - locking the table and leaving a
+    phantom pending sale. Reap them lazily on every relevant read/mutation so
+    the guard also works in deployments without a background scheduler.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+    stale = db.query(RestaurantTicket).options(
+        joinedload(RestaurantTicket.sale),
+    ).filter(
+        RestaurantTicket.status == "paying",
+        RestaurantTicket.updated_at < cutoff,
+    ).all()
+    if not stale:
+        return 0
+    from app.routers.sales import _restore_stock_for_sale
+    from app.services.notify import notify_admins
+    system = _system_user(db)
+    count = 0
+    for ticket in stale:
+        sale = ticket.sale
+        if sale is not None and sale.status != "cancelled":
+            _restore_stock_for_sale(db, sale, reason="Mobile payment timed out")
+            sale.status = "cancelled"
+            sale.payment_status = "cancelled"
+        else:
+            _restore_ticket_stock(db, ticket, system.id, reason="Mobile payment timed out")
+        _complete_seated_reservations(db, ticket)
+        ticket.status = "cancelled"
+        ticket.settled_at = None
+        count += 1
+        log_activity(db, system.id, system.username, "update", "restaurant_ticket", ticket.id,
+                     f"Auto-cancelled {ticket.ticket_number} - mobile payment timed out")
+        notify_admins(db, f"Ticket {ticket.ticket_number} auto-cancelled",
+                      "Mobile money payment was not confirmed in time - pending sale cancelled and stock restored.",
+                      type="warning", link=f"/sales/{sale.id}" if sale else f"/restaurant/tickets/{ticket.id}")
+    db.commit()
+    if count:
+        broadcast_change("restaurant_ticket", "updated")
+        broadcast_change("sale", "updated")
+        broadcast_change("stock_movement", "created")
+        broadcast_change("product", "updated")
+    return count
+
+
 @router.post("/tickets/{ticket_id}/settle", response_model=TicketOut)
 def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.settle"))):
+    _reap_stale_paying(db)
     from app.services.payment_methods import validate_payment
     ticket = load_ticket(db, ticket_id)
     if ticket.status in CLOSED_STATUSES:
@@ -1795,6 +1864,8 @@ def kitchen_ticket_pdf(ticket_id: int, item_ids: str = Query("", description="Co
         ("Guests", str(ticket.guest_count)),
         ("Server", ticket.username or "\u2014"),
     ]
+    if ticket.table is not None and ticket.table.zone:
+        meta.append(("Zone", ticket.table.zone))
     body_y = draw_banner_header(c, "KITCHEN TICKET", meta, store_lines,
                                 logo_url=(s.logo_url if s else ""), base_dir=base_dir)
 
@@ -1839,6 +1910,7 @@ def kitchen_ticket_pdf(ticket_id: int, item_ids: str = Query("", description="Co
 
 @router.get("/kitchen/board", response_model=list[KitchenTicketOut])
 def kitchen_board(db: Session = Depends(get_db), user=Depends(require_permission("restaurant.kitchen"))):
+    _reap_stale_paying(db)
     tickets = db.query(RestaurantTicket).options(
         joinedload(RestaurantTicket.items).joinedload(RestaurantTicketItem.product),
         joinedload(RestaurantTicket.table),
@@ -1858,12 +1930,128 @@ def kitchen_board(db: Session = Depends(get_db), user=Depends(require_permission
         earliest = min((i.sent_at for i in sent if i.sent_at is not None), default=None)
         out = KitchenTicketOut(
             id=t.id, ticket_number=t.ticket_number, table_number=t.table_number,
+            table_zone=(t.table.zone or "") if t.table is not None else "",
             guest_count=t.guest_count, status=t.status, notes=t.notes,
             earliest_sent_at=earliest, items=[TicketItemOut.model_validate(i) for i in t.items if i.status != "voided"],
         )
         out.stage = stage
         outs.append(out)
     return outs
+
+
+# ---------------------------------------------------------------------------
+# Shift close / cash drawer reconciliation
+# ---------------------------------------------------------------------------
+
+def _shift_period(db: Session, user_id: int, period_start: datetime | None, period_end: datetime | None) -> tuple[datetime, datetime]:
+    """Resolve the shift window: since this cashier's last close (or the start of
+    the day) up to now."""
+    end = period_end or datetime.now(timezone.utc)
+    if period_start is not None:
+        return period_start, end
+    last = db.query(RestaurantShiftClose).filter(
+        RestaurantShiftClose.user_id == user_id
+    ).order_by(RestaurantShiftClose.period_end.desc()).first()
+    if last is not None and last.period_end is not None:
+        return last.period_end, end
+    return end.replace(hour=0, minute=0, second=0, microsecond=0), end
+
+
+def _shift_totals(db: Session, user_id: int, start: datetime, end: datetime) -> dict:
+    tickets = db.query(RestaurantTicket).options(
+        joinedload(RestaurantTicket.sale),
+    ).filter(
+        RestaurantTicket.user_id == user_id,
+        RestaurantTicket.status == "settled",
+        RestaurantTicket.settled_at >= start,
+        RestaurantTicket.settled_at <= end,
+    ).all()
+    by_method: dict[str, dict] = {}
+    total_sales = 0.0
+    expected_cash = 0.0
+    cash_tips = 0.0
+    for t in tickets:
+        method = (t.sale.payment_method if t.sale else "cash") or "cash"
+        amount = float(t.total_amount)
+        tips = float(t.tip_amount or 0.0)
+        total_sales += amount
+        bucket = by_method.setdefault(method, {"count": 0, "total": 0.0, "tips": 0.0})
+        bucket["count"] += 1
+        bucket["total"] += amount
+        bucket["tips"] += tips
+        if method == "cash":
+            expected_cash += amount + tips
+            cash_tips += tips
+    open_count = db.query(func.count(RestaurantTicket.id)).filter(
+        RestaurantTicket.user_id == user_id,
+        RestaurantTicket.status.in_(("open", "preparing", "ready", "served")),
+    ).scalar() or 0
+    paying_count = db.query(func.count(RestaurantTicket.id)).filter(
+        RestaurantTicket.user_id == user_id,
+        RestaurantTicket.status == "paying",
+    ).scalar() or 0
+    return {
+        "ticket_count": len(tickets),
+        "total_sales": round(total_sales, 2),
+        "expected_cash": round(expected_cash, 2),
+        "cash_tips": round(cash_tips, 2),
+        "open_tickets": int(open_count),
+        "paying_tickets": int(paying_count),
+        "by_method": {
+            m: {"count": v["count"], "total": round(v["total"], 2), "tips": round(v["tips"], 2)}
+            for m, v in sorted(by_method.items())
+        },
+    }
+
+
+@router.get("/shifts/preview", response_model=ShiftPreview)
+def shift_preview(
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.view")),
+):
+    start, end = _shift_period(db, user.id, period_start, period_end)
+    return ShiftPreview(period_start=start, period_end=end, **_shift_totals(db, user.id, start, end))
+
+
+@router.post("/shifts/close", response_model=ShiftCloseOut, status_code=201)
+def close_shift(
+    data: ShiftCloseCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.update")),
+):
+    """Record a cash-drawer reconciliation for the caller's shift."""
+    start, end = _shift_period(db, user.id, data.period_start, data.period_end)
+    if end < start:
+        raise HTTPException(status_code=400, detail="Period end is before period start")
+    totals = _shift_totals(db, user.id, start, end)
+    counted = round(float(data.counted_cash), 2)
+    expected = float(totals["expected_cash"])
+    record = RestaurantShiftClose(
+        user_id=user.id, period_start=start, period_end=end,
+        ticket_count=totals["ticket_count"], total_sales=totals["total_sales"],
+        expected_cash=expected, counted_cash=counted,
+        variance=round(counted - expected, 2), cash_tips=totals["cash_tips"],
+        breakdown=totals["by_method"], notes=data.notes.strip(),
+    )
+    db.add(record)
+    db.commit()
+    log_activity(db, user.id, user.username, "create", "restaurant_shift_close", record.id,
+                 f"Shift closed: expected {expected:.2f}, counted {counted:.2f}, variance {counted - expected:.2f}")
+    db.commit()
+    return ShiftCloseOut.model_validate(record)
+
+
+@router.get("/shifts", response_model=list[ShiftCloseOut])
+def list_shift_closes(
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.view")),
+):
+    return db.query(RestaurantShiftClose).options(
+        joinedload(RestaurantShiftClose.user),
+    ).order_by(RestaurantShiftClose.id.desc()).limit(limit).all()
 
 
 # ---------------------------------------------------------------------------
@@ -1938,6 +2126,37 @@ def public_table(request: Request, table_id: int, db: Session = Depends(get_db))
         out.active_ticket_id = active.id
         out.active_ticket_number = active.ticket_number
     return out
+
+
+SERVICE_REQUESTS = {"waiter", "bill", "assistance"}
+
+
+@public_router.post("/public/tables/{table_id}/service-request", response_model=RestaurantTableOut)
+@limiter.limit("30/minute")
+def guest_service_request(request: Request, table_id: int, data: GuestServiceRequest, db: Session = Depends(get_db)):
+    """Raise the table's service flag from the QR menu (call waiter / request bill)."""
+    table = get_or_404(RestaurantTable, table_id, db)
+    if not table.is_active:
+        raise HTTPException(status_code=404, detail=f"Table '{table.number}' is inactive")
+    kind = (data.request or "waiter").strip().lower()
+    if kind not in SERVICE_REQUESTS:
+        raise HTTPException(status_code=400, detail=f"Unknown request '{kind}'")
+    table.service_requested_at = datetime.now(timezone.utc)
+    table.service_request = kind
+    db.commit()
+    broadcast_change("restaurant_table", "updated")
+    return RestaurantTableOut.model_validate(table)
+
+
+@router.post("/tables/{table_id}/service-request/clear", response_model=RestaurantTableOut)
+def clear_service_request(table_id: int, db: Session = Depends(get_db), user=Depends(require_permission("restaurant.update"))):
+    """Clear a guest's raised flag once staff have handled it."""
+    table = get_or_404(RestaurantTable, table_id, db)
+    table.service_requested_at = None
+    table.service_request = None
+    db.commit()
+    broadcast_change("restaurant_table", "updated")
+    return RestaurantTableOut.model_validate(table)
 
 
 @public_router.post("/public/orders", response_model=GuestOrderOut, status_code=201)

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import api from "../../api/client";
-import type { RestaurantSummary, RestaurantDailyTrends } from "../../types";
+import type { RestaurantSummary, RestaurantDailyTrends, RestaurantTurnTimes } from "../../types";
 import { formatCurrency } from "../../utils/currency";
 import { paymentLabel } from "../../utils/payments";
 import ReportSkeleton from "../../components/ReportSkeleton";
@@ -34,6 +34,12 @@ export default function RestaurantTab({ symbol }: { symbol: string }) {
   const { data: trends } = useQuery<RestaurantDailyTrends>({
     queryKey: ["reports", "restaurant-trends", trendDays],
     queryFn: async () => (await api.get("/reports/restaurant-daily-trends", { params: { days: String(trendDays) } })).data,
+  });
+
+  const { data: turnTimes } = useQuery<RestaurantTurnTimes>({
+    queryKey: ["reports", "restaurant-turn-times", startDate, endDate],
+    queryFn: async () => (await api.get("/reports/restaurant-turn-times", { params: rangeParams() })).data,
+    enabled: !dateInvalid,
   });
 
   if (isLoading) return (
@@ -116,6 +122,75 @@ export default function RestaurantTab({ symbol }: { symbol: string }) {
         )}
       </div>
 
+      <div className="card">
+        <h3 className="text-lg font-semibold mb-4">Turn Times</h3>
+        {!turnTimes || turnTimes.items_measured === 0 ? (
+          <EmptyState
+            variant="block"
+            icon={<Timer size={48} />}
+            title="No measured turn times"
+            message="Timing appears once kitchen items are sent, readied and served on settled tickets in this period."
+          />
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div>
+                <div className="text-xs text-muted">Avg prep (send → ready)</div>
+                <p className="text-lg font-bold">{turnTimes.avg_prep_minutes}m</p>
+              </div>
+              <div>
+                <div className="text-xs text-muted">Avg turn (send → served)</div>
+                <p className="text-lg font-bold">{turnTimes.avg_turn_minutes}m</p>
+              </div>
+              <div>
+                <div className="text-xs text-muted">Slowest 10%</div>
+                <p className="text-lg font-bold">{turnTimes.p90_turn_minutes}m</p>
+              </div>
+              <div>
+                <div className="text-xs text-muted">Avg table dwell</div>
+                <p className="text-lg font-bold">{turnTimes.avg_ticket_dwell_minutes}m</p>
+              </div>
+            </div>
+            {turnTimes.covers_by_hour.length > 0 && (
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={turnTimes.covers_by_hour.map((h) => ({ ...h, label: `${h.hour}:00` }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(120,130,150,0.2)" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="covers" name="Covers" stroke="#10b981" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="tickets" name="Tickets" stroke="#6366f1" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-app text-left">
+                    <th scope="col" className="px-4 py-2 font-medium text-muted">Ticket</th>
+                    <th scope="col" className="px-4 py-2 font-medium text-muted">Table</th>
+                    <th scope="col" className="px-4 py-2 font-medium text-muted">Item</th>
+                    <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Minutes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {turnTimes.slowest_items.length === 0 ? (
+                    <tr><td colSpan={4} className="px-4 py-4 text-muted text-center">No served items in this period.</td></tr>
+                  ) : turnTimes.slowest_items.map((s, idx) => (
+                    <tr key={`${s.ticket_number}-${s.item}-${idx}`}>
+                      <td className="px-4 py-2 font-medium">{s.ticket_number}</td>
+                      <td className="px-4 py-2">{s.table_number}</td>
+                      <td className="px-4 py-2">{s.item}</td>
+                      <td className="px-4 py-2 text-right">{s.minutes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Revenue by Payment Method</h3>
@@ -158,21 +233,35 @@ export default function RestaurantTab({ symbol }: { symbol: string }) {
         </div>
 
         <div className="card">
-          <h3 className="text-lg font-semibold mb-4">Peak Hours (settled tickets)</h3>
-          {data.by_hour_of_day.length === 0 ? (
-            <EmptyState variant="block" icon={<Timer size={48} />} title="No hour data" message="Settled-ticket timing appears once tickets settle in this period." />
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={data.by_hour_of_day}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(120,130,150,0.2)" />
-                <XAxis dataKey="hour" tick={{ fontSize: 11 }} tickFormatter={(h: number) => (h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`)} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Line type="monotone" dataKey="total" name="Revenue" stroke="#f59e0b" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-          <div className="overflow-x-auto mt-3">
+          <h3 className="text-lg font-semibold mb-4">Revenue by Server</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-app text-left">
+                  <th scope="col" className="px-4 py-2 font-medium text-muted">Server</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Tickets</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Revenue</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Tips</th>
+                  <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Covers</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.by_waiter.length === 0 ? (
+                  <tr><td colSpan={5} className="px-4 py-4 text-muted text-center">No server activity in this period.</td></tr>
+                ) : data.by_waiter.map((w) => (
+                  <tr key={w.waiter}>
+                    <td className="px-4 py-2 font-medium">{w.waiter}</td>
+                    <td className="px-4 py-2 text-right">{w.count}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(w.total, symbol, 2)}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(w.tips, symbol, 2)}</td>
+                    <td className="px-4 py-2 text-right">{w.covers}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <h3 className="text-lg font-semibold my-4">Top Tables</h3>
+          <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-app text-left">
@@ -196,6 +285,32 @@ export default function RestaurantTab({ symbol }: { symbol: string }) {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3 className="text-lg font-semibold mb-4">Peak Hours (settled tickets)</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-app text-left">
+                <th scope="col" className="px-4 py-2 font-medium text-muted">Hour</th>
+                <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Tickets</th>
+                <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Revenue</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {data.by_hour_of_day.length === 0 ? (
+                <tr><td colSpan={3} className="px-4 py-4 text-muted text-center">No hour data in this period.</td></tr>
+              ) : data.by_hour_of_day.map((h) => (
+                <tr key={h.hour}>
+                  <td className="px-4 py-2 font-medium">{h.hour === 0 ? "12am" : h.hour < 12 ? `${h.hour}am` : h.hour === 12 ? "12pm" : `${h.hour - 12}pm`}</td>
+                  <td className="px-4 py-2 text-right">{h.count}</td>
+                  <td className="px-4 py-2 text-right">{formatCurrency(h.total, symbol, 2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

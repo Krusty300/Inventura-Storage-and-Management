@@ -188,3 +188,121 @@ def test_table_list_sorts_naturally(auth_headers):
     tables = client.get("/api/restaurant/tables", headers=auth_headers).json()
     idx = {t["id"]: i for i, t in enumerate(tables)}
     assert idx[tab2["id"]] < idx[tab10["id"]]
+
+
+def test_turn_times_report_measures_kitchen_stamps(auth_headers):
+    product = _create_menu_product(auth_headers, f"TURN{uuid.uuid4().hex[:4]}", qty=5, price=100.0)
+    ticket = _open_ticket(auth_headers)
+    item = _add_item(auth_headers, ticket["id"], product["id"])
+    assert client.post(f"/api/restaurant/tickets/{ticket['id']}/send", headers=auth_headers).status_code == 200
+    for step in ("preparing", "ready"):
+        r = client.put(f"/api/restaurant/tickets/{ticket['id']}/items/{item['id']}/status", json={"status": step}, headers=auth_headers)
+        assert r.status_code == 200, r.text
+    assert client.post(f"/api/restaurant/tickets/{ticket['id']}/serve", headers=auth_headers).status_code == 200
+    settled = client.post(f"/api/restaurant/tickets/{ticket['id']}/settle", json={"payment_method": "cash"}, headers=auth_headers)
+    assert settled.status_code == 200, settled.text
+
+    report = client.get("/api/reports/restaurant-turn-times", headers=auth_headers)
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["items_measured"] >= 1
+    assert body["avg_turn_minutes"] >= 0.0
+    assert body["p90_turn_minutes"] >= body["avg_turn_minutes"] - 0.05
+    assert body["tickets_measured"] >= 1
+    assert any(s["ticket_number"] == ticket["ticket_number"] for s in body["slowest_items"])
+    assert any(h["items"] >= 1 for h in body["covers_by_hour"])
+
+
+def test_table_list_exposes_active_ticket_server(auth_headers):
+    product = _create_menu_product(auth_headers, f"SRV{uuid.uuid4().hex[:4]}", qty=5, price=100.0)
+    table = _create_table(auth_headers, f"S{uuid.uuid4().hex[:4]}")
+    ticket = _open_ticket(auth_headers, table["id"])
+    _add_item(auth_headers, ticket["id"], product["id"])
+
+    tables = client.get("/api/restaurant/tables", headers=auth_headers).json()
+    row = next(t for t in tables if t["id"] == table["id"])
+    assert row["status"] == "occupied"
+    assert row["active_ticket_id"] == ticket["id"]
+    assert row["active_ticket_username"]
+
+
+def test_summary_reports_revenue_by_waiter(auth_headers):
+    product = _create_menu_product(auth_headers, f"WAIT{uuid.uuid4().hex[:4]}", qty=5, price=150.0)
+    ticket = _open_ticket(auth_headers)
+    _add_item(auth_headers, ticket["id"], product["id"])
+    settled = client.post(f"/api/restaurant/tickets/{ticket['id']}/settle", json={"payment_method": "cash"}, headers=auth_headers)
+    assert settled.status_code == 200, settled.text
+    server = settled.json()["username"]
+
+    summary = client.get("/api/reports/restaurant-summary", headers=auth_headers).json()
+    row = next((w for w in summary["by_waiter"] if w["waiter"] == server), None)
+    assert row is not None, summary["by_waiter"]
+    assert row["count"] >= 1
+    assert row["total"] >= 150.0
+    assert row["covers"] >= 2
+
+
+def test_guest_service_request_raises_and_staff_clears(auth_headers):
+    table = _create_table(auth_headers, f"SR{uuid.uuid4().hex[:4]}")
+
+    raised = client.post(f"/api/restaurant/public/tables/{table['id']}/service-request", json={"request": "bill"})
+    assert raised.status_code == 200, raised.text
+    assert raised.json()["service_request"] == "bill"
+    assert raised.json()["service_requested_at"]
+
+    listed = client.get("/api/restaurant/tables", headers=auth_headers).json()
+    row = next(t for t in listed if t["id"] == table["id"])
+    assert row["service_request"] == "bill"
+
+    bad = client.post(f"/api/restaurant/public/tables/{table['id']}/service-request", json={"request": "nonsense"})
+    assert bad.status_code == 400
+
+    cleared = client.post(f"/api/restaurant/tables/{table['id']}/service-request/clear", headers=auth_headers)
+    assert cleared.status_code == 200, cleared.text
+    assert not cleared.json()["service_request"]
+    assert cleared.json()["service_requested_at"] is None
+
+
+def test_public_menu_marks_out_of_stock_items(auth_headers):
+    in_stock = _create_menu_product(auth_headers, f"AVIN{uuid.uuid4().hex[:4]}", qty=7, price=50.0)
+    out = _create_menu_product(auth_headers, f"AVOUT{uuid.uuid4().hex[:4]}", qty=0, price=60.0)
+
+    menu = client.get("/api/restaurant/public/menu").json()
+    items = {i["id"]: i for section in menu for i in section["items"]}
+    assert items[in_stock["id"]]["available"] is True
+    assert items[out["id"]]["available"] is False
+
+
+def test_shift_close_records_variance(auth_headers):
+    product = _create_menu_product(auth_headers, f"SHIFT{uuid.uuid4().hex[:4]}", qty=20, price=100.0)
+    for _ in range(2):
+        ticket = _open_ticket(auth_headers)
+        _add_item(auth_headers, ticket["id"], product["id"])
+        settled = client.post(f"/api/restaurant/tickets/{ticket['id']}/settle", json={
+            "payment_method": "cash", "tip_amount": 20.0,
+        }, headers=auth_headers)
+        assert settled.status_code == 200, settled.text
+
+    preview = client.get("/api/restaurant/shifts/preview", headers=auth_headers)
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["ticket_count"] >= 2
+    assert body["expected_cash"] >= 240.0
+    assert body["cash_tips"] >= 40.0
+    assert body["by_method"]["cash"]["count"] >= 2
+
+    closed = client.post("/api/restaurant/shifts/close", json={
+        "counted_cash": body["expected_cash"] - 5.0, "notes": "short five",
+    }, headers=auth_headers)
+    assert closed.status_code == 201, closed.text
+    row = closed.json()
+    assert row["notes"] == "short five"
+    assert float(row["variance"]) == -5.0
+
+    history = client.get("/api/restaurant/shifts", headers=auth_headers)
+    assert history.status_code == 200
+    assert any(h["id"] == row["id"] and h["username"] for h in history.json())
+
+    # The next shift starts after the recorded close, so nothing is carried over.
+    after = client.get("/api/restaurant/shifts/preview", headers=auth_headers).json()
+    assert after["period_start"] >= row["period_end"]

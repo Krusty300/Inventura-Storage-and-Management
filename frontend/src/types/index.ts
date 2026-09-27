@@ -705,9 +705,30 @@ export interface RestaurantSummary {
   by_payment_method: { method: string; count: number; total: number; tips: number }[];
   by_hour_of_day: { hour: number; count: number; total: number }[];
   top_tables: { table: string; count: number; total: number; covers: number }[];
+  by_waiter: { waiter: string; count: number; total: number; tips: number; covers: number }[];
   top_items: { product_id: number; name: string; quantity_sold: number; revenue: number }[];
   reservations_total: number;
   reservations_completed: number;
+}
+
+export interface RestaurantTurnTimes {
+  start_date: string;
+  end_date: string;
+  items_measured: number;
+  tickets_measured: number;
+  avg_prep_minutes: number;
+  avg_turn_minutes: number;
+  p90_turn_minutes: number;
+  avg_ticket_dwell_minutes: number;
+  covers_by_hour: { hour: number; tickets: number; covers: number; items: number }[];
+  slowest_items: {
+    ticket_number: string;
+    table_number: string;
+    item: string;
+    minutes: number;
+    sent_at: string;
+    status: string;
+  }[];
 }
 
 export interface RestaurantDailyTrends {
@@ -1502,6 +1523,9 @@ export interface RestaurantTable {
   status: "available" | "occupied";
   active_ticket_id: number | null;
   active_ticket_number: string | null;
+  active_ticket_username: string;
+  service_requested_at: string | null;
+  service_request: string | null;
 }
 
 export type ReservationStatus = "pending" | "confirmed" | "seated" | "completed" | "cancelled" | "no_show";
@@ -1592,6 +1616,7 @@ export interface MenuItem {
   image_url: string;
   image: string;
   section_id: number | null;
+  available: boolean;
 }
 
 export interface MenuSectionWithItems {
@@ -1631,6 +1656,7 @@ export interface KitchenTicket {
   id: number;
   ticket_number: string;
   table_number: string;
+  table_zone: string;
   guest_count: number;
   status: string;
   stage: "queued" | "preparing" | "ready";
