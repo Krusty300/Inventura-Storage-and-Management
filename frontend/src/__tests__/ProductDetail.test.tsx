@@ -40,8 +40,8 @@ describe("ProductDetail", () => {
     renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
 
     expect(await screen.findByText("Stock Locations:")).toBeInTheDocument();
-    expect(screen.getByText("Aisle A (5)")).toBeInTheDocument();
-    expect(screen.getByText("Shelf B (3)")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "View location Aisle A" })).toHaveTextContent("Aisle A (5)");
+    expect(screen.getByRole("button", { name: "View location Shelf B" })).toHaveTextContent("Shelf B (3)");
   });
 
   it("groups in-stock serials by their current location for a serialized product", async () => {
@@ -71,8 +71,8 @@ describe("ProductDetail", () => {
     renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
 
     expect(await screen.findByText("In-stock Serial Locations:")).toBeInTheDocument();
-    expect(screen.getByText("Aisle A (2)")).toBeInTheDocument();
-    expect(screen.getByText("Shelf B (1)")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "View location Aisle A" })).toHaveTextContent("Aisle A (2)");
+    expect(screen.getByRole("button", { name: "View location Shelf B" })).toHaveTextContent("Shelf B (1)");
   });
 
   it("navigates to the locations page detail when a stock location is clicked", async () => {
@@ -173,8 +173,8 @@ describe("ProductDetail", () => {
     renderWithProviders(<ProductDetail product={product} onClose={() => {}} />);
 
     expect(await screen.findByText("Stock Locations:")).toBeInTheDocument();
-    expect(screen.getByText("Aisle A (5)")).toBeInTheDocument();
-    expect(screen.getByText("Unallocated (7)")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "View location Aisle A" })).toHaveTextContent("Aisle A (5)");
+    expect(screen.getByRole("button", { name: "Move unallocated stock" })).toHaveTextContent("Unallocated (7)");
   });
 
   it("moves unallocated stock to a chosen location from the badge", async () => {
