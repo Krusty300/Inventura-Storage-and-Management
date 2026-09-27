@@ -19,6 +19,10 @@ interface Props {
   disabled?: boolean;
   ariaLabel?: string;
   maxWidth?: number;
+  /** Extra classes for the wrapper (e.g. "flex-1 min-w-0"). */
+  className?: string;
+  /** Extra classes for the trigger input (e.g. "text-xs py-1"). */
+  inputClassName?: string;
 }
 
 const GAP = 4;
@@ -49,6 +53,8 @@ export default function FittedSelect({
   disabled = false,
   ariaLabel,
   maxWidth = 460,
+  className,
+  inputClassName,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -207,7 +213,7 @@ export default function FittedSelect({
   };
 
   return (
-    <div ref={wrapperRef} className="relative w-full">
+    <div ref={wrapperRef} className={`relative w-full ${className ?? ""}`}>
       <div className="relative">
         <input
           type="text"
@@ -217,7 +223,7 @@ export default function FittedSelect({
           aria-label={ariaLabel}
           aria-controls={open ? listId : undefined}
           aria-activedescendant={open ? `${listId}-${highlight}` : undefined}
-          className="input pr-9 cursor-pointer"
+          className={`input pr-9 cursor-pointer ${inputClassName ?? ""}`}
           value={selected ? (selected.parentLabel ? `${selected.parentLabel} · ${selected.label}` : selected.label) : ""}
           placeholder={placeholder}
           readOnly

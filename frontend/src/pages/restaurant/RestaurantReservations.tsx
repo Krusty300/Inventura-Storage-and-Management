@@ -6,6 +6,9 @@ import type { RestaurantReservation, ReservationStatus, RestaurantTable } from "
 import Table from "../../components/Table";
 import EmptyState from "../../components/EmptyState";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import DatePicker from "../../components/DatePicker";
+import FittedSelect from "../../components/FittedSelect";
+import TextArea from "../../components/TextArea";
 import RestaurantReservationDetail from "../../components/restaurant/RestaurantReservationDetail";
 import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import { RESERVATION_STATUS_BADGE, reservationActions } from "../../components/restaurant/reservationStatus";
@@ -32,6 +35,10 @@ function toLocalInputValue(iso: string): string {
   if (Number.isNaN(d.getTime())) return "";
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function todayKey(): string {
+  return toLocalInputValue(new Date().toISOString()).slice(0, 10);
 }
 
 export default function RestaurantReservations() {
@@ -176,12 +183,12 @@ export default function RestaurantReservations() {
             onChange={(e) => setSearch(e.target.value)}
             aria-label="Search reservations"
           />
-          <input
-            type="date"
-            className="input w-44"
+          <DatePicker
+            className="w-44"
+            inputClassName="cursor-pointer"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
-            aria-label="Filter by date"
+            onChange={setDate}
+            ariaLabel="Filter by date"
           />
           {date && (
             <button onClick={() => setDate("")} className="btn-secondary" aria-label="Clear date filter">
@@ -424,20 +431,31 @@ function ReservationForm({
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-table">Table</label>
-          <select id="res-table" className="input" value={tableId} onChange={(e) => setTableId(e.target.value === "" ? "" : Number(e.target.value))}>
-            <option value="">No table</option>
-            {activeTables.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.number} — seats {t.capacity}{t.status === "occupied" ? " (occupied)" : ""}
-              </option>
-            ))}
-          </select>
+          <span className="block text-sm font-medium text-ink mb-1">Table</span>
+          <FittedSelect
+            value={tableId === "" ? "" : String(tableId)}
+            onChange={(v) => setTableId(v === "" ? "" : Number(v))}
+            ariaLabel="Table"
+            placeholder="No table"
+            options={[
+              { value: "", label: "No table" },
+              ...activeTables.map((t) => ({
+                value: String(t.id),
+                label: `${t.number} — seats ${t.capacity}${t.status === "occupied" ? " (occupied)" : ""}`,
+              })),
+            ]}
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-time">When *</label>
-            <input id="res-time" className="input" type="datetime-local" value={reservedAt} onChange={(e) => setReservedAt(e.target.value)} required min={toLocalInputValue(new Date(Date.now() - 15 * 60 * 1000).toISOString())} />
+            <span className="block text-sm font-medium text-ink mb-1">When *</span>
+            <DatePicker
+              mode="datetime"
+              value={reservedAt}
+              onChange={setReservedAt}
+              ariaLabel="Booking time"
+              min={todayKey()}
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-duration">Duration (min)</label>
@@ -446,7 +464,7 @@ function ReservationForm({
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-notes">Notes</label>
-          <textarea id="res-notes" className="input" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Allergies, celebration, special requests..." maxLength={500} />
+          <TextArea id="res-notes" rows={2} value={notes} onChange={setNotes} placeholder="Allergies, celebration, special requests..." maxLength={500} />
         </div>
       </form>
     </RestaurantSlideOver>

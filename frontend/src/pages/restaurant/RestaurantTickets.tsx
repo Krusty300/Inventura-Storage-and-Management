@@ -8,6 +8,7 @@ import Table from "../../components/Table";
 import EmptyState from "../../components/EmptyState";
 import Pagination from "../../components/Pagination";
 import FittedSelect from "../../components/FittedSelect";
+import DatePicker from "../../components/DatePicker";
 import RestaurantTicketDetailDrawer from "../../components/restaurant/RestaurantTicketDetailDrawer";
 import { useDebounce } from "../../hooks/useDebounce";
 import { usePageSize } from "../../hooks/usePageSize";
@@ -122,19 +123,21 @@ export default function RestaurantTickets() {
           maxWidth={180}
           options={STATUS_FILTERS}
         />
-        <input
-          className="input w-auto"
-          type="date"
+        <DatePicker
+          className="w-40"
+          inputClassName="cursor-pointer"
           value={fromDate}
-          onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
-          aria-label="Opened from"
+          onChange={(v) => { setFromDate(v); setPage(1); }}
+          ariaLabel="Opened from"
+          max={toDate || undefined}
         />
-        <input
-          className="input w-auto"
-          type="date"
+        <DatePicker
+          className="w-40"
+          inputClassName="cursor-pointer"
           value={toDate}
-          onChange={(e) => { setToDate(e.target.value); setPage(1); }}
-          aria-label="Opened to"
+          onChange={(v) => { setToDate(v); setPage(1); }}
+          ariaLabel="Opened to"
+          min={fromDate || undefined}
         />
         {(fromDate || toDate) && (
           <button

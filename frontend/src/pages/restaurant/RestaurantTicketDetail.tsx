@@ -10,7 +10,7 @@ import type {
   Customer, MenuItem, MenuModifierGroup, MenuSectionWithItems, Product, RestaurantTicket, RestaurantTicketItem,
 } from "../../types";
 import EmptyState from "../../components/EmptyState";
-import Modal from "../../components/Modal";
+import TextArea from "../../components/TextArea";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import CustomerPicker from "../../components/CustomerPicker";
 import PaymentMethodPicker from "../../components/PaymentMethodPicker";
@@ -457,7 +457,7 @@ export default function RestaurantTicketDetail() {
         </div>
       )}
 
-      <VoidItemModal
+      <VoidItemSlideOver
         open={voidItem !== null}
         item={voidItem}
         onClose={() => setVoidItem(null)}
@@ -468,7 +468,7 @@ export default function RestaurantTicketDetail() {
         }}
       />
 
-      <SplitBillModal
+      <SplitBillSlideOver
         open={showSplit}
         ticket={ticket}
         onClose={() => setShowSplit(false)}
@@ -478,7 +478,7 @@ export default function RestaurantTicketDetail() {
         }}
       />
 
-      <SettleModal
+      <SettleSlideOver
         open={showSettle}
         ticket={ticket}
         onClose={() => setShowSettle(false)}
@@ -494,7 +494,7 @@ export default function RestaurantTicketDetail() {
       />
 
       {modifierProduct && (
-        <ModifierModal
+        <ModifierSlideOver
           product={modifierProduct}
           symbol={symbol}
           isPending={addItem.isPending}
@@ -513,7 +513,7 @@ export default function RestaurantTicketDetail() {
         onClose={() => setMenuProductDetail(null)}
       />
 
-      <EditTicketModal
+      <EditTicketSlideOver
         open={editTicket}
         ticket={ticket}
         onClose={() => setEditTicket(false)}
@@ -559,7 +559,7 @@ function useMenuData(search: string) {
   return { menu: filtered };
 }
 
-function ModifierModal({ product, symbol, isPending, onClose, onAdd }: {
+function ModifierSlideOver({ product, symbol, isPending, onClose, onAdd }: {
   product: MenuItem;
   symbol: string;
   isPending: boolean;
@@ -670,11 +670,11 @@ function ModifierModal({ product, symbol, isPending, onClose, onAdd }: {
           </div>
         </div>
       <label className="block text-sm font-medium text-ink mb-1" htmlFor="mod-notes">Note to kitchen (optional)</label>
-        <textarea
+        <TextArea
           id="mod-notes"
-          className="input min-h-[64px]"
+          className="min-h-[64px]"
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={setNotes}
           placeholder="e.g. no onions, well done..."
           maxLength={500}
         />
@@ -683,7 +683,7 @@ function ModifierModal({ product, symbol, isPending, onClose, onAdd }: {
   );
 }
 
-function EditTicketModal({ open, ticket, onClose, onSave }: {
+function EditTicketSlideOver({ open, ticket, onClose, onSave }: {
   open: boolean;
   ticket: RestaurantTicket;
   onClose: () => void;
@@ -754,14 +754,14 @@ function EditTicketModal({ open, ticket, onClose, onSave }: {
         </div>
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-notes">Notes (allergies, requests)</label>
-          <textarea id="edit-notes" className="input min-h-[80px]" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} />
+          <TextArea id="edit-notes" className="min-h-[80px]" value={notes} onChange={setNotes} maxLength={2000} />
         </div>
       </form>
     </RestaurantSlideOver>
   );
 }
 
-function SettleModal({ open, ticket, onClose, onSettled }: {
+function SettleSlideOver({ open, ticket, onClose, onSettled }: {
   open: boolean;
   ticket: RestaurantTicket;
   onClose: () => void;
@@ -882,8 +882,22 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={`Settle ${ticket.ticket_number}`}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <RestaurantSlideOver
+      open={open}
+      onClose={onClose}
+      title={`Settle ${ticket.ticket_number}`}
+      breadcrumb={`Settle ${ticket.ticket_number}`}
+      wide
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" form="settle-ticket-form" disabled={saving || (method === "mobile_money" && !phone.trim())} className="btn-primary">
+            {saving ? "Settling..." : method === "mobile_money" ? "Collect Payment" : "Settle Now"}
+          </button>
+        </>
+      }
+    >
+      <form id="settle-ticket-form" onSubmit={handleSubmit} className="space-y-4">
         <div className="rounded-lg border border-border bg-app p-3 space-y-3">
           <div>
             <label className="block text-sm font-medium text-ink mb-1">Customer</label>
@@ -1000,18 +1014,12 @@ function SettleModal({ open, ticket, onClose, onSettled }: {
             <span className="tabular-nums">{formatCurrency(due, symbol)}</span>
           </div>
         </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving || (method === "mobile_money" && !phone.trim())} className="btn-primary">
-            {saving ? "Settling..." : method === "mobile_money" ? "Collect Payment" : "Settle Now"}
-          </button>
-        </div>
       </form>
-    </Modal>
+    </RestaurantSlideOver>
   );
 }
 
-function VoidItemModal({ open, item, onClose, onConfirm }: {
+function VoidItemSlideOver({ open, item, onClose, onConfirm }: {
   open: boolean;
   item: RestaurantTicketItem | null;
   onClose: () => void;
@@ -1035,9 +1043,24 @@ function VoidItemModal({ open, item, onClose, onConfirm }: {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Void Item">
+    <RestaurantSlideOver
+      open={open}
+      onClose={onClose}
+      title="Void Item"
+      breadcrumb="Void item"
+      footer={
+        item && (
+          <>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" form="void-item-form" className="btn-danger flex items-center gap-1.5">
+              <Ban size={16} /> Void Item
+            </button>
+          </>
+        )
+      }
+    >
       {item && (
-        <form onSubmit={submit} className="space-y-4">
+        <form id="void-item-form" onSubmit={submit} className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 shrink-0">
               <Ban size={18} />
@@ -1051,29 +1074,23 @@ function VoidItemModal({ open, item, onClose, onConfirm }: {
             <label className="block text-sm font-medium text-ink mb-1" htmlFor="void-reason">
               Reason {item.status === "pending" ? "(optional)" : "*"}
             </label>
-            <textarea
+            <TextArea
               id="void-reason"
-              className="input min-h-[80px]"
+              className="min-h-[80px]"
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
+              onChange={setReason}
               placeholder="e.g. customer changed mind, overcooked..."
               maxLength={200}
             />
             <p className="text-xs text-muted mt-1">{item.status === "pending" ? "Pending items haven't used stock — no stock will be returned." : "Stock will be returned to the kitchen inventory."}</p>
           </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-danger flex items-center gap-1.5">
-              <Ban size={16} /> Void Item
-            </button>
-          </div>
         </form>
       )}
-    </Modal>
+    </RestaurantSlideOver>
   );
 }
 
-function SplitBillModal({ open, ticket, onClose, onSplit }: {
+function SplitBillSlideOver({ open, ticket, onClose, onSplit }: {
   open: boolean;
   ticket: RestaurantTicket;
   onClose: () => void;
@@ -1131,8 +1148,22 @@ function SplitBillModal({ open, ticket, onClose, onSplit }: {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={`Split ${ticket.ticket_number}`}>
-      <form onSubmit={submit} className="space-y-4">
+    <RestaurantSlideOver
+      open={open}
+      onClose={onClose}
+      title={`Split ${ticket.ticket_number}`}
+      breadcrumb={`Split ${ticket.ticket_number}`}
+      wide
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+          <button type="submit" form="split-ticket-form" disabled={active.length === 0 || selected.length === 0} className="btn-primary flex items-center gap-1.5">
+            <Scissors size={16} /> Split Bill
+          </button>
+        </>
+      }
+    >
+      <form id="split-ticket-form" onSubmit={submit} className="space-y-4">
         <p className="text-sm text-muted">Move selected items to a new bill. Stock already sent to the kitchen stays attributed to the original ticket.</p>
         {active.length === 0 && (
           <p className="text-sm text-red-600 dark:text-red-400">Nothing to split — this ticket has no active items.</p>
@@ -1205,13 +1236,7 @@ function SplitBillModal({ open, ticket, onClose, onSplit }: {
           <div className="flex justify-between text-muted"><span>Moving to new bill</span><span className="tabular-nums">{symbol}{toMoveAmount.toFixed(2)}</span></div>
           <div className="flex justify-between text-muted"><span>Staying on this bill</span><span className="tabular-nums">{symbol}{keepAmount.toFixed(2)}</span></div>
         </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={active.length === 0 || selected.length === 0} className="btn-primary flex items-center gap-1.5">
-            <Scissors size={16} /> Split Bill
-          </button>
-        </div>
       </form>
-    </Modal>
+    </RestaurantSlideOver>
   );
 }

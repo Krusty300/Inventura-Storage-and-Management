@@ -8,6 +8,7 @@ import { errorMessage } from "../../utils/errors";
 import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useSettings } from "../../hooks/useSettings";
+import TextArea from "../../components/TextArea";
 import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import type { MenuSectionWithItems, MenuItem, MenuModifierGroup, RestaurantTable, RestaurantTicketItem } from "../../types";
 
@@ -175,12 +176,12 @@ function ModifierSheet({ product, onClose, onAdd }: {
 
         <label className="block">
           <span className="text-xs font-medium text-muted">Note to kitchen (optional)</span>
-          <textarea
-            className="input mt-1.5"
+          <TextArea
+            className="mt-1.5"
             rows={2}
             value={notes}
             maxLength={200}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={setNotes}
             placeholder="e.g. no onions, allergies..."
           />
         </label>

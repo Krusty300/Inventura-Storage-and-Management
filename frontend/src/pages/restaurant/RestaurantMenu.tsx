@@ -5,6 +5,7 @@ import api from "../../api/client";
 import type { MenuItem, MenuModifierGroup, MenuSection, MenuSectionWithItems } from "../../types";
 import EmptyState from "../../components/EmptyState";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import FittedSelect from "../../components/FittedSelect";
 import RestaurantMenuProductDetail from "../../components/restaurant/RestaurantMenuProductDetail";
 import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
@@ -172,26 +173,29 @@ export default function RestaurantMenu() {
                           )}
                         </div>
                         {can("restaurant.update") && (
-                          <label
+                          <div
                             className="flex items-center gap-2 text-xs text-muted"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            Section
-                            <select
-                              className="input text-xs py-1 flex-1"
-                              value={item.section_id ?? ""}
-                              onChange={(e) => { e.stopPropagation(); assignSection.mutate({
-                                productId: item.id,
-                                sectionId: e.target.value ? Number(e.target.value) : null,
-                              }); }}
-                              aria-label={`Section for ${item.display_name}`}
-                            >
-                              <option value="">Uncategorized</option>
-                              {sectionList.map((s) => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                              ))}
-                            </select>
-                          </label>
+                            <span className="shrink-0">Section</span>
+                            <FittedSelect
+                              className="flex-1 min-w-0"
+                              inputClassName="text-xs py-1"
+                              maxWidth={260}
+                              value={item.section_id ? String(item.section_id) : ""}
+                              onChange={(v) =>
+                                assignSection.mutate({
+                                  productId: item.id,
+                                  sectionId: v ? Number(v) : null,
+                                })
+                              }
+                              ariaLabel={`Section for ${item.display_name}`}
+                              options={[
+                                { value: "", label: "Uncategorized" },
+                                ...sectionList.map((s) => ({ value: String(s.id), label: s.name })),
+                              ]}
+                            />
+                          </div>
                         )}
                       </div>
                     ))}
