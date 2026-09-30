@@ -195,6 +195,63 @@ def test_settle_mobile_money_pending_until_confirmed(auth_headers):
     assert product_after["quantity"] == 4
 
 
+def test_settle_mobile_money_charges_bill_plus_tip(auth_headers):
+    product = _create_menu_product(auth_headers, "TIPPRD", qty=5, price=100.0)
+    ticket = _open_ticket(auth_headers)
+    _add_item(auth_headers, ticket["id"], product["id"], quantity=1)
+
+    resp = client.post(f"/api/restaurant/tickets/{ticket['id']}/settle", json={
+        "payment_method": "mobile_money", "payment_provider": "m-pesa",
+        "payment_phone": "0712345678", "tip_amount": 20.0,
+    }, headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["tip_amount"] == 20.0
+    sale_id = body["sale_id"]
+
+    sale = client.get(f"/api/sales/{sale_id}", headers=auth_headers).json()
+    # The receipt totals bill + tip, so the STK prompt has to ask for the same
+    # figure. Tax is 0 in tests, so this is 100 + 20.
+    assert sale["payment_provider_amount"] == 120.0
+
+    # And the push uses the recorded amount, rounded the way Daraja charges.
+    push = client.post(f"/api/sales/{sale_id}/stk-push", json={}, headers=auth_headers)
+    assert push.status_code == 200, push.text
+    assert push.json()["amount"] == 120.0
+
+
+def test_settle_mobile_money_amount_is_rounded_for_daraja(auth_headers):
+    product = _create_menu_product(auth_headers, "ROUNDPRD", qty=5, price=100.64)
+    ticket = _open_ticket(auth_headers)
+    _add_item(auth_headers, ticket["id"], product["id"], quantity=1)
+
+    resp = client.post(f"/api/restaurant/tickets/{ticket['id']}/settle", json={
+        "payment_method": "mobile_money", "payment_provider": "m-pesa",
+        "payment_phone": "0712345678",
+    }, headers=auth_headers)
+    sale_id = resp.json()["sale_id"]
+    sale = client.get(f"/api/sales/{sale_id}", headers=auth_headers).json()
+    # 100.64 is pushed as 101, so verification compares the callback against
+    # 101 rather than flagging every cents-bearing bill as short-paid.
+    assert sale["payment_provider_amount"] == 101.0
+
+    push = client.post(f"/api/sales/{sale_id}/stk-push", json={}, headers=auth_headers)
+    assert push.json()["amount"] == 101.0
+
+
+def test_settle_cash_ticket_has_no_provider_amount(auth_headers):
+    product = _create_menu_product(auth_headers, "CASHTIP", qty=5, price=100.0)
+    ticket = _open_ticket(auth_headers)
+    _add_item(auth_headers, ticket["id"], product["id"], quantity=1)
+
+    resp = client.post(f"/api/restaurant/tickets/{ticket['id']}/settle", json={
+        "payment_method": "cash", "tip_amount": 20.0,
+    }, headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    sale = client.get(f"/api/sales/{resp.json()['sale_id']}", headers=auth_headers).json()
+    assert sale["payment_provider_amount"] is None
+
+
 def test_settle_requires_restaurant_settle_permission():
     product = _create_menu_product(_auth(), "PERMPRD", qty=5)
     ticket = _open_ticket(_auth())

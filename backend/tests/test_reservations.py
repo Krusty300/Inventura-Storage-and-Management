@@ -38,7 +38,10 @@ def test_create_and_list_reservation(auth_headers):
     table = _create_table(auth_headers)
     reservation = _create_reservation(auth_headers, table["id"])
     assert reservation["status"] == "pending"
-    assert reservation["reservation_number"].startswith("R-")
+    # "RS-" is the series already on the books. Asserting the full prefix keeps
+    # this honest: "R-" also passes startswith("R-"), which hid a real bug where
+    # new reservations were numbered R-0001 against seeded RS-0001 rows.
+    assert reservation["reservation_number"].startswith("RS-")
     assert reservation["table_number"] == table["number"]
     assert reservation["guest_name"] == "Alice"
 

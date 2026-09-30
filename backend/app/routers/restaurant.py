@@ -16,7 +16,7 @@ from app.models import BOM, BOMItem
 from app.models.customer import Customer
 from app.models.menu import MenuModifierGroup, MenuModifierOption, MenuSection
 from app.models.product import Product
-from app.models.restaurant import RestaurantReservation, RestaurantShiftClose, RestaurantTable, RestaurantTicket, RestaurantTicketItem
+from app.models.restaurant import RestaurantPrepSession, RestaurantPrepSessionItem, RestaurantReservation, RestaurantShiftClose, RestaurantTable, RestaurantTicket, RestaurantTicketItem
 from app.models.sale import Sale, SaleItem
 from app.models.settings import Settings
 from app.models.user import User
@@ -37,6 +37,16 @@ from app.schemas.restaurant import (
     GuestOrderOut,
     GuestServiceRequest,
     KitchenTicketOut,
+    PrepLevelUpdate,
+    PrepSessionCloseCreate,
+    PrepSessionCountCreate,
+    PrepSessionCreate,
+    PrepSessionItemCreate,
+    PrepSessionItemOut,
+    PrepSessionOut,
+    PrepSessionWasteCreate,
+    PrepStationItemOut,
+    PrepStationOut,
     ReservationCreate,
     ReservationOut,
     ReservationStatusUpdate,
@@ -61,8 +71,11 @@ from app.schemas.restaurant import (
 from app.services import inventory
 from app.services.auth import hash_password, require_permission
 from app.services.cache import settings_cache
+from app.services.daraja import chargeable_amount
 from app.services.httpratelimit import limiter
+from app.services.notify import notify_admins
 from app.services.payment_methods import resolve_payment_details
+from app.services.permissions import permissions_for_user
 from app.services.sales_channels import (
     RESTAURANT_DINE_IN_CHANNEL,
     RESTAURANT_GUEST_ORDER_CHANNEL,
@@ -85,6 +98,13 @@ public_router = APIRouter(prefix="/api/restaurant", tags=["restaurant"], depende
 
 CLOSED_STATUSES = ("settled", "cancelled")
 KITCHEN_ITEM_STATUSES = ("queued", "preparing", "ready", "served")
+
+# Anti-theft guard rails. A ticket could previously be settled for zero by
+# setting discount == subtotal, and a worker could do it silently. Discounts are
+# now capped, attributed and always raise an alert, so the worst a single line
+# item can cost is bounded and always leaves a trail.
+MAX_DISCOUNT_PERCENT = 50.0
+MIN_DISCOUNT_REASON_LENGTH = 3
 
 
 def _system_user(db: Session) -> User:
@@ -202,6 +222,12 @@ def _selected_modifiers(db: Session, product: Product, modifiers: list[dict]) ->
     return result, round(total_delta, 2)
 
 
+def _product_snapshot(product: Product) -> tuple[str, str]:
+    """Freeze the name and cover image onto a ticket line at add time."""
+    image = product.images[0].url if product.images else product.image_url
+    return product.display_name, image or ""
+
+
 def _item_modifier_line(item: RestaurantTicketItem) -> str:
     mods: list[dict] = item.modifiers or []
     return ", ".join(str(m.get("name", "")) for m in mods if m.get("name"))
@@ -228,7 +254,12 @@ def _load_modifier_group(db: Session, group_id: int) -> MenuModifierGroup:
 
 
 def generate_ticket_number(db: Session) -> str:
-    return next_document_number(db, "ticket", "T-")
+    # "TK-" matches the ticket numbers already on the books (seed data, shift
+    # close reports, kitchen printouts). A bare "T-" would restart the series
+    # under a new prefix, so tickets would read T-0001 after TK-0012.
+    return next_document_number(
+        db, "ticket", "TK-", table="restaurant_tickets", column="ticket_number"
+    )
 
 
 def get_tax_rate(db: Session) -> float:
@@ -273,11 +304,24 @@ def _table_occupied(db: Session, table_id: int, exclude_ticket_id: int | None = 
     return q.first() is not None
 
 
-def _recompute_totals(db: Session, ticket: RestaurantTicket, discount_amount: float | None = None) -> None:
+def _recompute_totals(db: Session, ticket: RestaurantTicket, discount_amount: float | None = None) -> float:
+    """Recompute subtotal/discount/tax/total for a ticket.
+
+    The discount is clamped to the subtotal rather than rejected: removing,
+    voiding or shrinking a line can legitimately drop the subtotal below an
+    existing discount, and refusing the edit would block the void and leave the
+    kitchen's stock consumed. Because that clamp can turn a discount into a
+    larger share of the remaining bill than was authorised, it returns the
+    amount that was cut so the caller can log and alert on it.
+
+    Explicitly *setting* a discount goes through :func:`_validate_discount`,
+    which is where the cap, the permission and the reason are enforced.
+    """
     subtotal = round(sum(float(i.unit_price) * i.quantity for i in ticket.items if i.status != "voided"), 2)
-    discount = float(ticket.discount_amount) if discount_amount is None else float(discount_amount)
+    requested = float(ticket.discount_amount) if discount_amount is None else float(discount_amount)
+    discount = max(round(requested, 2), 0.0)
     if discount > subtotal:
-        raise HTTPException(status_code=400, detail="Discount cannot exceed the ticket subtotal")
+        discount = subtotal
     tax_rate = get_tax_rate(db)
     taxable = subtotal - discount
     tax = round(taxable * tax_rate / 100, 2)
@@ -285,6 +329,101 @@ def _recompute_totals(db: Session, ticket: RestaurantTicket, discount_amount: fl
     ticket.discount_amount = round(discount, 2)
     ticket.tax_amount = tax
     ticket.total_amount = round(taxable + tax, 2)
+    return round(requested - float(ticket.discount_amount), 2)
+
+
+def _report_discount_clamp(db: Session, ticket: RestaurantTicket, user: User, removed: float) -> None:
+    """Announce a discount that shrank because the bill it was applied to did.
+
+    Cutting the discount is better than refusing the void (the stock has already
+    been consumed), but it silently raises the discount as a share of the bill,
+    so it gets the same log entry and admin alert as an authorised discount.
+    """
+    if removed <= 0.005:
+        return
+    log_activity(
+        db, user.id, user.username, "discount", "restaurant_ticket", ticket.id,
+        f"Discount on {ticket.ticket_number} cut by {removed:.2f} to {float(ticket.discount_amount):.2f} "
+        "- removed lines no longer covered by it",
+    )
+    notify_admins(
+        db,
+        f"Discount reduced on {ticket.ticket_number}",
+        f"{user.username} reduced the discount by {removed:.2f}; it is now "
+        f"{float(ticket.discount_amount):.2f} on a {float(ticket.subtotal):.2f} bill.",
+        type="warning",
+        link=f"/restaurant/tickets/{ticket.id}",
+        exclude_user_id=user.id,
+    )
+    db.commit()
+
+
+def _validate_discount(
+    db: Session,
+    ticket: RestaurantTicket,
+    discount_amount: float | None,
+    reason: str | None,
+    user: User,
+) -> str:
+    """Gate an explicitly requested discount. Returns the normalised reason.
+
+    Any non-zero discount requires the ``restaurant.discount`` permission
+    (manager/admin by default), a written reason, and must stay within
+    ``MAX_DISCOUNT_PERCENT`` of the subtotal. Together with the activity-log
+    entry and the admin alert raised by the caller this makes a comp visible and
+    attributable instead of silent.
+    """
+    if discount_amount is None:
+        return ""
+    discount = round(float(discount_amount), 2)
+    if discount <= 0:
+        return ""
+    if "restaurant.discount" not in permissions_for_user(user):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to discount a ticket",
+        )
+    reason = (reason or "").strip()
+    if len(reason) < MIN_DISCOUNT_REASON_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail="A written reason is required for any discount",
+        )
+    subtotal = round(
+        sum(float(i.unit_price) * i.quantity for i in ticket.items if i.status != "voided"), 2
+    )
+    if discount > subtotal:
+        raise HTTPException(status_code=400, detail="Discount cannot exceed the ticket subtotal")
+    cap = round(subtotal * MAX_DISCOUNT_PERCENT / 100, 2)
+    if discount > cap + 0.005:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Discount cannot exceed {MAX_DISCOUNT_PERCENT:g}% of the subtotal ({cap:.2f})",
+        )
+    return reason
+
+
+def _record_discount(
+    db: Session,
+    ticket: RestaurantTicket,
+    user: User,
+    discount: float,
+    reason: str,
+) -> None:
+    """Log a discount as its own audit action and alert the admins."""
+    default_currency, default_symbol = get_currency_defaults(db)
+    log_activity(
+        db, user.id, user.username, "discount", "restaurant_ticket", ticket.id,
+        f"Discounted {ticket.ticket_number} by {default_symbol}{discount:.2f} - {reason}",
+    )
+    notify_admins(
+        db,
+        f"Discount on {ticket.ticket_number}",
+        f"{user.username} discounted {ticket.ticket_number} by {default_symbol}{discount:.2f}. Reason: {reason}",
+        type="warning",
+        link=f"/restaurant/tickets/{ticket.id}",
+        exclude_user_id=user.id,
+    )
 
 
 def _recompute_ticket_status(ticket: RestaurantTicket) -> None:
@@ -318,7 +457,7 @@ def _recompute_ticket_status(ticket: RestaurantTicket) -> None:
 
 
 def _validate_menu_product(db: Session, product_id: int) -> Product:
-    product = db.get(Product, product_id)
+    product = db.get(Product, product_id, options=[joinedload(Product.images)])
     if product is None or not product.is_active:
         raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
     if not product.is_variant and db.query(Product.id).filter(
@@ -1066,7 +1205,10 @@ def create_reservation(data: ReservationCreate, db: Session = Depends(get_db), u
             ),
         )
     reservation = RestaurantReservation(
-        reservation_number=next_document_number(db, "reservation", "R-"),
+        reservation_number=next_document_number(
+            db, "reservation", "RS-",
+            table=RestaurantReservation.__tablename__, column="reservation_number",
+        ),
         table_id=data.table_id,
         user_id=user.id,
         guest_name=guest_name,
@@ -1278,9 +1420,19 @@ def update_ticket(ticket_id: int, data: TicketUpdate, db: Session = Depends(get_
         updates["customer_name"] = updates["customer_name"].strip()
     if updates.get("customer_phone") is not None:
         updates["customer_phone"] = updates["customer_phone"].strip()
+    discount_reason = ""
+    requested_discount = None
+    if "discount_amount" in updates:
+        requested_discount = updates["discount_amount"]
+        discount_reason = _validate_discount(
+            db, ticket, requested_discount, data.discount_reason, user,
+        )
+    updates.pop("discount_reason", None)
     for k, v in updates.items():
         setattr(ticket, k, v)
     _recompute_totals(db, ticket, discount_amount=data.discount_amount)
+    if requested_discount is not None and float(ticket.discount_amount) > 0:
+        _record_discount(db, ticket, user, float(ticket.discount_amount), discount_reason)
     db.commit()
     ticket = load_ticket(db, ticket.id)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
@@ -1303,6 +1455,7 @@ def add_ticket_item(ticket_id: int, data: TicketItemCreate, db: Session = Depend
     else:
         base_price = resolve_price(db, product.id, None, quantity)
     unit_price = round(base_price + delta, 2)
+    snapshot_name, snapshot_image = _product_snapshot(product)
     existing = next((
         i for i in ticket.items
         if i.product_id == product.id and i.status == "pending"
@@ -1312,10 +1465,14 @@ def add_ticket_item(ticket_id: int, data: TicketItemCreate, db: Session = Depend
         existing.quantity += quantity
         existing.unit_price = unit_price
         existing.base_unit_price = base_price
+        existing.product_name_snapshot = snapshot_name
+        existing.product_image_snapshot = snapshot_image
     else:
         ticket.items.append(RestaurantTicketItem(
             product_id=product.id, quantity=quantity,
             unit_price=unit_price, base_unit_price=base_price,
+            product_name_snapshot=snapshot_name,
+            product_image_snapshot=snapshot_image,
             modifiers=mods or None, notes=data.notes, status="pending",
         ))
     _recompute_totals(db, ticket)
@@ -1356,10 +1513,11 @@ def update_ticket_item(ticket_id: int, item_id: int, data: TicketItemUpdate, db:
         updates["base_unit_price"] = updates["unit_price"]
     for k, v in updates.items():
         setattr(item, k, v)
-    _recompute_totals(db, ticket)
+    removed = _recompute_totals(db, ticket)
     _recompute_ticket_status(ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
+    _report_discount_clamp(db, ticket, user, removed)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
                  f"Updated item {item_id} on {ticket.ticket_number}")
     db.commit()
@@ -1379,10 +1537,17 @@ def remove_ticket_item(ticket_id: int, item_id: int, db: Session = Depends(get_d
         raise HTTPException(status_code=400, detail="Only unsent items can be removed - the rest is with the kitchen")
     name = item.product_name
     db.delete(item)
-    _recompute_totals(db, ticket)
+    # Flush, then drop the cached collection: the subtotal is summed off
+    # ``ticket.items``, and until the delete is flushed and the collection
+    # reloaded the removed line is still counted - which left the subtotal (and
+    # the discount trimmed against it) unchanged.
+    db.flush()
+    db.expire(ticket, ["items"])
+    removed = _recompute_totals(db, ticket)
     _recompute_ticket_status(ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
+    _report_discount_clamp(db, ticket, user, removed)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
                  f"Removed '{name}' from {ticket.ticket_number}")
     db.commit()
@@ -1400,22 +1565,42 @@ def void_ticket_item(ticket_id: int, item_id: int, data: TicketItemVoidCreate, d
         raise HTTPException(status_code=404, detail="Ticket item not found")
     if item.status == "voided":
         raise HTTPException(status_code=400, detail="Item is already voided")
-    reason = (data.reason or "").strip()
+    # The reason is enforced by TicketItemVoidCreate, not the browser.
+    reason = data.reason.strip()
+    # Voiding someone else's ticket (a table handed over mid-service, or a
+    # co-worker covering a station) is a manager action: it drops revenue the
+    # original server is accountable for.
+    if ticket.user_id != user.id and "restaurant.void" not in permissions_for_user(user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only a manager can void an item on another server's ticket",
+        )
     was_sent = item.status in KITCHEN_ITEM_STATUSES
     if was_sent:
         _restore_item_stock(db, ticket, item, user.id, reason="Void")
     item.status = "voided"
     item.voided_by = user.id
     item.voided_at = datetime.now(timezone.utc)
-    item.void_reason = reason or None
-    _recompute_totals(db, ticket)
+    item.void_reason = reason
+    removed = _recompute_totals(db, ticket)
     _recompute_ticket_status(ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
-    log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
-                 f"Voided '{item.product_name}' from {ticket.ticket_number}"
-                 + (f" ({item.quantity}) - {reason}" if reason else ""))
+    _report_discount_clamp(db, ticket, user, removed)
+    log_activity(db, user.id, user.username, "void", "restaurant_ticket", ticket.id,
+                 f"Voided '{item.product_name}' (x{item.quantity}) from {ticket.ticket_number} - {reason}"
+                 + (" [another server's ticket]" if ticket.user_id != user.id else ""))
     db.commit()
+    if was_sent:
+        notify_admins(
+            db,
+            f"Void on {ticket.ticket_number}",
+            f"{user.username} voided {item.quantity} x '{item.product_name}'. Reason: {reason}",
+            type="warning",
+            link=f"/restaurant/tickets/{ticket.id}",
+            exclude_user_id=user.id,
+        )
+        db.commit()
     broadcast_change("restaurant_ticket", "updated")
     if was_sent:
         broadcast_change("product", "updated")
@@ -1468,7 +1653,17 @@ def split_ticket(ticket_id: int, data: TicketSplitCreate, db: Session = Depends(
             child.items.append(item)
     parent_subtotal = round(sum(float(i.unit_price) * i.quantity for i in ticket.items if i.id not in moving and i.status != "voided"), 2)
     if float(ticket.discount_amount) > parent_subtotal:
-        ticket.discount_amount = parent_subtotal
+        # Clamping here used to silently turn the whole remaining bill into a
+        # 100% comp, which is exactly the theft the discount controls exist to
+        # stop. The cashier has to clear or re-scale the discount first.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Ticket {ticket.ticket_number} carries a discount of "
+                f"{float(ticket.discount_amount):.2f} but only {parent_subtotal:.2f} would remain - "
+                "reduce or clear the discount before splitting"
+            ),
+        )
     _recompute_totals(db, ticket)
     _recompute_ticket_status(ticket)
     _recompute_totals(db, child)
@@ -1577,7 +1772,6 @@ def _reap_stale_paying(db: Session, timeout_minutes: int = 10) -> int:
     if not stale:
         return 0
     from app.routers.sales import _restore_stock_for_sale
-    from app.services.notify import notify_admins
     system = _system_user(db)
     count = 0
     for ticket in stale:
@@ -1626,6 +1820,7 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail="Cannot settle a ticket with only voided items")
 
     discount = float(ticket.discount_amount) if data.discount_amount is None else float(data.discount_amount)
+    discount_reason = _validate_discount(db, ticket, data.discount_amount, data.discount_reason, user)
     _recompute_totals(db, ticket, discount_amount=discount)
 
     method = data.payment_method
@@ -1646,6 +1841,12 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
 
     is_mobile = method == "mobile_money"
     from app.routers.sales import generate_invoice_number
+
+    # The printed receipt totals the bill plus the tip, so the tip is fixed
+    # before the sale is built. An M-Pesa push has to ask for that same figure:
+    # charging the bill alone would record a tip that was never collected.
+    tip = round(float(data.tip_amount or 0.0), 2)
+    payable = chargeable_amount(float(ticket.total_amount) + tip)
 
     # Attribute the sale to a customer + restaurant channel when we can.
     customer_phone = (data.customer_phone or "").strip() or (data.payment_phone or "").strip() or ticket.customer_phone
@@ -1668,6 +1869,11 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
     if customer_phone:
         ticket.customer_phone = customer_phone
     is_guest_order = ticket.user_id == _system_user(db).id
+    if is_guest_order:
+        # QR tickets are opened by the system user, so without this the cash
+        # collected for a guest table would land in nobody's drawer and the
+        # shift close would balance against an expected total that ignores it.
+        ticket.user_id = user.id
     channel = get_or_create_channel(
         db,
         name=RESTAURANT_GUEST_ORDER_CHANNEL if is_guest_order else RESTAURANT_DINE_IN_CHANNEL,
@@ -1688,6 +1894,7 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
         payment_provider=payment["provider"],
         payment_phone=(data.payment_phone or "").strip() or None,
         payment_status="pending" if is_mobile else None,
+        payment_provider_amount=payable if is_mobile else None,
         currency=payment["currency"],
         currency_symbol=payment["currency_symbol"],
         notes=(data.notes or "").strip() or f"Restaurant {ticket.ticket_number} - table {ticket.table_number}",
@@ -1701,7 +1908,7 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
         db.add(SaleItem(sale_id=sale.id, product_id=item.product_id, quantity=item.quantity, unit_price=item.unit_price))
     _retag_ticket_movements(db, ticket, sale.invoice_number)
     ticket.sale_id = sale.id
-    ticket.tip_amount = round(float(data.tip_amount or 0.0), 2)
+    ticket.tip_amount = tip
     if is_mobile:
         ticket.status = "paying"
     else:
@@ -1710,6 +1917,8 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
         completed = _complete_seated_reservations(db, ticket)
     db.commit()
     ticket = load_ticket(db, ticket.id)
+    if float(ticket.discount_amount) > 0 and discount_reason:
+        _record_discount(db, ticket, user, float(ticket.discount_amount), discount_reason)
     log_activity(db, user.id, user.username, "update", "restaurant_ticket", ticket.id,
                  f"Settled {ticket.ticket_number} via {method}{f' ({provider})' if provider else ''} -> {sale.invoice_number}")
     db.commit()
@@ -1718,9 +1927,14 @@ def settle_ticket(ticket_id: int, data: TicketSettle, db: Session = Depends(get_
     if completed is not None:
         broadcast_change("restaurant_reservation", "updated")
     if is_mobile:
-        from app.services.notify import notify_admins
+        # Show the amount the customer will actually be prompted for, tip
+        # included, so an admin reconciling the till knows what to expect.
+        await_amount = payable
+        detail = f" via {provider}"
+        if tip:
+            detail = f" incl. {payment['currency_symbol']}{tip:.2f} tip via {provider}"
         notify_admins(db, f"Ticket {ticket.ticket_number} awaiting payment",
-                      f"{payment['currency_symbol']}{ticket.total_amount:.2f} via {provider}", type="info",
+                      f"{payment['currency_symbol']}{await_amount:.2f}{detail}", type="info",
                       link=f"/sales/{sale.id}", exclude_user_id=user.id)
         db.commit()
     return ticket
@@ -1943,12 +2157,15 @@ def kitchen_board(db: Session = Depends(get_db), user=Depends(require_permission
 # Shift close / cash drawer reconciliation
 # ---------------------------------------------------------------------------
 
-def _shift_period(db: Session, user_id: int, period_start: datetime | None, period_end: datetime | None) -> tuple[datetime, datetime]:
-    """Resolve the shift window: since this cashier's last close (or the start of
-    the day) up to now."""
-    end = period_end or datetime.now(timezone.utc)
-    if period_start is not None:
-        return period_start, end
+def _shift_period(db: Session, user_id: int) -> tuple[datetime, datetime]:
+    """Resolve the shift window from the server only.
+
+    The window runs from this cashier's previous close (or the start of the
+    day) up to now. It used to accept a client-supplied ``period_start``, which
+    let anyone post ``period_start`` in the future and reconcile an empty
+    window as a perfectly balanced drawer.
+    """
+    end = datetime.now(timezone.utc)
     last = db.query(RestaurantShiftClose).filter(
         RestaurantShiftClose.user_id == user_id
     ).order_by(RestaurantShiftClose.period_end.desc()).first()
@@ -1970,6 +2187,12 @@ def _shift_totals(db: Session, user_id: int, start: datetime, end: datetime) -> 
     total_sales = 0.0
     expected_cash = 0.0
     cash_tips = 0.0
+    cash_sales = 0.0
+    # Mobile money that came in at the wrong figure. It never touched the
+    # drawer, so it cannot show up as cash variance, but it is money that does
+    # not match the books and has to be chased before the shift is signed off.
+    review_sales = 0.0
+    review_amount = 0.0
     for t in tickets:
         method = (t.sale.payment_method if t.sale else "cash") or "cash"
         amount = float(t.total_amount)
@@ -1980,8 +2203,12 @@ def _shift_totals(db: Session, user_id: int, start: datetime, end: datetime) -> 
         bucket["total"] += amount
         bucket["tips"] += tips
         if method == "cash":
+            cash_sales += amount
             expected_cash += amount + tips
             cash_tips += tips
+        if t.sale is not None and t.sale.payment_amount_status in ("short", "over"):
+            review_sales += 1
+            review_amount += float(t.sale.payment_amount_received or amount)
     open_count = db.query(func.count(RestaurantTicket.id)).filter(
         RestaurantTicket.user_id == user_id,
         RestaurantTicket.status.in_(("open", "preparing", "ready", "served")),
@@ -1995,6 +2222,9 @@ def _shift_totals(db: Session, user_id: int, start: datetime, end: datetime) -> 
         "total_sales": round(total_sales, 2),
         "expected_cash": round(expected_cash, 2),
         "cash_tips": round(cash_tips, 2),
+        "cash_sales": round(cash_sales, 2),
+        "payment_review_count": int(review_sales),
+        "payment_review_amount": round(review_amount, 2),
         "open_tickets": int(open_count),
         "paying_tickets": int(paying_count),
         "by_method": {
@@ -2006,13 +2236,20 @@ def _shift_totals(db: Session, user_id: int, start: datetime, end: datetime) -> 
 
 @router.get("/shifts/preview", response_model=ShiftPreview)
 def shift_preview(
-    period_start: datetime | None = None,
-    period_end: datetime | None = None,
     db: Session = Depends(get_db),
     user=Depends(require_permission("restaurant.view")),
 ):
-    start, end = _shift_period(db, user.id, period_start, period_end)
-    return ShiftPreview(period_start=start, period_end=end, **_shift_totals(db, user.id, start, end))
+    start, end = _shift_period(db, user.id)
+    open_prep = db.query(func.count(RestaurantPrepSession.id)).filter(
+        RestaurantPrepSession.status == "open",
+    ).scalar() or 0
+    return ShiftPreview(
+        period_start=start,
+        period_end=end,
+        open_prep_sessions=int(open_prep),
+        **_shift_totals(db, user.id, start, end),
+        **_prep_totals(db, start, end),
+    )
 
 
 @router.post("/shifts/close", response_model=ShiftCloseOut, status_code=201)
@@ -2021,25 +2258,73 @@ def close_shift(
     db: Session = Depends(get_db),
     user=Depends(require_permission("restaurant.update")),
 ):
-    """Record a cash-drawer reconciliation for the caller's shift."""
-    start, end = _shift_period(db, user.id, data.period_start, data.period_end)
+    """Record a cash-drawer reconciliation for the caller's shift.
+
+    The window is derived server-side and the drawer contents are declared by
+    the cashier, so the close is a genuine reconciliation:
+    ``expected = opening_float + paid_in - paid_out + cash_sales + cash_tips``.
+    """
+    start, end = _shift_period(db, user.id)
     if end < start:
         raise HTTPException(status_code=400, detail="Period end is before period start")
     totals = _shift_totals(db, user.id, start, end)
     counted = round(float(data.counted_cash), 2)
-    expected = float(totals["expected_cash"])
+    opening_float = round(float(data.opening_float), 2)
+    paid_in = round(float(data.paid_in), 2)
+    paid_out = round(float(data.paid_out), 2)
+    cash_sales = float(totals["cash_sales"])
+    cash_tips = float(totals["cash_tips"])
+    expected = round(opening_float + paid_in - paid_out + cash_sales + cash_tips, 2)
+    variance = round(counted - expected, 2)
+    prep = _prep_totals(db, start, end)
     record = RestaurantShiftClose(
         user_id=user.id, period_start=start, period_end=end,
         ticket_count=totals["ticket_count"], total_sales=totals["total_sales"],
         expected_cash=expected, counted_cash=counted,
-        variance=round(counted - expected, 2), cash_tips=totals["cash_tips"],
+        variance=variance, cash_tips=cash_tips, cash_sales=cash_sales,
+        opening_float=opening_float, paid_in=paid_in, paid_out=paid_out,
         breakdown=totals["by_method"], notes=data.notes.strip(),
+        **prep,
     )
     db.add(record)
     db.commit()
     log_activity(db, user.id, user.username, "create", "restaurant_shift_close", record.id,
-                 f"Shift closed: expected {expected:.2f}, counted {counted:.2f}, variance {counted - expected:.2f}")
+                 f"Shift closed: expected {expected:.2f}, counted {counted:.2f}, variance {variance:.2f} "
+                 f"(float {opening_float:.2f}, pay-in {paid_in:.2f}, pay-out {paid_out:.2f}); "
+                 f"prep prepped {prep['prepped_qty']}, sold {prep['prep_sold_qty']}, "
+                 f"waste {prep['prep_waste_qty']}, variance {prep['prep_variance_qty']}")
     db.commit()
+    if variance != 0:
+        notify_admins(
+            db,
+            f"Cash variance on {user.username}'s shift",
+            f"Expected {expected:.2f}, counted {counted:.2f}, variance {variance:.2f}.",
+            type="warning",
+            link="/restaurant/shift-close",
+        )
+        db.commit()
+    if prep["prep_variance_qty"] != 0:
+        notify_admins(
+            db,
+            f"Prep variance on {user.username}'s shift",
+            f"{prep['prep_session_count']} prep session(s): prepped {prep['prepped_qty']}, "
+            f"sold {prep['prep_sold_qty']}, waste {prep['prep_waste_qty']}, "
+            f"variance {prep['prep_variance_qty']}.",
+            type="warning",
+            link="/restaurant/prep",
+        )
+        db.commit()
+    if totals["payment_review_count"]:
+        notify_admins(
+            db,
+            f"Payment review pending on {user.username}'s shift",
+            f"{totals['payment_review_count']} mobile money payment(s) came in at the wrong "
+            f"figure, {totals['payment_review_amount']:.2f} received against "
+            f"{totals['total_sales']:.2f} of bills. These are flagged on their sales.",
+            type="warning",
+            link="/sales",
+        )
+        db.commit()
     return ShiftCloseOut.model_validate(record)
 
 
@@ -2049,9 +2334,449 @@ def list_shift_closes(
     db: Session = Depends(get_db),
     user=Depends(require_permission("restaurant.view")),
 ):
-    return db.query(RestaurantShiftClose).options(
+    """List drawer reconciliations.
+
+    Every close exposes another server's counted cash and variance, so the full
+    history is manager-only; a cashier sees their own shifts to check their own
+    numbers.
+    """
+    query = db.query(RestaurantShiftClose).options(
         joinedload(RestaurantShiftClose.user),
-    ).order_by(RestaurantShiftClose.id.desc()).limit(limit).all()
+    ).order_by(RestaurantShiftClose.id.desc())
+    if "restaurant.void" not in permissions_for_user(user):
+        query = query.filter(RestaurantShiftClose.user_id == user.id)
+    return query.limit(limit).all()
+
+
+# ---------------------------------------------------------------------------
+# Prep accounting (prepped vs sold vs waste)
+# ---------------------------------------------------------------------------
+
+# A prep session is the anti-theft counterpart to the cash drawer. The kitchen
+# declares what it produced; the system derives what it sold from the ticket
+# items fired during the window. The gap is food loss that never reached a
+# guest and never appeared on a bill.
+PREP_MAX_QUANTITY = 10_000
+
+
+def _prep_session(db: Session, session_id: int) -> RestaurantPrepSession:
+    session = db.query(RestaurantPrepSession).filter(RestaurantPrepSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Prep session not found")
+    return session
+
+
+def _same_station(a: str, b: str) -> bool:
+    return (a or "").strip().casefold() == (b or "").strip().casefold()
+
+
+def _prep_menu_products(db: Session) -> list[Product]:
+    """Active menu items that a manager has put on a prep station."""
+    return db.query(Product).filter(
+        Product.is_menu_item.is_(True),
+        Product.is_active.is_(True),
+        Product.prep_station.isnot(None),
+    ).all()
+
+
+def _sold_qty_by_product(db: Session, product_ids: list[int], start: datetime, end: datetime) -> dict[int, int]:
+    """Units actually fired to the kitchen inside ``[start, end)``.
+
+    A voided line is excluded, so a void returns the plate to the count. The
+    window is half-open so two back-to-back sessions at one station cannot
+    both claim the same ticket line.
+    """
+    if not product_ids:
+        return {}
+    rows = db.query(
+        RestaurantTicketItem.product_id,
+        func.coalesce(func.sum(RestaurantTicketItem.quantity), 0),
+    ).filter(
+        RestaurantTicketItem.product_id.in_(product_ids),
+        RestaurantTicketItem.status != "voided",
+        RestaurantTicketItem.sent_at.isnot(None),
+        RestaurantTicketItem.sent_at >= start,
+        RestaurantTicketItem.sent_at < end,
+    ).group_by(RestaurantTicketItem.product_id).all()
+    return {int(pid): int(qty) for pid, qty in rows}
+
+
+def _prep_window(session: RestaurantPrepSession) -> tuple[datetime, datetime]:
+    start = session.opened_at
+    end = session.closed_at or datetime.now(timezone.utc)
+    if start is None:
+        start = end
+    if end <= start:
+        end = start + timedelta(seconds=1)
+    return start, end
+
+
+def _prep_item_out(item: RestaurantPrepSessionItem, sold_qty: int) -> PrepSessionItemOut:
+    """Serialize a prep line, deriving the reconciliation for open sessions."""
+    sold = item.sold_qty if item.sold_qty is not None else sold_qty
+    expected = item.expected_remaining
+    if expected is None:
+        expected = item.prepped_qty - sold - item.waste_qty
+    variance = item.variance
+    if variance is None and item.counted_qty is not None:
+        variance = item.counted_qty - expected
+    return PrepSessionItemOut(
+        id=item.id,
+        product_id=item.product_id,
+        product_name=item.product_name,
+        prepped_qty=item.prepped_qty,
+        sold_qty=int(sold or 0),
+        waste_qty=item.waste_qty,
+        counted_qty=item.counted_qty,
+        expected_remaining=expected,
+        variance=variance,
+        waste_reason=item.waste_reason or "",
+        created_at=item.created_at,
+    )
+
+
+def _prep_session_out(db: Session, session: RestaurantPrepSession) -> PrepSessionOut:
+    start, end = _prep_window(session)
+    sold_map = _sold_qty_by_product(db, [i.product_id for i in session.items], start, end)
+    items = [_prep_item_out(i, sold_map.get(i.product_id, 0)) for i in session.items]
+    return PrepSessionOut(
+        id=session.id,
+        session_number=session.session_number,
+        station=session.station,
+        user_id=session.user_id,
+        username=session.username,
+        status=session.status,
+        notes=session.notes or "",
+        opened_at=session.opened_at,
+        closed_at=session.closed_at,
+        closed_by=session.closed_by,
+        closed_by_username=session.closed_by_username,
+        prepped_qty=sum(i.prepped_qty for i in items),
+        sold_qty=sum(i.sold_qty for i in items),
+        waste_qty=sum(i.waste_qty for i in items),
+        expected_remaining=sum(i.expected_remaining for i in items),
+        variance=sum(i.variance for i in items if i.variance is not None),
+        item_count=len(items),
+        items=items,
+        created_at=session.created_at,
+    )
+
+
+def _prep_totals(db: Session, start: datetime, end: datetime) -> dict:
+    """Aggregate prepped/sold/waste/variance for every session closed in a window."""
+    sessions = db.query(RestaurantPrepSession).filter(
+        RestaurantPrepSession.closed_at.isnot(None),
+        RestaurantPrepSession.closed_at >= start,
+        RestaurantPrepSession.closed_at <= end,
+    ).all()
+    prepped = sold = waste = variance = 0
+    for session in sessions:
+        out = _prep_session_out(db, session)
+        prepped += out.prepped_qty
+        sold += out.sold_qty
+        waste += out.waste_qty
+        variance += out.variance
+    return {
+        "prep_session_count": len(sessions),
+        "prepped_qty": prepped,
+        "prep_sold_qty": sold,
+        "prep_waste_qty": waste,
+        "prep_variance_qty": variance,
+    }
+
+
+@router.get("/prep/stations", response_model=list[PrepStationOut])
+def list_prep_stations(
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.kitchen")),
+):
+    """Dishes available for prep, grouped by station, with live availability.
+
+    Availability is what is on the pass right now: prepped, less what the
+    kitchen has already fired and less declared waste, summed across every
+    open session at that station.
+    """
+    products = _prep_menu_products(db)
+    open_sessions = db.query(RestaurantPrepSession).filter(
+        RestaurantPrepSession.status == "open",
+    ).all()
+    sold_map: dict[int, int] = {}
+    for session in open_sessions:
+        start, end = _prep_window(session)
+        sold_map.update(_sold_qty_by_product(db, [i.product_id for i in session.items], start, end))
+    used: dict[int, int] = {}
+    for session in open_sessions:
+        for item in session.items:
+            used[item.product_id] = used.get(item.product_id, 0) + (
+                item.prepped_qty - item.waste_qty
+            )
+
+    grouped: dict[str, PrepStationOut] = {}
+    for product in products:
+        station = (product.prep_station or "").strip()
+        if not station:
+            continue
+        available = used.get(product.id, 0) - sold_map.get(product.id, 0)
+        entry = grouped.setdefault(station, PrepStationOut(station=station))
+        entry.items.append(PrepStationItemOut(
+            product_id=product.id,
+            name=product.display_name,
+            station=station,
+            par_qty=product.par_qty,
+            warn_qty=product.warn_qty,
+            available_qty=available,
+            sold_qty=sold_map.get(product.id, 0),
+            is_below_warn=bool(product.warn_qty) and available < product.warn_qty,
+        ))
+    result = sorted(grouped.values(), key=lambda s: s.station.casefold())
+    for station in result:
+        station.items.sort(key=lambda i: i.name.casefold())
+    return result
+
+
+@router.put("/prep/menu-items/{product_id}", response_model=PrepStationItemOut)
+def update_prep_levels(
+    product_id: int,
+    data: PrepLevelUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.prep")),
+):
+    """Manager sets the station and par/warn levels for a dish.
+
+    Editing a par level is a management change, not a kitchen one, so it sits
+    behind ``restaurant.prep`` while the kitchen itself only needs
+    ``restaurant.kitchen`` to move counts.
+    """
+    product = _validate_menu_product(db, product_id)
+    par = data.par_qty if data.par_qty is not None else product.par_qty
+    warn = data.warn_qty if data.warn_qty is not None else product.warn_qty
+    if warn > par:
+        raise HTTPException(status_code=400, detail="Warn level cannot exceed the par level")
+    if data.prep_station is not None:
+        product.prep_station = data.prep_station or None
+    if data.par_qty is not None:
+        product.par_qty = par
+    if data.warn_qty is not None:
+        product.warn_qty = warn
+    db.commit()
+    log_activity(db, user.id, user.username, "update", "product", product.id,
+                 f"Prep levels for {product.display_name}: station={product.prep_station or '-'}, "
+                 f"par={product.par_qty}, warn={product.warn_qty}")
+    db.commit()
+    return PrepStationItemOut(
+        product_id=product.id,
+        name=product.display_name,
+        station=product.prep_station or "",
+        par_qty=product.par_qty,
+        warn_qty=product.warn_qty,
+    )
+
+
+@router.post("/prep/sessions", response_model=PrepSessionOut, status_code=201)
+def open_prep_session(
+    data: PrepSessionCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.kitchen")),
+):
+    """Open a prep run at one station."""
+    existing = db.query(RestaurantPrepSession).filter(
+        RestaurantPrepSession.station == data.station,
+        RestaurantPrepSession.status == "open",
+    ).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{data.station} already has open session {existing.session_number}",
+        )
+    session = RestaurantPrepSession(
+        session_number=next_document_number(
+            db, "prep_session", "PREP-",
+            table=RestaurantPrepSession.__tablename__, column="session_number",
+        ),
+        station=data.station,
+        user_id=user.id,
+        status="open",
+        notes=data.notes,
+        opened_at=datetime.now(timezone.utc),
+    )
+    db.add(session)
+    db.commit()
+    log_activity(db, user.id, user.username, "create", "restaurant_prep_session", session.id,
+                 f"Prep session {session.session_number} opened at {session.station}")
+    db.commit()
+    return _prep_session_out(db, session)
+
+
+@router.get("/prep/sessions", response_model=list[PrepSessionOut])
+def list_prep_sessions(
+    limit: int = Query(20, ge=1, le=100),
+    status: str = Query("", description="Filter by open/closed"),
+    station: str = Query("", description="Filter by station"),
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.kitchen")),
+):
+    query = db.query(RestaurantPrepSession).options(
+        joinedload(RestaurantPrepSession.user),
+    ).order_by(RestaurantPrepSession.id.desc())
+    if status:
+        query = query.filter(RestaurantPrepSession.status == status)
+    if station:
+        query = query.filter(RestaurantPrepSession.station == station)
+    return [_prep_session_out(db, s) for s in query.limit(limit).all()]
+
+
+@router.get("/prep/sessions/{session_id}", response_model=PrepSessionOut)
+def get_prep_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.kitchen")),
+):
+    return _prep_session_out(db, _prep_session(db, session_id))
+
+
+@router.post("/prep/sessions/{session_id}/items", response_model=PrepSessionOut, status_code=201)
+def record_prepped(
+    session_id: int,
+    data: PrepSessionItemCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.kitchen")),
+):
+    """Record a prepped batch. A repeat of the same dish adds to its line."""
+    session = _prep_session(db, session_id)
+    if session.status != "open":
+        raise HTTPException(status_code=400, detail="This prep session is already closed")
+    product = _validate_menu_product(db, data.product_id)
+    if not product.prep_station or not _same_station(product.prep_station, session.station):
+        where = product.prep_station or "no station"
+        raise HTTPException(
+            status_code=400,
+            detail=f"{product.display_name} is prepped at {where}, not {session.station}",
+        )
+    item = next((i for i in session.items if i.product_id == product.id), None)
+    if item is None:
+        item = RestaurantPrepSessionItem(
+            session_id=session.id,
+            product_id=product.id,
+            product_name_snapshot=product.display_name,
+            # Set explicitly: column defaults only land on flush, and the
+            # increment below happens before that.
+            prepped_qty=0,
+            waste_qty=0,
+        )
+        db.add(item)
+    item.prepped_qty += data.quantity
+    db.commit()
+    log_activity(db, user.id, user.username, "create", "restaurant_prep_session_item", item.id,
+                 f"Prepped {data.quantity} x {product.display_name} in {session.session_number} "
+                 f"(total {item.prepped_qty})")
+    db.commit()
+    return _prep_session_out(db, session)
+
+
+@router.post("/prep/sessions/{session_id}/waste", response_model=PrepSessionOut)
+def record_prep_waste(
+    session_id: int,
+    data: PrepSessionWasteCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.kitchen")),
+):
+    """Write off a batch as waste, with a reason.
+
+    Waste can only be booked against a dish the session actually prepped, and
+    it can never exceed what is left on the pass. Otherwise a large waste entry
+    would paper over missing stock and post a negative variance.
+    """
+    session = _prep_session(db, session_id)
+    if session.status != "open":
+        raise HTTPException(status_code=400, detail="This prep session is already closed")
+    if data.product_id is not None:
+        item = next((i for i in session.items if i.product_id == data.product_id), None)
+    else:
+        item = next((i for i in session.items if i.prepped_qty > 0), None)
+    if item is None:
+        raise HTTPException(status_code=400, detail="Record a prepped batch before booking waste")
+
+    start, end = _prep_window(session)
+    sold = _sold_qty_by_product(db, [item.product_id], start, end).get(item.product_id, 0)
+    on_pass = item.prepped_qty - sold - item.waste_qty
+    if data.quantity > on_pass:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only {on_pass} of {item.product_name} are left on the pass",
+        )
+    item.waste_qty += data.quantity
+    if item.waste_reason and item.waste_reason != data.reason:
+        item.waste_reason = f"{item.waste_reason}; {data.reason}"
+    else:
+        item.waste_reason = data.reason
+    db.commit()
+    log_activity(db, user.id, user.username, "create", "restaurant_prep_waste", item.id,
+                 f"Waste {data.quantity} x {item.product_name} in {session.session_number}: {data.reason}")
+    db.commit()
+    return _prep_session_out(db, session)
+
+
+@router.post("/prep/sessions/{session_id}/close", response_model=PrepSessionOut)
+def close_prep_session(
+    session_id: int,
+    data: PrepSessionCloseCreate,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("restaurant.kitchen")),
+):
+    """Count the pass and close the run, freezing the reconciliation.
+
+    Every prepped line must be counted: a silent line would let an unaccounted
+    batch disappear from the record entirely. The derived sold quantity and the
+    resulting variance are written onto the rows at this point so a later void
+    cannot rewrite history.
+    """
+    session = _prep_session(db, session_id)
+    if session.status != "open":
+        raise HTTPException(status_code=400, detail="This prep session is already closed")
+
+    counts = {c.product_id: c.counted_qty for c in data.counted}
+    uncounted = [i for i in session.items if i.prepped_qty > 0 and i.product_id not in counts]
+    if uncounted:
+        names = ", ".join(i.product_name for i in uncounted)
+        raise HTTPException(status_code=400, detail=f"Count the leftovers for: {names}")
+
+    start, end = _prep_window(session)
+    now = datetime.now(timezone.utc)
+    sold_map = _sold_qty_by_product(db, [i.product_id for i in session.items], start, end)
+    total_variance = 0
+    for item in session.items:
+        sold = sold_map.get(item.product_id, 0)
+        counted = counts.get(item.product_id, 0)
+        expected = item.prepped_qty - sold - item.waste_qty
+        item.sold_qty = sold
+        item.counted_qty = counted
+        item.expected_remaining = expected
+        item.variance = counted - expected
+        total_variance += item.variance
+
+    session.status = "closed"
+    session.closed_at = now
+    session.closed_by = user.id
+    if data.notes:
+        session.notes = f"{session.notes}; {data.notes}".strip("; ") if session.notes else data.notes
+    db.commit()
+
+    out = _prep_session_out(db, session)
+    log_activity(db, user.id, user.username, "update", "restaurant_prep_session", session.id,
+                 f"Prep session {session.session_number} closed: prepped {out.prepped_qty}, "
+                 f"sold {out.sold_qty}, waste {out.waste_qty}, variance {out.variance}")
+    db.commit()
+    if total_variance != 0:
+        notify_admins(
+            db,
+            f"Prep variance on {session.station}",
+            f"Session {session.session_number} closed by {user.username}: prepped {out.prepped_qty}, "
+            f"sold {out.sold_qty}, waste {out.waste_qty}, variance {total_variance}.",
+            type="warning",
+            link="/restaurant/prep",
+        )
+        db.commit()
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2200,6 +2925,7 @@ def guest_create_order(request: Request, data: GuestOrderCreate, db: Session = D
         mods, delta = _selected_modifiers(db, product, item.modifiers)
         base_price = resolve_price(db, product.id, None, item.quantity)
         unit_price = round(base_price + delta, 2)
+        snapshot_name, snapshot_image = _product_snapshot(product)
         existing = next((
             i for i in ticket.items
             if i.product_id == product.id and i.status == "pending"
@@ -2209,10 +2935,14 @@ def guest_create_order(request: Request, data: GuestOrderCreate, db: Session = D
             existing.quantity += item.quantity
             existing.unit_price = unit_price
             existing.base_unit_price = base_price
+            existing.product_name_snapshot = snapshot_name
+            existing.product_image_snapshot = snapshot_image
         else:
             ticket.items.append(RestaurantTicketItem(
                 product_id=product.id, quantity=item.quantity,
                 unit_price=unit_price, base_unit_price=base_price,
+                product_name_snapshot=snapshot_name,
+                product_image_snapshot=snapshot_image,
                 modifiers=mods or None, notes=item.notes, status="pending",
             ))
     db.flush()

@@ -635,6 +635,56 @@ def update_checkout_id(sale_id: int, checkout_request_id: str = "", db: Session 
     return {"ok": True}
 
 
+@router.post("/{sale_id}/stk-push")
+def push_sale_stk(sale_id: int, db: Session = Depends(get_db), user=Depends(require_permission("sales.create"))):
+    """Send the STK prompt for a sale using the amount the server recorded.
+
+    The browser used to choose this amount. That let a stale or edited client
+    prompt for one shilling on a four-thousand-shilling bill, and the callback
+    then confirmed the sale as paid. The figure now comes from
+    ``payment_provider_amount`` (the bill plus any tip) and the checkout id is
+    stored here, so the push and the sale it settles cannot drift apart.
+    """
+    from app.services.daraja import expected_charge, stk_push
+
+    sale = load_sale(db, sale_id)
+    if sale.payment_method != "mobile_money":
+        raise HTTPException(status_code=400, detail="This sale was not paid by mobile money")
+    if sale.payment_status != "pending":
+        raise HTTPException(status_code=400, detail=f"Payment status is '{sale.payment_status}' - only pending payments can be prompted for")
+    phone = (sale.payment_phone or "").strip()
+    if phone.startswith("0"):
+        phone = "254" + phone[1:]
+    if not phone.startswith("254") or len(phone) < 10:
+        raise HTTPException(status_code=400, detail="A valid payment phone is required for mobile money")
+
+    amount = expected_charge(sale)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Nothing to charge for this sale")
+    # Persist the figure we are about to ask for so the callback compares
+    # against the same number, even if the total is edited later.
+    sale.payment_provider_amount = amount
+    result = stk_push(
+        phone=phone,
+        amount=amount,
+        reference=sale.invoice_number,
+        description=f"Payment for {sale.invoice_number}",
+        account_ref=sale.invoice_number,
+    )
+    checkout_id = result.get("checkout_request_id", "")
+    if checkout_id:
+        sale.payment_checkout_request_id = checkout_id
+    db.commit()
+    broadcast_change("sale", "updated")
+    return {
+        "success": result.get("response_code") == "0",
+        "amount": amount,
+        "checkout_request_id": checkout_id,
+        "merchant_request_id": result.get("merchant_request_id", ""),
+        "message": result.get("response_description", ""),
+    }
+
+
 @router.post("/{sale_id}/cancel", response_model=SaleOut)
 def cancel_sale(sale_id: int, db: Session = Depends(get_db), user=Depends(require_permission("sales.refund"))):
     sale = load_sale(db, sale_id)

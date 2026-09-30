@@ -1,6 +1,11 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+# A healthy counter allocates on the first try. The bound only matters when the
+# counter has fallen badly behind, where a longer walk means something is
+# structurally wrong rather than slightly stale.
+_MAX_ALLOCATION_ATTEMPTS = 1000
+
 
 def _get_prefix(db: Session, name: str, default: str) -> str:
     """Read document prefix from settings, falling back to default."""
@@ -32,7 +37,14 @@ def _get_prefix(db: Session, name: str, default: str) -> str:
     return prefix_map.get(name, default)
 
 
-def next_document_number(db: Session, name: str, prefix: str, width: int = 4) -> str:
+def next_document_number(
+    db: Session,
+    name: str,
+    prefix: str,
+    width: int = 4,
+    table: str = "",
+    column: str = "",
+) -> str:
     """Atomically allocate the next sequential document number.
 
     Uses an upsert on a single counter row so concurrent calls never receive
@@ -41,16 +53,34 @@ def next_document_number(db: Session, name: str, prefix: str, width: int = 4) ->
 
     The prefix is stored bare in settings (e.g. ``INV``); a trailing hyphen is
     applied here so generated numbers read ``INV-0001``.
+
+    ``table``/``column`` name the column that must stay unique (for example
+    ``restaurant_tickets`` / ``ticket_number``). Passing them makes allocation
+    self-healing: if the counter has fallen behind rows that already exist, as
+    happens when a database is restored from a backup taken before the counter
+    was written or rows are imported from outside, the taken number is skipped
+    instead of raising an opaque unique-constraint error.
     """
     prefix = _get_prefix(db, name, prefix)
     prefix = prefix.rstrip("-") + "-" if prefix else ""
-    row = db.execute(
-        text(
-            "INSERT INTO document_sequences (name, next_value) VALUES (:name, 1) "
-            "ON CONFLICT(name) DO UPDATE SET next_value = next_value + 1 "
-            "RETURNING next_value"
-        ),
-        {"name": name},
-    ).first()
-    num = row[0] if row else 1
-    return f"{prefix}{num:0{width}d}"
+    taken_sql = (
+        f"SELECT 1 FROM {table} WHERE {column} = :candidate LIMIT 1" if table else ""
+    )
+    for _ in range(_MAX_ALLOCATION_ATTEMPTS):
+        row = db.execute(
+            text(
+                "INSERT INTO document_sequences (name, next_value) VALUES (:name, 1) "
+                "ON CONFLICT(name) DO UPDATE SET next_value = next_value + 1 "
+                "RETURNING next_value"
+            ),
+            {"name": name},
+        ).first()
+        num = row[0] if row else 1
+        candidate = f"{prefix}{num:0{width}d}"
+        if not taken_sql or db.execute(text(taken_sql), {"candidate": candidate}).first() is None:
+            return candidate
+    raise RuntimeError(
+        f"Could not allocate a free {prefix} number for {name!r} after "
+        f"{_MAX_ALLOCATION_ATTEMPTS} attempts; the document_sequences counter is "
+        f"far behind the numbers already stored."
+    )

@@ -492,7 +492,7 @@ def customer_checkout_stk(
     payment, and records the resulting checkout request id so the standard
     Daraja callback (``/api/daraja/callback/stk``) completes the sale.
     """
-    from app.services.daraja import stk_push
+    from app.services.daraja import expected_charge, stk_push
 
     sale = _get_portal_sale(db, customer, sale_id)
     if sale.payment_method != "mobile_money":
@@ -505,9 +505,15 @@ def customer_checkout_stk(
     if not phone.startswith("254") or len(phone) < 10:
         raise HTTPException(status_code=400, detail="A valid payment phone is required for mobile money")
 
+    # Amount comes from the sale, never the client, and is the same figure the
+    # callback verifies against.
+    amount = expected_charge(sale)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Nothing to charge for this order")
+    sale.payment_provider_amount = amount
     result = stk_push(
         phone=phone,
-        amount=float(sale.total_amount),
+        amount=amount,
         reference=sale.invoice_number,
         description=f"{sale.invoice_number}",
         account_ref=str(customer.id),

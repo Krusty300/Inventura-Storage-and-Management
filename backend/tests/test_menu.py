@@ -1,6 +1,7 @@
 import uuid
 
-from tests.conftest import client, create_test_user
+from tests.conftest import client, create_test_user, TestingSessionLocal
+from app.models.restaurant import RestaurantTicketItem
 
 
 def _auth(role: str = "admin") -> dict:
@@ -266,3 +267,68 @@ def test_bill_and_kitchen_pdfs_are_valid(auth_headers):
     kitchen_after = client.get(f"/api/restaurant/tickets/{ticket['id']}/kitchen", headers=auth_headers)
     assert kitchen_after.status_code == 200
     assert b"%PDF" in kitchen_after.content
+
+
+def test_ticket_item_snapshots_product_name_and_image(auth_headers):
+    product = _create_menu_product(auth_headers, "SNAP001", qty=10, price=150.0)
+    cover = "/uploads/snapshot-cover.webp"
+    client.put(f"/api/products/{product['id']}", json={"image_url": cover}, headers=auth_headers)
+
+    ticket = _open_ticket(auth_headers)
+    added = client.post(f"/api/restaurant/tickets/{ticket['id']}/items", json={
+        "product_id": product["id"], "quantity": 1,
+    }, headers=auth_headers)
+    assert added.status_code == 201
+    item = added.json()["items"][0]
+    assert item["product_name"] == product["name"]
+    assert item["product_image"] == cover
+
+    # Renaming the product must not rewrite the historical ticket line.
+    client.put(f"/api/products/{product['id']}", json={"name": "Renamed Product"}, headers=auth_headers)
+    refetched = client.get(f"/api/restaurant/tickets/{ticket['id']}", headers=auth_headers).json()
+    assert refetched["items"][0]["product_name"] == product["name"]
+
+    # Neither must swapping the cover image.
+    client.put(f"/api/products/{product['id']}", json={"image_url": "/uploads/swapped.webp"}, headers=auth_headers)
+    refetched = client.get(f"/api/restaurant/tickets/{ticket['id']}", headers=auth_headers).json()
+    assert refetched["items"][0]["product_image"] == cover
+
+
+def test_ticket_item_merge_refreshes_snapshot(auth_headers):
+    product = _create_menu_product(auth_headers, "SNAP002", qty=10, price=100.0)
+    ticket = _open_ticket(auth_headers)
+    url = f"/api/restaurant/tickets/{ticket['id']}/items"
+    body = {"product_id": product["id"], "quantity": 1}
+    assert client.post(url, json=body, headers=auth_headers).status_code == 201
+
+    client.put(f"/api/products/{product['id']}", json={"name": "Renamed Before Merge"}, headers=auth_headers)
+    merged = client.post(url, json=body, headers=auth_headers)
+    assert merged.status_code == 201
+    items = merged.json()["items"]
+    assert len(items) == 1
+    assert items[0]["quantity"] == 2
+    # The still-open line tracks the current name until it is snapshotted shut.
+    assert items[0]["product_name"] == "Renamed Before Merge"
+
+
+def test_ticket_item_falls_back_to_live_product_without_snapshot(auth_headers):
+    """Rows predating the migration keep rendering from the live product."""
+    product = _create_menu_product(auth_headers, "SNAP003", qty=10, price=100.0)
+    ticket = _open_ticket(auth_headers)
+    added = client.post(f"/api/restaurant/tickets/{ticket['id']}/items", json={
+        "product_id": product["id"], "quantity": 1,
+    }, headers=auth_headers).json()
+    item_id = added["items"][0]["id"]
+
+    session = TestingSessionLocal()
+    try:
+        item = session.get(RestaurantTicketItem, item_id)
+        item.product_name_snapshot = None
+        item.product_image_snapshot = None
+        session.commit()
+    finally:
+        session.close()
+
+    client.put(f"/api/products/{product['id']}", json={"name": "Live Name"}, headers=auth_headers)
+    refetched = client.get(f"/api/restaurant/tickets/{ticket['id']}", headers=auth_headers).json()
+    assert refetched["items"][0]["product_name"] == "Live Name"

@@ -3,6 +3,7 @@ from pathlib import Path
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -22,6 +23,8 @@ from app.routers import activity_log, asn, attachments, auth, bom, categories, c
 from app.services.inventory import expire_overdue_lots
 from app.services.auth import purge_expired_sessions
 from app.ws_manager import manager
+
+logger = logging.getLogger("app.errors")
 
 
 def _decode_ws_token(token: str) -> dict | None:
@@ -67,7 +70,16 @@ async def integrity_error_handler(request: Request, exc: IntegrityError):
 
     Unique/foreign-key conflicts happen legitimately under concurrency (duplicate
     SKUs, document-number collisions, username/email races) and deserve a clean
-    409 so the client can surface the message instead of 'internal error'."""
+    409 so the client can surface the message instead of 'internal error'.
+
+    The generic wording is easy to misread as a problem with the user's own
+    input, so the underlying statement is logged here; otherwise a server-side
+    fault (a seeded row occupying the next document number, say) is invisible
+    and gets debugged from the browser.
+    """
+    logger.exception(
+        "IntegrityError on %s %s", request.method, request.url.path, exc_info=exc
+    )
     return JSONResponse(
         status_code=409,
         content={"detail": "Data conflicts with existing records. Check unique fields such as SKU, name, or code."},

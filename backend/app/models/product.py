@@ -26,6 +26,11 @@ class Product(SoftDeleteMixin, Base):
     is_serialized: Mapped[bool] = mapped_column(default=False)
     is_menu_item: Mapped[bool] = mapped_column(default=False, index=True)
     menu_section_id: Mapped[int | None] = mapped_column(ForeignKey("menu_sections.id"), nullable=True, index=True)
+    # Prep accounting: which station cooks this dish, how many the kitchen should
+    # aim to have ready (par), and the level at which the floor should be warned.
+    prep_station: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
+    par_qty: Mapped[int] = mapped_column(Integer, default=0)
+    warn_qty: Mapped[int] = mapped_column(Integer, default=0)
     location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True, index=True)
     location: Mapped[str] = mapped_column(String(100), default="")
     barcode: Mapped[str] = mapped_column(String(100), default="")

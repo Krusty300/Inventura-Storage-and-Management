@@ -98,6 +98,50 @@ def get_access_token() -> str:
     return resp.json()["access_token"]
 
 
+def chargeable_amount(amount: float) -> float:
+    """Round a figure to what Daraja will actually charge.
+
+    Daraja only accepts whole currency units, so a bill of 4,499.64 is charged
+    as 4,500. Both the push and the callback verification go through this
+    function so a rounding change can never make a clean payment look short.
+
+    Note this is Python's banker's rounding, inherited from what the push
+    already sent, so an exact half (100.50) goes down to 100. That is the
+    behaviour already in the field; changing it would change what customers
+    are charged.
+    """
+    return float(int(round(float(amount))))
+
+
+def expected_charge(sale) -> float:
+    """The amount a sale's STK push should have requested.
+
+    ``payment_provider_amount`` is written when the sale is created, and for a
+    restaurant ticket it is the bill plus the tip - the same figure the printed
+    receipt totals. Falling back to the sale total covers sales created before
+    the amount was recorded.
+    """
+    recorded = getattr(sale, "payment_provider_amount", None)
+    if recorded is not None:
+        return chargeable_amount(recorded)
+    return chargeable_amount(sale.total_amount)
+
+
+def classify_payment_amount(expected: float, received: float | None) -> str:
+    """Compare what we asked for against what M-Pesa reports as paid.
+
+    Returns "matched", "short", "over", or "unknown" when the callback carried
+    no amount. Uses a half-unit band because both figures are whole currency
+    units by the time they are compared.
+    """
+    if received is None:
+        return "unknown"
+    delta = float(received) - float(expected)
+    if abs(delta) < 0.5:
+        return "matched"
+    return "over" if delta > 0 else "short"
+
+
 def stk_push(phone: str, amount: float, reference: str, description: str = "Payment", account_ref: str = "") -> dict:
     """Initiate an M-Pesa STK Push (Lipa Na MPesa Online).
 
@@ -128,7 +172,7 @@ def stk_push(phone: str, amount: float, reference: str, description: str = "Paym
         "Password": password,
         "Timestamp": timestamp,
         "TransactionType": "CustomerPayBillOnline",
-        "Amount": int(round(amount)),
+        "Amount": int(chargeable_amount(amount)),
         "PartyA": phone,
         "PartyB": config.shortcode,
         "PhoneNumber": phone,

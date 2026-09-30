@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models.sale import Sale
 from app.services.auth import require_permission
-from app.services.daraja import config as daraja_config, stk_push, b2c_payment, parse_stk_callback, parse_b2c_callback
+from app.services.daraja import config as daraja_config, expected_charge, stk_push, b2c_payment, parse_stk_callback, parse_b2c_callback
 from app.utils import broadcast_change
 
 router = APIRouter(prefix="/api/daraja", tags=["daraja"])
@@ -86,6 +86,9 @@ def mock_stk_confirm(checkout_request_id: str = "", db=Depends(get_db), user=Dep
             raise HTTPException(status_code=400, detail=f"Sale payment status is '{sale.payment_status}' — can only confirm pending payments")
         sale.payment_status = "completed"
         sale.status = "completed"
+        # Simulate the verification the real callback performs so a mock
+        # payment lands in the same state as a confirmed one.
+        _record_paid_amount(db, sale, expected_charge(sale))
         from app.routers.restaurant import confirm_ticket_payment
         confirm_ticket_payment(db, sale.id)
         from app.utils import log_activity, broadcast_change
@@ -125,6 +128,44 @@ def initiate_b2c_refund(body: B2CRefundRequest, db=Depends(get_db), user=Depends
     }
 
 
+def _record_paid_amount(db, sale, received: float | None) -> str:
+    """Store what M-Pesa says was paid and flag it when it disagrees.
+
+    A mismatch does not undo the payment. The money has already left the
+    customer's M-Pesa, so silently reverting the sale can be the wrong answer;
+    the payment is kept and raised for a human to resolve instead. Returns the
+    amount status.
+    """
+    from app.services.daraja import classify_payment_amount, expected_charge
+    from app.services.notify import notify_admins
+    from app.utils import log_activity
+
+    expected = expected_charge(sale)
+    status = classify_payment_amount(expected, received)
+    sale.payment_amount_received = None if received is None else float(received)
+    sale.payment_amount_status = status
+    if status not in ("short", "over"):
+        return status
+
+    money = f"{float(received):.2f}" if received is not None else "unknown"
+    direction = "under" if status == "short" else "over"
+    detail = (
+        f"M-Pesa reported {money} against an expected {expected:.2f} "
+        f"({direction}-paid by {abs(float(received) - expected):.2f})"
+    )
+    log_activity(db, 0, "system", "update", "sale", sale.id,
+                 f"STK amount mismatch on {sale.invoice_number}: {detail}")
+    notify_admins(
+        db,
+        f"Payment needs review - {sale.invoice_number}",
+        f"Customer {direction}-paid. {detail}. The payment was kept as received; "
+        f"review the sale and refund or write off the difference.",
+        type="warning",
+        link=f"/sales/{sale.id}",
+    )
+    return status
+
+
 @router.post("/callback/stk")
 async def stk_callback(request: Request, db=Depends(get_db)):
     _verify_callback_secret(request)
@@ -140,6 +181,7 @@ async def stk_callback(request: Request, db=Depends(get_db)):
                     receipt = parsed.get("mpesa_receipt_number", "")
                     if receipt:
                         sale.payment_reference = receipt
+                _record_paid_amount(db, sale, parsed.get("amount"))
                 from app.routers.restaurant import confirm_ticket_payment
                 confirm_ticket_payment(db, sale.id)
             else:

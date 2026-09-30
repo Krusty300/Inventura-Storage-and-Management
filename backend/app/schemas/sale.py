@@ -84,6 +84,8 @@ class SaleOut(BaseModel):
     currency_symbol: Optional[str] = None
     payment_status: Optional[str] = None
     payment_checkout_request_id: Optional[str] = None
+    payment_amount_received: Optional[float] = None
+    payment_amount_status: Optional[str] = None
     refund_status: Optional[str] = None
     refunded_at: Optional[datetime] = None
     refund_method: Optional[str] = None

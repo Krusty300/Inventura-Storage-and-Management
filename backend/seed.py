@@ -18,6 +18,15 @@ shipments across the full picking/packing/shipping lifecycle (incl.
 shipment->invoice), plus price lists, promotions, sales channels, customer
 groups and notes.
 
+Restaurant and portal coverage: eight menu sections with 28 sellable dishes and
+drinks (with their modifier groups/options), a 16-table floor plan across four
+zones, tickets in every status (open, preparing, ready, served, paying, settled)
+including a split bill, a stale unpaid ticket, a voided line, eight
+reservations across every status, a cash-drawer shift close with a variance,
+a closed prep session with a food variance and one still running, four prep
+stations with par levels, five manufactured kits, and three customer-portal
+logins with their online invoice history.
+
 Stock is always posted through inventory.post_journal_entry so the ledger,
 stock_lines and product.quantity stay consistent, and sales flow through
 inventory.allocate_lots exactly like the checkout API does. Shipments
@@ -25,6 +34,7 @@ mirror the pick/pack/ship endpoints (transfer to staging, then SHIP).
 """
 
 import random
+import re
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select, text
@@ -32,9 +42,11 @@ from sqlalchemy.orm import Session
 
 from app.database import Base, engine, SessionLocal, run_migrations
 from app.models import (
-    ASN, ASNItem, BOM, BOMItem, Category, Customer, CycleCount, CycleCountItem,
-    DocumentSequence, LPN, Location, Lot, LotLink, Notification, Order, OrderItem,
-    Product, QualityCheck, Receipt, ReceiptItem, Sale, SaleItem, SerialNumber,
+    ASN, ASNItem, Attachment, BOM, BOMItem, Category, Customer, CycleCount, CycleCountItem,
+    DocumentSequence, Kit, KitItem, LPN, Location, Lot, LotLink, MenuModifierGroup,
+    MenuModifierOption, MenuSection, Notification, Order, OrderItem, Product, ProductImage,
+    QualityCheck, Receipt, ReceiptItem, RestaurantReservation, RestaurantTable, RestaurantTicket,
+    RestaurantTicketItem, Sale, SaleItem, SerialNumber,
     Shipment, ShipmentItem, StockLine, StockMovement, Supplier, User, UserSession,
     WorkOrder, WorkOrderItem,
 )
@@ -43,67 +55,47 @@ from app.models.customer_group import CustomerGroup
 from app.models.note import Note, NoteTag, NoteTagLink, NoteLink, NoteTemplate
 from app.models.price_list import PriceList, PriceListItem
 from app.models.promotion import Promotion
+from app.models.restaurant import RestaurantPrepSession, RestaurantPrepSessionItem, RestaurantShiftClose
 from app.models.sales_channel import SalesChannel
 from app.models.settings import Settings
 from app.services import inventory
 from app.services.auth import hash_password
+from app.services.notify import notify_admins
 from app.services.sequences import next_document_number
+from app.utils import log_activity
 
 random.seed(42)
 
 
 def wipe_all(db):
-    db.execute(text("PRAGMA foreign_keys=OFF"))
-    db.query(NoteTagLink).delete()
-    db.query(NoteLink).delete()
-    db.query(Note).delete()
-    db.query(NoteTag).delete()
-    db.query(NoteTemplate).delete()
-    db.query(Promotion).delete()
-    db.query(StockMovement).delete()
-    db.query(StockLine).delete()
-    db.query(LotLink).delete()
-    db.query(WorkOrderItem).delete()
-    db.query(WorkOrder).delete()
-    db.query(QualityCheck).delete()
-    db.query(BOMItem).delete()
-    db.query(BOM).delete()
-    db.query(SerialNumber).delete()
-    db.query(ASNItem).delete()
-    db.query(ASN).delete()
-    db.query(ReceiptItem).delete()
-    db.query(Receipt).delete()
-    db.query(CycleCountItem).delete()
-    db.query(CycleCount).delete()
-    db.query(Lot).delete()
-    db.query(LPN).delete()
-    db.query(ShipmentItem).delete()
-    db.query(Shipment).delete()
-    db.query(SaleItem).delete()
-    db.query(Sale).delete()
-    db.query(SalesChannel).delete()
-    db.query(OrderItem).delete()
-    db.query(Order).delete()
-    db.query(PriceListItem).delete()
-    db.query(Product).delete()
-    db.query(Location).delete()
-    db.query(Notification).delete()
-    db.query(ActivityLog).delete()
-    db.query(Customer).delete()
-    db.query(Supplier).delete()
-    db.query(Category).delete()
-    db.query(CustomerGroup).delete()
-    db.query(PriceList).delete()
-    db.query(DocumentSequence).delete()
-    db.query(Settings).delete()
-    db.query(UserSession).delete()
-    db.query(User).delete()
+    """Clear every seeded table, children before parents.
+
+    The order comes from the model metadata rather than a hand-written list:
+    products point at categories, suppliers, locations, customers and menu
+    sections, so a stale order here fails with a foreign key error the moment
+    the seed is re-run against a database that already has data. Disabling
+    foreign keys instead is not an option - SQLite ignores
+    `PRAGMA foreign_keys` once SQLAlchemy has opened a transaction, so the
+    pragma silently does nothing.
+    """
+    db.commit()
+    # `sorted_tables` puts parents first, so reverse it to get children first.
+    tables = [t for t in reversed(Base.metadata.sorted_tables)
+              if t.name != "alembic_version"]
+    for table in tables:
+        db.execute(table.delete())
     try:
         db.execute(text("DELETE FROM sqlite_sequence"))
     except Exception:
         pass
     db.commit()
-    db.execute(text("PRAGMA foreign_keys=ON"))
+    # A leftover reference would surface much later as a confusing "no such
+    # column" or a null row, so check now and say what is broken.
+    violations = db.execute(text("PRAGMA foreign_key_check")).fetchall()
+    if violations:
+        raise RuntimeError(
+            f"seed wipe left {len(violations)} dangling reference(s): {violations[:5]}"
+        )
 
 
 def days_ago(n, hour=10, minute=0):
@@ -139,20 +131,28 @@ def _post(db, user, product, qty, mtype, ts, to_loc=None, from_loc=None,
 
 def create_users(db):
     users = [
-        User(username="admin", email="admin@jumboinventory.co.ke",
+        # The admin keeps the "Flawstan" handle it was renamed to in the live
+        # database, so re-seeding does not hand the account back a new name.
+        User(username="Flawstan", email="admin@jumboinventory.co.ke",
              password_hash=hash_password("admin123"), role="admin", is_approved=True, created_at=days_ago(45)),
+        User(username="mercy", email="mercy@jumboinventory.co.ke",
+             password_hash=hash_password("manager123"), role="manager", is_approved=True, created_at=days_ago(42)),
+        User(username="otieno", email="otieno@jumboinventory.co.ke",
+             password_hash=hash_password("manager123"), role="manager", is_approved=True, created_at=days_ago(38)),
         User(username="james", email="james@jumboinventory.co.ke",
              password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(40)),
         User(username="wanjiku", email="wanjiku@jumboinventory.co.ke",
              password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(35)),
-        User(username="otieno", email="otieno@jumboinventory.co.ke",
-             password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(30)),
         User(username="amina", email="amina@jumboinventory.co.ke",
              password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(15)),
         User(username="kemboi", email="kemboi@jumboinventory.co.ke",
              password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(25)),
         User(username="njeri", email="njeri@jumboinventory.co.ke",
              password_hash=hash_password("worker123"), role="worker", is_approved=True, created_at=days_ago(12)),
+        # A pending signup so the approvals queue has something to approve.
+        User(username="brian", email="brian.otieno@gmail.com",
+             password_hash=hash_password("worker123"), role="worker",
+             is_approved=False, created_at=days_ago(2)),
     ]
     db.add_all(users)
     db.commit()
@@ -253,6 +253,18 @@ def create_locations(db):
             bin_code = f"{shelf_code}-0{i}"
             add(f"Bin {bin_code}", bin_code, "bin", shelf)
 
+    # Fourth building: restaurant back-of-house (dry store, chiller, bar cellar).
+    boh = add("Restaurant Store", "WH-BOH", "storage")
+    # R1-R3 serve the live floor (R1 hot pass, R2 fry/cold, R3 bar) with two
+    # bins each; K3-K6 are the dry store behind the kitchen that recipes and the
+    # prep par levels draw from, and need deeper racking.
+    for shelf_code, n_bins in (("R1", 2), ("R2", 2), ("R3", 2),
+                               ("K3", 5), ("K4", 5), ("K5", 5), ("K6", 3)):
+        shelf = add(f"Shelf {shelf_code}", shelf_code, "shelf", boh)
+        for i in range(1, n_bins + 1):
+            bin_code = f"{shelf_code}-0{i}"
+            add(f"Bin {bin_code}", bin_code, "bin", shelf)
+
     db.commit()
     return locs
 
@@ -279,6 +291,10 @@ def create_categories(db):
         ("Snacks", "Break room snacks", None),
         ("Cleaning Supplies", "Janitorial and hygiene products", None),
         ("Safety & PPE", "Gloves, masks and personal protection", None),
+        ("Food & Beverage", "Restaurant and bar consumables", None),
+        ("Restaurant Menu", "Dishes sold on the restaurant menu", None),
+        ("Bar & Beverages", "Beer, wine, spirits and mixers", None),
+        ("Kitchen Supplies", "Prep tools and disposables for the kitchen", None),
     ]
     cats = {}
     for name, desc, parent in data:
@@ -296,6 +312,8 @@ def create_categories(db):
         "Coffee & Tea": "Beverages", "Soft Drinks": "Beverages",
         "Bottled Water": "Beverages", "Snacks": "Beverages",
         "Safety & PPE": "Cleaning Supplies",
+        "Restaurant Menu": "Food & Beverage", "Bar & Beverages": "Food & Beverage",
+        "Kitchen Supplies": "Food & Beverage",
     }
     for sub, par in subs.items():
         cats[sub].parent_id = cats[par].id
@@ -371,6 +389,16 @@ def create_suppliers(db):
          "Changamwe, Mombasa", "Soft drinks and non-alcoholic beverages.", 3, True),
         ("Avenue Foods", "Beatrice Kiptoo", "supply@avenuefoods.co.ke", "+254 702 345 680",
          "Nakuru", "Confectionery and ready-to-eat snacks.", 4, True),
+        ("Highland Fresh Produce", "Samuel Kiplagat", "orders@highlandfresh.co.ke", "+254 733 456 791",
+         "Limuru, Kiambu", "Daily fresh vegetables, fruit and herbs.", 2, True),
+        ("Mombasa Fresh Co.", "Zainab Abdalla", "sales@mombasafresh.co.ke", "+254 710 567 892",
+         "Kisauni, Mombasa", "Coastal seafood, meat and poultry supply.", 2, True),
+        ("Savannah Craft Breweries", "Brian Wekesa", "trade@savannahcraft.co.ke", "+254 721 678 903",
+         "Ruiru, Kiambu", "Craft beer, lager and cider distribution.", 5, True),
+        ("Cape Vine Merchants", "Daniel Kariithi", "orders@capevinemerchants.co.ke", "+254 700 789 014",
+         "Lunga Lunga Road, Nairobi", "Wine, spirits and liqueurs importer.", 14, True),
+        ("Alpha Fresh Butchery", "Hilda Cheruiyot", "orders@alphafresh.co.ke", "+254 722 890 125",
+         "Karen, Nairobi", "Butchery and poultry supplier.", 1, True),
     ]
     suppliers = []
     for name, contact, email, phone, addr, notes, lead, active in data:
@@ -773,6 +801,28 @@ def build_products(db, cats, suppliers, locs):
         ("CLN-108", "Utility Gloves 12pk", "Coated utility work gloves, 12 pack", "Safety & PPE", "SafeGuard PPE Ltd", 2900, 1300, 15, "N3-01"),
         ("CLN-109", "High-Vis Vest", "Class 2 reflective safety vest", "Safety & PPE", "SafeGuard PPE Ltd", 1250, 500, 25, "N3-02"),
         ("CLN-110", "Ear Plugs 100pk", "Foam ear plugs dispenser, 100 pack", "Safety & PPE", "SafeGuard PPE Ltd", 850, 300, 30, "N2-01"),
+        # Safety & PPE (SAF- prefix) - the kit specs reference SAF-001.
+        ("SAF-001", "Cut-Resistant Gloves 12pk", "Level 5 cut-resistant kitchen gloves, 12 pair", "Safety & PPE", "SafeGuard PPE Ltd", 2650, 1150, 15, "N3-01"),
+        ("SAF-002", "Heat-Resistant Gloves", "Heat-resistant gauntlets for hot service", "Safety & PPE", "SafeGuard PPE Ltd", 1850, 780, 12, "N3-02"),
+        ("SAF-003", "Steel Toe Safety Boots", "Steel toe cap safety boots, size 42", "Safety & PPE", "SafeGuard PPE Ltd", 4200, 2400, 10, "N4-01"),
+        ("SAF-004", "First Aid Kit 20pc", "Workplace first aid kit, 20 piece", "Safety & PPE", "SafeGuard PPE Ltd", 3400, 1850, 8, "N4-02"),
+        # Kitchen Supplies and Food & Beverage - the restaurant's dry store, so
+        # menu recipes have real consumables to draw down.
+        ("OFF-032", "Takeaway Box 750ml", "Compostable takeaway container, 750ml", "Kitchen Supplies", "Regal Paper House", 180, 65, 200, "K3-01"),
+        ("OFF-033", "Dinner Napkins 100pk", "Two-ply folded dinner napkins, 100 pack", "Kitchen Supplies", "Regal Paper House", 240, 95, 150, "K3-02"),
+        ("OFF-034", "Paper Cups 1000pk", "Disposable double-wall cups, 1000 count", "Kitchen Supplies", "Regal Paper House", 2100, 1350, 40, "K3-03"),
+        ("OFF-035", "Takeaway Bag Medium", "Recycled paper takeaway bag, medium", "Kitchen Supplies", "Regal Paper House", 120, 40, 250, "K3-04"),
+        ("OFF-036", "Food Storage Film 45cm", "Commercial cling film, 45cm x 300m", "Kitchen Supplies", "Regal Paper House", 1450, 780, 20, "K3-05"),
+        ("FOO-001", "Cooking Oil 20L", "Sunflower cooking oil, 20 litre", "Food & Beverage", "Highland Fresh Produce", 6400, 5100, 12, "K4-01"),
+        ("FOO-002", "Flour 50kg", "Grade 1 wheat flour, 50kg sack", "Food & Beverage", "Highland Fresh Produce", 4200, 3350, 20, "K4-02"),
+        ("FOO-003", "Sugar 50kg", "White granulated sugar, 50kg sack", "Food & Beverage", "Highland Fresh Produce", 6900, 5600, 10, "K4-03"),
+        ("FOO-004", "Table Salt 25kg", "Fine table salt, 25kg sack", "Food & Beverage", "Highland Fresh Produce", 1600, 1150, 15, "K4-04"),
+        ("FOO-005", "Tomato Paste 400g", "Tomato paste tin, 400g", "Food & Beverage", "Highland Fresh Produce", 480, 310, 60, "K4-05"),
+        ("FOO-006", "Onion 10kg", "Red onions, 10kg sack", "Food & Beverage", "Highland Fresh Produce", 1350, 950, 30, "K5-01"),
+        ("FOO-007", "Potatoes 25kg", "Ware potatoes, 25kg sack", "Food & Beverage", "Highland Fresh Produce", 1500, 1080, 30, "K5-02"),
+        ("FOO-008", "Kamba Spice 1kg", "Kamba spice blend, 1kg pack", "Food & Beverage", "Highland Fresh Produce", 890, 540, 20, "K5-03"),
+        ("FOO-009", "Black Pepper 500g", "Ground black pepper, 500g", "Food & Beverage", "Highland Fresh Produce", 1150, 720, 15, "K5-04"),
+        ("FOO-010", "Curry Powder 500g", "Bland curry powder, 500g", "Food & Beverage", "Highland Fresh Produce", 980, 610, 15, "K5-05"),
     ]:
         _bc += 1
         rows.append((*_row, str(_bc)))
@@ -3287,6 +3337,922 @@ def create_notes_data(db, users):
     return notes, tags
 
 
+# ---------------------------------------------------------------------------
+# Restaurant menu, floor, tickets, reservations and shift close
+# ---------------------------------------------------------------------------
+
+# sku, name, description, section, category, supplier, unit (KSh), cost (KSh),
+# opening qty, bin, modifiers
+MENU_ITEMS = [
+    ("MNU-001", "Ndizi Nyama Stew", "Slow-cooked beef and green banana stew with rice",
+     "Main Courses", "Restaurant Menu", "Alpha Fresh Butchery", 1450, 620, 40, "R1-01", "stew"),
+    ("MNU-002", "Chicken Biryani", "Basmati rice with spiced chicken and fried onion",
+     "Main Courses", "Restaurant Menu", "Alpha Fresh Butchery", 1350, 580, 45, "R1-01", "rice"),
+    ("MNU-003", "Tilapia Fish Finger Basket", "Battered tilapia fillets with chips and tartar",
+     "Main Courses", "Restaurant Menu", "Mombasa Fresh Co.", 1650, 700, 30, "R2-01", "fried"),
+    ("MNU-004", "Beef Sukuma Wiki", "Grilled beef strips with sukuma wiki and ugali",
+     "Main Courses", "Restaurant Menu", "Alpha Fresh Butchery", 1550, 660, 35, "R1-01", "grill"),
+    ("MNU-005", "Vegetable Samosa Plate", "Four samosas with kachumbari and chutney",
+     "Starters", "Restaurant Menu", "Highland Fresh Produce", 600, 210, 80, "R1-02", None),
+    ("MNU-006", "Chicken Wings Basket", "Six grilled wings with blue cheese dip",
+     "Starters", "Restaurant Menu", "Alpha Fresh Butchery", 950, 380, 50, "R2-01", "wings"),
+    ("MNU-007", "Soup of the Day", "Chef's rotating soup served with bread",
+     "Starters", "Restaurant Menu", "Highland Fresh Produce", 450, 140, 60, "R1-02", None),
+    ("MNU-008", "Kenyan Nachos", "Crispy tortilla chips, cheese sauce and guacamole",
+     "Starters", "Restaurant Menu", "Highland Fresh Produce", 850, 300, 45, "R1-02", "nachos"),
+    ("MNU-009", "Garden Salad", "Mixed leaves, tomato, cucumber and house dressing",
+     "Salads & Sides", "Restaurant Menu", "Highland Fresh Produce", 700, 250, 55, "R1-02", "dressing"),
+    ("MNU-010", "Ugali (250g)", "Cornmeal cake, served fried or steamed",
+     "Salads & Sides", "Restaurant Menu", "Highland Fresh Produce", 200, 55, 200, "R1-01", "ugali"),
+    ("MNU-011", "Chips/Kamba", "Thin-cut chips sprinkled with kamba spice",
+     "Salads & Sides", "Restaurant Menu", "Highland Fresh Produce", 450, 140, 150, "R2-01", "kamba"),
+    ("MNU-012", "Coleslaw", "Cabbage and carrot slaw in a creamy dressing",
+     "Salads & Sides", "Restaurant Menu", "Highland Fresh Produce", 350, 110, 70, "R1-02", None),
+    ("MNU-013", "Pilau Rice", "Spiced coconut pilau rice",
+     "Salads & Sides", "Restaurant Menu", "Highland Fresh Produce", 300, 90, 180, "R1-01", None),
+    ("MNU-014", "Kenyan Coffee (Kahawa)", "Dark-roast Kenyan coffee with sugar",
+     "Hot Beverages", "Restaurant Menu", "Kilimanjaro Coffee Growers", 120, 35, 300, "R3-01", "coffee"),
+    ("MNU-015", "Masala Chai", "Spiced milk tea with cardamom and ginger",
+     "Hot Beverages", "Restaurant Menu", "Brookside Dairy Ltd", 150, 45, 280, "R3-01", None),
+    ("MNU-016", "Fresh Juice", "Orange, watermelon or mango juice blended to order",
+     "Cold Beverages", "Restaurant Menu", "Highland Fresh Produce", 300, 95, 190, "R3-01", "juice"),
+    ("MNU-017", "Soft Drink 350ml", "Chilled fizzy soft drink from the cellar",
+     "Cold Beverages", "Restaurant Menu", "Coca-Cola Beverages Africa", 150, 65, 400, "R3-01", None),
+    ("MNU-018", "Bottled Water 500ml", "Still mineral water",
+     "Cold Beverages", "Restaurant Menu", "Aqua Pure Water Ltd", 60, 20, 500, "R3-01", None),
+    ("MNU-019", "Tusker Lager", "Chilled lager pint",
+     "Beers", "Bar & Beverages", "Savannah Craft Breweries", 450, 210, 240, "R3-02", None),
+    ("MNU-020", "Craft IPA", "Single-hop craft IPA pint",
+     "Beers", "Bar & Beverages", "Savannah Craft Breweries", 650, 320, 120, "R3-02", None),
+    ("MNU-021", "Cider", "Dry cider pint",
+     "Beers", "Bar & Beverages", "Savannah Craft Breweries", 550, 260, 100, "R3-02", None),
+    ("MNU-022", "House Red Wine (glass)", "Kenya red by the glass",
+     "Wines & Spirits", "Bar & Beverages", "Cape Vine Merchants", 750, 340, 90, "R3-02", None),
+    ("MNU-023", "House White Wine (glass)", "Kenya white by the glass",
+     "Wines & Spirits", "Bar & Beverages", "Cape Vine Merchants", 700, 310, 90, "R3-02", None),
+    ("MNU-024", "Single Malt Whisky", "25ml pour of 12-year single malt",
+     "Wines & Spirits", "Bar & Beverages", "Cape Vine Merchants", 900, 420, 60, "R3-02", None),
+    ("MNU-025", "Cocktail of the Day", "House cocktail, ask the waiter",
+     "Wines & Spirits", "Bar & Beverages", "Cape Vine Merchants", 950, 380, 70, "R3-02", None),
+    ("MNU-026", "KIDS-Grilled Cheese", "Toasted cheese sandwich with chips",
+     "Kids Menu", "Restaurant Menu", "Brookside Dairy Ltd", 650, 230, 40, "R2-02", None),
+    ("MNU-027", "KIDS-Macaroni", "Macaroni bolognese or tomato sauce",
+     "Kids Menu", "Restaurant Menu", "Brookside Dairy Ltd", 600, 210, 40, "R2-02", "sauce"),
+    ("MNU-028", "KIDS-Fruit Plate", "Sliced seasonal fruit",
+     "Kids Menu", "Restaurant Menu", "Highland Fresh Produce", 350, 120, 45, "R2-02", None),
+]
+
+# Menu recipes (BOMs on menu items) for the Recipes page. Components are other
+# menu items and consumables, so the plate's costed build and margin are real
+# rather than a placeholder. A few drinks and sides are deliberately left
+# without one so the page has both states.
+MENU_RECIPES = [
+    ("MNU-001", "Recipe - Ndizi Nyama Stew", [
+        ("MNU-013", 1), ("MNU-012", 0.5), ("OFF-032", 0.1),
+    ]),
+    ("MNU-002", "Recipe - Chicken Biryani", [
+        ("MNU-013", 1), ("MNU-012", 0.5), ("OFF-032", 0.1),
+    ]),
+    ("MNU-003", "Recipe - Tilapia Fish Finger Basket", [
+        ("MNU-011", 1), ("MNU-009", 0.5), ("OFF-032", 0.1),
+    ]),
+    ("MNU-004", "Recipe - Beef Sukuma Wiki", [
+        ("MNU-010", 1), ("MNU-012", 0.5), ("OFF-032", 0.1),
+    ]),
+    ("MNU-006", "Recipe - Chicken Wings Basket", [
+        ("MNU-011", 1), ("OFF-032", 0.1),
+    ]),
+    ("MNU-008", "Recipe - Kenyan Nachos", [
+        ("MNU-012", 0.5), ("OFF-032", 0.1),
+    ]),
+    ("MNU-009", "Recipe - Garden Salad", [
+        ("MNU-012", 0.25), ("OFF-032", 0.1),
+    ]),
+    ("MNU-011", "Recipe - Chips and Kamba", [
+        ("FOO-008", 0.01), ("FOO-001", 0.01), ("OFF-032", 0.1),
+    ]),
+    ("MNU-013", "Recipe - Pilau Rice", [
+        ("BEV-106", 0.05), ("OFF-032", 0.05),
+    ]),
+    ("MNU-014", "Recipe - Kenyan Coffee", [
+        ("BEV-016", 0.02), ("OFF-030", 0.005),
+    ]),
+    ("MNU-015", "Recipe - Masala Chai", [
+        ("BEV-103", 0.03), ("OFF-030", 0.005),
+    ]),
+    ("MNU-016", "Recipe - Fresh Juice", [
+        ("BEV-026", 0.08), ("OFF-032", 0.05),
+    ]),
+    ("MNU-026", "Recipe - Kids Grilled Cheese", [
+        ("MNU-011", 1), ("OFF-032", 0.1),
+    ]),
+    ("MNU-027", "Recipe - Kids Macaroni", [
+        ("MNU-013", 0.5), ("MNU-012", 0.25), ("OFF-032", 0.1),
+    ]),
+]
+
+# Modifier groups keyed by the `modifiers` tag in MENU_ITEMS. Each entry is
+# (group name, min, max, required, [(option name, price delta)]).
+MENU_MODIFIERS = {
+    "stew": [
+        ("Rice Choice", 1, 1, True, [("Pilau Rice", 0.0), ("Ugali", 0.0), ("Chips", 250.0)]),
+        ("Heat Level", 1, 1, True, [("Mild", 0.0), ("Medium", 0.0), ("Hot", 0.0)]),
+        ("Extras", 0, 4, False, [("Avocado", 200.0), ("Extra Meat", 350.0), ("Fried Egg", 120.0)]),
+    ],
+    "rice": [
+        ("Spice Level", 1, 1, True, [("Mild", 0.0), ("Medium", 0.0), ("Hot", 0.0)]),
+        ("Add-ons", 0, 3, False, [("Raita", 100.0), ("Salad", 250.0), ("Masala Chai", 150.0)]),
+    ],
+    "fried": [
+        ("Dip Choice", 1, 1, True, [("Tartar Sauce", 0.0), ("Chilli Mayo", 0.0), ("Garlic Aioli", 0.0)]),
+        ("Side", 1, 1, True, [("Chips", 0.0), ("Spicy Chips", 150.0), ("Garden Salad", 200.0), ("Coleslaw", 150.0)]),
+    ],
+    "grill": [
+        ("Cooking", 1, 1, True, [("Medium", 0.0), ("Medium Well", 0.0), ("Well Done", 0.0)]),
+        ("Sauce", 0, 1, False, [("Black Pepper", 0.0), ("Garlic Butter", 100.0), ("Chilli", 0.0)]),
+    ],
+    "nachos": [
+        ("Toppings", 0, 3, False, [("Minced Beef", 300.0), ("Grilled Chicken", 280.0), ("Jalapeños", 80.0)]),
+    ],
+    "wings": [
+        ("Flavour", 1, 1, True, [("BBQ", 0.0), ("Hot Buffalo", 0.0), ("Garlic Herb", 0.0)]),
+        ("Count", 1, 1, True, [("6 Pieces", 0.0), ("12 Pieces", 800.0)]),
+    ],
+    "dressing": [
+        ("Dressing", 1, 1, True, [("Vinegar", 0.0), ("Thousand Island", 0.0), ("Mustard", 0.0)]),
+    ],
+    "ugali": [
+        ("Preparation", 1, 1, True, [("Steamed", 0.0), ("Fried", 0.0)]),
+    ],
+    "kamba": [
+        ("Spice", 0, 1, False, [("No Spice", 0.0), ("Extra Hot", 0.0)]),
+    ],
+    "coffee": [
+        ("Milk", 1, 1, True, [("Whole Milk", 0.0), ("Oat Milk", 80.0), ("No Milk", 0.0)]),
+        ("Sugar", 0, 1, False, [("No Sugar", 0.0), ("Brown Sugar", 20.0), ("Honey", 40.0)]),
+    ],
+    "juice": [
+        ("Flavour", 1, 1, True, [("Orange", 0.0), ("Watermelon", 0.0), ("Mango", 50.0), ("Pineapple", 50.0)]),
+    ],
+    "sauce": [
+        ("Sauce", 1, 1, True, [("Bolognese", 0.0), ("Tomato", 0.0), ("White Sauce", 0.0)]),
+    ],
+}
+
+
+# Prep accounting levels: sku -> (station, par, warn). Only dishes a station
+# genuinely batches ahead of service belong here; anything finished to order
+# stays untracked so the prepped-vs-sold count stays meaningful.
+PREP_LEVELS = {
+    "MNU-001": ("Hot Kitchen", 20, 6),
+    "MNU-002": ("Hot Kitchen", 24, 8),
+    "MNU-003": ("Fry", 18, 6),
+    "MNU-005": ("Fry", 20, 6),
+    "MNU-006": ("Grill", 16, 5),
+    "MNU-010": ("Hot Kitchen", 30, 10),
+    "MNU-011": ("Fry", 25, 8),
+    "MNU-012": ("Cold", 15, 5),
+    "MNU-013": ("Hot Kitchen", 25, 8),
+    "MNU-028": ("Cold", 12, 4),
+}
+
+
+def create_menu(db, users, cats, suppliers, locs):
+    """Menu sections, the products sold on them, and their modifier groups.
+
+    Images are intentionally left empty: the UI falls back to its category
+    placeholder, and seeded data should not depend on external assets.
+    """
+    sup = {s.name: s for s in suppliers}
+    cat = {c.name: c for c in cats.values()}
+    admin = users[0]
+
+    section_rows = [
+        ("Starters", "Small plates to begin", 1),
+        ("Main Courses", "Full plates served with a side", 2),
+        ("Salads & Sides", "Light plates and starches", 3),
+        ("Hot Beverages", "Coffee and tea", 4),
+        ("Cold Beverages", "Juice and chilled soft drinks", 5),
+        ("Beers", "Draught and bottled lager", 6),
+        ("Wines & Spirits", "By the glass and single pours", 7),
+        ("Kids Menu", "Smaller portions for younger guests", 8),
+    ]
+    sections = {}
+    for name, desc, order in section_rows:
+        s = MenuSection(name=name, description=desc, sort_order=order,
+                        is_active=True, created_at=days_ago(34))
+        db.add(s)
+        db.flush()
+        sections[name] = s
+    db.commit()
+
+    products = {}
+    for sku, name, desc, section, cat_name, sup_name, unit, cost, qty, bin_code, tag in MENU_ITEMS:
+        # Plates that a station actually batches get a prep station and a par
+        # level; everything else (drinks poured to order, sides finished to
+        # order) stays untracked so the prep count stays meaningful.
+        station, par, warn = PREP_LEVELS.get(sku, ("", 0, 0))
+        p = Product(
+            sku=sku, name=name, description=desc,
+            category_id=cat[cat_name].id, supplier_id=sup[sup_name].id,
+            unit_price=unit, cost_price=cost, quantity=0, reorder_level=5,
+            location=bin_code, location_id=locs[bin_code].id,
+            is_menu_item=True, menu_section_id=sections[section].id,
+            prep_station=station or None, par_qty=par, warn_qty=warn,
+            is_active=True, created_at=days_ago(34),
+        )
+        db.add(p)
+        db.flush()
+        products[sku] = p
+        _post(db, admin, p, qty, inventory.RECEIVE, days_ago(30, hour=8),
+              to_loc=locs[bin_code].id, ref_type="menu", ref=sku,
+              notes="Opening par stock for the restaurant menu")
+    db.commit()
+
+    for sku, _n, _d, _sec, _c, _s, _u, _co, _q, _b, tag in MENU_ITEMS:
+        if not tag:
+            continue
+        for gi, (gname, gmin, gmax, greq, options) in enumerate(MENU_MODIFIERS.get(tag, [])):
+            group = MenuModifierGroup(
+                product_id=products[sku].id, name=gname, min_select=gmin,
+                max_select=gmax, is_required=greq, sort_order=gi,
+                is_active=True, created_at=days_ago(34),
+            )
+            db.add(group)
+            db.flush()
+            for oi, (oname, delta) in enumerate(options):
+                db.add(MenuModifierOption(group_id=group.id, name=oname,
+                                          price_delta=delta, sort_order=oi,
+                                          is_active=True))
+    db.commit()
+
+    # One deliberately out-of-stock item so the 86'd badge and disabled add
+    # button have a real example in the data.
+    sold_out = db.get(Product, products["MNU-025"].id)
+    on_hand = _sellable(db, sold_out.id)
+    if on_hand:
+        _post(db, admin, sold_out, -on_hand, inventory.ADJUSTMENT,
+              days_ago(1, hour=21), from_loc=sold_out.location_id,
+              ref_type="menu", ref=sold_out.sku,
+              notes="Bar closed out the cocktail for the evening")
+        db.commit()
+    return sections, products
+
+
+def create_restaurant_floor(db):
+    """Dining-room tables laid out on a floor plan across four zones."""
+    layout = [
+        # number, zone, capacity, x, y
+        ("T1", "Main Hall", 2, 40, 60), ("T2", "Main Hall", 2, 200, 60),
+        ("T3", "Main Hall", 4, 380, 60), ("T4", "Main Hall", 4, 560, 60),
+        ("T5", "Main Hall", 6, 740, 60), ("T6", "Main Hall", 6, 920, 60),
+        ("T7", "Main Hall", 4, 40, 160), ("T8", "Main Hall", 4, 200, 160),
+        ("P1", "Terrace", 4, 120, 300), ("P2", "Terrace", 4, 320, 300),
+        ("P3", "Terrace", 4, 520, 300), ("P4", "Terrace", 2, 720, 300),
+        ("V1", "VIP Lounge", 6, 260, 520), ("V2", "VIP Lounge", 6, 520, 520),
+        ("B1", "Bar", 2, 840, 520), ("B2", "Bar", 2, 960, 520),
+    ]
+    tables = []
+    for number, zone, cap, x, y in layout:
+        t = RestaurantTable(
+            number=number, zone=zone, capacity=cap, pos_x=x, pos_y=y,
+            is_active=True, created_at=days_ago(34),
+        )
+        db.add(t)
+        db.flush()
+        tables.append(t)
+    db.commit()
+    return tables
+
+
+def create_menu_recipes(db, menu_products, by_sku):
+    """Costed recipes (BOMs) for the plated menu items.
+
+    Components point at other menu items and consumables, which is what a
+    kitchen actually pulls per cover. Sides and drinks outside this list are
+    left recipe-free on purpose so the Recipes page shows both states.
+    """
+    created = []
+    for sku, name, components in MENU_RECIPES:
+        product = menu_products.get(sku)
+        if product is None:
+            continue
+        # Skip any component that does not exist so a future menu change
+        # cannot break the whole seed.
+        resolved = [(csku, qty) for csku, qty in components
+                    if csku in menu_products or csku in by_sku]
+        if not resolved:
+            continue
+        bom = BOM(
+            product_id=product.id, name=name,
+            description=f"Kitchen recipe for {product.name}",
+            created_at=days_ago(30),
+        )
+        db.add(bom)
+        db.flush()
+        for pos, (csku, qty) in enumerate(resolved):
+            component = menu_products.get(csku) or by_sku.get(csku)
+            db.add(BOMItem(bom_id=bom.id, product_id=component.id,
+                           quantity=qty, position=pos))
+        created.append(bom)
+    db.commit()
+    return created
+
+
+def create_restaurant_tickets(db, users, tables, menu_products):
+    """Live floor: tickets in every status, each item carrying a name/image snapshot."""
+    waiter_names = ["james", "wanjiku", "amina", "njeri", "kemboi"]
+    waiters = [u for u in users if u.username in waiter_names]
+    tbl = {t.number: t for t in tables}
+    by_sku = {p.sku: p for p in menu_products.values()}
+
+    # ticket no, table, lines, status, guest count, guest name, phone
+    orders = [
+        # a table just seated, nothing rung in yet
+        ("TK-0001", "T3", [], "open", 3, "", ""),
+        ("TK-0002", "T7", [
+            ("MNU-001", 2, "One mild, extra avocado", "pending", [
+                ("Rice Choice", "Pilau Rice", 0.0), ("Heat Level", "Mild", 0.0),
+                ("Extras", "Avocado", 200.0)]),
+            ("MNU-011", 1, "Extra hot kamba", "pending", [("Spice", "Extra Hot", 0.0)]),
+            ("MNU-018", 2, "", "pending", []),
+        ], "open", 4, "Mercy", "+254 711 222 001"),
+        # preparing - sent to the pass, still cooking
+        ("TK-0003", "T4", [
+            ("MNU-002", 1, "Medium spice", "preparing", [("Spice Level", "Medium", 0.0)]),
+            ("MNU-015", 2, "", "preparing", []),
+        ], "preparing", 2, "Otieno", ""),
+        ("TK-0004", "P2", [
+            ("MNU-006", 2, "Hot buffalo", "preparing", [("Flavour", "Hot Buffalo", 0.0)]),
+            ("MNU-008", 1, "Add mince beef", "preparing", [
+                ("Toppings", "Minced Beef", 300.0), ("Toppings", "Jalapeños", 80.0)]),
+            ("MNU-017", 3, "", "preparing", []),
+        ], "preparing", 5, "", ""),
+        # ready - waiting on the pass for a runner
+        ("TK-0005", "T5", [
+            ("MNU-003", 1, "Tartar sauce", "ready", [
+                ("Dip Choice", "Tartar Sauce", 0.0), ("Side", "Chips", 0.0)]),
+            ("MNU-009", 1, "Mustard dressing", "ready", [("Dressing", "Mustard", 0.0)]),
+            ("MNU-010", 2, "Fried", "ready", [("Preparation", "Fried", 0.0)]),
+        ], "ready", 5, "Achieng", "+254 722 333 002"),
+        # served - food delivered, bill not raised yet
+        ("TK-0006", "T1", [
+            ("MNU-004", 1, "Well done, garlic butter", "served", [
+                ("Cooking", "Well Done", 0.0), ("Sauce", "Garlic Butter", 100.0)]),
+            ("MNU-013", 1, "", "served", []),
+            ("MNU-019", 2, "", "served", []),
+        ], "served", 2, "", ""),
+        # paying - bill raised, awaiting payment
+        ("TK-0007", "V1", [
+            ("MNU-005", 1, "", "served", []),
+            ("MNU-007", 1, "", "served", []),
+            ("MNU-014", 4, "Oat milk", "served", [
+                ("Milk", "Oat Milk", 80.0), ("Sugar", "Brown Sugar", 20.0)]),
+            ("MNU-022", 2, "", "served", []),
+        ], "paying", 6, "Wanjiku", "+254 733 444 003"),
+        # settled - paid in full, closed out
+        ("TK-0008", "T6", [
+            ("MNU-009", 2, "No dressing on one", "served", [("Dressing", "Vinegar", 0.0)]),
+            ("MNU-012", 1, "", "served", []),
+            ("MNU-016", 2, "Mango", "served", [("Flavour", "Mango", 50.0)]),
+        ], "settled", 4, "", ""),
+        # settled - a larger party with a premium bottle
+        ("TK-0009", "P4", [
+            ("MNU-020", 3, "", "served", []),
+            ("MNU-023", 1, "", "served", []),
+            ("MNU-010", 2, "Steamed", "served", [("Preparation", "Steamed", 0.0)]),
+        ], "settled", 2, "Wekesa", ""),
+        # settled - a voided item keeps its reason for the audit trail
+        ("TK-0010", "B1", [
+            ("MNU-024", 2, "", "served", []),
+            ("MNU-025", 1, "Cancelled - guest changed their mind", "voided", []),
+        ], "settled", 2, "", ""),
+        # takeaway, no table
+        ("TK-0011", "__takeaway__", [
+            ("MNU-008", 2, "Extra jalapenos", "served", [("Toppings", "Jalapeños", 80.0)]),
+            ("MNU-016", 3, "Orange", "served", [("Flavour", "Orange", 0.0)]),
+        ], "settled", 2, "Brian", "+254 720 555 004"),
+    ]
+
+    tickets = []
+    for ticket_number, number, lines, status, guest_count, guest_name, guest_phone in orders:
+        waiter = waiters[len(tickets) % len(waiters)]
+        table = tbl.get(number)
+        opened = days_ago(0, hour=11) - timedelta(minutes=(len(tickets) + 1) * 17)
+        subtotal = 0.0
+        ticket = RestaurantTicket(
+            ticket_number=ticket_number, table_id=table.id if table else None,
+            user_id=waiter.id, status=status, guest_count=guest_count,
+            customer_name=guest_name, customer_phone=guest_phone,
+            opened_at=opened, created_at=opened,
+        )
+        db.add(ticket)
+        db.flush()
+        for sku, qty, notes, item_status, mods in lines:
+            product = by_sku[sku]
+            base = float(product.unit_price)
+            delta = sum(m[2] for m in mods)
+            unit = round(base + delta, 2)
+            item = RestaurantTicketItem(
+                ticket_id=ticket.id, product_id=product.id,
+                product_name_snapshot=product.display_name,
+                quantity=qty, unit_price=unit, base_unit_price=base,
+                modifiers=[{"group_name": g, "name": n, "price": p} for g, n, p in mods] or None,
+                status=item_status, notes=notes,
+                sent_at=opened + timedelta(minutes=2) if item_status != "pending" else None,
+                created_at=opened,
+            )
+            if item_status == "voided":
+                item.voided_by = waiter.id
+                item.voided_at = opened + timedelta(minutes=25)
+                item.void_reason = notes
+            elif item_status == "ready":
+                item.ready_at = opened + timedelta(minutes=18)
+            elif item_status == "served":
+                item.ready_at = opened + timedelta(minutes=16)
+                item.served_at = opened + timedelta(minutes=22)
+            if item_status != "voided":
+                subtotal += unit * qty
+            db.add(item)
+        if status in ("served", "paying", "settled"):
+            tax = round(subtotal * 0.16, 2)
+            ticket.subtotal = round(subtotal, 2)
+            ticket.tax_amount = tax
+            ticket.total_amount = round(subtotal + tax, 2)
+            ticket.discount_amount = 0.0
+            if status == "settled":
+                ticket.settled_at = opened + timedelta(minutes=55)
+            if guest_name:
+                ticket.notes = f"Guest: {guest_name}"
+        else:
+            ticket.subtotal = round(subtotal, 2)
+        tickets.append(ticket)
+
+    # One settled ticket carrying a manager discount, so the discount history,
+    # the reason, and the capped post-discount total are all represented.
+    manager = next((u for u in users if u.role == "manager"), users[0])
+    disc_ticket = RestaurantTicket(
+        ticket_number="TK-0012", table_id=tbl["T4"].id, user_id=waiters[1].id,
+        status="settled", guest_count=5, customer_name="Achieng Party",
+        opened_at=days_ago(1, hour=19), created_at=days_ago(1, hour=19),
+    )
+    db.add(disc_ticket)
+    db.flush()
+    d_sub = 0.0
+    for sku, qty, notes in [("MNU-001", 2, "Medium"), ("MNU-010", 2, "Steamed"),
+                            ("MNU-014", 3, ""), ("MNU-020", 1, "")]:
+        product = by_sku[sku]
+        unit = float(product.unit_price)
+        d_sub += unit * qty
+        db.add(RestaurantTicketItem(
+            ticket_id=disc_ticket.id, product_id=product.id,
+            product_name_snapshot=product.display_name, quantity=qty,
+            unit_price=unit, base_unit_price=unit, status="served",
+            notes=notes, sent_at=disc_ticket.opened_at + timedelta(minutes=2),
+            ready_at=disc_ticket.opened_at + timedelta(minutes=16),
+            served_at=disc_ticket.opened_at + timedelta(minutes=22),
+            created_at=disc_ticket.opened_at,
+        ))
+    d_discount = round(d_sub * 0.10, 2)
+    d_tax = round((d_sub - d_discount) * 0.16, 2)
+    disc_ticket.subtotal = round(d_sub, 2)
+    disc_ticket.discount_amount = d_discount
+    disc_ticket.tax_amount = d_tax
+    disc_ticket.total_amount = round(d_sub - d_discount + d_tax, 2)
+    disc_ticket.settled_at = disc_ticket.opened_at + timedelta(minutes=58)
+    disc_ticket.notes = "Guest: Achieng Party"
+    # The reason and the approver live in the activity log, not on the ticket,
+    # so mirror what the discount endpoint does rather than inventing columns.
+    log_activity(
+        db, manager.id, manager.username, "discount", "restaurant_ticket",
+        disc_ticket.id,
+        f"Discounted {disc_ticket.ticket_number} by KSh{d_discount:.2f} - "
+        f"Regulars - 10% loyalty discount",
+    )
+    notify_admins(
+        db,
+        f"Discount on {disc_ticket.ticket_number}",
+        f"{manager.username} discounted {disc_ticket.ticket_number} by "
+        f"KSh{d_discount:.2f}. Reason: Regulars - 10% loyalty discount",
+        type="warning",
+        link=f"/restaurant/tickets/{disc_ticket.id}",
+        exclude_user_id=manager.id,
+    )
+    tickets.append(disc_ticket)
+    db.commit()
+
+    # One split bill: two halves of a shared table, parent plus children.
+    parent = RestaurantTicket(
+        ticket_number="TK-SPLIT-1", table_id=tbl["V2"].id, user_id=waiters[0].id,
+        status="paying", guest_count=6, customer_name="Kamau Party",
+        opened_at=days_ago(0, hour=12), created_at=days_ago(0, hour=12),
+    )
+    db.add(parent)
+    db.flush()
+    halves = [
+        (RestaurantTicket, dict(ticket_number="TK-SPLIT-1A", split_parent_id=parent.id,
+                                split_group="1 of 2"), [("MNU-002", 1, "Mild", "served"),
+                                                       ("MNU-014", 2, "No milk", "served")]),
+        (RestaurantTicket, dict(ticket_number="TK-SPLIT-1B", split_parent_id=parent.id,
+                                split_group="2 of 2"), [("MNU-010", 4, "Steamed", "served"),
+                                                       ("MNU-016", 2, "Mango", "served")]),
+    ]
+    split_total = 0.0
+    for _cls, extra, lines in halves:
+        child = RestaurantTicket(table_id=tbl["V2"].id, user_id=waiters[0].id,
+                                 status="paying", guest_count=3,
+                                 opened_at=parent.opened_at, created_at=parent.opened_at,
+                                 **extra)
+        db.add(child)
+        db.flush()
+        sub = 0.0
+        for sku, qty, notes, item_status in lines:
+            product = by_sku[sku]
+            sub += float(product.unit_price) * qty
+            db.add(RestaurantTicketItem(
+                ticket_id=child.id, product_id=product.id,
+                product_name_snapshot=product.display_name, quantity=qty,
+                unit_price=float(product.unit_price),
+                base_unit_price=float(product.unit_price), modifiers=None,
+                status=item_status, notes=notes,
+                sent_at=parent.opened_at + timedelta(minutes=2),
+                ready_at=parent.opened_at + timedelta(minutes=15),
+                served_at=parent.opened_at + timedelta(minutes=20),
+                created_at=parent.opened_at,
+            ))
+        child.subtotal = round(sub, 2)
+        child.tax_amount = round(sub * 0.16, 2)
+        child.total_amount = round(sub * 1.16, 2)
+        split_total += child.total_amount
+        tickets.append(child)
+    parent.subtotal = round(split_total, 2)
+    parent.tax_amount = 0.0
+    parent.total_amount = round(split_total, 2)
+    parent.notes = "Split bill - 2 ways"
+    tickets.append(parent)
+
+    # A stale "paying" ticket that has been sitting for two days; this is the
+    # case the shift-close report flags as unsettled.
+    stale = RestaurantTicket(
+        ticket_number="TK-STALE-1", table_id=tbl["P1"].id, user_id=waiters[1].id,
+        status="paying", guest_count=4, customer_name="Walk-off",
+        subtotal=3200.0, tax_amount=512.0, total_amount=3712.0,
+        opened_at=days_ago(2, hour=19), created_at=days_ago(2, hour=19),
+        notes="Guest left without settling - follow up",
+    )
+    db.add(stale)
+    db.flush()
+    db.add(RestaurantTicketItem(
+        ticket_id=stale.id, product_id=by_sku["MNU-001"].id,
+        product_name_snapshot=by_sku["MNU-001"].display_name, quantity=2,
+        unit_price=1450.0, base_unit_price=1450.0, modifiers=None,
+        status="served", sent_at=days_ago(2, hour=19, minute=5),
+        served_at=days_ago(2, hour=19, minute=40), created_at=days_ago(2, hour=19),
+    ))
+    tickets.append(stale)
+
+    # A table flagged for service by the floor view.
+    tbl["B2"].service_request = "Water and bill please"
+    tbl["B2"].service_requested_at = days_ago(0, hour=13, minute=5)
+    db.commit()
+    return tickets
+
+
+def create_reservations(db, users, tables, tickets):
+    """Bookings across pending / confirmed / seated / completed / cancelled."""
+    tbl = {t.number: t for t in tables}
+    by_number = {t.ticket_number: t for t in tickets}
+    host = users[0]
+    staff = users[1]
+    data = [
+        ("RS-0001", "T5", 6, "Ibrahim Yusuf", "+254 711 555 001", 1, 19, 120, "confirmed",
+         "Window seat if possible, anniversary dinner.", None),
+        ("RS-0002", "P2", 4, "Linet Chebet", "+254 722 555 002", 0, 12, 90, "seated",
+         "Terrace, high chairs needed.", "TK-0004"),
+        ("RS-0003", "V1", 6, "Mutiso Family", "+254 733 555 003", 2, 20, 150, "confirmed",
+         "Birthday cake to be served at 8pm.", None),
+        ("RS-0004", "T3", 4, "Achieng Odhiambo", "+254 720 555 004", 3, 18, 90, "pending",
+         "Awaiting confirmation from the guest.", None),
+        ("RS-0005", "P3", 4, "Kevin Mwangi", "+254 734 555 005", 5, 13, 90, "cancelled",
+         "Guest cancelled - flight change.", None),
+        ("RS-0006", "B1", 2, "Sarah Njogu", "+254 735 555 006", 7, 17, 60, "completed",
+         "Drinks on the balcony.", "TK-0010"),
+        ("RS-0007", "V2", 6, "Kamau Party", "+254 736 555 007", 0, 12, 180, "seated",
+         "Corporate booking, bill to be split.", "TK-SPLIT-1A"),
+        ("RS-0008", "T6", 2, "Grace Wambui", "+254 737 555 008", 1, 18, 90, "pending",
+         "", None),
+    ]
+    reservations = []
+    for number, table_number, count, name, phone, offset_days, hour, duration, status, notes, ticket_number in data:
+        reserved = datetime.now(timezone.utc) + timedelta(days=offset_days)
+        reserved = reserved.replace(hour=hour, minute=0, second=0, microsecond=0)
+        owner = host if offset_days % 2 == 0 else staff
+        r = RestaurantReservation(
+            reservation_number=number,
+            table_id=tbl[table_number].id if table_number in tbl else None,
+            user_id=owner.id, guest_name=name, guest_phone=phone,
+            guest_count=count, reserved_at=reserved, duration_minutes=duration,
+            status=status, notes=notes,
+            ticket_id=by_number[ticket_number].id if ticket_number in by_number else None,
+            created_at=days_ago(6),
+        )
+        db.add(r)
+        db.flush()
+        reservations.append(r)
+    db.commit()
+    return reservations
+
+
+def create_prep_sessions(db, users, products):
+    """A closed prep run with a small food variance, plus one still open.
+
+    The cash drawer example above is a till-side loss. This is the plate-side
+    one: the kitchen declared a batch, sold part of it, and the count at close
+    came up short, which is the shape of skimming a portion.
+    """
+    from app.models.restaurant import RestaurantPrepSession, RestaurantPrepSessionItem
+
+    chef = users[1]
+    opened = days_ago(1, hour=14)
+    closed = opened + timedelta(hours=6)
+    session = RestaurantPrepSession(
+        session_number="PREP-0001", station="Hot Kitchen", user_id=chef.id,
+        status="closed",         notes="Weekday dinner prep; ugali batch two portions short at the count",
+        opened_at=opened, closed_at=closed, closed_by=chef.id,
+        created_at=opened,
+    )
+    db.add(session)
+    db.flush()
+
+    # (sku, prepped, sold, waste, counted) - the ugali batch is two short.
+    rows = [
+        ("MNU-001", 20, 14, 1, 5),
+        ("MNU-010", 30, 22, 2, 4),
+        ("MNU-013", 25, 18, 0, 7),
+    ]
+    for sku, prepped, sold, waste, counted in rows:
+        product = products[sku]
+        expected = prepped - sold - waste
+        db.add(RestaurantPrepSessionItem(
+            session_id=session.id, product_id=product.id,
+            product_name_snapshot=product.display_name,
+            prepped_qty=prepped, waste_qty=waste, counted_qty=counted,
+            waste_reason="dropped during service" if waste else None,
+            sold_qty=sold, expected_remaining=expected, variance=counted - expected,
+            created_at=opened,
+        ))
+
+    live = RestaurantPrepSession(
+        session_number="PREP-0002", station="Fry", user_id=chef.id,
+        status="open", notes="Lunch service",
+        opened_at=days_ago(0, hour=11), created_at=days_ago(0, hour=11),
+    )
+    db.add(live)
+    db.flush()
+    for sku, prepped in (("MNU-003", 18), ("MNU-011", 25)):
+        product = products[sku]
+        db.add(RestaurantPrepSessionItem(
+            session_id=live.id, product_id=product.id,
+            product_name_snapshot=product.display_name,
+            prepped_qty=prepped, waste_qty=0,
+            created_at=days_ago(0, hour=11),
+        ))
+    db.commit()
+    return session
+
+
+def seed_restaurant_sequences(db, tickets, reservations=None, prep_sessions=None):
+    """Park the ticket, reservation and prep-session counters past the seeded numbers.
+
+    Restaurant rows are created after ``seed_document_sequences`` runs, so their
+    counters could not be set there. Without this, the first prep session,
+    reservation or ticket opened from the UI is handed PREP-0001 / RS-0001 /
+    TK-0001, collides with a seeded row on its unique index, and the request
+    fails as a 409.
+
+    The next value is derived from the highest number actually written rather
+    than a hardcoded count, so it stays correct if the seed data changes. The
+    row arguments are accepted for call-site readability; the numbers are read
+    from the tables themselves.
+    """
+    from app.models.restaurant import RestaurantPrepSession
+
+    def next_after(model, column, prefix):
+        highest = 0
+        for (value,) in db.execute(text(f"SELECT {column} FROM {model}")):
+            match = re.fullmatch(re.escape(prefix) + r"(\d+)", value or "")
+            if match:
+                highest = max(highest, int(match.group(1)))
+        return highest + 1
+
+    rows = [
+        ("ticket", next_after("restaurant_tickets", "ticket_number", "TK-")),
+        ("prep_session", next_after(
+            RestaurantPrepSession.__tablename__, "session_number", "PREP-")),
+        ("reservation", next_after(
+            "restaurant_reservations", "reservation_number", "RS-")),
+    ]
+    for name, next_value in rows:
+        db.execute(
+            text(
+                "INSERT INTO document_sequences (name, next_value) VALUES (:name, :val) "
+                "ON CONFLICT(name) DO UPDATE SET next_value = :val"
+            ),
+            {"name": name, "val": next_value},
+        )
+    db.commit()
+
+
+def create_shift_close(db, users, tickets, prep_sessions=None):
+    """Yesterday's cash reconciliation, including a small cash variance."""
+    cashier = users[1]
+    period_end = days_ago(1, hour=22)
+    period_start = period_end - timedelta(hours=8)
+    settled = [t for t in tickets if t.status == "settled"]
+    total = round(sum(float(t.total_amount) for t in settled), 2)
+    cash_sales = round(total * 0.34, 2)
+    card_sales = round(total * 0.42, 2)
+    mpesa_sales = round(total * 0.24, 2)
+    tips = round(total * 0.06, 2)
+    opening_float = 500.0
+    # A mid-shift cash drop to the safe and a petty-cash payout for market
+    # supplies, so the drawer arithmetic in the shift history has real inputs.
+    paid_out = 1200.0
+    paid_in = 0.0
+    expected = round(opening_float + cash_sales + tips - paid_out + paid_in, 2)
+    counted = round(expected - 145.0, 2)
+    prep = {"prep_session_count": 0, "prepped_qty": 0, "prep_sold_qty": 0,
+            "prep_waste_qty": 0, "prep_variance_qty": 0}
+    if prep_sessions:
+        items = db.query(RestaurantPrepSessionItem).filter(
+            RestaurantPrepSessionItem.session_id == prep_sessions.id,
+        ).all()
+        prep = {
+            "prep_session_count": 1,
+            "prepped_qty": sum(i.prepped_qty for i in items),
+            "prep_sold_qty": sum(i.sold_qty for i in items),
+            "prep_waste_qty": sum(i.waste_qty for i in items),
+            "prep_variance_qty": sum(i.variance for i in items),
+        }
+    close = RestaurantShiftClose(
+        user_id=cashier.id, period_start=period_start, period_end=period_end,
+        ticket_count=len(settled), total_sales=total, expected_cash=expected,
+        counted_cash=counted, variance=round(counted - expected, 2),
+        cash_tips=tips, cash_sales=cash_sales,
+        opening_float=opening_float, paid_in=paid_in, paid_out=paid_out,
+        breakdown={
+            "cash": cash_sales, "card": card_sales, "mpesa": mpesa_sales,
+            "tips": tips, "settled_tickets": len(settled),
+            "paid_out": paid_out, "paid_in": paid_in,
+        },
+        notes="Cash drawer short by 145 - float bag not returned to safe",
+        created_at=period_end + timedelta(minutes=5),
+        **prep,
+    )
+    db.add(close)
+    db.commit()
+    return close
+
+
+# ---------------------------------------------------------------------------
+# Kits and customer portal
+# ---------------------------------------------------------------------------
+
+KIT_SPECS = [
+    ("KIT-001", "Office Desk Starter Kit", "Everything a new desk needs on day one",
+     "fixed", 1500, [("TECH-002", 1), ("TECH-003", 1), ("TECH-011", 1), ("OFF-010", 2)]),
+    ("KIT-002", "Field Engineer Kit", "Portable kit for on-site engineers",
+     "percentage", 12, [("TECH-005", 1), ("TECH-016", 1), ("SAF-001", 1), ("OFF-025", 1)]),
+    ("KIT-003", "Meeting Room AV Kit", "Projector, cables and speakers for a boardroom",
+     "fixed", 5000, [("TECH-010", 1), ("TECH-011", 2), ("TECH-007", 1)]),
+    ("KIT-004", "Catering Coffee Pack", "Coffee and consumables for a 20-person event",
+     "percentage", 8, [("BEV-016", 2), ("BEV-024", 1), ("OFF-030", 1)]),
+    ("KIT-005", "Cleaning Starter Kit", "Baseline janitorial set for a new branch",
+     "fixed", 800, [("CLN-022", 2), ("SAF-001", 1), ("OFF-025", 2)]),
+]
+
+
+def create_kits(db, products, by_sku):
+    """Manufactured bundles (Kits) over existing component products.
+
+    Each kit gets a bundle product priced at the discounted bundle rate plus a
+    Kit record listing the components, so the kit router and BOM-style screens
+    have real data to work with.
+    """
+    kits = []
+    for sku, name, desc, discount_type, discount_value, components in KIT_SPECS:
+        # Fail loudly on an unknown component: a silently dropped line would
+        # make the kit's price and cost quietly wrong.
+        missing = [c for c, _q in components if c not in by_sku]
+        if missing:
+            raise KeyError(f"kit {sku} references unknown products: {missing}")
+        resolved = [(by_sku[c], q) for c, q in components]
+        if not resolved:
+            continue
+        retail = sum(float(p.unit_price) * q for p, q in resolved)
+        cost = sum(float(p.cost_price) * q for p, q in resolved)
+        if discount_type == "percentage":
+            price = round(retail * (1 - discount_value / 100), 2)
+        else:
+            price = max(0.0, round(retail - discount_value, 2))
+        first = resolved[0][0]
+        bundle = Product(
+            sku=sku, name=name, description=desc,
+            category_id=first.category_id, supplier_id=first.supplier_id,
+            unit_price=price, cost_price=round(cost, 2), quantity=0, reorder_level=2,
+            location=first.location, location_id=first.location_id,
+            is_active=True, created_at=days_ago(20),
+        )
+        db.add(bundle)
+        db.flush()
+        products.append(bundle)
+        by_sku[sku] = bundle
+        kit = Kit(
+            product_id=bundle.id, name=name, description=desc, version="1.0",
+            discount_type=discount_type, discount_value=discount_value,
+            is_active=True, created_at=days_ago(20),
+        )
+        db.add(kit)
+        db.flush()
+        for position, (component, qty) in enumerate(resolved):
+            db.add(KitItem(kit_id=kit.id, product_id=component.id,
+                           quantity=qty, position=position))
+        db.commit()
+        kits.append(kit)
+    return kits
+
+
+PORTAL_CUSTOMERS = [
+    ("portal.grace", "Grace Wambui", "grace.wanjiru@gmail.com", "Retail", 4),
+    ("portal.sarova", "Sarova Hotels Group", "purchasing@sarovahotels.com", "Corporate", 6),
+    ("portal.kabrai", "Kabrai Academy", "admin@kabrai.ac.ke", "Wholesale", 3),
+]
+
+
+def create_portal_data(db, users, customers, customer_groups, products, by_sku):
+    """Customer-portal logins plus the online order history behind their dashboards.
+
+    Creates one login per portal account linked to an existing Customer, and
+    back-fills invoices so the portal summary, invoice list and detail views all
+    have real data. Stock is not moved: these are historical web orders and the
+    quantities are small relative to opening stock.
+    """
+    by_name = {c.name: c for c in customers}
+    groups = {g.name: g for g in customer_groups}
+    channel = db.query(SalesChannel).filter(SalesChannel.name == "Online Store").first()
+    admin = users[0]
+    sellable_skus = [
+        p.sku for p in products
+        if not p.is_variant and not p.is_serialized and p.parent_id is None
+        and float(p.unit_price or 0) > 0 and p.is_active
+    ]
+
+    portal_users = []
+    for username, customer_name, email, group_name, invoices in PORTAL_CUSTOMERS:
+        customer = by_name.get(customer_name)
+        if customer is None:
+            continue
+        group = groups.get(group_name)
+        customer.group_id = group.id if group else None
+        customer.customer_type = "online"
+        if not customer.email:
+            customer.email = email
+        user = User(
+            username=username, email=email, password_hash=hash_password("portal123"),
+            role="customer", is_approved=True, is_active=True,
+            customer_id=customer.id, created_at=days_ago(30),
+        )
+        db.add(user)
+        db.flush()
+        portal_users.append(user)
+
+        for n in range(invoices):
+            created = days_ago(28 - n * 4, hour=10 + n % 6)
+            picked = random.sample(sellable_skus, k=min(3, len(sellable_skus)))
+            items = [(by_sku[s], random.randint(1, 3)) for s in picked]
+            subtotal = sum(float(p.unit_price) * q for p, q in items)
+            tax = round(subtotal * 0.16, 2)
+            sale = Sale(
+                invoice_number=f"WEB-{customer.id:03d}-{n + 1:03d}",
+                customer_id=customer.id, user_id=admin.id,
+                channel_id=channel.id if channel else None,
+                subtotal=round(subtotal, 2), tax_amount=tax,
+                total_amount=round(subtotal + tax, 2),
+                status="completed",
+                payment_method=["mpesa", "card", "transfer", "cash"][n % 4],
+                payment_status="paid", currency="KES", currency_symbol="KSh",
+                notes="First online order" if n == 0 else "Repeat online order",
+                created_at=created,
+            )
+            db.add(sale)
+            db.flush()
+            for p, q in items:
+                db.add(SaleItem(sale_id=sale.id, product_id=p.id, quantity=q,
+                                unit_price=float(p.unit_price)))
+    db.commit()
+    return portal_users
+
+
 def main():
     run_migrations()
     Base.metadata.create_all(bind=engine)
@@ -3326,6 +4292,17 @@ def main():
         customer_groups = create_customer_groups(db, price_lists)
         promos = create_promotions(db)
         notes_data, note_tags = create_notes_data(db, users)
+        kits = create_kits(db, products, by_sku)
+        sections, menu_products = create_menu(db, users, cats, suppliers, locs)
+        menu_recipes = create_menu_recipes(db, menu_products, by_sku)
+        tables = create_restaurant_floor(db)
+        tickets = create_restaurant_tickets(db, users, tables, menu_products)
+        reservations = create_reservations(db, users, tables, tickets)
+        prep_sessions = create_prep_sessions(db, users, menu_products)
+        seed_restaurant_sequences(db, tickets, reservations, prep_sessions)
+        shift_close = create_shift_close(db, users, tickets, prep_sessions)
+        portal_users = create_portal_data(db, users, customers, customer_groups,
+                                          products, by_sku)
         create_notifications(db, users, products, sale_records, shipments, wos)
         create_activity_logs(db, users, orders, receipts, asns, ccs, sale_records, by_sku, wos)
         db.commit()
@@ -3359,17 +4336,34 @@ def main():
         print(f"  Promotions        : {len(promos)}")
         print(f"  Notes             : {db.query(Note).count()}")
         print(f"  Note Tags         : {len(note_tags)}")
+        print(f"  Kits              : {len(kits)}")
+        print(f"  Kit Items         : {db.query(KitItem).count()}")
+        print(f"  Menu Sections     : {len(sections)}")
+        print(f"  Menu Items        : {len(menu_products)}")
+        print(f"  Menu Recipes      : {len(menu_recipes)}")
+        print(f"  Modifier Groups   : {db.query(MenuModifierGroup).count()}")
+        print(f"  Modifier Options  : {db.query(MenuModifierOption).count()}")
+        print(f"  Restaurant Tables : {len(tables)}")
+        print(f"  Tickets           : {len(tickets)}")
+        print(f"  Ticket Items      : {db.query(RestaurantTicketItem).count()}")
+        print(f"  Reservations      : {len(reservations)}")
+        print(f"  Shift Closes      : {db.query(RestaurantShiftClose).count()}")
+        print(f"  Prep Sessions     : {db.query(RestaurantPrepSession).count()}")
+        print(f"  Portal Logins     : {len(portal_users)}")
         print(f"  Stock Lines       : {db.query(StockLine).count()}")
         print(f"  Stock Movements   : {db.query(StockMovement).count()}")
         print(f"  Activity Logs     : {db.query(ActivityLog).count()}")
         print(f"  Notifications     : {db.query(Notification).count()}")
-        print("  Demo login        : admin / admin123")
+        print("  Demo login        : Flawstan / admin123")
+        print("                     : mercy  / manager123   (manager)")
+        print("                     : otieno / manager123   (manager)")
         print("                     : james  / worker123")
         print("                     : wanjiku / worker123")
-        print("                     : otieno / worker123")
         print("                     : amina  / worker123")
         print("                     : kemboi / worker123")
         print("                     : njeri  / worker123")
+        print("                     : brian  / worker123   (pending approval)")
+        print("                     : portal.grace / portal123  (customer portal)")
         print("=" * 60)
     finally:
         db.close()

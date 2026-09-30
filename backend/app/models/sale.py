@@ -29,6 +29,8 @@ class Sale(Base):
     currency_symbol: Mapped[str | None] = mapped_column(String(10), nullable=True, default=None)
     payment_status: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     payment_checkout_request_id: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    payment_amount_received: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True, default=None)
+    payment_amount_status: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     refund_status: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
     refunded_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, default=None)
     refund_method: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)

@@ -69,7 +69,15 @@ class TicketItemStatus(BaseModel):
 
 
 class TicketItemVoidCreate(BaseModel):
-    reason: str = Field(default="", max_length=200)
+    reason: str = Field(min_length=3, max_length=200)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_not_blank(cls, v: str) -> str:
+        reason = (v or "").strip()
+        if len(reason) < 3:
+            raise ValueError("A reason is required to void a ticket item")
+        return reason
 
 
 class TicketSplitCreate(BaseModel):
@@ -97,6 +105,8 @@ class TicketItemOut(BaseModel):
     line_total: float = 0.0
     voided_at: Optional[datetime] = None
     void_reason: Optional[str] = None
+    voided_by: Optional[int] = None
+    voided_by_username: str = ""
 
     @field_validator("modifiers", mode="before")
     @classmethod
@@ -122,6 +132,7 @@ class TicketUpdate(BaseModel):
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     discount_amount: Optional[float] = Field(default=None, ge=0)
+    discount_reason: Optional[str] = Field(default=None, max_length=200)
     notes: Optional[str] = None
 
 
@@ -132,6 +143,7 @@ class TicketSettle(BaseModel):
     customer_id: Optional[int] = None
     customer_phone: Optional[str] = None
     discount_amount: Optional[float] = Field(default=None, ge=0)
+    discount_reason: str = Field(default="", max_length=200)
     tip_amount: float = Field(default=0.0, ge=0, le=1_000_000)
     notes: str = ""
 
@@ -273,15 +285,31 @@ class ShiftPreview(BaseModel):
     total_sales: float = 0.0
     expected_cash: float = 0.0
     cash_tips: float = 0.0
+    cash_sales: float = 0.0
     open_tickets: int = 0
     paying_tickets: int = 0
+    payment_review_count: int = 0
+    payment_review_amount: float = 0.0
     by_method: dict[str, dict] = {}
+    open_prep_sessions: int = 0
+    prep_session_count: int = 0
+    prepped_qty: int = 0
+    prep_sold_qty: int = 0
+    prep_waste_qty: int = 0
+    prep_variance_qty: int = 0
 
 
 class ShiftCloseCreate(BaseModel):
+    """Cash-drawer reconciliation input.
+
+    The shift window is always derived server-side from the caller's previous
+    close, so a client cannot shrink it to fake a balanced drawer.
+    """
+
     counted_cash: float = Field(ge=0)
-    period_start: Optional[datetime] = None
-    period_end: Optional[datetime] = None
+    opening_float: float = Field(default=0.0, ge=0, le=10_000_000)
+    paid_in: float = Field(default=0.0, ge=0, le=10_000_000)
+    paid_out: float = Field(default=0.0, ge=0, le=10_000_000)
     notes: str = Field(default="", max_length=300)
 
 
@@ -297,9 +325,158 @@ class ShiftCloseOut(BaseModel):
     counted_cash: float = 0.0
     variance: float = 0.0
     cash_tips: float = 0.0
+    cash_sales: float = 0.0
+    opening_float: float = 0.0
+    paid_in: float = 0.0
+    paid_out: float = 0.0
+    prep_session_count: int = 0
+    prepped_qty: int = 0
+    prep_sold_qty: int = 0
+    prep_waste_qty: int = 0
+    prep_variance_qty: int = 0
     breakdown: Optional[dict] = None
     notes: str = ""
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Prep accounting
+# ---------------------------------------------------------------------------
+
+
+class PrepSessionCreate(BaseModel):
+    """Open a prep run at one station.
+
+    Only one session may be open per station, so two shifts cannot both claim
+    the same batch of plates.
+    """
+
+    station: str = Field(min_length=2, max_length=60)
+    notes: str = Field(default="", max_length=300)
+
+    @field_validator("station", "notes")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        return value.strip()
+
+
+class PrepSessionItemCreate(BaseModel):
+    """Record a prepped batch. Repeating a product adds to the same line."""
+
+    product_id: int
+    quantity: int = Field(gt=0, le=10_000)
+
+
+class PrepSessionWasteCreate(BaseModel):
+    """Write off part of a batch.
+
+    Waste is declared separately from prepped so that a late correction to the
+    batch size can never quietly absorb undeclared loss: the variance is
+    ``counted - (prepped - sold - waste)`` and a bad waste number shows up as
+    a bad variance.
+    """
+
+    quantity: int = Field(gt=0, le=10_000)
+    reason: str = Field(min_length=3, max_length=300)
+    product_id: Optional[int] = None
+
+    @field_validator("reason")
+    @classmethod
+    def _strip_reason(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("A waste reason of at least 3 characters is required")
+        return value
+
+
+class PrepSessionCountCreate(BaseModel):
+    """Leftover count for one prepped dish at close."""
+
+    product_id: int
+    counted_qty: int = Field(ge=0, le=10_000)
+
+
+class PrepSessionCloseCreate(BaseModel):
+    counted: list[PrepSessionCountCreate] = []
+    notes: str = Field(default="", max_length=300)
+
+
+class PrepStationItemOut(BaseModel):
+    """A dish offered for prep at a station, with its par level."""
+
+    product_id: int
+    name: str
+    station: str = ""
+    par_qty: int = 0
+    warn_qty: int = 0
+    # What is on the pass right now across open sessions at this station.
+    available_qty: int = 0
+    sold_qty: int = 0
+    is_below_warn: bool = False
+
+
+class PrepStationOut(BaseModel):
+    station: str
+    par_qty: int = 0
+    items: list[PrepStationItemOut] = []
+
+
+class PrepSessionItemOut(BaseModel):
+    id: int
+    product_id: int
+    product_name: str = ""
+    prepped_qty: int = 0
+    sold_qty: int = 0
+    waste_qty: int = 0
+    counted_qty: Optional[int] = None
+    expected_remaining: Optional[int] = None
+    variance: Optional[int] = None
+    waste_reason: str = ""
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PrepSessionOut(BaseModel):
+    id: int
+    session_number: str
+    station: str
+    user_id: int
+    username: str = ""
+    status: str = "open"
+    notes: str = ""
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+    closed_by: Optional[int] = None
+    closed_by_username: str = ""
+    prepped_qty: int = 0
+    sold_qty: int = 0
+    waste_qty: int = 0
+    expected_remaining: int = 0
+    variance: int = 0
+    item_count: int = 0
+    items: list[PrepSessionItemOut] = []
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PrepLevelUpdate(BaseModel):
+    """Manager control over what gets prepped and what counts as low."""
+
+    prep_station: Optional[str] = Field(default=None, max_length=60)
+    par_qty: Optional[int] = Field(default=None, ge=0, le=100_000)
+    warn_qty: Optional[int] = Field(default=None, ge=0, le=100_000)
+
+    @field_validator("prep_station")
+    @classmethod
+    def _strip_station(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None

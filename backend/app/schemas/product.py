@@ -26,11 +26,20 @@ class ProductCreate(BaseModel):
     is_serialized: bool = False
     is_menu_item: bool = False
     menu_section_id: Optional[int] = None
+    prep_station: Optional[str] = Field(default=None, max_length=60)
+    par_qty: int = Field(default=0, ge=0, le=100_000)
+    warn_qty: int = Field(default=0, ge=0, le=100_000)
 
     @model_validator(mode="after")
     def _name_required_without_parent(self):
         if not self.name and not self.parent_id:
             raise ValueError("name is required for standalone products")
+        return self
+
+    @model_validator(mode="after")
+    def _warn_below_par(self):
+        if self.warn_qty > self.par_qty:
+            raise ValueError("warn_qty cannot exceed par_qty")
         return self
 
 
@@ -56,6 +65,15 @@ class ProductUpdate(BaseModel):
     is_serialized: Optional[bool] = None
     is_menu_item: Optional[bool] = None
     menu_section_id: Optional[int] = None
+    prep_station: Optional[str] = Field(default=None, max_length=60)
+    par_qty: Optional[int] = Field(default=None, ge=0, le=100_000)
+    warn_qty: Optional[int] = Field(default=None, ge=0, le=100_000)
+
+    @model_validator(mode="after")
+    def _warn_below_par(self):
+        if self.par_qty is not None and self.warn_qty is not None and self.warn_qty > self.par_qty:
+            raise ValueError("warn_qty cannot exceed par_qty")
+        return self
 
 
 class ImageOut(BaseModel):
@@ -92,6 +110,9 @@ class ProductOut(BaseModel):
     is_serialized: bool = False
     is_menu_item: bool = False
     menu_section_id: Optional[int] = None
+    prep_station: Optional[str] = None
+    par_qty: int = 0
+    warn_qty: int = 0
     created_at: datetime
     updated_at: datetime
     category_name: str = ""
