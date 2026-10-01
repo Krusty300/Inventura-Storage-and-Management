@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   UtensilsCrossed, Search, Plus, Minus, Trash2, Send, ChefHat, CheckCheck,
-  StickyNote, Ban, Scissors, Info,
+  StickyNote, Ban, Scissors, Info, X,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
@@ -10,6 +10,7 @@ import type {
   Customer, MenuItem, MenuModifierGroup, MenuSectionWithItems, Product, RestaurantTicket, RestaurantTicketItem,
 } from "../../types";
 import EmptyState from "../../components/EmptyState";
+import ScrollArea from "../../components/ScrollArea";
 import TextArea from "../../components/TextArea";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import CustomerPicker from "../../components/CustomerPicker";
@@ -52,6 +53,7 @@ export default function RestaurantTicketDetail() {
   const { subscribe } = useRealtime();
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
+  const taxRate = settings?.tax_rate ?? 0;
 
   const [menuSearch, setMenuSearch] = useState("");
   const [activeSection, setActiveSection] = useState("all");
@@ -311,11 +313,21 @@ export default function RestaurantTicketDetail() {
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
                 <input
                   className="input pl-10"
-                  placeholder="Search the menu..."
+                  placeholder="Search the menu by name or SKU..."
                   value={menuSearch}
                   onChange={(e) => { setMenuSearch(e.target.value); setActiveSection("all"); }}
                   aria-label="Search menu"
                 />
+                {menuSearch && (
+                  <button
+                    type="button"
+                    onClick={() => { setMenuSearch(""); setActiveSection("all"); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-faint hover:text-ink"
+                    aria-label="Clear menu search"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
               <BarcodeScanner onProductFound={onBarcode} placeholder="Scan barcode..." />
             </div>
@@ -342,7 +354,7 @@ export default function RestaurantTicketDetail() {
               </div>
             )}
 
-            <div className="p-4 overflow-y-auto max-h-[calc(100vh-20rem)]">
+            <ScrollArea viewportClassName="max-h-[calc(100vh-20rem)] p-4 sa-viewport-contain">
               {visibleBlocks.length === 0 ? (
                 <EmptyState
                   variant="block"
@@ -355,7 +367,7 @@ export default function RestaurantTicketDetail() {
                   {visibleBlocks.map((block) => (
                     <div key={sectionKey(block)}>
                       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{block.name}</h3>
-                      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-4">
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
                         {block.items.map((p) => (
                           <ProductTile
                             key={p.id}
@@ -371,7 +383,7 @@ export default function RestaurantTicketDetail() {
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
                   {visibleBlocks.flatMap((block) => block.items).map((p) => (
                     <ProductTile
                       key={p.id}
@@ -384,7 +396,7 @@ export default function RestaurantTicketDetail() {
                   ))}
                 </div>
               )}
-            </div>
+            </ScrollArea>
           </section>
 
           <section className="card p-5 flex flex-col gap-4 lg:sticky lg:top-4" aria-label="Ticket order">
@@ -399,59 +411,60 @@ export default function RestaurantTicketDetail() {
             {pendingItems.length === 0 ? (
               <EmptyState compact icon={<Plus size={20} />} title="No items yet" message="Tap menu items to build this order." />
             ) : (
-              <ul className="divide-y divide-border overflow-y-auto max-h-[calc(100vh-26rem)] -mx-1 px-1">
-                {pendingItems.map((item) => (
-                  <li key={item.id} className="py-3 flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <img
-                        src={item.product_image || getPlaceholder()}
-                        alt=""
-                        className="h-14 w-14 shrink-0 rounded-lg object-cover bg-app border border-border"
-                        loading="lazy"
-                        decoding="async"
-                        onError={onImageError}
-                      />
-                      <div className="min-w-0">
-                        <div className="font-medium text-ink">{item.product_name}</div>
-                        {item.sku && <div className="text-xs text-faint mt-0.5">SKU {item.sku}</div>}
-                        {item.modifiers?.length ? (
-                          <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
-                        ) : null}
-                        <div className="text-xs text-muted mt-0.5">
-                          {formatCurrency(item.unit_price, symbol)} × {item.quantity} ={" "}
-                          <span className="font-semibold text-ink tabular-nums">
-                            {formatCurrency(item.line_total ?? item.unit_price * item.quantity, symbol)}
-                          </span>
+              <ScrollArea viewportClassName="max-h-[calc(100vh-26rem)] sa-viewport-contain">
+                <ul className="divide-y divide-border -mx-1 px-1">
+                  {pendingItems.map((item) => (
+                    <li key={item.id} className="py-3 flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <img
+                          src={item.product_image || getPlaceholder()}
+                          alt=""
+                          className="h-14 w-14 shrink-0 rounded-lg object-cover bg-app border border-border"
+                          loading="lazy"
+                          decoding="async"
+                          onError={onImageError}
+                        />
+                        <div className="min-w-0">
+                          <div className="font-medium text-ink">{item.product_name}</div>
+                          {item.sku && <div className="text-xs text-faint mt-0.5">SKU {item.sku}</div>}
+                          {item.modifiers?.length ? (
+                            <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
+                          ) : null}
+                          {item.notes ? (
+                            <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 flex items-start gap-1">
+                              <StickyNote size={12} className="mt-0.5 shrink-0" />
+                              <span className="min-w-0 break-words">{item.notes}</span>
+                            </div>
+                          ) : null}
+                          <div className="text-xs text-muted mt-0.5">
+                            {formatCurrency(item.unit_price, symbol)} × {item.quantity} ={" "}
+                            <span className="font-semibold text-ink tabular-nums">
+                              {formatCurrency(item.line_total ?? item.unit_price * item.quantity, symbol)}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    {can("restaurant.update") ? (
-                      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                        <button onClick={() => updateItem.mutate({ itemId: item.id, quantity: item.quantity - 1 })} disabled={item.quantity <= 1} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md bg-app text-muted hover:text-ink disabled:opacity-40" aria-label={`Decrease ${item.product_name}`}>
-                          <Minus size={16} />
-                        </button>
-                        <span className="w-7 text-center tabular-nums">{item.quantity}</span>
-                        <button onClick={() => updateItem.mutate({ itemId: item.id, quantity: item.quantity + 1 })} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md bg-app text-muted hover:text-ink" aria-label={`Increase ${item.product_name}`}>
-                          <Plus size={16} />
-                        </button>
-                        <button onClick={() => removeItem.mutate(item.id)} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400" aria-label={`Remove ${item.product_name}`}>
-                          <Trash2 size={16} />
-                        </button>
-                        <button onClick={() => setVoidItem(item)} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400" aria-label={`Void ${item.product_name}`}>
-                          <Ban size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-sm tabular-nums shrink-0">×{item.quantity}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                      {can("restaurant.update") ? (
+                        <QuantityStepper
+                          quantity={item.quantity}
+                          name={item.product_name}
+                          disabled={updateItem.isPending}
+                          onChange={(quantity) => updateItem.mutate({ itemId: item.id, quantity })}
+                          onRemove={() => removeItem.mutate(item.id)}
+                          onVoid={() => setVoidItem(item)}
+                        />
+                      ) : (
+                        <span className="text-sm tabular-nums shrink-0">×{item.quantity}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </ScrollArea>
             )}
             <div className="mt-auto pt-3 space-y-1 text-sm border-t border-border">
               <div className="flex justify-between text-muted"><span>Subtotal</span><span className="tabular-nums">{formatCurrency(ticket.subtotal, symbol)}</span></div>
               {ticket.discount_amount > 0 && <div className="flex justify-between text-muted"><span>Discount</span><span className="tabular-nums">-{formatCurrency(ticket.discount_amount, symbol)}</span></div>}
-              {ticket.tax_amount > 0 && <div className="flex justify-between text-muted"><span>Tax</span><span className="tabular-nums">{formatCurrency(ticket.tax_amount, symbol)}</span></div>}
+              {ticket.tax_amount > 0 && <div className="flex justify-between text-muted"><span>Tax ({taxRate}%)</span><span className="tabular-nums">{formatCurrency(ticket.tax_amount, symbol)}</span></div>}
               {ticket.tip_amount > 0 && <div className="flex justify-between text-muted"><span>Tip</span><span className="tabular-nums">{formatCurrency(ticket.tip_amount, symbol)}</span></div>}
               <div className="flex justify-between items-baseline font-bold text-ink pt-1.5 mt-1 border-t border-border/60">
                 <span className="text-base">Total</span>
@@ -484,6 +497,12 @@ export default function RestaurantTicketDetail() {
                   <div className={`font-medium ${item.status === "voided" ? "text-muted line-through" : "text-ink"}`}>{item.product_name}</div>
                   {item.modifiers?.length ? (
                     <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
+                  ) : null}
+                  {item.notes ? (
+                    <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 flex items-start gap-1">
+                      <StickyNote size={12} className="mt-0.5 shrink-0" />
+                      <span className="min-w-0 break-words">{item.notes}</span>
+                    </div>
                   ) : null}
                   <div className="text-xs text-muted mt-0.5">×{item.quantity} · {formatCurrency(item.unit_price, symbol)}</div>
                   {item.status === "voided" && item.void_reason && (
@@ -613,6 +632,88 @@ export default function RestaurantTicketDetail() {
         onConfirm={() => { setConfirmCancel(false); cancelTicket.mutate(); }}
         onCancel={() => setConfirmCancel(false)}
       />
+    </div>
+  );
+}
+
+/**
+ * Order-line controls for an unsent dish. The quantity is a real input rather
+ * than a read-only number, so a waiter can type "6" for a table of six instead
+ * of tapping plus five times - the same affordance the register cart offers.
+ * Removing a pending line deletes it outright; once a line has been sent the
+ * kitchen owns it and the change has to be voided for the audit trail instead.
+ */
+function QuantityStepper({ quantity, name, disabled, onChange, onRemove, onVoid }: {
+  quantity: number;
+  name: string;
+  disabled?: boolean;
+  onChange: (quantity: number) => void;
+  onRemove: () => void;
+  onVoid: () => void;
+}) {
+  const [draft, setDraft] = useState(String(quantity));
+
+  // The server is the source of truth once the mutation lands, so snap the
+  // field back whenever a fresh quantity arrives from the ticket.
+  useEffect(() => {
+    setDraft(String(quantity));
+  }, [quantity]);
+
+  const commit = () => {
+    const parsed = parseInt(draft, 10);
+    if (Number.isNaN(parsed) || parsed < 1) {
+      setDraft(String(quantity));
+      return;
+    }
+    if (parsed !== quantity) onChange(parsed);
+    else setDraft(String(quantity));
+  };
+
+  return (
+    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+      <div className="flex items-center rounded-lg border border-border overflow-hidden shrink-0">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(1, quantity - 1))}
+          disabled={disabled || quantity <= 1}
+          className="h-9 w-9 shrink-0 inline-flex items-center justify-center text-muted hover:bg-app disabled:opacity-40"
+          aria-label={`Decrease ${name}`}
+        >
+          <Minus size={16} />
+        </button>
+        <input
+          type="number"
+          className="w-12 text-center input !rounded-none !border-0 text-sm"
+          value={draft}
+          min={1}
+          max={99}
+          disabled={disabled}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            }
+          }}
+          aria-label={`Quantity for ${name}`}
+        />
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(99, quantity + 1))}
+          disabled={disabled}
+          className="h-9 w-9 shrink-0 inline-flex items-center justify-center text-muted hover:bg-app disabled:opacity-40"
+          aria-label={`Increase ${name}`}
+        >
+          <Plus size={16} />
+        </button>
+      </div>
+      <button onClick={onRemove} disabled={disabled} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40" aria-label={`Remove ${name}`}>
+        <Trash2 size={16} />
+      </button>
+      <button onClick={onVoid} disabled={disabled} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40" aria-label={`Void ${name}`}>
+        <Ban size={16} />
+      </button>
     </div>
   );
 }

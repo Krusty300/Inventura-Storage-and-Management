@@ -62,7 +62,7 @@ const MENU = [
   },
 ];
 
-function pendingLine(id: number, name: string, qty: number, price: number) {
+function pendingLine(id: number, name: string, qty: number, price: number, notes = "") {
   return {
     id,
     product_id: id,
@@ -72,7 +72,7 @@ function pendingLine(id: number, name: string, qty: number, price: number) {
     line_total: price * qty,
     status: "pending",
     modifiers: null,
-    notes: "",
+    notes,
     sent_at: null,
     ready_at: null,
     served_at: null,
@@ -258,5 +258,52 @@ describe("Ticket detail POS layout", () => {
     await waitFor(() => {
       expect(putMock).toHaveBeenCalledWith("/restaurant/tickets/7/items/21", { quantity: 2 });
     });
+  });
+
+  it("takes a typed quantity on an order line instead of only stepping it", async () => {
+    await renderPos([pendingLine(21, "Steak", 1, 26)]);
+    putMock.mockResolvedValue({ data: {} });
+
+    // A table of six is one keystroke here, rather than five taps on plus.
+    const field = screen.getByLabelText("Quantity for Steak");
+    fireEvent.change(field, { target: { value: "6" } });
+    fireEvent.blur(field);
+
+    await waitFor(() => {
+      expect(putMock).toHaveBeenCalledWith("/restaurant/tickets/7/items/21", { quantity: 6 });
+    });
+  });
+
+  it("ignores a typed quantity below one and puts the field back", async () => {
+    await renderPos([pendingLine(21, "Steak", 3, 26)]);
+
+    const field = screen.getByLabelText("Quantity for Steak");
+    fireEvent.change(field, { target: { value: "0" } });
+    fireEvent.blur(field);
+
+    expect(putMock).not.toHaveBeenCalled();
+    expect(field).toHaveValue(3);
+  });
+
+  it("surfaces the kitchen note the waiter typed when the dish was added", async () => {
+    await renderPos([pendingLine(21, "Steak", 1, 26, "no onions, well done")]);
+
+    // The note is captured on add but was previously invisible on the ticket.
+    expect(screen.getByText("no onions, well done")).toBeInTheDocument();
+  });
+
+  it("clears a menu search and returns the grid to every dish", async () => {
+    await renderPos();
+
+    const search = screen.getByLabelText("Search menu");
+    fireEvent.change(search, { target: { value: "steak" } });
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /Add Soup to order/ })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear menu search" }));
+
+    expect(search).toHaveValue("");
+    expect(await screen.findByRole("button", { name: /Add Soup to order/ })).toBeInTheDocument();
   });
 });
