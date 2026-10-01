@@ -32,6 +32,7 @@ from app.models.stock_line import StockLine
 from app.models.stock_movement import StockMovement
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.models.work_center import RoutingOperation, WorkCenter
 from app.models.work_order import WorkOrder, WorkOrderItem
 
 __all__ = [
@@ -74,6 +75,7 @@ __all__ = [
     "RestaurantTable",
     "RestaurantTicket",
     "RestaurantTicketItem",
+    "RoutingOperation",
     "Sale",
     "SaleItem",
     "SalesChannel",
@@ -86,6 +88,7 @@ __all__ = [
     "Supplier",
     "User",
     "UserSession",
+    "WorkCenter",
     "WorkOrder",
     "WorkOrderItem",
 ]

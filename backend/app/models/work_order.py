@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import ForeignKey, Integer, String, Text, func
+from sqlalchemy import Date, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -19,6 +19,13 @@ class WorkOrder(SoftDeleteMixin, Base):
     wip_location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(20), default="planned")
     priority: Mapped[str] = mapped_column(String(20), default="normal")
+    # Scheduling: what the shop floor was asked to produce, by when, and where.
+    # ``due_date`` is set by a planner; ``scheduled_*`` and ``work_center_id``
+    # are owned by the capacity scheduler and stay null until it runs.
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    scheduled_start: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, index=True)
+    scheduled_end: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    work_center_id: Mapped[int | None] = mapped_column(ForeignKey("work_centers.id"), nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
@@ -29,6 +36,7 @@ class WorkOrder(SoftDeleteMixin, Base):
     product = relationship("Product", foreign_keys=[product_id])
     bom = relationship("BOM")
     wip_location = relationship("Location")
+    work_center = relationship("WorkCenter", back_populates="work_orders")
     creator = relationship("User", foreign_keys=[created_by])
     items = relationship("WorkOrderItem", back_populates="work_order", cascade="all, delete-orphan", order_by="WorkOrderItem.id")
 
@@ -47,6 +55,29 @@ class WorkOrder(SoftDeleteMixin, Base):
     @property
     def bom_name(self) -> str:
         return self.bom.name if self.bom else ""
+
+    @property
+    def work_center_name(self) -> str:
+        return self.work_center.name if self.work_center else ""
+
+    @property
+    def is_scheduled(self) -> bool:
+        return self.scheduled_start is not None and self.scheduled_end is not None
+
+    @property
+    def is_overdue(self) -> bool:
+        """Past its due date and still open."""
+        if self.due_date is None or self.status in ("completed", "cancelled"):
+            return False
+        return self.due_date < date.today()
+
+    @property
+    def scheduled_minutes(self) -> int:
+        """Minutes reserved on the schedule for this work order."""
+        if not self.is_scheduled:
+            return 0
+        delta = self.scheduled_end - self.scheduled_start
+        return max(int(round(delta.total_seconds() / 60)), 0)
 
     @property
     def total_required(self) -> int:

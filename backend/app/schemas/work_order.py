@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 WORK_ORDER_STATUSES = {"planned", "released", "in_progress", "completed", "cancelled"}
+WORK_ORDER_PRIORITIES = {"low", "normal", "high"}
 
 
 class WorkOrderItemIn(BaseModel):
@@ -16,6 +17,7 @@ class WorkOrderCreate(BaseModel):
     quantity: int = Field(gt=0)
     bom_id: Optional[int] = None
     priority: str = "normal"
+    due_date: Optional[date] = None
     notes: str = ""
     items: list[WorkOrderItemIn] = []
 
@@ -23,6 +25,7 @@ class WorkOrderCreate(BaseModel):
 class WorkOrderUpdate(BaseModel):
     quantity: Optional[int] = Field(default=None, gt=0)
     priority: Optional[str] = None
+    due_date: Optional[date] = None
     notes: Optional[str] = None
     items: Optional[list[WorkOrderItemIn]] = None
 
@@ -68,6 +71,10 @@ class WorkOrderOut(BaseModel):
     wip_location_id: Optional[int] = None
     status: str
     priority: str
+    due_date: Optional[date] = None
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+    work_center_id: Optional[int] = None
     notes: str
     created_by: int
     started_at: Optional[datetime] = None
@@ -77,7 +84,11 @@ class WorkOrderOut(BaseModel):
     product_name: str = ""
     username: str = ""
     bom_name: str = ""
+    work_center_name: str = ""
     is_serialized: bool = False
+    is_scheduled: bool = False
+    is_overdue: bool = False
+    scheduled_minutes: int = 0
     total_required: int = 0
     total_issued: int = 0
     fully_issued: bool = False

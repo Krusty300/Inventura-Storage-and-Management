@@ -45,6 +45,7 @@ const entityQueryMap: Record<string, string[]> = {
   restaurant_reservation: ["restaurant-reservations", "restaurant-floor", "restaurant-floor-reservations", "restaurant-tables", "restaurant-ticket", "restaurant-kitchen"],
   restaurant_menu: ["restaurant-menu", "restaurant-menu-sections", "menu-products", "products", "restaurant-ticket", "restaurant-recipes"],
   work_order: ["work-orders", "work-orders-kanban", "work-order-cost", "work-order-genealogy", "mrp"],
+  work_center: ["work-centers", "routings", "work-orders", "work-orders-kanban", "dashboard", "reports"],
   serial_number: ["serial-numbers", "serial-movements", "product-reserved-serials", "trace", "exceptions"],
   settings: ["settings", "portal", "customer"],
   kit: ["kits", "mrp", "product-cost"],

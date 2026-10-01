@@ -43,6 +43,7 @@ const CycleCounts = lazy(() => import("./pages/CycleCounts"));
 const Boms = lazy(() => import("./pages/Boms"));
 const Kits = lazy(() => import("./pages/Kits"));
 const WorkOrders = lazy(() => import("./pages/WorkOrders"));
+const WorkCenters = lazy(() => import("./pages/WorkCenters"));
 const QualityChecks = lazy(() => import("./pages/QualityChecks"));
 const Planning = lazy(() => import("./pages/Planning"));
 const Forecasting = lazy(() => import("./pages/Forecasting"));
@@ -169,6 +170,7 @@ function AppRoutes() {
           <Route path="/boms" element={<PageBoundary><RequirePermission perm="bom.view"><Boms /></RequirePermission></PageBoundary>} />
           <Route path="/kits" element={<PageBoundary><RequirePermission perm="kit.view"><Kits /></RequirePermission></PageBoundary>} />
           <Route path="/work-orders" element={<PageBoundary><RequirePermission perm="work_orders.view"><WorkOrders /></RequirePermission></PageBoundary>} />
+          <Route path="/work-centers" element={<PageBoundary><RequirePermission perm="work_centers.view"><WorkCenters /></RequirePermission></PageBoundary>} />
           <Route path="/planning" element={<PageBoundary><RequirePermission perm="planning.view"><Planning /></RequirePermission></PageBoundary>} />
           <Route path="/forecasting" element={<PageBoundary><RequirePermission perm="forecasting.view"><Forecasting /></RequirePermission></PageBoundary>} />
           <Route path="/shipments" element={<PageBoundary><RequirePermission perm="shipments.view"><Shipments /></RequirePermission></PageBoundary>} />

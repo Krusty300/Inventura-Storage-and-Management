@@ -463,6 +463,7 @@ def create_work_order(data: WorkOrderCreate, db: Session = Depends(get_db), user
         quantity=data.quantity,
         bom_id=data.bom_id,
         priority=data.priority if data.priority in ("low", "normal", "high") else "normal",
+        due_date=data.due_date,
         notes=data.notes,
         created_by=user.id,
     )

@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Factory,
   Workflow,
+  Gauge,
   FlaskConical,
   Sparkles,
   PackageOpen,
@@ -108,6 +109,7 @@ export const navGroups: NavGroup[] = [
       { to: "/boms", icon: Factory, label: "BOMs", perm: "bom.view" },
       { to: "/kits", icon: PackagePlus, label: "Kits", perm: "kit.view" },
       { to: "/work-orders", icon: Workflow, label: "Work Orders", perm: "work_orders.view" },
+      { to: "/work-centers", icon: Gauge, label: "Work Centers", perm: "work_centers.view" },
     ],
   },
   {

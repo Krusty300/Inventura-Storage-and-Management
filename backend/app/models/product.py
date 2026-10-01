@@ -56,6 +56,7 @@ class Product(SoftDeleteMixin, Base):
     variants = relationship("Product", back_populates="variant_of", cascade="all", order_by="Product.sku")
     boms = relationship("BOM", back_populates="product")
     kits = relationship("Kit", back_populates="product")
+    routing_operations = relationship("RoutingOperation", back_populates="product", cascade="all, delete-orphan", order_by="RoutingOperation.position")
     images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan", order_by="ProductImage.sort_order")
 
     @property

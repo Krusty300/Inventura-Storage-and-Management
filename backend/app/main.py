@@ -19,7 +19,7 @@ from app.database import Base, SessionLocal, backfill_stock_lines, engine, run_m
 from app.logging_config import setup_logging
 from app.middleware import RequestIDMiddleware
 from app.services.httpratelimit import limiter, rate_limit_exceeded_handler
-from app.routers import activity_log, asn, attachments, auth, bom, categories, costing, customer_portal, customer_groups, customers, cycle_counts, dashboard, daraja, forecasting, kit, labels, locations, lots, lpns, notes, notifications, orders, planning, portal, price_lists, products, promotions, quality_checks, receipts, reports, restaurant, restaurant_reports, sales, sales_channels, search, serial_numbers, settings, shipments, stock, suppliers, trash, users, work_orders
+from app.routers import activity_log, asn, attachments, auth, bom, categories, costing, customer_portal, customer_groups, customers, cycle_counts, dashboard, daraja, forecasting, kit, labels, locations, lots, lpns, notes, notifications, orders, planning, portal, price_lists, products, promotions, quality_checks, receipts, reports, restaurant, restaurant_reports, routings, sales, sales_channels, search, serial_numbers, settings, shipments, stock, suppliers, trash, users, work_centers, work_orders
 from app.services.inventory import expire_overdue_lots
 from app.services.auth import purge_expired_sessions
 from app.ws_manager import manager
@@ -128,6 +128,8 @@ app.include_router(notifications.router)
 app.include_router(bom.router)
 app.include_router(kit.router)
 app.include_router(work_orders.router)
+app.include_router(work_centers.router)
+app.include_router(routings.router)
 app.include_router(quality_checks.router)
 app.include_router(planning.router)
 app.include_router(forecasting.router)

@@ -1114,6 +1114,82 @@ export interface WorkOrder {
   total_issued: number;
   fully_issued: boolean;
   items: WorkOrderItem[];
+  due_date: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  work_center_id: number | null;
+  work_center_name: string;
+  is_scheduled: boolean;
+  is_overdue: boolean;
+  scheduled_minutes: number;
+}
+
+export interface WorkCenter {
+  id: number;
+  code: string;
+  name: string;
+  work_center_type: string;
+  location_id: number | null;
+  hours_per_day: number;
+  working_days: number[] | null;
+  shift_start: string;
+  efficiency: number;
+  hourly_rate: number;
+  notes: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  location_name: string;
+  working_day_list: number[];
+  daily_minutes: number;
+  operation_count: number;
+}
+
+export interface WorkCenterLoad {
+  work_center_id: number;
+  work_center_code: string;
+  work_center_name: string;
+  from_date: string;
+  to_date: string;
+  working_days_available: number;
+  capacity_minutes: number;
+  load_minutes: number;
+  free_minutes: number;
+  utilization_pct: number;
+  scheduled_work_orders: number;
+  open_work_orders: number;
+  is_bottleneck: boolean;
+  overdue_work_orders: number;
+}
+
+export interface RoutingOperation {
+  id: number;
+  product_id: number;
+  work_center_id: number;
+  position: number;
+  name: string;
+  setup_minutes: number;
+  run_minutes_per_unit: number;
+  notes: string;
+  is_active: boolean;
+  created_at: string;
+  work_center_name: string;
+  work_center_code: string;
+  label: string;
+}
+
+export interface Routing {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  operation_count: number;
+  total_setup_minutes: number;
+  total_run_minutes_per_unit: number;
+  unique_work_centers: number;
+  ideal_minutes_per_unit: number;
+  adjusted_minutes_per_unit: number;
+  is_complete: boolean;
+  operations: RoutingOperation[];
 }
 
 export interface QualityCheck {
