@@ -54,6 +54,9 @@ export interface Product {
   is_serialized: boolean;
   is_menu_item?: boolean;
   menu_section_id?: number | null;
+  prep_station?: string | null;
+  par_qty?: number;
+  warn_qty?: number;
   created_at: string;
   updated_at: string;
   category_name: string;
@@ -625,6 +628,8 @@ export interface Sale {
   currency_symbol: string | null;
   payment_status: string | null;
   payment_checkout_request_id: string | null;
+  payment_amount_received: number | null;
+  payment_amount_status: string | null;
   refund_status: string | null;
   refunded_at: string | null;
   refund_method: string | null;
@@ -1566,6 +1571,8 @@ export interface RestaurantTicketItem {
   line_total?: number;
   voided_at?: string | null;
   void_reason?: string | null;
+  voided_by?: number | null;
+  voided_by_username?: string;
 }
 
 export interface ModifierSelection {
@@ -1663,4 +1670,57 @@ export interface KitchenTicket {
   earliest_sent_at: string | null;
   notes: string;
   items: RestaurantTicketItem[];
+}
+
+export interface PrepSessionItem {
+  id: number;
+  product_id: number;
+  product_name: string;
+  prepped_qty: number;
+  sold_qty: number;
+  waste_qty: number;
+  counted_qty: number | null;
+  expected_remaining: number | null;
+  variance: number | null;
+  waste_reason: string;
+  created_at: string;
+}
+
+export interface PrepSession {
+  id: number;
+  session_number: string;
+  station: string;
+  user_id: number;
+  username: string;
+  status: "open" | "closed";
+  notes: string;
+  opened_at: string;
+  closed_at: string | null;
+  closed_by: number | null;
+  closed_by_username: string;
+  prepped_qty: number;
+  sold_qty: number;
+  waste_qty: number;
+  expected_remaining: number;
+  variance: number;
+  item_count: number;
+  items: PrepSessionItem[];
+  created_at: string;
+}
+
+export interface PrepStationItem {
+  product_id: number;
+  name: string;
+  station: string;
+  par_qty: number;
+  warn_qty: number;
+  available_qty: number;
+  sold_qty: number;
+  is_below_warn: boolean;
+}
+
+export interface PrepStation {
+  station: string;
+  par_qty: number;
+  items: PrepStationItem[];
 }

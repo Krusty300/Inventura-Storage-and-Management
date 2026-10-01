@@ -103,15 +103,15 @@ function CartLine({
             <p className="text-xs text-faint">{product?.sku}</p>
           </div>
         </div>
-        <button type="button" onClick={onRemove} disabled={disabled} className="p-1 text-faint hover:text-red-600 dark:text-red-400 disabled:opacity-40" aria-label="Remove item">
-          <Trash2 size={15} />
+        <button type="button" onClick={onRemove} disabled={disabled} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40" aria-label="Remove item">
+          <Trash2 size={16} />
         </button>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center rounded-lg border border-border overflow-hidden shrink-0">
-          <button type="button" onClick={() => onChange("quantity", String(Math.max(1, (parseInt(item.quantity) || 1) - 1)))} disabled={disabled} className="p-1.5 text-muted hover:bg-app disabled:opacity-40" aria-label="Decrease quantity">
-            <Minus size={14} />
+          <button type="button" onClick={() => onChange("quantity", String(Math.max(1, (parseInt(item.quantity) || 1) - 1)))} disabled={disabled} className="h-9 w-9 inline-flex items-center justify-center text-muted hover:bg-app disabled:opacity-40" aria-label="Decrease quantity">
+            <Minus size={16} />
           </button>
           <input
             type="number"
@@ -122,8 +122,8 @@ function CartLine({
             disabled={disabled}
             aria-label={`Quantity for ${product?.display_name || item.product_id}`}
           />
-          <button type="button" onClick={() => onChange("quantity", String((parseInt(item.quantity) || 0) + 1))} disabled={disabled} className="p-1.5 text-muted hover:bg-app disabled:opacity-40" aria-label="Increase quantity">
-            <Plus size={14} />
+          <button type="button" onClick={() => onChange("quantity", String((parseInt(item.quantity) || 0) + 1))} disabled={disabled} className="h-9 w-9 inline-flex items-center justify-center text-muted hover:bg-app disabled:opacity-40" aria-label="Increase quantity">
+            <Plus size={16} />
           </button>
         </div>
         <label className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-muted">
@@ -782,15 +782,12 @@ export default function SaleForm({ onClose, onSaved }: Props) {
     setStkBilling(true);
     setStkError("");
     try {
-      const { data } = await api.post("/daraja/stk-push", {
+      // The server derives the amount and records the checkout id, so the
+      // prompt cannot be for a different figure than the sale.
+      const { data } = await api.post(`/sales/${completedSale.id}/stk-push`, {
         phone: paymentPhone.trim(),
-        amount: completedSale.total_amount,
-        reference: completedSale.invoice_number,
-        description: `Payment for ${completedSale.invoice_number}`,
-        account_ref: completedSale.invoice_number,
       });
       if (data.success) {
-        api.put(`/sales/${completedSale.id}/checkout-id`, { checkout_request_id: data.checkout_request_id }).catch(() => {});
         setStkSent(true);
         addToast("STK Push sent — awaiting customer confirmation", "success");
       } else {

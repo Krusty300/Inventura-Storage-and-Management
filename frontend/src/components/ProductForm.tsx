@@ -485,8 +485,8 @@ export default function ProductForm({ product, parent, onClose, onSaved }: Props
                 {imagePreviews.map((src, i) => (
                   <div key={i} className="relative group">
                     <img src={src} alt="" className="w-16 h-16 rounded object-cover border border-border" />
-                    <button type="button" onClick={() => removeImage(i)} className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove image">
-                      <X size={12} />
+                    <button type="button" onClick={() => removeImage(i)} className="absolute -top-1.5 -right-1.5 h-7 w-7 inline-flex items-center justify-center rounded-full bg-red-500 text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" aria-label="Remove image">
+                      <X size={14} />
                     </button>
                   </div>
                 ))}

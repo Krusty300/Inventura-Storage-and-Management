@@ -180,8 +180,10 @@ export default function RestaurantTickets() {
               variant="table"
               icon={<UtensilsCrossed size={48} />}
               title={debouncedSearch || status ? "No matching tickets" : "No tickets yet"}
-              message={debouncedSearch || status ? "Try a different search or status filter." : "Open a ticket from the floor map or a takeaway order."}
-            />
+          message={debouncedSearch || status ? "Try a different search or status filter." : "Open a ticket from the floor map or a takeaway order."}
+          actionLabel={debouncedSearch || status ? "Clear filters" : undefined}
+          onAction={debouncedSearch || status ? () => { setSearch(""); setStatus(""); } : undefined}
+        />
           }
         >
           {tickets.map((t) => (

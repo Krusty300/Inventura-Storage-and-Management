@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import RestaurantKitchen from "../pages/restaurant/RestaurantKitchen";
@@ -165,13 +165,31 @@ describe("RestaurantKitchen", () => {
     await waitFor(() => expect(screen.queryByText("T-0001")).not.toBeInTheDocument());
     expect(screen.getByText("T-0002")).toBeInTheDocument();
     expect(screen.getByText("T-0003")).toBeInTheDocument();
-    expect(within(stageColumn("Queued")).getByText("No tickets")).toBeInTheDocument();
+    expect(within(stageColumn("Queued")).getByText("Nothing waiting to be started")).toBeInTheDocument();
   });
 
   it("shows the empty state when the kitchen has no tickets", async () => {
     getMock.mockResolvedValue({ data: [] });
     renderKitchen();
-    expect(await screen.findByText("Nothing in the kitchen")).toBeInTheDocument();
+    expect(await screen.findByText("All caught up")).toBeInTheDocument();
+  });
+
+  it("explains an empty zone filter instead of an empty kitchen", async () => {
+    renderKitchen();
+    await screen.findByText("T-0001");
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Filter by zone" }));
+    fireEvent.click(screen.getByRole("option", { name: "Bar" }));
+    await waitFor(() => expect(screen.queryByText("T-0001")).not.toBeInTheDocument());
+
+    // The last Bar ticket is served over realtime, leaving the filter with nothing to show.
+    getMock.mockResolvedValue({ data: [] });
+    const onRealtime = (subscribe.mock.calls as unknown as unknown[][])[0]?.[0] as (msg: { entity: string }) => void;
+    act(() => onRealtime({ entity: "restaurant_ticket" }));
+
+    expect(await screen.findByText("No tickets in Bar")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(await screen.findByText("All caught up")).toBeInTheDocument();
   });
 
   it("reprints a single item through the item-scoped kitchen ticket", async () => {

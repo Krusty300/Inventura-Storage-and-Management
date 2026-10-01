@@ -225,8 +225,18 @@ export default function RestaurantReservations() {
               icon={<CalendarClock size={48} />}
               title={search || date || status ? "No matching reservations" : "No reservations yet"}
               message={search || date || status ? "Try adjusting the filters." : "Book a table for a guest to see it here."}
-              actionLabel={can("restaurant.create") && !status && !date && !search ? "New Reservation" : undefined}
-              onAction={() => { setEditing(null); setShowForm(true); }}
+              actionLabel={
+                search || date || status
+                  ? "Clear filters"
+                  : can("restaurant.create")
+                    ? "New Reservation"
+                    : undefined
+              }
+              onAction={
+                search || date || status
+                  ? () => { setSearch(""); setDate(""); setStatus(""); }
+                  : () => { setEditing(null); setShowForm(true); }
+              }
             />
           }
         >

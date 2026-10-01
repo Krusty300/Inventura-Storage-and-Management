@@ -391,21 +391,21 @@ export default function Users() {
                     </div>
                   ) : (
                     <div className="flex gap-2 items-center">
-                      <button onClick={() => setViewing(u)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${u.username}`}><Eye size={16} /></button>
+                      <button onClick={() => setViewing(u)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-primary dark:hover:text-primary" aria-label={`View ${u.username}`}><Eye size={16} /></button>
                       {!u.is_active && can("users.update") && (
-                        <button onClick={() => setReactivating(u)} className="p-1 text-faint hover:text-green-600 dark:text-green-400" aria-label={`Reactivate ${u.username}`}><UserCheck size={16} /></button>
+                        <button onClick={() => setReactivating(u)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-green-600 dark:hover:text-green-400" aria-label={`Reactivate ${u.username}`}><UserCheck size={16} /></button>
                       )}
                       {u.is_active && can("users.update") && (
-                        <button onClick={() => setResetting(u)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Reset password for ${u.username}`}><KeyRound size={16} /></button>
+                        <button onClick={() => setResetting(u)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-primary dark:hover:text-primary" aria-label={`Reset password for ${u.username}`}><KeyRound size={16} /></button>
                       )}
                       {u.is_active && can("users.delete") && (!user || u.id !== user.id) && (
-                        <button onClick={() => setDeleting(u)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Deactivate ${u.username}`}><Trash2 size={16} /></button>
+                        <button onClick={() => setDeleting(u)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400" aria-label={`Deactivate ${u.username}`}><Trash2 size={16} /></button>
                       )}
                       {u.is_active && can("users.update") && (!user || u.id !== user.id) && (
-                        <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="text-xs text-primary dark:text-primary hover:text-primary-strong dark:text-primary">Edit</button>
+                        <button onClick={() => { setEditingId(u.id); setEditRole(u.role); }} className="h-8 px-2 inline-flex items-center justify-center rounded-md text-xs text-primary dark:text-primary hover:text-primary-strong dark:hover:text-primary">Edit</button>
                       )}
                       {u.is_active && u.role !== "admin" && u.role !== "supplier" && u.role !== "customer" && can("users.update") && (!user || u.id !== user.id) && (
-                        <button onClick={() => setEditingPermissions(u)} className="p-1 text-faint hover:text-primary dark:text-primary" title="Manage permissions" aria-label={`Manage permissions for ${u.username}`}><ShieldCheck size={16} /></button>
+                        <button onClick={() => setEditingPermissions(u)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-primary dark:hover:text-primary" title="Manage permissions" aria-label={`Manage permissions for ${u.username}`}><ShieldCheck size={16} /></button>
                       )}
                     </div>
                   )}

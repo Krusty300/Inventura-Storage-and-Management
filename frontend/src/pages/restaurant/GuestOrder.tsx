@@ -168,9 +168,9 @@ function ModifierSheet({ product, onClose, onAdd }: {
         <div className="flex items-center gap-4">
           <span className="text-sm text-muted">Quantity</span>
           <div className="flex items-center gap-1">
-            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="p-1.5 rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle" aria-label="Decrease quantity"><Minus size={14} /></button>
+            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle" aria-label="Decrease quantity"><Minus size={18} /></button>
             <span className="w-10 text-center text-sm font-medium text-ink">{quantity}</span>
-            <button onClick={() => setQuantity(Math.min(99, quantity + 1))} className="p-1.5 rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle" aria-label="Increase quantity"><Plus size={14} /></button>
+            <button onClick={() => setQuantity(Math.min(99, quantity + 1))} className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle" aria-label="Increase quantity"><Plus size={18} /></button>
           </div>
         </div>
 
@@ -460,10 +460,10 @@ export default function GuestOrder() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => setLineQty(l.key, -1)} className="p-1 rounded-md border border-border text-muted hover:text-ink" aria-label="Decrease"><Minus size={13} /></button>
-                    <span className="w-6 text-center text-sm">{l.quantity}</span>
-                    <button onClick={() => setLineQty(l.key, 1)} className="p-1 rounded-md border border-border text-muted hover:text-ink" aria-label="Increase"><Plus size={13} /></button>
-                    <button onClick={() => removeLine(l.key)} className="p-1 rounded-md text-faint hover:text-red-600" aria-label="Remove"><Trash2 size={13} /></button>
+                    <button onClick={() => setLineQty(l.key, -1)} className="h-10 w-10 inline-flex items-center justify-center rounded-md border border-border text-muted hover:text-ink" aria-label="Decrease"><Minus size={16} /></button>
+                    <span className="w-7 text-center text-sm">{l.quantity}</span>
+                    <button onClick={() => setLineQty(l.key, 1)} className="h-10 w-10 inline-flex items-center justify-center rounded-md border border-border text-muted hover:text-ink" aria-label="Increase"><Plus size={16} /></button>
+                    <button onClick={() => removeLine(l.key)} className="h-10 w-10 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600" aria-label="Remove"><Trash2 size={16} /></button>
                   </div>
                 </li>
               ))}
@@ -484,9 +484,9 @@ export default function GuestOrder() {
               <label className="block mt-3">
                 <span className="text-xs font-medium text-muted">People at your table</span>
                 <div className="flex items-center gap-2 mt-1">
-                  <button onClick={() => setGuestCount(Math.max(1, guestCount - 1))} className="p-1.5 rounded-lg border border-border text-muted hover:text-ink" aria-label="Fewer people"><Minus size={14} /></button>
-                  <span className="w-8 text-center font-medium text-ink">{guestCount}</span>
-                  <button onClick={() => setGuestCount(Math.min(99, guestCount + 1))} className="p-1.5 rounded-lg border border-border text-muted hover:text-ink" aria-label="More people"><Plus size={14} /></button>
+                  <button onClick={() => setGuestCount(Math.max(1, guestCount - 1))} className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink" aria-label="Fewer people"><Minus size={16} /></button>
+                  <span className="w-9 text-center font-medium text-ink">{guestCount}</span>
+                  <button onClick={() => setGuestCount(Math.min(99, guestCount + 1))} className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink" aria-label="More people"><Plus size={16} /></button>
                 </div>
               </label>
             </>

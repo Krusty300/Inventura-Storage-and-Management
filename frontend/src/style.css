@@ -523,3 +523,17 @@ button:disabled {
 .prose table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
 .prose th, .prose td { border: 1px solid var(--t-border); padding: 0.375rem 0.75rem; text-align: left; font-size: 0.8125rem; }
 .prose th { background: var(--t-subtle); font-weight: 600; }
+
+/* Mobile ergonomics: iOS Safari zooms the viewport on focus for any field
+   under 16px, and small screens need wider gutters than 24px per side.
+   Kept unlayered so it wins over per-page `text-xs` / `p-6` utilities. */
+@media (max-width: 640px) {
+  .input,
+  .select {
+    font-size: 1rem;
+    min-height: 2.25rem;
+  }
+  .card {
+    padding: 1rem;
+  }
+}

@@ -12,6 +12,8 @@ const HOVER_CARD_HEIGHT = 320;
 export default function HoverCard({ children, render, width = 320 }: HoverCardProps) {
   const [hover, setHover] = useState<{ left: number; top: number } | null>(null);
   const hideTimer = useRef<number | null>(null);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hover) return;
@@ -24,6 +26,25 @@ export default function HoverCard({ children, render, width = 320 }: HoverCardPr
     };
   }, [hover]);
 
+  // Touch and keyboard have no hover, so dismiss on the next tap elsewhere or Escape.
+  useEffect(() => {
+    if (!hover) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (cardRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      setHover(null);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setHover(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [hover]);
+
   useEffect(
     () => () => {
       if (hideTimer.current != null) window.clearTimeout(hideTimer.current);
@@ -33,12 +54,12 @@ export default function HoverCard({ children, render, width = 320 }: HoverCardPr
 
   const close = () => setHover(null);
 
-  const show = (e: React.MouseEvent) => {
+  const showAt = (el: HTMLElement) => {
     if (hideTimer.current != null) {
       window.clearTimeout(hideTimer.current);
       hideTimer.current = null;
     }
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const left = Math.max(8, Math.min(rect.left, vw - width - 8));
@@ -47,6 +68,16 @@ export default function HoverCard({ children, render, width = 320 }: HoverCardPr
       left,
       top: roomBelow ? rect.bottom + 8 : Math.max(8, rect.top - HOVER_CARD_HEIGHT - 8),
     });
+  };
+
+  const show = (e: React.MouseEvent) => showAt(e.currentTarget as HTMLElement);
+
+  const toggle = () => {
+    if (hover) {
+      close();
+      return;
+    }
+    if (triggerRef.current) showAt(triggerRef.current);
   };
 
   const hide = () => {
@@ -72,12 +103,19 @@ export default function HoverCard({ children, render, width = 320 }: HoverCardPr
 
   return (
     <>
-      <span className="inline-flex" onMouseEnter={show} onMouseLeave={scheduleHide}>
+      <span
+        ref={triggerRef}
+        className="inline-flex"
+        onMouseEnter={show}
+        onMouseLeave={scheduleHide}
+        onClick={toggle}
+      >
         {children}
       </span>
       {hover &&
         createPortal(
           <div
+            ref={cardRef}
             role="tooltip"
             onMouseEnter={cancelHide}
             onMouseLeave={hide}

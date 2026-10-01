@@ -205,11 +205,11 @@ export default function NotificationBell() {
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={(e) => dismiss(e, n)}
-                          className="p-1 rounded text-faint hover:text-red-600 hover:bg-subtle"
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 hover:bg-subtle"
                           aria-label={`Dismiss ${n.title}`}
                           title="Dismiss"
                         >
-                          <X size={14} />
+                          <X size={16} />
                         </button>
                         {!n.is_read && <span className="w-2 h-2 bg-primary rounded-full" />}
                       </div>

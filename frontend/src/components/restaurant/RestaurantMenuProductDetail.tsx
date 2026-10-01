@@ -1,11 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
-import { Package, Tag } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChefHat, Package, Tag } from "lucide-react";
 import api from "../../api/client";
 import type { MenuItem, MenuModifierGroup, Product } from "../../types";
 import RestaurantSlideOver from "./RestaurantSlideOver";
 import ImageCarousel from "../ImageCarousel";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import { useSettings } from "../../hooks/useSettings";
 import { formatCurrency } from "../../utils/currency";
+import { errorMessage } from "../../utils/errors";
 
 interface Props {
   menuItem: MenuItem | null;
@@ -13,13 +17,39 @@ interface Props {
 }
 
 export default function RestaurantMenuProductDetail({ menuItem, onClose }: Props) {
+  const { can } = useAuth();
+  const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
+  const [station, setStation] = useState("");
+  const [par, setPar] = useState("0");
+  const [warn, setWarn] = useState("0");
 
   const { data: product } = useQuery({
     queryKey: ["product-detail", menuItem?.id],
     queryFn: async () => menuItem ? (await api.get(`/products/${menuItem.id}`)).data as Product : null,
     enabled: !!menuItem,
+  });
+
+  useEffect(() => {
+    if (!product) return;
+    setStation(product.prep_station ?? "");
+    setPar(String(product.par_qty ?? 0));
+    setWarn(String(product.warn_qty ?? 0));
+  }, [product]);
+
+  const savePrep = useMutation({
+    mutationFn: async () => (await api.put(`/restaurant/prep/menu-items/${menuItem!.id}`, {
+      prep_station: station.trim() || null,
+      par_qty: Number(par) || 0,
+      warn_qty: Number(warn) || 0,
+    })).data,
+    onSuccess: () => {
+      addToast("Prep levels updated", "success");
+      queryClient.invalidateQueries({ queryKey: ["restaurant-prep-stations"] });
+    },
+    onError: (err: unknown) => addToast(errorMessage(err, "Cannot update prep levels"), "error"),
   });
 
   const { data: groups } = useQuery({
@@ -68,6 +98,67 @@ export default function RestaurantMenuProductDetail({ menuItem, onClose }: Props
             <p className="text-sm text-muted whitespace-pre-wrap">{menuItem.description}</p>
           </div>
         )}
+
+        <div>
+          <h3 className="text-sm font-semibold text-ink mb-2 flex items-center gap-1.5">
+            <ChefHat size={14} /> Prep
+          </h3>
+          {can("restaurant.prep") ? (
+            <div className="card p-4 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block">
+                  <span className="text-xs text-muted">Station</span>
+                  <input
+                    className="input mt-1"
+                    value={station}
+                    maxLength={60}
+                    onChange={(e) => setStation(e.target.value)}
+                    placeholder="Not tracked"
+                    aria-label="Prep station"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-muted">Par</span>
+                  <input
+                    className="input mt-1"
+                    type="number"
+                    min={0}
+                    value={par}
+                    onChange={(e) => setPar(e.target.value)}
+                    aria-label="Par level"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-muted">Warn at</span>
+                  <input
+                    className="input mt-1"
+                    type="number"
+                    min={0}
+                    value={warn}
+                    onChange={(e) => setWarn(e.target.value)}
+                    aria-label="Warn level"
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-faint">
+                Dishes on a station are counted on the Prep page; clearing the station takes this dish off prep tracking.
+              </p>
+              <button
+                className="btn-primary text-sm"
+                disabled={savePrep.isPending || Number(warn) > Number(par)}
+                onClick={() => savePrep.mutate()}
+              >
+                {savePrep.isPending ? "Saving…" : "Save prep levels"}
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-muted">
+              {product?.prep_station
+                ? `Prepped at ${product.prep_station} (par ${product.par_qty ?? 0}, warn ${product.warn_qty ?? 0}).`
+                : "Not on a prep station."}
+            </p>
+          )}
+        </div>
 
         {(groups ?? []).length > 0 && (
           <div>

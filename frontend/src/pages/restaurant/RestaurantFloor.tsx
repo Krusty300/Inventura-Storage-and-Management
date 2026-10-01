@@ -257,9 +257,9 @@ export default function RestaurantFloor() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {(tables ?? []).length > 0 && (
-            <div className="flex rounded-lg overflow-hidden border border-border-strong" role="group" aria-label="Floor view">
+            <div className="flex rounded-lg overflow-hidden border border-border-strong shrink-0" role="group" aria-label="Floor view">
               <button
                 onClick={() => setView("grid")}
                 className={`px-3 py-1.5 text-sm font-medium ${view === "grid" ? "bg-app text-ink" : "hover:bg-app text-muted"}`}
@@ -347,8 +347,8 @@ export default function RestaurantFloor() {
           />
         </div>
       ) : currentlyPlan ? (
-        <div className="card overflow-hidden p-4">
-          <div className="flex items-center justify-between mb-3">
+        <div className="card p-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
             <p className="text-sm text-muted flex items-center gap-1.5">
               <Move size={14} className="text-faint" />
               {can("restaurant.update")
@@ -359,6 +359,7 @@ export default function RestaurantFloor() {
             </p>
             <span className="text-xs text-faint">Positions are saved automatically</span>
           </div>
+          <div className="overflow-x-auto sa-viewport-contain">
           <div
             ref={planRef}
             className="relative rounded-xl border border-border-strong/60 bg-app/50"
@@ -404,7 +405,7 @@ export default function RestaurantFloor() {
                       {can("restaurant.update") && (
                         <button
                           onClick={(e) => { e.stopPropagation(); clearService.mutate(t.id); }}
-                          className="text-xs text-primary hover:text-primary-strong underline"
+                          className="text-xs text-primary hover:text-primary-strong underline inline-flex items-center min-h-6 px-1 -mx-1 rounded"
                           aria-label={`Clear service request for table ${t.number}`}
                         >
                           Clear
@@ -427,6 +428,25 @@ export default function RestaurantFloor() {
               );
             })}
           </div>
+          </div>
+        </div>
+      ) : renderedTables.length === 0 ? (
+        <div className="card p-6">
+          <EmptyState
+            variant="table"
+            icon={<LayoutGrid size={48} />}
+            title={onlyMine ? "No tables assigned to you" : `No tables in ${zoneFilter}`}
+            message={
+              onlyMine
+                ? "None of the open tables have a ticket under your name. Clear the filter to see every table."
+                : "Nothing in this zone. Clear the zone filter to see every table."
+            }
+            actionLabel="Clear filters"
+            onAction={() => {
+              setZoneFilter("");
+              setOnlyMine(false);
+            }}
+          />
         </div>
       ) : (
         [...byZone.entries()].map(([zone, zoneTables]) => (

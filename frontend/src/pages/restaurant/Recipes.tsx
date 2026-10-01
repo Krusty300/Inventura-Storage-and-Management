@@ -218,7 +218,7 @@ export default function Recipes() {
               ) : isError ? (
                 <ErrorState onRetry={refresh} />
               ) : rows.length === 0 ? (
-                <EmptyState icon={<ChefHat size={48} />} title={search ? "No matching items" : "No menu items yet"} message={search ? `Nothing matched "${search}".` : "Add menu items to track their recipe costs."} />
+                <EmptyState icon={<ChefHat size={48} />} title={search ? "No matching items" : "No menu items yet"} message={search ? `Nothing matched "${search}".` : "Add menu items to track their recipe costs."} actionLabel={search ? "Clear search" : undefined} onAction={search ? () => setSearch("") : undefined} />
               ) : rows.map((r) => (
                 <tr key={r.product_id} className="hover:bg-app">
                   <td className="px-4 py-3 font-medium">

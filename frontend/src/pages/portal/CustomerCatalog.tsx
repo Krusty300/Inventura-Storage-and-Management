@@ -125,18 +125,18 @@ export default function CustomerCatalog() {
                           <div className="flex items-center gap-1">
                             <button
                               onClick={() => setQuantity(p.id, qty - 1)}
-                              className="p-1.5 rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
+                              className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
                               aria-label={`Decrease quantity of ${p.name}`}
                             >
-                              <Minus size={14} />
+                              <Minus size={16} />
                             </button>
                             <span className="w-8 text-center text-sm font-medium text-ink" aria-label="Quantity in cart">{qty}</span>
                             <button
                               onClick={() => { add(p, 1); }}
-                              className="p-1.5 rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
+                              className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
                               aria-label={`Increase quantity of ${p.name}`}
                             >
-                              <Plus size={14} />
+                              <Plus size={16} />
                             </button>
                           </div>
                           <button

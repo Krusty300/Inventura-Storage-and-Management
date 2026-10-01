@@ -12,6 +12,7 @@ import {
   ChevronRight,
   AArrowDown,
   AArrowUp,
+  X,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme, type ThemeMode } from "../context/ThemeContext";
@@ -152,10 +153,20 @@ export default function Layout() {
         ref={drawerRef}
         style={{ width: collapsed ? 0 : sidebarWidth }}
         aria-hidden={collapsed || undefined}
-        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-border max-w-[85vw] overflow-hidden transform transition-transform md:translate-x-0 md:static md:inset-auto md:max-w-none ${
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-sidebar border-r border-border max-w-[85vw] overflow-hidden transform transition-transform md:translate-x-0 md:static md:inset-auto md:max-w-[min(480px,50vw)] ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         } ${collapsed ? "md:border-r-0 md:invisible" : ""}`}
       >
+        <div className="md:hidden shrink-0 flex items-center justify-between gap-2 px-4 h-14 border-b border-border">
+          <span className="text-sm font-semibold text-ink">Navigation</span>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="h-10 w-10 -mr-2 inline-flex items-center justify-center rounded-md text-muted hover:text-ink hover:bg-subtle transition-colors"
+            aria-label="Close navigation"
+          >
+            <X size={20} />
+          </button>
+        </div>
         <ScrollArea as="nav" className="flex-1 min-h-0" viewportClassName="h-full p-4 space-y-1 sa-viewport-contain">
           {navGroups.map((group, gi) => {
             const visibleToRole = !group.roles || group.roles.includes(user?.role ?? "");
@@ -170,7 +181,7 @@ export default function Layout() {
                 )}
                 <button
                   onClick={() => toggleGroup(group.id)}
-                  className="w-full flex items-center gap-1 px-3 pt-2 pb-1 mt-1 text-[10px] font-semibold uppercase tracking-wider text-faint hover:text-muted transition-colors"
+                  className="w-full flex items-center gap-1 px-3 py-2 mt-1 text-[11px] font-semibold uppercase tracking-wider text-faint hover:text-muted transition-colors"
                   aria-expanded={!isGroupCollapsed}
                 >
                   <ChevronRight
@@ -259,9 +270,9 @@ export default function Layout() {
         className="flex-1 flex flex-col min-w-0"
         style={collapsed && !overlay ? { marginLeft: floatingWidth } : undefined}
       >
-        <header className="bg-surface border-b border-border px-6 py-3 flex items-center justify-between relative z-20">
+        <header className="bg-surface border-b border-border px-3 sm:px-6 py-3 flex items-center justify-between relative z-20">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="text-muted md:hidden" aria-label="Open navigation">
+            <button onClick={() => setSidebarOpen(true)} className="text-muted md:hidden -ml-1 p-2 rounded-md hover:bg-subtle transition-colors" aria-label="Open navigation">
               <Menu size={24} />
             </button>
             <button
@@ -274,7 +285,7 @@ export default function Layout() {
             </button>
             <div className="hidden md:block text-lg font-semibold text-ink">Inventura Storage</div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => window.dispatchEvent(new CustomEvent("open-command-palette"))}
               aria-label="Open command palette"
@@ -296,7 +307,7 @@ export default function Layout() {
                 aria-label="Decrease font size"
                 onClick={decrease}
                 disabled={!canDecrease}
-                className="p-1.5 rounded-md transition-colors text-faint hover:text-ink disabled:opacity-40 disabled:hover:text-faint disabled:cursor-default"
+                className="p-1 sm:p-1.5 rounded-md transition-colors text-faint hover:text-ink disabled:opacity-40 disabled:hover:text-faint disabled:cursor-default"
               >
                 <AArrowDown size={16} />
               </button>
@@ -304,7 +315,7 @@ export default function Layout() {
                 title="Reset font size"
                 aria-label="Reset font size"
                 onClick={reset}
-                className={`w-9 text-center text-xs font-semibold rounded-md transition-colors select-none ${
+                className={`w-7 sm:w-9 text-center text-xs font-semibold rounded-md transition-colors select-none ${
                   scale === 1 ? "text-primary" : "text-muted hover:text-ink"
                 }`}
               >
@@ -315,7 +326,7 @@ export default function Layout() {
                 aria-label="Increase font size"
                 onClick={increase}
                 disabled={!canIncrease}
-                className="p-1.5 rounded-md transition-colors text-faint hover:text-ink disabled:opacity-40 disabled:hover:text-faint disabled:cursor-default"
+                className="p-1 sm:p-1.5 rounded-md transition-colors text-faint hover:text-ink disabled:opacity-40 disabled:hover:text-faint disabled:cursor-default"
               >
                 <AArrowUp size={16} />
               </button>
@@ -331,7 +342,7 @@ export default function Layout() {
                   title={label}
                   aria-label={label}
                   onClick={() => setTheme(mode)}
-                  className={`p-1.5 rounded-md transition-colors ${
+                  className={`p-1 sm:p-1.5 rounded-md transition-colors ${
                     theme === mode
                       ? "bg-surface text-primary dark:text-primary shadow-sm"
                       : "text-faint hover:text-ink"

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   UtensilsCrossed, Search, Plus, Minus, Trash2, Send, ChefHat, CheckCheck,
-  StickyNote, Ban, Scissors,
+  StickyNote, Ban, Scissors, Info,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
@@ -38,6 +38,10 @@ const TICKET_BADGE: Record<string, string> = {
   cancelled: "badge-danger",
 };
 
+// Mirrors MAX_DISCOUNT_PERCENT in backend/app/routers/restaurant.py. The server
+// enforces the cap; this only keeps the form and its hint honest.
+const MAX_DISCOUNT_PERCENT = 50;
+
 export default function RestaurantTicketDetail() {
   const { id } = useParams<{ id: string }>();
   const ticketId = Number(id);
@@ -50,6 +54,7 @@ export default function RestaurantTicketDetail() {
   const symbol = settings?.currency_symbol ?? "$";
 
   const [menuSearch, setMenuSearch] = useState("");
+  const [activeSection, setActiveSection] = useState("all");
   const [showSettle, setShowSettle] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [editTicket, setEditTicket] = useState(false);
@@ -57,7 +62,27 @@ export default function RestaurantTicketDetail() {
   const [menuProductDetail, setMenuProductDetail] = useState<MenuItem | null>(null);
   const [voidItem, setVoidItem] = useState<RestaurantTicketItem | null>(null);
   const [showSplit, setShowSplit] = useState(false);
-  const { menu: menuBlocks = [] } = useMenuData(menuSearch);
+  const { menu: menuBlocks = [], sections: menuSections = [] } = useMenuData(menuSearch);
+
+  // An uncategorised block has a null id, so sections are keyed by id when there
+  // is one and by name otherwise; keying on id alone would make that block
+  // collide with the "all" selection.
+  const sectionKey = (block: { id: number | null; name: string }) =>
+    block.id != null ? `id-${block.id}` : `name-${block.name}`;
+
+  const visibleBlocks = useMemo(
+    () => (activeSection === "all"
+      ? menuBlocks
+      : menuBlocks.filter((b) => sectionKey(b) === activeSection)),
+    [menuBlocks, activeSection],
+  );
+
+  // A search can leave the selected section empty, which would show a blank
+  // pane with no obvious way back. Fall back to the full list when that happens.
+  useEffect(() => {
+    if (activeSection === "all") return;
+    if (!menuBlocks.some((b) => sectionKey(b) === activeSection)) setActiveSection("all");
+  }, [menuBlocks, activeSection]);
 
   useEffect(() => {
     const unsub = subscribe((msg) => {
@@ -194,6 +219,17 @@ export default function RestaurantTicketDetail() {
   const pendingItems = (ticket?.items ?? []).filter((i) => i.status === "pending");
   const canEdit = ticket && !["settled", "cancelled", "paying"].includes(ticket.status);
 
+  // How many of each dish is already on the open ticket, so a tile can show
+  // that at a glance and a waiter can see the running order while browsing.
+  const orderCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const item of pendingItems) {
+      counts.set(item.product_id, (counts.get(item.product_id) ?? 0) + item.quantity);
+    }
+    return counts;
+  }, [pendingItems]);
+  const pendingCount = pendingItems.reduce((sum, i) => sum + i.quantity, 0);
+
   const printPdf = async (path: string) => {
     try {
       const { data } = await api.get(path, { responseType: "blob" });
@@ -239,150 +275,192 @@ export default function RestaurantTicketDetail() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/bill`)} className="btn-secondary" aria-label={`Print bill for ${ticket.ticket_number}`}>
-            Bill
+            Print Bill
           </button>
           {can("restaurant.kitchen") && (
             <button onClick={() => printPdf(`/restaurant/tickets/${ticketId}/kitchen`)} className="btn-secondary" aria-label={`Print kitchen ticket for ${ticket.ticket_number}`}>
-              Kitchen
+              Print Kitchen
             </button>
           )}
           {canEdit && can("restaurant.update") && (
             <>
               <button onClick={() => setShowSplit(true)} className="btn-secondary" aria-label={`Split ${ticket.ticket_number}`}>
-                Split
+                Split Bill
               </button>
               <button onClick={() => setEditTicket(true)} className="btn-secondary" aria-label={`Edit ${ticket.ticket_number}`}>
-                Edit
+                Edit Ticket
               </button>
               <button onClick={() => { setConfirmCancel(true); }} className="btn-secondary" aria-label={`Cancel ${ticket.ticket_number}`}>
-                Cancel
+                Cancel Ticket
               </button>
             </>
           )}
           {canEdit && can("restaurant.settle") && (
             <button onClick={() => setShowSettle(true)} className="btn-primary">
-              Settle · {formatCurrency(ticket.total_amount, symbol)}
+              Pay : {formatCurrency(ticket.total_amount, symbol)}
             </button>
           )}
         </div>
       </div>
 
       {canEdit && ticket.status === "open" && (
-        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-          <section className="card p-5">
-            <div className="relative max-w-md mb-4">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-              <input
-                className="input pl-10"
-                placeholder="Search the menu..."
-                value={menuSearch}
-                onChange={(e) => setMenuSearch(e.target.value)}
-                aria-label="Search menu"
-              />
-            </div>
-            <div className="mb-4">
+        <div className="grid gap-6 lg:grid-cols-[1fr_400px] items-start">
+          <section className="card p-0 overflow-hidden flex flex-col min-w-0" aria-label="Menu">
+            <div className="p-4 border-b border-border space-y-3">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
+                <input
+                  className="input pl-10"
+                  placeholder="Search the menu..."
+                  value={menuSearch}
+                  onChange={(e) => { setMenuSearch(e.target.value); setActiveSection("all"); }}
+                  aria-label="Search menu"
+                />
+              </div>
               <BarcodeScanner onProductFound={onBarcode} placeholder="Scan barcode..." />
             </div>
-            {menuProducts.length === 0 ? (
-              <EmptyState
-                variant="block"
-                icon={<ChefHat size={48} />}
-                title={menuSearch.trim() ? "No menu items found" : "No menu items yet"}
-                message={menuSearch.trim() ? "Try a different search." : "Mark products as menu items in the product form so they appear here."}
-              />
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {menuProducts.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => { setModifierProduct(p); }}
-                    className="card p-3 text-left hover:bg-app transition flex items-center gap-3 cursor-pointer"
-                  >
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setMenuProductDetail(p); }}
-                      className="shrink-0 rounded-lg overflow-hidden bg-app focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      aria-label={`View ${p.display_name} details`}
-                    >
-                      <img
-                        src={p.image || p.image_url || getPlaceholder()}
-                        alt=""
-                        className="w-12 h-12 object-cover"
-                        loading="lazy"
-                        decoding="async"
-                        onError={onImageError}
-                      />
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-ink truncate">{p.display_name}</div>
-                      <div className="text-xs text-muted mt-0.5">{formatCurrency(p.unit_price, symbol)}</div>
-                    </div>
-                    <span className="p-2 rounded-lg bg-primary-soft text-primary-strong dark:text-primary shrink-0">
-                      <Plus size={16} />
-                    </span>
-                  </div>
-                ))}
+
+            {menuSections.length > 1 && (
+              <div className="px-4 py-3 border-b border-border overflow-x-auto">
+                <div className="flex items-center gap-2 w-max" role="tablist" aria-label="Menu sections">
+                  <SectionPill
+                    label="All"
+                    count={menuBlocks.reduce((sum, b) => sum + b.items.length, 0)}
+                    active={activeSection === "all"}
+                    onClick={() => setActiveSection("all")}
+                  />
+                  {menuSections.map((s) => (
+                    <SectionPill
+                      key={sectionKey(s)}
+                      label={s.name}
+                      count={s.items.length}
+                      active={activeSection === sectionKey(s)}
+                      onClick={() => setActiveSection(sectionKey(s))}
+                    />
+                  ))}
+                </div>
               </div>
             )}
+
+            <div className="p-4 overflow-y-auto max-h-[calc(100vh-20rem)]">
+              {visibleBlocks.length === 0 ? (
+                <EmptyState
+                  variant="block"
+                  icon={<ChefHat size={48} />}
+                  title={menuSearch.trim() ? "No menu items found" : "No menu items yet"}
+                  message={menuSearch.trim() ? "Try a different search." : "Mark products as menu items in the product form so they appear here."}
+                />
+              ) : activeSection === "all" && visibleBlocks.length > 1 ? (
+                <div className="space-y-5">
+                  {visibleBlocks.map((block) => (
+                    <div key={sectionKey(block)}>
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{block.name}</h3>
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-4">
+                        {block.items.map((p) => (
+                          <ProductTile
+                            key={p.id}
+                            product={p}
+                            symbol={symbol}
+                            inOrder={orderCounts.get(p.id) ?? 0}
+                            onAdd={() => setModifierProduct(p)}
+                            onDetail={() => setMenuProductDetail(p)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-4">
+                  {visibleBlocks.flatMap((block) => block.items).map((p) => (
+                    <ProductTile
+                      key={p.id}
+                      product={p}
+                      symbol={symbol}
+                      inOrder={orderCounts.get(p.id) ?? 0}
+                      onAdd={() => setModifierProduct(p)}
+                      onDetail={() => setMenuProductDetail(p)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
 
-          <section className="card p-5 flex flex-col gap-4">
-            <h2 className="font-semibold text-ink">Order</h2>
+          <section className="card p-5 flex flex-col gap-4 lg:sticky lg:top-4" aria-label="Ticket order">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-semibold text-ink">Ticket Order</h2>
+              {pendingItems.length > 0 && (
+                <span className="badge badge-neutral tabular-nums">
+                  {`${pendingCount} item${pendingCount === 1 ? "" : "s"}`}
+                </span>
+              )}
+            </div>
             {pendingItems.length === 0 ? (
               <EmptyState compact icon={<Plus size={20} />} title="No items yet" message="Tap menu items to build this order." />
             ) : (
-              <ul className="divide-y divide-border">
+              <ul className="divide-y divide-border overflow-y-auto max-h-[calc(100vh-26rem)] -mx-1 px-1">
                 {pendingItems.map((item) => (
-                  <li key={item.id} className="py-3 flex items-center justify-between gap-3">
+                  <li key={item.id} className="py-3 flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 min-w-0">
                       <img
                         src={item.product_image || getPlaceholder()}
                         alt=""
-                        className="h-10 w-10 shrink-0 rounded-lg object-cover bg-app"
+                        className="h-14 w-14 shrink-0 rounded-lg object-cover bg-app border border-border"
                         loading="lazy"
                         decoding="async"
                         onError={onImageError}
                       />
                       <div className="min-w-0">
                         <div className="font-medium text-ink">{item.product_name}</div>
+                        {item.sku && <div className="text-xs text-faint mt-0.5">SKU {item.sku}</div>}
                         {item.modifiers?.length ? (
                           <div className="text-xs text-muted mt-0.5">{item.modifiers.map((m) => `+${m.name}`).join(" · ")}</div>
                         ) : null}
-                        <div className="text-xs text-muted mt-0.5">{formatCurrency(item.unit_price, symbol)} each</div>
+                        <div className="text-xs text-muted mt-0.5">
+                          {formatCurrency(item.unit_price, symbol)} × {item.quantity} ={" "}
+                          <span className="font-semibold text-ink tabular-nums">
+                            {formatCurrency(item.line_total ?? item.unit_price * item.quantity, symbol)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     {can("restaurant.update") ? (
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => updateItem.mutate({ itemId: item.id, quantity: item.quantity - 1 })} disabled={item.quantity <= 1} className="p-1 rounded-md bg-app text-muted hover:text-ink disabled:opacity-40" aria-label={`Decrease ${item.product_name}`}>
-                          <Minus size={14} />
+                      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                        <button onClick={() => updateItem.mutate({ itemId: item.id, quantity: item.quantity - 1 })} disabled={item.quantity <= 1} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md bg-app text-muted hover:text-ink disabled:opacity-40" aria-label={`Decrease ${item.product_name}`}>
+                          <Minus size={16} />
                         </button>
-                        <span className="w-6 text-center tabular-nums">{item.quantity}</span>
-                        <button onClick={() => updateItem.mutate({ itemId: item.id, quantity: item.quantity + 1 })} className="p-1 rounded-md bg-app text-muted hover:text-ink" aria-label={`Increase ${item.product_name}`}>
-                          <Plus size={14} />
+                        <span className="w-7 text-center tabular-nums">{item.quantity}</span>
+                        <button onClick={() => updateItem.mutate({ itemId: item.id, quantity: item.quantity + 1 })} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md bg-app text-muted hover:text-ink" aria-label={`Increase ${item.product_name}`}>
+                          <Plus size={16} />
                         </button>
-                        <button onClick={() => removeItem.mutate(item.id)} className="p-1 rounded-md text-faint hover:text-red-600 dark:text-red-400" aria-label={`Remove ${item.product_name}`}>
-                          <Trash2 size={14} />
+                        <button onClick={() => removeItem.mutate(item.id)} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400" aria-label={`Remove ${item.product_name}`}>
+                          <Trash2 size={16} />
                         </button>
-                        <button onClick={() => setVoidItem(item)} className="p-1 rounded-md text-faint hover:text-red-600 dark:text-red-400" aria-label={`Void ${item.product_name}`}>
-                          <Ban size={14} />
+                        <button onClick={() => setVoidItem(item)} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400" aria-label={`Void ${item.product_name}`}>
+                          <Ban size={16} />
                         </button>
                       </div>
                     ) : (
-                      <span className="text-sm tabular-nums">×{item.quantity}</span>
+                      <span className="text-sm tabular-nums shrink-0">×{item.quantity}</span>
                     )}
                   </li>
                 ))}
               </ul>
             )}
-            <div className="mt-auto pt-2 space-y-1 text-sm border-t border-border">
+            <div className="mt-auto pt-3 space-y-1 text-sm border-t border-border">
               <div className="flex justify-between text-muted"><span>Subtotal</span><span className="tabular-nums">{formatCurrency(ticket.subtotal, symbol)}</span></div>
               {ticket.discount_amount > 0 && <div className="flex justify-between text-muted"><span>Discount</span><span className="tabular-nums">-{formatCurrency(ticket.discount_amount, symbol)}</span></div>}
               {ticket.tax_amount > 0 && <div className="flex justify-between text-muted"><span>Tax</span><span className="tabular-nums">{formatCurrency(ticket.tax_amount, symbol)}</span></div>}
               {ticket.tip_amount > 0 && <div className="flex justify-between text-muted"><span>Tip</span><span className="tabular-nums">{formatCurrency(ticket.tip_amount, symbol)}</span></div>}
-              <div className="flex justify-between font-semibold text-ink pt-1"><span>Total</span><span className="tabular-nums">{formatCurrency(ticket.total_amount, symbol)}</span></div>
+              <div className="flex justify-between items-baseline font-bold text-ink pt-1.5 mt-1 border-t border-border/60">
+                <span className="text-base">Total</span>
+                <span className="text-2xl tabular-nums">{formatCurrency(ticket.total_amount, symbol)}</span>
+              </div>
             </div>
             {can("restaurant.create") && pendingItems.length > 0 && (
-              <button onClick={() => sendToKitchen.mutate()} disabled={sendToKitchen.isPending} className="btn-primary w-full flex items-center justify-center gap-1.5">
-                <Send size={16} /> Send to Kitchen
+              <button onClick={() => sendToKitchen.mutate()} disabled={sendToKitchen.isPending} className="btn-primary w-full h-12 flex items-center justify-center gap-1.5">
+                <Send size={16} /> {sendToKitchen.isPending ? "Sending…" : "Send to Kitchen"}
               </button>
             )}
           </section>
@@ -409,7 +487,10 @@ export default function RestaurantTicketDetail() {
                   ) : null}
                   <div className="text-xs text-muted mt-0.5">×{item.quantity} · {formatCurrency(item.unit_price, symbol)}</div>
                   {item.status === "voided" && item.void_reason && (
-                    <div className="text-xs text-red-600 dark:text-red-400 mt-0.5">Voided: {item.void_reason}</div>
+                    <div className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                      Voided: {item.void_reason}
+                      {item.voided_by_username ? ` — ${item.voided_by_username}` : ""}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -421,8 +502,8 @@ export default function RestaurantTicketDetail() {
                         {item.status}
                       </span>
                       {canEdit && can("restaurant.update") && (
-                        <button onClick={() => setVoidItem(item)} className="p-1 rounded-md text-faint hover:text-red-600 dark:text-red-400" aria-label={`Void ${item.product_name}`}>
-                          <Ban size={14} />
+                        <button onClick={() => setVoidItem(item)} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400" aria-label={`Void ${item.product_name}`}>
+                          <Ban size={16} />
                         </button>
                       )}
                     </>
@@ -536,6 +617,108 @@ export default function RestaurantTicketDetail() {
   );
 }
 
+function SectionPill({ label, count, active, onClick }: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition ${
+        active
+          ? "bg-primary text-white"
+          : "bg-app text-muted hover:text-ink"
+      }`}
+    >
+      {label}
+      <span className={`text-xs tabular-nums ${active ? "text-white/80" : "text-faint"}`}>{count}</span>
+    </button>
+  );
+}
+
+/**
+ * Dish card for the POS pane. Mirrors the SaleForm product grid: photo first,
+ * then name, SKU and a bold price, so a server scanning the menu recognises
+ * dishes by sight instead of reading a list of names.
+ */
+function ProductTile({ product, symbol, inOrder, onAdd, onDetail }: {
+  product: MenuItem;
+  symbol: string;
+  inOrder: number;
+  onAdd: () => void;
+  onDetail: () => void;
+}) {
+  return (
+    <div
+      className={`relative flex flex-col overflow-hidden rounded-xl border bg-surface text-left transition-colors hover:border-primary hover:shadow-sm ${
+        product.available ? "border-border" : "border-border/60 opacity-70"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onAdd}
+        disabled={!product.available}
+        className="flex flex-1 flex-col p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-not-allowed"
+        aria-label={`Add ${product.display_name} to order`}
+      >
+        <div className="relative mb-2 h-28 w-full overflow-hidden rounded-lg bg-subtle">
+          <img
+            src={product.image || product.image_url || getPlaceholder()}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
+            onError={onImageError}
+          />
+          {inOrder > 0 && (
+            <span
+              className="absolute right-1.5 top-1.5 min-w-[1.5rem] rounded-full bg-primary px-1.5 py-0.5 text-center text-xs font-semibold text-white tabular-nums shadow-sm"
+              aria-label={`${inOrder} in order`}
+            >
+              {inOrder}
+            </span>
+          )}
+          {!product.available && (
+            <span className="absolute left-1.5 top-1.5 rounded-full bg-ink/80 px-1.5 py-0.5 text-[0.65rem] font-medium text-white">
+              Unavailable
+            </span>
+          )}
+        </div>
+        <p className="line-clamp-2 text-sm font-semibold text-ink">{product.display_name}</p>
+        {product.sku && <p className="mt-0.5 truncate text-xs text-faint">{product.sku}</p>}
+        <p className="mt-1.5 text-sm font-bold text-primary dark:text-primary tabular-nums">
+          {formatCurrency(product.unit_price, symbol)}
+        </p>
+      </button>
+
+      <div className="flex items-stretch border-t border-border">
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={!product.available}
+          className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary dark:hover:bg-primary/10 disabled:cursor-not-allowed"
+        >
+          <Plus size={16} />
+          Add
+        </button>
+        <button
+          type="button"
+          onClick={onDetail}
+          className="flex w-10 items-center justify-center border-l border-border text-muted transition-colors hover:bg-app hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          aria-label={`View ${product.display_name} details`}
+        >
+          <Info size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function useMenuData(search: string) {
   const { data: menu } = useQuery({
     queryKey: ["restaurant-menu"],
@@ -556,7 +739,9 @@ function useMenuData(search: string) {
       .filter((block) => block.items.length > 0);
   }, [menu, q]);
 
-  return { menu: filtered };
+  // `menu` (unfiltered) drives the category rail so a section can show how many
+  // items it holds, while `blocks` is what the search actually matched.
+  return { menu: filtered, sections: menu ?? [] };
 }
 
 function ModifierSlideOver({ product, symbol, isPending, onClose, onAdd }: {
@@ -628,48 +813,118 @@ function ModifierSlideOver({ product, symbol, isPending, onClose, onAdd }: {
       }
     >
       <div className="space-y-5">
-        <div className="text-sm text-muted">Base {symbol}{product.unit_price.toFixed(2)} per unit.</div>
+        <div className="flex gap-4">
+          <img
+            src={product.image || product.image_url || getPlaceholder()}
+            alt=""
+            className="h-28 w-28 sm:h-32 sm:w-32 shrink-0 rounded-xl object-cover bg-app border border-border"
+            loading="lazy"
+            decoding="async"
+            onError={onImageError}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-lg font-semibold text-ink">{product.display_name}</div>
+              <span className={`badge shrink-0 ${product.available ? "badge-success" : "badge-danger"}`}>
+                {product.available ? "Available" : "Out of stock"}
+              </span>
+            </div>
+            {product.sku && <div className="text-xs text-muted mt-1">SKU {product.sku}</div>}
+            <div className="text-sm text-ink font-semibold mt-1.5 tabular-nums">
+              {formatCurrency(product.unit_price, symbol)}{" "}
+              <span className="font-normal text-muted">per unit</span>
+            </div>
+            {product.description && (
+              <p className="text-sm text-muted mt-2 whitespace-pre-wrap line-clamp-4">{product.description}</p>
+            )}
+          </div>
+        </div>
         {isLoading ? (
           <div className="card p-4 animate-pulse h-16" />
         ) : groupList.length === 0 ? (
           <p className="text-sm text-muted">No modifiers for this item — add it straight away.</p>
         ) : (
-          groupList.map((g) => (
-            <div key={g.id}>
-              <div className="flex items-baseline justify-between gap-2 mb-2">
-                <span className="font-medium text-ink">
-                  {g.name}
-                  {g.is_required && <span className="text-xs text-red-600 dark:text-red-400 ml-1">required</span>}
-                </span>
-                <span className="text-xs text-muted">{chosen(g.id).length}/{g.max_select}{g.min_select > 0 && ` · min ${g.min_select}`}</span>
+          <>
+            <h3 className="text-sm font-semibold text-ink">Modifiers</h3>
+            {groupList.map((g) => (
+              <div key={g.id}>
+                <div className="flex items-baseline justify-between gap-2 mb-2">
+                  <span className="font-medium text-ink">
+                    {g.name}
+                    {g.is_required && <span className="text-xs text-red-600 dark:text-red-400 ml-1">required</span>}
+                  </span>
+                  <span className="text-xs text-muted">{chosen(g.id).length}/{g.max_select}{g.min_select > 0 && ` · min ${g.min_select}`}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {g.options.filter((o) => o.is_active).map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => toggle(g.id, o.id)}
+                      aria-pressed={chosen(g.id).includes(o.id)}
+                      className={`btn min-h-10 px-3 py-2 text-sm ${chosen(g.id).includes(o.id) ? "btn-primary" : "btn-secondary"}`}
+                    >
+                      {o.name} {o.price_delta !== 0 && (
+                        <span className="text-xs tabular-nums">
+                          ({o.price_delta > 0 ? "+" : "-"}{formatCurrency(Math.abs(o.price_delta), symbol)})
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {g.options.filter((o) => o.is_active).map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => toggle(g.id, o.id)}
-                    aria-pressed={chosen(g.id).includes(o.id)}
-                    className={`btn px-3 py-1.5 text-sm ${chosen(g.id).includes(o.id) ? "btn-primary" : "btn-secondary"}`}
-                  >
-                    {o.name} {o.price_delta !== 0 && <span className="text-xs tabular-nums">({o.price_delta > 0 ? "+" : "-"}{symbol}{Math.abs(o.price_delta).toFixed(2)})</span>}
-                  </button>
-                ))}
+            ))}
+          </>
+        )}
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-ink">Qty</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  disabled={quantity <= 1}
+                  className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle disabled:opacity-40 disabled:hover:bg-transparent"
+                  aria-label="Decrease quantity"
+                >
+                  <Minus size={16} />
+                </button>
+                <span className="w-10 text-center text-base font-semibold text-ink tabular-nums" aria-label="Quantity">{quantity}</span>
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.min(99, q + 1))}
+                  disabled={quantity >= 99}
+                  className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle disabled:opacity-40 disabled:hover:bg-transparent"
+                  aria-label="Increase quantity"
+                >
+                  <Plus size={16} />
+                </button>
               </div>
             </div>
-          ))
-        )}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <label htmlFor="mod-qty" className="text-sm text-muted">Qty</label>
-            <input id="mod-qty" className="input w-20" type="number" min={1} max={99} value={quantity} onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))} />
+            <div className="text-right">
+              <div className="text-xs text-muted">Line total</div>
+              <div className="text-lg font-semibold text-ink tabular-nums">{formatCurrency(lineTotal, symbol)}</div>
+            </div>
           </div>
-          <div className="text-right">
-            <div className="text-sm text-muted">Line total</div>
-            <div className="font-semibold text-ink tabular-nums">{symbol}{lineTotal.toFixed(2)}</div>
-          </div>
+          {extras !== 0 && (
+            <div className="text-xs text-muted border-t border-border pt-2 space-y-1">
+              <div className="flex justify-between gap-2">
+                <span>Base</span>
+                <span className="tabular-nums">{formatCurrency(product.unit_price, symbol)}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span>Modifiers</span>
+                <span className="tabular-nums">{extras > 0 ? "+" : "-"}{formatCurrency(Math.abs(extras), symbol)}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span>Unit price</span>
+                <span className="tabular-nums">{formatCurrency(unitPrice, symbol)}</span>
+              </div>
+            </div>
+          )}
         </div>
-      <label className="block text-sm font-medium text-ink mb-1" htmlFor="mod-notes">Note to kitchen (optional)</label>
+        <label className="block text-sm font-medium text-ink mb-1" htmlFor="mod-notes">Note to kitchen (optional)</label>
         <TextArea
           id="mod-notes"
           className="min-h-[64px]"
@@ -773,12 +1028,15 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [customerPhone, setCustomerPhone] = useState("");
   const [discount, setDiscount] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
   const [tip, setTip] = useState("");
   const [tendered, setTendered] = useState("");
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+  const { can } = useAuth();
   const { data: settings } = useSettings();
   const symbol = settings?.currency_symbol ?? "$";
+  const canDiscount = can("restaurant.discount");
 
   const lookupName = (ticket.customer_name || "").trim();
   const lookupPhone = (ticket.customer_phone || "").trim();
@@ -801,6 +1059,7 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
       setCustomerId(null);
       setCustomerPhone(ticket.customer_phone || "");
       setDiscount(ticket.discount_amount > 0 ? String(ticket.discount_amount) : "");
+      setDiscountReason("");
       setTip("");
       setTendered("");
     }
@@ -820,7 +1079,8 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
   }, [open, customerMatches, lookupName, lookupPhone]);
 
   const discountValue = parseFloat(discount) || 0;
-  const cappedDiscount = Math.min(discountValue, ticket.subtotal);
+  const maxDiscount = Math.round(ticket.subtotal * MAX_DISCOUNT_PERCENT) / 100;
+  const cappedDiscount = Math.min(discountValue, maxDiscount);
   const taxRate = settings?.tax_rate ?? 0;
   const taxable = Math.max(ticket.subtotal - cappedDiscount, 0);
   const total = Math.round((taxable + (taxable * taxRate) / 100) * 100) / 100;
@@ -828,13 +1088,23 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
   const due = total + tipValue;
   const tenderValue = parseFloat(tendered) || 0;
   const isCash = method === "cash";
+  // Daraja charges whole units, so show the figure that will actually be
+  // prompted rather than a total with stray cents.
+  const mpesaAmount = Math.round(due);
   const change = isCash && tenderValue >= due ? tenderValue - due : 0;
   const short = isCash && tenderValue > 0 && tenderValue < due ? due - tenderValue : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (discountValue > ticket.subtotal) {
-      addToast("Discount cannot exceed the ticket subtotal", "error");
+    if (discountValue > maxDiscount) {
+      addToast(
+        `Discount cannot exceed ${MAX_DISCOUNT_PERCENT}% of the subtotal (${formatCurrency(maxDiscount, symbol)})`,
+        "error",
+      );
+      return;
+    }
+    if (cappedDiscount > 0 && discountReason.trim().length < 3) {
+      addToast("A written reason is required for any discount", "error");
       return;
     }
     if (isCash && tenderValue < due) {
@@ -850,26 +1120,21 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
         payload.payment_provider = provider;
         payload.payment_phone = phone.trim();
       }
-      if (cappedDiscount > 0) payload.discount_amount = cappedDiscount;
+      if (cappedDiscount > 0) {
+        payload.discount_amount = cappedDiscount;
+        payload.discount_reason = discountReason.trim();
+      }
       if (tipValue > 0) payload.tip_amount = tipValue;
       const { data } = await api.post(`/restaurant/tickets/${ticket.id}/settle`, payload);
       const updated = data as RestaurantTicket;
       const methodLabel = paymentLabel(method, provider);
 
       if (updated.status === "paying" && method === "mobile_money" && phone.trim() && updated.sale_id) {
-        const stk = await api.post("/daraja/stk-push", {
-          phone: phone.trim(),
-          amount: Number(updated.total_amount),
-          reference: updated.ticket_number,
-          description: `Payment for ${updated.ticket_number}`,
-          account_ref: updated.ticket_number,
-        }).catch(() => null);
+        // The server pushes the bill plus the recorded tip, so the prompt
+        // always matches the figure on the printed receipt.
+        const stk = await api.post(`/sales/${updated.sale_id}/stk-push`).catch(() => null);
         if (stk?.data?.success) {
-          try {
-            await api.put(`/sales/${updated.sale_id}/checkout-id`, { checkout_request_id: stk.data.checkout_request_id });
-          } catch {
-            addToast("Payment prompt sent, but tracking the request failed. Verify in the Sales page.", "info");
-          }
+          addToast(`Payment prompt sent for ${formatCurrency(Number(stk.data.amount), symbol)}`, "success");
         } else {
           addToast("Sale created — please push the STK request from the Sales page", "info");
         }
@@ -948,20 +1213,51 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
             />
           </div>
         )}
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-discount">Discount ({symbol})</label>
-          <input
-            id="settle-discount"
-            className="input"
-            value={discount}
-            onChange={(e) => setDiscount(e.target.value)}
-            placeholder="0.00"
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-          />
-        </div>
+        {canDiscount ? (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-discount">Discount ({symbol})</label>
+              <input
+                id="settle-discount"
+                className="input"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                placeholder="0.00"
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+              />
+              <p className="text-xs text-muted mt-1">
+                Up to {MAX_DISCOUNT_PERCENT}% of the subtotal ({formatCurrency(maxDiscount, symbol)}). Discounts are logged and sent to a manager.
+              </p>
+            </div>
+            {cappedDiscount > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-discount-reason">
+                  Discount reason *
+                </label>
+                <input
+                  id="settle-discount-reason"
+                  className="input"
+                  value={discountReason}
+                  onChange={(e) => setDiscountReason(e.target.value)}
+                  placeholder="e.g. kitchen error, manager comp, service recovery..."
+                  maxLength={200}
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <span className="block text-sm font-medium text-ink mb-1">Discount ({symbol})</span>
+            <p className="text-sm text-muted">
+              {ticket.discount_amount > 0
+                ? `${formatCurrency(ticket.discount_amount, symbol)} discount already applied to this ticket.`
+                : "Only a manager can apply a discount."}
+            </p>
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-tip">Tip ({symbol})</label>
           <input
@@ -994,7 +1290,7 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
         )}
         <div className="border-t border-border pt-3 space-y-1.5">
           <div className="flex justify-between text-muted">
-            <span>Total to collect</span>
+            <span>{tipValue > 0 ? "Bill" : "Total to collect"}</span>
             <span className="tabular-nums">{formatCurrency(total, symbol)}</span>
           </div>
           {tipValue > 0 && (
@@ -1010,9 +1306,14 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
             </div>
           )}
           <div className="flex justify-between font-semibold text-ink pt-1">
-            <span>{isCash ? "Cash to collect" : "Total to collect"}</span>
-            <span className="tabular-nums">{formatCurrency(due, symbol)}</span>
+            <span>{isCash ? "Cash to collect" : "M-Pesa prompt"}</span>
+            <span className="tabular-nums">{formatCurrency(isCash ? due : mpesaAmount, symbol)}</span>
           </div>
+          {!isCash && mpesaAmount !== due && (
+            <p className="text-xs text-muted">
+              M-Pesa charges whole units, so the prompt is rounded to {formatCurrency(mpesaAmount, symbol)}.
+            </p>
+          )}
         </div>
       </form>
     </RestaurantSlideOver>
@@ -1035,8 +1336,8 @@ function VoidItemSlideOver({ open, item, onClose, onConfirm }: {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!item) return;
-    if (item.status !== "pending" && !reason.trim()) {
-      addToast("A reason is required when voiding an item sent to the kitchen", "error");
+    if (reason.trim().length < 3) {
+      addToast("A reason is required to void an item", "error");
       return;
     }
     onConfirm(reason.trim());
@@ -1072,17 +1373,17 @@ function VoidItemSlideOver({ open, item, onClose, onConfirm }: {
           </div>
           <div>
             <label className="block text-sm font-medium text-ink mb-1" htmlFor="void-reason">
-              Reason {item.status === "pending" ? "(optional)" : "*"}
+              Reason *
             </label>
             <TextArea
               id="void-reason"
               className="min-h-[80px]"
               value={reason}
               onChange={setReason}
-              placeholder="e.g. customer changed mind, overcooked..."
+              placeholder="e.g. customer changed mind, overcooked, wrong table..."
               maxLength={200}
             />
-            <p className="text-xs text-muted mt-1">{item.status === "pending" ? "Pending items haven't used stock — no stock will be returned." : "Stock will be returned to the kitchen inventory."}</p>
+            <p className="text-xs text-muted mt-1">{item.status === "pending" ? "Pending items haven't used stock — no stock will be returned." : "Stock will be returned to the kitchen inventory."} Voids are recorded against your name and sent to a manager.</p>
           </div>
         </form>
       )}
@@ -1188,9 +1489,11 @@ function SplitBillSlideOver({ open, ticket, onClose, onSplit }: {
                 />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-ink text-sm truncate">{item.product_name}</div>
-                  <div className="text-xs text-muted">×{item.quantity} · {symbol}{item.unit_price.toFixed(2)}</div>
+                  <div className="text-xs text-muted">×{item.quantity} · {formatCurrency(item.unit_price, symbol)}</div>
                 </div>
-                <span className="text-sm tabular-nums text-muted">{symbol}{(item.line_total ?? item.unit_price * item.quantity).toFixed(2)}</span>
+                <span className="text-sm tabular-nums text-muted">
+                  {formatCurrency(item.line_total ?? item.unit_price * item.quantity, symbol)}
+                </span>
               </label>
             </li>
           ))}
@@ -1233,8 +1536,14 @@ function SplitBillSlideOver({ open, ticket, onClose, onSplit }: {
           />
         </div>
         <div className="border-t border-border pt-3 space-y-1.5 text-sm">
-          <div className="flex justify-between text-muted"><span>Moving to new bill</span><span className="tabular-nums">{symbol}{toMoveAmount.toFixed(2)}</span></div>
-          <div className="flex justify-between text-muted"><span>Staying on this bill</span><span className="tabular-nums">{symbol}{keepAmount.toFixed(2)}</span></div>
+          <div className="flex justify-between text-muted">
+            <span>Moving to new bill</span>
+            <span className="tabular-nums">{formatCurrency(toMoveAmount, symbol)}</span>
+          </div>
+          <div className="flex justify-between text-muted">
+            <span>Staying on this bill</span>
+            <span className="tabular-nums">{formatCurrency(keepAmount, symbol)}</span>
+          </div>
         </div>
       </form>
     </RestaurantSlideOver>

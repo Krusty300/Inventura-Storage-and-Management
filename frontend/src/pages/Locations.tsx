@@ -231,20 +231,20 @@ export default function Locations() {
             <span className="whitespace-nowrap">{node.lot_count} lots</span>
           </span>
           <div className="ml-auto md:ml-0 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-            <button onClick={() => printLabel(node.id)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Print label ${node.path}`}>
-              <FileText size={14} />
+            <button onClick={() => printLabel(node.id)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-primary dark:hover:text-primary" aria-label={`Print label ${node.path}`}>
+              <FileText size={16} />
             </button>
-            <button onClick={() => openDetail(node)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`View ${node.path}`}>
-              <Eye size={14} />
+            <button onClick={() => openDetail(node)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-primary dark:hover:text-primary" aria-label={`View ${node.path}`}>
+              <Eye size={16} />
             </button>
             {canEdit && (
-              <button onClick={() => { setEditing(node); setShowForm(true); }} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${node.path}`}>
-                <Pencil size={14} />
+              <button onClick={() => { setEditing(node); setShowForm(true); }} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-primary dark:hover:text-primary" aria-label={`Edit ${node.path}`}>
+                <Pencil size={16} />
               </button>
             )}
             {canDelete && (
-              <button onClick={() => setDeleting(node)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${node.path}`}>
-                <Trash2 size={14} />
+              <button onClick={() => setDeleting(node)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-faint hover:text-red-600 dark:hover:text-red-400" aria-label={`Delete ${node.path}`}>
+                <Trash2 size={16} />
               </button>
             )}
           </div>

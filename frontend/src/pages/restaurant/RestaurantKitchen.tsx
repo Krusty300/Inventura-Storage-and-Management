@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChefHat, CheckCircle2, Clock, Printer } from "lucide-react";
+import { CheckCircle2, ChefHat, ClipboardList, Clock, Flame, Printer } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { KitchenTicket, RestaurantTicketItem } from "../../types";
@@ -11,10 +11,34 @@ import { useRealtime } from "../../context/RealtimeContext";
 import { errorMessage } from "../../utils/errors";
 import { printBlob } from "../../utils/download";
 
-const STAGES: { key: "queued" | "preparing" | "ready"; label: string; tone: string }[] = [
-  { key: "queued", label: "Queued", tone: "border-t-muted/50" },
-  { key: "preparing", label: "Preparing", tone: "border-t-sky-500/70" },
-  { key: "ready", label: "Ready", tone: "border-t-emerald-500/70" },
+const STAGES: {
+  key: "queued" | "preparing" | "ready";
+  label: string;
+  tone: string;
+  empty: string;
+  Icon: typeof ChefHat;
+}[] = [
+  {
+    key: "queued",
+    label: "Queued",
+    tone: "border-t-muted/50",
+    empty: "Nothing waiting to be started",
+    Icon: ClipboardList,
+  },
+  {
+    key: "preparing",
+    label: "Preparing",
+    tone: "border-t-sky-500/70",
+    empty: "Nothing on the pass",
+    Icon: Flame,
+  },
+  {
+    key: "ready",
+    label: "Ready",
+    tone: "border-t-emerald-500/70",
+    empty: "Nothing plated and waiting to run",
+    Icon: CheckCircle2,
+  },
 ];
 
 type ItemStatus = RestaurantTicketItem["status"];
@@ -186,12 +210,23 @@ export default function RestaurantKitchen() {
         </div>
       ) : (board ?? []).length === 0 ? (
         <div className="card p-6">
-          <EmptyState
-            variant="table"
-            icon={<ChefHat size={48} />}
-            title="Nothing in the kitchen"
-            message="Tickets appear here once they're sent from the floor."
-          />
+          {zoneFilter ? (
+            <EmptyState
+              variant="block"
+              icon={<ChefHat size={48} />}
+              title={`No tickets in ${zoneOptions.find((z) => z.value === zoneFilter)?.label ?? zoneFilter}`}
+              message="Nothing is open in this zone right now. Clear the filter to see the whole kitchen."
+              actionLabel="Clear filter"
+              onAction={() => setZoneFilter("")}
+            />
+          ) : (
+            <EmptyState
+              variant="block"
+              icon={<CheckCircle2 size={48} className="text-emerald-500/70" />}
+              title="All caught up"
+              message="No tickets are waiting in the kitchen. New orders land here the moment the floor sends them."
+            />
+          )}
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-3 items-start">
@@ -205,7 +240,7 @@ export default function RestaurantKitchen() {
                 </header>
                 <div className="p-3 space-y-3">
                   {tickets.length === 0 ? (
-                    <p className="text-sm text-faint text-center py-8">No tickets</p>
+                    <EmptyState compact icon={<stage.Icon size={20} />} title={stage.empty} />
                   ) : (
                     tickets.map((t) => {
                       const readyCount = t.items.filter((i) => i.status === "ready").length;
@@ -224,8 +259,8 @@ export default function RestaurantKitchen() {
                               {t.notes && <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">Note: {t.notes}</div>}
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              <button onClick={() => printKitchen(t.id)} className="p-1.5 rounded-md bg-app text-muted hover:text-primary" aria-label={`Print ${t.ticket_number}`}>
-                                <Printer size={14} />
+                              <button onClick={() => printKitchen(t.id)} className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md bg-app text-muted hover:text-primary" aria-label={`Print ${t.ticket_number}`}>
+                                <Printer size={16} />
                               </button>
                               {t.earliest_sent_at && (
                                 <span className="flex items-center gap-1 text-xs text-muted">
@@ -244,11 +279,11 @@ export default function RestaurantKitchen() {
                                       {item.quantity} × {item.product_name}
                                       <button
                                         onClick={() => reprintItem(t.id, item.id)}
-                                        className="p-1 rounded-md bg-app text-faint hover:text-primary"
+                                        className="h-7 w-7 shrink-0 inline-flex items-center justify-center rounded-md bg-app text-faint hover:text-primary"
                                         aria-label={`Reprint ${item.product_name}`}
                                         title="Reprint this item"
                                       >
-                                        <Printer size={12} />
+                                        <Printer size={14} />
                                       </button>
                                     </div>
                                     {item.notes && <div className="text-xs text-muted truncate">Note: {item.notes}</div>}
@@ -257,7 +292,7 @@ export default function RestaurantKitchen() {
                                     <button
                                       onClick={() => startAdvance(t.id, item.id, next)}
                                       disabled={advancing !== null && advancing !== `${t.id}:${item.id}`}
-                                      className={`btn-secondary text-xs px-2.5 py-1 flex items-center gap-1 shrink-0 ${
+                                      className={`btn-secondary text-xs px-3 py-2 min-h-10 flex items-center gap-1.5 shrink-0 ${
                                         next === "ready" || next === "served" ? "text-emerald-600 dark:text-emerald-400" : ""
                                       }`}
                                     >

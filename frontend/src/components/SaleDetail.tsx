@@ -115,12 +115,10 @@ export default function SaleDetail({ sale, onClose }: Props) {
     mutationFn: async () => {
       if (!refundPhone.trim()) throw new Error("Enter a phone number");
       setStkBilling(true);
-      const { data } = await api.post("/daraja/stk-push", {
+      // Amount and checkout id are the server's to record, so a re-push cannot
+      // collect a different figure than the sale was written for.
+      const { data } = await api.post(`/sales/${sale.id}/stk-push`, {
         phone: refundPhone.trim(),
-        amount: sale.total_amount,
-        reference: sale.invoice_number,
-        description: `Payment for ${sale.invoice_number}`,
-        account_ref: sale.invoice_number,
       });
       return data;
     },
@@ -128,7 +126,6 @@ export default function SaleDetail({ sale, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ["sales"] });
       if (data.success) {
         addToast("STK Push sent — awaiting customer confirmation", "success");
-        api.put(`/sales/${sale.id}/checkout-id`, { checkout_request_id: data.checkout_request_id }).catch(() => {});
       } else {
         addToast(data.message || "STK Push failed", "error");
       }
@@ -309,7 +306,24 @@ export default function SaleDetail({ sale, onClose }: Props) {
                   {sale.payment_provider_amount != null && (
                     <p className="text-muted">Provider Amount: <span className="font-medium text-ink">{formatCurrency(sale.payment_provider_amount, saleSymbol)}</span></p>
                   )}
+                  {sale.payment_amount_received != null && (
+                    <p className="text-muted">Amount received: <span className="font-medium text-ink">{formatCurrency(sale.payment_amount_received, saleSymbol)}</span></p>
+                  )}
                 </div>
+
+                {sale.payment_amount_status && sale.payment_amount_status !== "matched" && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+                    <p className="font-semibold text-amber-800 dark:text-amber-200">
+                      {sale.payment_amount_status === "short" ? "Under-paid" : sale.payment_amount_status === "over" ? "Over-paid" : "Amount not reported"}
+                    </p>
+                    <p className="mt-1 text-amber-800/90 dark:text-amber-200/90">
+                      {sale.payment_amount_received != null
+                        ? `M-Pesa reported ${formatCurrency(sale.payment_amount_received, saleSymbol)} against an expected ${formatCurrency(sale.payment_provider_amount ?? sale.total_amount, saleSymbol)}. `
+                        : "The payment callback carried no amount, so this sale could not be verified. "}
+                      The payment was kept as received. Refund or write off the difference.
+                    </p>
+                  </div>
+                )}
 
                 <div className="w-full sm:w-72">
                   <div className="rounded-xl border border-border bg-subtle/40 dark:bg-app p-4 space-y-2.5">

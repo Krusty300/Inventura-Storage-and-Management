@@ -186,18 +186,18 @@ export default function CustomerCart() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setQuantity(it.product.id, it.quantity - 1)}
-                    className="p-1.5 rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
+                    className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
                     aria-label={`Decrease quantity of ${it.product.name}`}
                   >
-                    <Minus size={14} />
+                    <Minus size={18} />
                   </button>
                   <span className="w-10 text-center text-sm font-medium text-ink" aria-label="Quantity">{it.quantity}</span>
                   <button
                     onClick={() => setQuantity(it.product.id, it.quantity + 1)}
-                    className="p-1.5 rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
+                    className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle"
                     aria-label={`Increase quantity of ${it.product.name}`}
                   >
-                    <Plus size={14} />
+                    <Plus size={18} />
                   </button>
                 </div>
                 <button

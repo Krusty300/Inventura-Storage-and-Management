@@ -869,7 +869,7 @@ export default function Notes() {
                       <span className="text-ink font-medium">{l.entity_label || getEntityTypeLabel(l.entity_type)}</span>
                       <span className="text-faint">#{l.entity_id}</span>
                       {can("notes.update") && (
-                        <button onClick={() => removeLinkMutation.mutate({ noteId: viewingNote.id, linkId: l.id })} className="ml-auto p-0.5 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove link"><XIcon size={12} /></button>
+                        <button onClick={() => removeLinkMutation.mutate({ noteId: viewingNote.id, linkId: l.id })} className="ml-auto h-7 w-7 -mr-1 inline-flex items-center justify-center rounded-md text-muted hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" aria-label="Remove link"><XIcon size={14} /></button>
                       )}
                     </div>
                   );
@@ -1107,15 +1107,15 @@ export default function Notes() {
             {editingNote?.image_url && !editImageFile && (
               <div className="relative group">
                 <img src={editingNote.image_url} alt="Note image" className="w-full h-40 object-cover rounded-lg" />
-                <button onClick={async () => { if (editingNote) { await api.put(`/notes/${editingNote.id}`, { image_url: "" }); queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); setEditingNote({ ...editingNote, image_url: "" }); addToast("Image removed", "success"); } }} className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remove image">
-                  <XIcon size={14} />
+                <button onClick={async () => { if (editingNote) { await api.put(`/notes/${editingNote.id}`, { image_url: "" }); queryClient.invalidateQueries({ queryKey: ["notes"] }); queryClient.invalidateQueries({ queryKey: ["notes-kanban"] }); setEditingNote({ ...editingNote, image_url: "" }); addToast("Image removed", "success"); } }} className="absolute top-2 right-2 h-8 w-8 inline-flex items-center justify-center bg-black/50 rounded-full text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" aria-label="Remove image">
+                  <XIcon size={16} />
                 </button>
               </div>
             )}
             {editImageFile && (
               <div className="relative">
                 <img src={imagePreviewUrl!} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
-                <button onClick={() => setEditImageFile(null)} className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white" aria-label="Remove image"><XIcon size={14} /></button>
+                <button onClick={() => setEditImageFile(null)} className="absolute top-2 right-2 h-8 w-8 inline-flex items-center justify-center bg-black/50 rounded-full text-white" aria-label="Remove image"><XIcon size={16} /></button>
               </div>
             )}
 
@@ -1268,7 +1268,7 @@ export default function Notes() {
               {tags.map((t) => (
                 <div key={t.id} className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-subtle transition-colors">
                   <span className="flex items-center gap-2.5 text-sm"><span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />{t.name}</span>
-                  <button onClick={() => setConfirmTagDelete(t)} className="p-1 text-muted hover:text-red-500 transition-colors" aria-label={`Delete tag ${t.name}`}><Trash2 size={14} /></button>
+                  <button onClick={() => setConfirmTagDelete(t)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted hover:text-red-500 transition-colors" aria-label={`Delete tag ${t.name}`}><Trash2 size={16} /></button>
                 </div>
               ))}
               {tags.length === 0 && (
@@ -1301,7 +1301,7 @@ export default function Notes() {
                       setShowTemplateManager(false);
                       setShowForm(true);
                     }} className="text-xs text-primary dark:text-primary hover:underline px-2 py-1">Use</button>
-                    <button onClick={() => deleteTemplateMutation.mutate(t.id)} className="p-1 text-muted hover:text-red-500 transition-colors" aria-label={`Delete template ${t.name}`}><Trash2 size={14} /></button>
+                    <button onClick={() => deleteTemplateMutation.mutate(t.id)} className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted hover:text-red-500 transition-colors" aria-label={`Delete template ${t.name}`}><Trash2 size={16} /></button>
                   </div>
                 </div>
               ))}
