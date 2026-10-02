@@ -7,7 +7,8 @@ import EmptyState from "../../components/EmptyState";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import FittedSelect from "../../components/FittedSelect";
 import RestaurantMenuProductDetail from "../../components/restaurant/RestaurantMenuProductDetail";
-import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
+import SlideOver from "../../components/SlideOver";
+import { PanelCard, PanelField, PanelFooter, PanelHeader, PanelSection, panelLabel } from "../../components/Panel";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -266,39 +267,44 @@ function SectionForm({ section, onClose, onSaved }: { section: MenuSection | nul
   };
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={section ? `Edit Section: ${section.name}` : "New Menu Section"}
       breadcrumb={section ? `Edit ${section.name}` : "New menu section"}
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" form="section-form" disabled={saving || !name.trim()} className="btn-primary">{saving ? "Saving..." : section ? "Update" : "Create"}</button>
-        </>
-      }
     >
-      <form id="section-form" onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="section-name">Name *</label>
-          <input id="section-name" className="input" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Starters, Mains, Drinks" maxLength={100} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="section-desc">Description</label>
-          <input id="section-desc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Shown on menus (optional)" />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="section-sort">Sort order</label>
-            <input id="section-sort" className="input" type="number" min={0} value={sortOrder} onChange={(e) => setSortOrder(Math.max(0, parseInt(e.target.value) || 0))} />
-          </div>
-          <div className="flex items-end gap-2 pb-1">
-            <input type="checkbox" className="rounded border-border-strong" id="section-active" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-            <label htmlFor="section-active" className="text-sm text-ink">Active</label>
-          </div>
-        </div>
-      </form>
-    </RestaurantSlideOver>
+      <PanelCard>
+        <PanelHeader
+          eyebrow={section ? "Edit Section" : "New Section"}
+          title={section ? section.name : "New menu section"}
+        />
+        <form id="section-form" onSubmit={handleSubmit} className="space-y-0">
+          <PanelSection label="Section Details">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <PanelField label="Name *" htmlFor="section-name">
+                <input id="section-name" className="input" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Starters, Mains, Drinks" maxLength={100} />
+              </PanelField>
+              <PanelField label="Sort order" htmlFor="section-sort">
+                <input id="section-sort" className="input" type="number" min={0} value={sortOrder} onChange={(e) => setSortOrder(Math.max(0, parseInt(e.target.value) || 0))} />
+              </PanelField>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <PanelField label="Description" htmlFor="section-desc">
+                <input id="section-desc" className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Shown on menus (optional)" />
+              </PanelField>
+              <div className="flex items-end gap-2 pb-1">
+                <input type="checkbox" className="rounded border-border-strong" id="section-active" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                <label htmlFor="section-active" className="text-sm text-ink">Active</label>
+              </div>
+            </div>
+          </PanelSection>
+          <PanelFooter>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || !name.trim()} className="btn-primary">{saving ? "Saving..." : section ? "Update" : "Create"}</button>
+          </PanelFooter>
+        </form>
+      </PanelCard>
+    </SlideOver>
   );
 }
 
@@ -414,129 +420,136 @@ function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () =
   const groupList = groups ?? [];
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={`Modifiers: ${product.display_name}`}
       breadcrumb={`Modifiers for ${product.display_name}`}
     >
-      <div className="space-y-4">
-        {isLoading ? (
-          <div className="card p-4 animate-pulse h-16" />
-        ) : groupList.length === 0 && editingGroupId === null ? (
-          <p className="text-sm text-muted">No modifiers yet — add a group like “Extras”, “Size”, or “Sides”.</p>
-        ) : (
-          groupList.map((group) => (
-            <div key={group.id} className="card p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="font-medium text-ink">{group.name}</div>
-                  <div className="text-xs text-muted mt-0.5 flex gap-2 flex-wrap">
-                    <span>Select {group.min_select}–{group.max_select}</span>
-                    {group.is_required && <span className="badge badge-warning text-[10px]">Required</span>}
-                    {!group.is_active && <span className="badge badge-neutral text-[10px]">Hidden</span>}
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Modifiers"
+          title={product.display_name}
+          subtitle="Groups and the options guests can add"
+        />
+        <PanelSection label="Modifier Groups">
+          {isLoading ? (
+            <div className="card p-4 animate-pulse h-16" />
+          ) : groupList.length === 0 && editingGroupId === null ? (
+            <p className="text-sm text-muted">No modifiers yet — add a group like “Extras”, “Size”, or “Sides”.</p>
+          ) : (
+            <div className="space-y-4">
+              {groupList.map((group) => (
+                <div key={group.id} className="card p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-medium text-ink">{group.name}</div>
+                    <div className="text-xs text-muted mt-0.5 flex gap-2 flex-wrap">
+                      <span>Select {group.min_select}–{group.max_select}</span>
+                      {group.is_required && <span className="badge badge-warning text-[10px]">Required</span>}
+                      {!group.is_active && <span className="badge badge-neutral text-[10px]">Hidden</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => startEdit(group)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${group.name}`}>
+                      <Pencil size={15} />
+                    </button>
+                    <button onClick={() => setDeletingGroup(group)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${group.name}`}>
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  <button onClick={() => startEdit(group)} className="p-1 text-faint hover:text-primary dark:text-primary" aria-label={`Edit ${group.name}`}>
-                    <Pencil size={15} />
-                  </button>
-                  <button onClick={() => setDeletingGroup(group)} className="p-1 text-faint hover:text-red-600 dark:text-red-400" aria-label={`Delete ${group.name}`}>
-                    <Trash2 size={15} />
-                  </button>
+                <ul className="mt-3 space-y-1">
+                    {group.options.map((o) => (
+                      <li key={o.id} className="flex justify-between text-sm text-muted">
+                        <span>{o.name}{!o.is_active && " (hidden)"}</span>
+                        <span className="tabular-nums">{o.price_delta >= 0 ? "+" : "-"}{formatCurrency(Math.abs(o.price_delta), symbol)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-              <ul className="mt-3 space-y-1">
-                {group.options.map((o) => (
-                  <li key={o.id} className="flex justify-between text-sm text-muted">
-                    <span>{o.name}{!o.is_active && " (hidden)"}</span>
-                    <span className="tabular-nums">{o.price_delta >= 0 ? "+" : "-"}{formatCurrency(Math.abs(o.price_delta), symbol)}</span>
-                  </li>
-                ))}
-              </ul>
+              ))}
             </div>
-          ))
-        )}
+          )}
+        </PanelSection>
 
-        <form onSubmit={saveGroup} className="card p-4 space-y-3 border-2 border-dashed border-border">
-          <div className="flex items-center justify-between">
-            <div className="font-medium text-ink">{editingGroupId === null ? "Add Modifier Group" : "Edit Modifier Group"}</div>
-            {editingGroupId !== null && (
-              <button type="button" onClick={resetForm} className="text-xs text-muted hover:text-ink">Cancel edit</button>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="group-name">Group name *</label>
-            <input id="group-name" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Extras, Size, Sides" maxLength={100} />
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1" htmlFor="group-min">Min</label>
-              <input id="group-min" className="input" type="number" min={0} max={99} value={form.min_select} onChange={(e) => setForm({ ...form, min_select: Math.max(0, parseInt(e.target.value) || 0) })} />
+        <form onSubmit={saveGroup} className="space-y-0">
+          <PanelSection label={editingGroupId === null ? "Add Modifier Group" : "Edit Modifier Group"}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <PanelField label="Group name *" htmlFor="group-name">
+                <input id="group-name" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Extras, Size, Sides" maxLength={100} />
+              </PanelField>
+              <div className="grid grid-cols-2 gap-4">
+                <PanelField label="Min" htmlFor="group-min">
+                  <input id="group-min" className="input" type="number" min={0} max={99} value={form.min_select} onChange={(e) => setForm({ ...form, min_select: Math.max(0, parseInt(e.target.value) || 0) })} />
+                </PanelField>
+                <PanelField label="Max" htmlFor="group-max">
+                  <input id="group-max" className="input" type="number" min={1} max={99} value={form.max_select} onChange={(e) => setForm({ ...form, max_select: Math.max(1, parseInt(e.target.value) || 1) })} />
+                </PanelField>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1" htmlFor="group-max">Max</label>
-              <input id="group-max" className="input" type="number" min={1} max={99} value={form.max_select} onChange={(e) => setForm({ ...form, max_select: Math.max(1, parseInt(e.target.value) || 1) })} />
-            </div>
-            <div className="flex items-end gap-2 pb-1">
+            <div className="flex items-center gap-2 mt-4">
               <input type="checkbox" className="rounded border-border-strong" id="group-required" checked={form.is_required} onChange={(e) => setForm({ ...form, is_required: e.target.checked })} />
               <label htmlFor="group-required" className="text-sm text-ink">Required</label>
             </div>
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-ink">Options *</label>
-            {form.options.map((opt, i) => (
-              <div key={opt.id ?? i} className="flex gap-2">
-                <input
-                  className="input flex-1"
-                  value={opt.name}
-                  placeholder="Option name"
-                  maxLength={100}
-                  aria-label={`Option ${i + 1} name`}
-                  onChange={(e) => {
-                    const options = [...form.options];
-                    options[i] = { ...opt, name: e.target.value };
-                    setForm({ ...form, options });
-                  }}
-                />
-                <input
-                  className="input w-24"
-                  type="number"
-                  step="0.01"
-                  value={opt.price_delta}
-                  placeholder="0.00"
-                  aria-label={`Option ${i + 1} price delta`}
-                  onChange={(e) => {
-                    const options = [...form.options];
-                    options[i] = { ...opt, price_delta: e.target.value };
-                    setForm({ ...form, options });
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, options: form.options.filter((_, j) => j !== i) })}
-                  className="p-1 text-faint hover:text-red-600 dark:text-red-400"
-                  aria-label={`Remove option ${i + 1}`}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={() => setForm({ ...form, options: [...form.options, { name: "", price_delta: "0" }] })}
-              className="text-sm text-primary dark:text-primary font-medium flex items-center gap-1"
-            >
-              <Plus size={14} /> Add option
-            </button>
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
+            <div className="space-y-2 mt-4">
+              <span className={panelLabel}>Options *</span>
+              {form.options.map((opt, i) => (
+                <div key={opt.id ?? i} className="flex gap-2">
+                  <input
+                    className="input flex-1"
+                    value={opt.name}
+                    placeholder="Option name"
+                    maxLength={100}
+                    aria-label={`Option ${i + 1} name`}
+                    onChange={(e) => {
+                      const options = [...form.options];
+                      options[i] = { ...opt, name: e.target.value };
+                      setForm({ ...form, options });
+                    }}
+                  />
+                  <input
+                    className="input w-24"
+                    type="number"
+                    step="0.01"
+                    value={opt.price_delta}
+                    placeholder="0.00"
+                    aria-label={`Option ${i + 1} price delta`}
+                    onChange={(e) => {
+                      const options = [...form.options];
+                      options[i] = { ...opt, price_delta: e.target.value };
+                      setForm({ ...form, options });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, options: form.options.filter((_, j) => j !== i) })}
+                    className="p-1 text-faint hover:text-red-600 dark:text-red-400"
+                    aria-label={`Remove option ${i + 1}`}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, options: [...form.options, { name: "", price_delta: "0" }] })}
+                className="text-sm text-primary dark:text-primary font-medium flex items-center gap-1"
+              >
+                <Plus size={14} /> Add option
+              </button>
+            </div>
+          </PanelSection>
+          <PanelFooter>
+            {editingGroupId !== null && (
+              <button type="button" onClick={resetForm} className="btn-secondary">Cancel edit</button>
+            )}
             <button type="submit" disabled={saving} className="btn-primary">
               {saving ? "Saving..." : editingGroupId === null ? "Add Group" : "Save Group"}
             </button>
-          </div>
+          </PanelFooter>
         </form>
-      </div>
+      </PanelCard>
 
       <ConfirmDialog
         open={!!deletingGroup}
@@ -545,6 +558,6 @@ function ModifierEditor({ product, onClose }: { product: MenuItem; onClose: () =
         onConfirm={() => { if (deletingGroup) deleteGroup.mutate(deletingGroup.id); setDeletingGroup(null); }}
         onCancel={() => setDeletingGroup(null)}
       />
-    </RestaurantSlideOver>
+    </SlideOver>
   );
 }

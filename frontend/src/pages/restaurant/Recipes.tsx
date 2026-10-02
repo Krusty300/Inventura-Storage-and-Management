@@ -18,6 +18,7 @@ import { useToast } from "../../context/ToastContext";
 import { useSettings } from "../../hooks/useSettings";
 import { formatCurrency } from "../../utils/currency";
 import { errorMessage } from "../../utils/errors";
+import { PanelCard, PanelField, PanelFooter, PanelHeader, PanelSection } from "../../components/Panel";
 
 function marginClass(marginPct: number): string {
   if (marginPct <= 0) return "badge-danger";
@@ -69,75 +70,86 @@ function RecipeForm({ row, onClose, onSaved }: { row: RestaurantRecipeRow; onClo
 
   return (
     <SlideOver open onClose={onClose} title={`${hasRecipe ? "Edit" : "New"} recipe · ${row.name}`} wide>
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Menu item</label>
-            <input className="input bg-app/60" value={row.name} disabled aria-label="Menu item" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Recipe name</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Recipe name" />
-          </div>
-        </div>
+      <PanelCard>
+        <PanelHeader
+          eyebrow={hasRecipe ? "Edit Recipe" : "New Recipe"}
+          title={row.name}
+          subtitle={hasRecipe ? name : "No recipe yet"}
+        />
+        <form onSubmit={handleSubmit} className="space-y-0">
+          <PanelSection label="Recipe Details">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <PanelField label="Menu item">
+                <input className="input bg-app/60" value={row.name} disabled aria-label="Menu item" />
+              </PanelField>
+              <PanelField label="Recipe name">
+                <input className="input" value={name} onChange={(e) => setName(e.target.value)} aria-label="Recipe name" />
+              </PanelField>
+            </div>
+            <div className="mt-4">
+              <PanelField label="Description">
+                <TextArea rows={2} value={description} onChange={setDescription} />
+              </PanelField>
+            </div>
+          </PanelSection>
 
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Description</label>
-          <TextArea rows={2} value={description} onChange={setDescription} />
-        </div>
-
-        <div className="border border-border rounded-xl overflow-hidden bg-app/50">
-          <div className="bg-app px-4 py-2.5 flex items-center justify-between border-b border-border">
-            <span className="text-sm font-medium text-ink flex items-center gap-2">
-              <Layers size={15} className="text-faint" />
-              Ingredients
-              {rows.length > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary-soft text-primary-strong dark:text-primary text-xs font-semibold">{rows.length}</span>
-              )}
-            </span>
-            <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="btn-secondary text-xs py-1 px-2">
-              <Plus size={14} className="inline mr-0.5" />Add Ingredient
-            </button>
-          </div>
-          <div className="divide-y divide-border max-h-[40vh] overflow-auto bg-surface">
-            {rows.map((r, idx) => (
-              <div key={idx} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
-                <div className="sm:col-span-8">
-                  <label className="block text-xs font-medium text-muted mb-1">Ingredient</label>
-                  <FittedSelect
-                    ariaLabel="Ingredient product"
-                    value={r.product_id}
-                    onChange={(v) => setRow(idx, "product_id", v)}
-                    options={[
-                      { value: "", label: "Select..." },
-                      ...components.filter((p) => p.id !== row.product_id).map((p) => ({ value: String(p.id), label: productLabel(p) })),
-                    ]}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-muted mb-1">Qty</label>
-                  <input type="number" min={0.01} step="any" className="input" value={r.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
-                </div>
-                <div className="sm:col-span-2">
-                  <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400 transition-colors" aria-label="Remove ingredient">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+          <PanelSection label="Ingredients">
+            <div className="border border-border rounded-lg overflow-hidden bg-app/50">
+              <div className="bg-app px-4 py-2.5 flex items-center justify-between border-b border-border">
+                <span className="text-sm font-medium text-ink flex items-center gap-2">
+                  <Layers size={15} className="text-faint" />
+                  Ingredients
+                  {rows.length > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-primary-soft text-primary-strong dark:text-primary text-xs font-semibold">{rows.length}</span>
+                  )}
+                </span>
+                <button type="button" onClick={() => setRows([...rows, { product_id: "", quantity: "1" }])} className="btn-secondary text-xs py-1 px-2">
+                  <Plus size={14} className="inline mr-0.5" />Add Ingredient
+                </button>
               </div>
-            ))}
-          </div>
-        </div>
+              <div className="divide-y divide-border max-h-[40vh] overflow-auto bg-surface">
+                {rows.map((r, idx) => (
+                  <div key={idx} className="p-4 grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-2 items-end">
+                    <div className="sm:col-span-8">
+                      <label className="block text-xs font-medium text-muted mb-1">Ingredient</label>
+                      <FittedSelect
+                        ariaLabel="Ingredient product"
+                        value={r.product_id}
+                        onChange={(v) => setRow(idx, "product_id", v)}
+                        options={[
+                          { value: "", label: "Select..." },
+                          ...components.filter((p) => p.id !== row.product_id).map((p) => ({ value: String(p.id), label: productLabel(p) })),
+                        ]}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-muted mb-1">Qty</label>
+                      <input type="number" min={0.01} step="any" className="input" value={r.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400 transition-colors" aria-label="Remove ingredient">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </PanelSection>
 
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" className="rounded" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} aria-label="Active" />
-          Active
-        </label>
+          <PanelSection label="Status" last>
+            <label className="flex items-center gap-2 text-sm text-ink">
+              <input type="checkbox" className="rounded" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} aria-label="Active" />
+              Active
+            </label>
+          </PanelSection>
 
-        <div className="flex justify-end gap-3 pt-4 border-t border-border">
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : hasRecipe ? "Update recipe" : "Create recipe"}</button>
-        </div>
-      </form>
+          <PanelFooter>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary">{saving ? "Saving..." : hasRecipe ? "Update recipe" : "Create recipe"}</button>
+          </PanelFooter>
+        </form>
+      </PanelCard>
     </SlideOver>
   );
 }

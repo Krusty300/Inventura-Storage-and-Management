@@ -99,7 +99,10 @@ export default function SlideOver({ open, onClose, title, children, wide, ariaLa
             </button>
           </div>
         </div>
-        <ScrollArea className="flex-1 min-h-0" viewportClassName="h-full p-6 sa-viewport-contain">
+        <ScrollArea
+          className="flex-1 min-h-0"
+          viewportClassName="h-full p-6 sa-viewport-contain"
+        >
           {children}
         </ScrollArea>
       </div>

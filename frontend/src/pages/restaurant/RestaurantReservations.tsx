@@ -10,7 +10,8 @@ import DatePicker from "../../components/DatePicker";
 import FittedSelect from "../../components/FittedSelect";
 import TextArea from "../../components/TextArea";
 import RestaurantReservationDetail from "../../components/restaurant/RestaurantReservationDetail";
-import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
+import SlideOver from "../../components/SlideOver";
+import { PanelCard, PanelField, PanelFooter, PanelHeader, PanelSection, panelLabel } from "../../components/Panel";
 import { RESERVATION_STATUS_BADGE, reservationActions } from "../../components/restaurant/reservationStatus";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -413,70 +414,76 @@ function ReservationForm({
   const activeTables = tables.filter((t) => t.is_active);
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={reservation ? `Edit ${reservation.reservation_number}` : "New Reservation"}
       breadcrumb={reservation ? `Edit ${reservation.reservation_number}` : "New reservation"}
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" form="reservation-form" disabled={saving || !guestName.trim()} className="btn-primary">{saving ? "Saving..." : reservation ? "Update" : "Create"}</button>
-        </>
-      }
     >
-      <form id="reservation-form" onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-guest">Guest name *</label>
-          <input id="res-guest" className="input" value={guestName} onChange={(e) => setGuestName(e.target.value)} required placeholder="e.g. Alice Banda" maxLength={120} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-phone">Phone</label>
-            <input id="res-phone" className="input" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} placeholder="07..." maxLength={40} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-count">Party size</label>
-            <input id="res-count" className="input" type="number" min={1} max={99} value={guestCount} onChange={(e) => setGuestCount(Math.max(1, parseInt(e.target.value) || 1))} />
-          </div>
-        </div>
-        <div>
-          <span className="block text-sm font-medium text-ink mb-1">Table</span>
-          <FittedSelect
-            value={tableId === "" ? "" : String(tableId)}
-            onChange={(v) => setTableId(v === "" ? "" : Number(v))}
-            ariaLabel="Table"
-            placeholder="No table"
-            options={[
-              { value: "", label: "No table" },
-              ...activeTables.map((t) => ({
-                value: String(t.id),
-                label: `${t.number} — seats ${t.capacity}${t.status === "occupied" ? " (occupied)" : ""}`,
-              })),
-            ]}
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <span className="block text-sm font-medium text-ink mb-1">When *</span>
-            <DatePicker
-              mode="datetime"
-              value={reservedAt}
-              onChange={setReservedAt}
-              ariaLabel="Booking time"
-              min={todayKey()}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-duration">Duration (min)</label>
-            <input id="res-duration" className="input" type="number" min={15} max={1440} step={5} value={duration} onChange={(e) => setDuration(parseInt(e.target.value) || 90)} />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="res-notes">Notes</label>
-          <TextArea id="res-notes" rows={2} value={notes} onChange={setNotes} placeholder="Allergies, celebration, special requests..." maxLength={500} />
-        </div>
-      </form>
-    </RestaurantSlideOver>
+      <PanelCard>
+        <PanelHeader
+          eyebrow={reservation ? "Edit Reservation" : "New Reservation"}
+          title={reservation ? reservation.reservation_number : "New reservation"}
+        />
+        <form id="reservation-form" onSubmit={handleSubmit} className="space-y-0">
+          <PanelSection label="Guest Details">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <PanelField label="Guest name *" htmlFor="res-guest">
+                <input id="res-guest" className="input" value={guestName} onChange={(e) => setGuestName(e.target.value)} required placeholder="e.g. Alice Banda" maxLength={120} />
+              </PanelField>
+              <PanelField label="Phone" htmlFor="res-phone">
+                <input id="res-phone" className="input" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} placeholder="07..." maxLength={40} />
+              </PanelField>
+            </div>
+          </PanelSection>
+
+          <PanelSection label="Booking">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <PanelField label="Party size" htmlFor="res-count">
+                <input id="res-count" className="input" type="number" min={1} max={99} value={guestCount} onChange={(e) => setGuestCount(Math.max(1, parseInt(e.target.value) || 1))} />
+              </PanelField>
+              <div>
+                <span className={panelLabel}>Table</span>
+                <FittedSelect
+                  value={tableId === "" ? "" : String(tableId)}
+                  onChange={(v) => setTableId(v === "" ? "" : Number(v))}
+                  ariaLabel="Table"
+                  placeholder="No table"
+                  options={[
+                    { value: "", label: "No table" },
+                    ...activeTables.map((t) => ({
+                      value: String(t.id),
+                      label: `${t.number} — seats ${t.capacity}${t.status === "occupied" ? " (occupied)" : ""}`,
+                    })),
+                  ]}
+                />
+              </div>
+              <div>
+                <span className={panelLabel}>When *</span>
+                <DatePicker
+                  mode="datetime"
+                  value={reservedAt}
+                  onChange={setReservedAt}
+                  ariaLabel="Booking time"
+                  min={todayKey()}
+                />
+              </div>
+              <PanelField label="Duration (min)" htmlFor="res-duration">
+                <input id="res-duration" className="input" type="number" min={15} max={1440} step={5} value={duration} onChange={(e) => setDuration(parseInt(e.target.value) || 90)} />
+              </PanelField>
+            </div>
+          </PanelSection>
+
+          <PanelSection label="Notes" last>
+            <TextArea id="res-notes" rows={2} value={notes} onChange={setNotes} placeholder="Allergies, celebration, special requests..." maxLength={500} />
+          </PanelSection>
+
+          <PanelFooter>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || !guestName.trim()} className="btn-primary">{saving ? "Saving..." : reservation ? "Update" : "Create"}</button>
+          </PanelFooter>
+        </form>
+      </PanelCard>
+    </SlideOver>
   );
 }

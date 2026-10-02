@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, CookingPot, Users } from "lucide-react";
+import { CookingPot, Users } from "lucide-react";
 import type { RestaurantReservation, RestaurantTable } from "../../types";
-import RestaurantSlideOver from "./RestaurantSlideOver";
+import SlideOver from "../SlideOver";
+import { PanelCard, PanelDetailItem, PanelFooter, PanelHeader, PanelSection } from "../Panel";
 import { RESERVATION_STATUS_BADGE } from "./reservationStatus";
 import { formatDateTime } from "../../utils/date";
 
@@ -21,50 +22,31 @@ export default function RestaurantTableDetail({ table, reservations, canCreate, 
   const upcoming = reservations.filter((r) => r.status !== "cancelled" && r.status !== "no_show");
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={`Table ${t.number}`}
       breadcrumb={`Table ${t.number}`}
-      actions={
-        <span className={`badge ${t.status === "occupied" ? "badge-warning" : "badge-success"}`}>
-          {t.status === "occupied" ? "Occupied" : "Free"}
-        </span>
-      }
-      footer={
-        t.status === "occupied" && t.active_ticket_id ? (
-          <button
-            onClick={() => { navigate(`/restaurant/tickets/${t.active_ticket_id}`); }}
-            className="btn-primary w-full flex items-center justify-center gap-1.5"
-          >
-            <CookingPot size={16} /> Open ticket {t.active_ticket_number}
-          </button>
-        ) : canCreate ? (
-          <button
-            onClick={() => { onClose(); onOpenTicket(t.id); }}
-            className="btn-primary w-full flex items-center justify-center gap-1.5"
-          >
-            <CookingPot size={16} /> Open new ticket
-          </button>
-        ) : undefined
-      }
     >
-      <div className="space-y-5">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-          <div>
-            <dt className="text-xs text-muted uppercase tracking-wide">Zone</dt>
-            <dd className="text-ink font-medium mt-0.5">{t.zone || "Main"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted uppercase tracking-wide">Seats</dt>
-            <dd className="text-ink font-medium mt-0.5">{t.capacity}</dd>
-          </div>
-        </dl>
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Table"
+          title={`Table ${t.number}`}
+          actions={
+            <span className={`badge ${t.status === "occupied" ? "badge-warning" : "badge-success"}`}>
+              {t.status === "occupied" ? "Occupied" : "Free"}
+            </span>
+          }
+        />
 
-        <div>
-          <h3 className="text-sm font-semibold text-ink mb-2 flex items-center gap-1.5">
-            <CalendarClock size={15} className="text-faint" /> Reservations
-          </h3>
+        <PanelSection label="Table Details">
+          <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <PanelDetailItem label="Zone">{t.zone || "Main"}</PanelDetailItem>
+            <PanelDetailItem label="Seats">{t.capacity}</PanelDetailItem>
+          </dl>
+        </PanelSection>
+
+        <PanelSection label="Reservations" last={upcoming.length === 0}>
           {upcoming.length === 0 ? (
             <p className="text-sm text-muted">No reservations for this table.</p>
           ) : (
@@ -87,8 +69,26 @@ export default function RestaurantTableDetail({ table, reservations, canCreate, 
               ))}
             </ul>
           )}
-        </div>
-      </div>
-    </RestaurantSlideOver>
+        </PanelSection>
+
+        <PanelFooter>
+          {t.status === "occupied" && t.active_ticket_id ? (
+            <button
+              onClick={() => { navigate(`/restaurant/tickets/${t.active_ticket_id}`); }}
+              className="btn-primary w-full flex items-center justify-center gap-1.5"
+            >
+              <CookingPot size={16} /> Open ticket {t.active_ticket_number}
+            </button>
+          ) : canCreate ? (
+            <button
+              onClick={() => { onClose(); onOpenTicket(t.id); }}
+              className="btn-primary w-full flex items-center justify-center gap-1.5"
+            >
+              <CookingPot size={16} /> Open new ticket
+            </button>
+          ) : null}
+        </PanelFooter>
+      </PanelCard>
+    </SlideOver>
   );
 }

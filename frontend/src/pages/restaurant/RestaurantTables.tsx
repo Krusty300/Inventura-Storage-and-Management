@@ -6,7 +6,8 @@ import type { RestaurantTable } from "../../types";
 import Table from "../../components/Table";
 import EmptyState from "../../components/EmptyState";
 import ConfirmDialog from "../../components/ConfirmDialog";
-import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
+import SlideOver from "../../components/SlideOver";
+import { PanelCard, PanelField, PanelFooter, PanelHeader, PanelSection } from "../../components/Panel";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { errorMessage } from "../../utils/errors";
@@ -168,36 +169,45 @@ function TableForm({ table, onClose, onSaved }: { table: RestaurantTable | null;
   };
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={table ? `Edit Table ${table.number}` : "New Table"}
       breadcrumb={table ? `Edit table ${table.number}` : "New table"}
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" form="table-form" disabled={saving || !number.trim()} className="btn-primary">{saving ? "Saving..." : table ? "Update" : "Create"}</button>
-        </>
-      }
     >
-      <form id="table-form" onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="table-number">Table number *</label>
-          <input id="table-number" className="input" value={number} onChange={(e) => setNumber(e.target.value)} required placeholder="e.g. T1, Bar 2, 12" maxLength={20} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="table-zone">Zone</label>
-          <input id="table-zone" className="input" value={zone} onChange={(e) => setZone(e.target.value)} placeholder="e.g. Main, Terrace, Bar" maxLength={100} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="table-capacity">Seats</label>
-          <input id="table-capacity" className="input" value={capacity} onChange={(e) => setCapacity(Math.max(1, parseInt(e.target.value) || 1))} type="number" min={1} max={50} />
-        </div>
-        <div className="flex items-center gap-2">
-          <input type="checkbox" className="rounded border-border-strong" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} id="table-active" />
-          <label htmlFor="table-active" className="text-sm text-ink">Active</label>
-        </div>
-      </form>
-    </RestaurantSlideOver>
+      <PanelCard>
+        <PanelHeader
+          eyebrow={table ? "Edit Table" : "New Table"}
+          title={table ? `Table ${table.number}` : "New table"}
+        />
+        <form id="table-form" onSubmit={handleSubmit} className="space-y-0">
+          <PanelSection label="Table Details">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <PanelField label="Table number *" htmlFor="table-number">
+                <input id="table-number" className="input" value={number} onChange={(e) => setNumber(e.target.value)} required placeholder="e.g. T1, Bar 2, 12" maxLength={20} />
+              </PanelField>
+              <PanelField label="Seats" htmlFor="table-capacity">
+                <input id="table-capacity" className="input" value={capacity} onChange={(e) => setCapacity(Math.max(1, parseInt(e.target.value) || 1))} type="number" min={1} max={50} />
+              </PanelField>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <PanelField label="Zone" htmlFor="table-zone">
+                <input id="table-zone" className="input" value={zone} onChange={(e) => setZone(e.target.value)} placeholder="e.g. Main, Terrace, Bar" maxLength={100} />
+              </PanelField>
+              <div className="flex items-end pb-2">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" className="rounded border-border-strong" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} id="table-active" />
+                  <label htmlFor="table-active" className="text-sm text-ink">Active</label>
+                </div>
+              </div>
+            </div>
+          </PanelSection>
+          <PanelFooter>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || !number.trim()} className="btn-primary">{saving ? "Saving..." : table ? "Update" : "Create"}</button>
+          </PanelFooter>
+        </form>
+      </PanelCard>
+    </SlideOver>
   );
 }

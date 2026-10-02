@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, ReceiptText } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { RestaurantTicket } from "../../types";
-import RestaurantSlideOver from "./RestaurantSlideOver";
+import SlideOver from "../SlideOver";
+import { PanelCard, PanelDetailItem, PanelFooter, PanelHeader, PanelSection } from "../Panel";
 import { formatDateTime } from "../../utils/date";
 import { useSettings } from "../../hooks/useSettings";
 import { formatCurrency } from "../../utils/currency";
@@ -40,51 +41,39 @@ export default function RestaurantTicketDetailDrawer({ ticket, onClose }: Props)
   const money = (n: number) => formatCurrency(n, symbol);
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={t.ticket_number}
       breadcrumb={`Ticket ${t.ticket_number}`}
-      actions={
-        <span className={`badge ${STATUS_BADGE[t.status] ?? "badge-neutral"}`}>{t.status}</span>
-      }
-      footer={
-        <Link to={`/restaurant/tickets/${t.id}`} className="btn-primary w-full flex items-center justify-center gap-1.5">
-          Open full ticket <ArrowRight size={16} />
-        </Link>
-      }
     >
-      <div className="space-y-5">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-          <div>
-            <dt className="text-xs text-muted uppercase tracking-wide">Table</dt>
-            <dd className="text-ink font-medium mt-0.5">{t.table_number || "Takeaway"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted uppercase tracking-wide">Guest</dt>
-            <dd className="text-ink font-medium mt-0.5">{t.customer_name || "Walk-in"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted uppercase tracking-wide">Opened</dt>
-            <dd className="text-ink font-medium mt-0.5">{formatDateTime(t.opened_at)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted uppercase tracking-wide">Items</dt>
-            <dd className="text-ink font-medium mt-0.5">{t.items.length}</dd>
-          </div>
-        </dl>
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Ticket"
+          title={t.ticket_number}
+          actions={
+            <span className={`badge ${STATUS_BADGE[t.status] ?? "badge-neutral"}`}>{t.status}</span>
+          }
+        />
 
-        {t.split_parent_number && (
-          <div className="card p-3 text-xs text-muted">
-            Split from {t.split_parent_number} — this is a partial check.
-          </div>
-        )}
+        <PanelSection label="Ticket Details">
+          <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <PanelDetailItem label="Table">{t.table_number || "Takeaway"}</PanelDetailItem>
+            <PanelDetailItem label="Guest">{t.customer_name || "Walk-in"}</PanelDetailItem>
+            <PanelDetailItem label="Opened">{formatDateTime(t.opened_at)}</PanelDetailItem>
+            <PanelDetailItem label="Items">{t.items.length}</PanelDetailItem>
+          </dl>
+          {t.split_parent_number && (
+            <p className="text-xs text-muted mt-4">
+              Split from {t.split_parent_number} — this is a partial check.
+            </p>
+          )}
+        </PanelSection>
 
-        {t.items.length === 0 ? (
-          <div className="card p-4 text-sm text-muted text-center">No items on this ticket.</div>
-        ) : (
-          <div>
-            <h3 className="text-sm font-semibold text-ink mb-2">Items</h3>
+        <PanelSection label="Items">
+          {t.items.length === 0 ? (
+            <p className="text-sm text-muted text-center">No items on this ticket.</p>
+          ) : (
             <ul className="divide-y divide-border card p-0 overflow-hidden">
               {t.items.map((item) => (
                 <li key={item.id} className={`px-4 py-3 flex items-start justify-between gap-3 ${item.status === "voided" ? "opacity-60" : ""}`}>
@@ -102,45 +91,50 @@ export default function RestaurantTicketDetailDrawer({ ticket, onClose }: Props)
                 </li>
               ))}
             </ul>
-          </div>
-        )}
+          )}
+        </PanelSection>
 
-        <div className="card p-4 space-y-2 text-sm">
-          <div className="flex justify-between text-muted">
-            <span>Subtotal</span>
-            <span className="tabular-nums">{money(t.subtotal)}</span>
-          </div>
-          {t.discount_amount > 0 && (
+        <PanelSection label="Totals">
+          <div className="space-y-2 text-sm">
             <div className="flex justify-between text-muted">
-              <span>Discount</span>
-              <span className="tabular-nums">−{money(t.discount_amount)}</span>
+              <span>Subtotal</span>
+              <span className="tabular-nums">{money(t.subtotal)}</span>
             </div>
-          )}
-          <div className="flex justify-between text-muted">
-            <span>Tax</span>
-            <span className="tabular-nums">{money(t.tax_amount)}</span>
-          </div>
-          {t.tip_amount > 0 && (
+            {t.discount_amount > 0 && (
+              <div className="flex justify-between text-muted">
+                <span>Discount</span>
+                <span className="tabular-nums">−{money(t.discount_amount)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-muted">
-              <span>Tip</span>
-              <span className="tabular-nums">{money(t.tip_amount)}</span>
+              <span>Tax</span>
+              <span className="tabular-nums">{money(t.tax_amount)}</span>
             </div>
-          )}
-          <div className="flex justify-between font-semibold text-ink border-t border-border pt-2">
-            <span>Total</span>
-            <span className="tabular-nums">{money(t.total_amount)}</span>
+            {t.tip_amount > 0 && (
+              <div className="flex justify-between text-muted">
+                <span>Tip</span>
+                <span className="tabular-nums">{money(t.tip_amount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-semibold text-ink border-t border-border pt-2">
+              <span>Total</span>
+              <span className="tabular-nums">{money(t.total_amount)}</span>
+            </div>
           </div>
-        </div>
+        </PanelSection>
 
         {t.notes && (
-          <div className="card p-4">
-            <div className="flex items-center gap-2 text-xs font-medium text-muted uppercase tracking-wide mb-1.5">
-              <ReceiptText size={13} /> Notes
-            </div>
+          <PanelSection label="Notes">
             <p className="text-sm text-ink whitespace-pre-wrap">{t.notes}</p>
-          </div>
+          </PanelSection>
         )}
-      </div>
-    </RestaurantSlideOver>
+
+        <PanelFooter>
+          <Link to={`/restaurant/tickets/${t.id}`} className="btn-primary w-full flex items-center justify-center gap-1.5">
+            Open full ticket <ArrowRight size={16} />
+          </Link>
+        </PanelFooter>
+      </PanelCard>
+    </SlideOver>
   );
 }

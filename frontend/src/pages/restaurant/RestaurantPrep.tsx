@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChefHat, History, PackageCheck, Settings2, TriangleAlert, Trash2 } from "lucide-react";
 import api from "../../api/client";
-import Modal from "../../components/Modal";
+import SlideOver from "../../components/SlideOver";
+import { PanelCard, PanelField, PanelFooter, PanelHeader, PanelSection } from "../../components/Panel";
 import EmptyState from "../../components/EmptyState";
 import StatCard from "../../components/StatCard";
 import { useAuth } from "../../context/AuthContext";
@@ -27,11 +28,13 @@ export default function RestaurantPrep() {
 
   const [station, setStation] = useState("");
   const [wasteFor, setWasteFor] = useState<number | null>(null);
+  const [wasteDish, setWasteDish] = useState("");
   const [wasteQty, setWasteQty] = useState("1");
   const [wasteReason, setWasteReason] = useState("");
   const [counts, setCounts] = useState<Record<number, string>>({});
   const [closing, setClosing] = useState<PrepSession | null>(null);
   const [levelsFor, setLevelsFor] = useState<number | null>(null);
+  const [levelsDish, setLevelsDish] = useState("");
   const [levelStation, setLevelStation] = useState("");
   const [levelPar, setLevelPar] = useState("0");
   const [levelWarn, setLevelWarn] = useState("0");
@@ -139,6 +142,7 @@ export default function RestaurantPrep() {
 
   function openLevels(item: PrepStation["items"][number]) {
     setLevelsFor(item.product_id);
+    setLevelsDish(item.name);
     setLevelStation(item.station);
     setLevelPar(String(item.par_qty));
     setLevelWarn(String(item.warn_qty));
@@ -288,7 +292,7 @@ export default function RestaurantPrep() {
                             <button
                               className="btn-secondary text-xs px-2 py-1"
                               aria-label={`Record waste for ${item.name}`}
-                              onClick={() => { setWasteFor(item.product_id); setWasteQty("1"); setWasteReason(""); }}
+                              onClick={() => { setWasteFor(item.product_id); setWasteDish(item.name); setWasteQty("1"); setWasteReason(""); }}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -400,166 +404,208 @@ export default function RestaurantPrep() {
         </>
       )}
 
-      <Modal open={wasteFor !== null} onClose={() => setWasteFor(null)} title="Record waste">
-        <div className="space-y-4">
-          <p className="text-sm text-muted">
-            Waste has to be declared with a reason. A batch that is short at close shows up as a variance either way, so declaring it
-            here is what separates honest spoilage from loss.
-          </p>
-          <label className="block">
-            <span className="text-sm text-muted">Quantity</span>
-            <input
-              className="input mt-1"
-              type="number"
-              min={1}
-              value={wasteQty}
-              onChange={(e) => setWasteQty(e.target.value)}
-              aria-label="Waste quantity"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm text-muted">Reason</span>
-            <input
-              className="input mt-1"
-              value={wasteReason}
-              maxLength={300}
-              onChange={(e) => setWasteReason(e.target.value)}
-              placeholder="Dropped, burnt, over-prepped…"
-              aria-label="Waste reason"
-            />
-          </label>
-          <button
-            className="btn-primary"
-            disabled={wasteReason.trim().length < 3 || Number(wasteQty) < 1 || bookWaste.isPending}
-            onClick={() => bookWaste.mutate({ productId: wasteFor!, quantity: Number(wasteQty), reason: wasteReason.trim() })}
+      <SlideOver
+        open={wasteFor !== null}
+        onClose={() => setWasteFor(null)}
+        title="Record waste"
+      >
+        <PanelCard>
+          <PanelHeader eyebrow="Prep Waste" title={wasteDish || "Dish"} />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              bookWaste.mutate({ productId: wasteFor!, quantity: Number(wasteQty), reason: wasteReason.trim() });
+            }}
+            className="space-y-0"
           >
-            {bookWaste.isPending ? "Saving…" : "Record waste"}
-          </button>
-        </div>
-      </Modal>
+            <PanelSection label="Waste Details">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <PanelField label="Quantity" htmlFor="waste-qty">
+                  <input
+                    id="waste-qty"
+                    className="input"
+                    type="number"
+                    min={1}
+                    value={wasteQty}
+                    onChange={(e) => setWasteQty(e.target.value)}
+                  />
+                </PanelField>
+                <PanelField label="Reason *" htmlFor="waste-reason">
+                  <input
+                    id="waste-reason"
+                    className="input"
+                    value={wasteReason}
+                    maxLength={300}
+                    onChange={(e) => setWasteReason(e.target.value)}
+                    placeholder="Dropped, burnt, over-prepped…"
+                  />
+                </PanelField>
+              </div>
+              <p className="text-xs text-muted mt-4">
+                Waste has to be declared with a reason. A batch that is short at close shows up as a variance either way, so
+                declaring it here is what separates honest spoilage from loss.
+              </p>
+            </PanelSection>
+            <PanelFooter>
+              <button type="button" onClick={() => setWasteFor(null)} className="btn-secondary">Cancel</button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={wasteReason.trim().length < 3 || Number(wasteQty) < 1 || bookWaste.isPending}
+              >
+                {bookWaste.isPending ? "Saving…" : "Record waste"}
+              </button>
+            </PanelFooter>
+          </form>
+        </PanelCard>
+      </SlideOver>
 
-      <Modal
+      <SlideOver
         open={closing !== null}
         onClose={() => setClosing(null)}
         title={`Close ${closing?.session_number ?? ""}`}
         wide
       >
         {closing && (
-          <div className="space-y-4">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-app text-left">
-                    <th scope="col" className="px-4 py-2 font-medium text-muted">Dish</th>
-                    <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Prepped</th>
-                    <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Sold</th>
-                    <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Waste</th>
-                    <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Expected</th>
-                    <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Counted</th>
-                    <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Variance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {closing.items.filter((i) => i.prepped_qty > 0).length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-6 text-center text-sm text-muted">
-                        No batches were recorded in {closing.session_number}, so it closes as an empty session.
-                      </td>
+          <PanelCard>
+            <PanelHeader eyebrow="Close Session" title={closing.session_number} />
+            <div className="space-y-0">
+              <PanelSection label="Batch Count">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-app text-left">
+                      <th scope="col" className="px-4 py-2 font-medium text-muted">Dish</th>
+                      <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Prepped</th>
+                      <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Sold</th>
+                      <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Waste</th>
+                      <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Expected</th>
+                      <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Counted</th>
+                      <th scope="col" className="px-4 py-2 font-medium text-muted text-right">Variance</th>
                     </tr>
-                  ) : (
-                    closing.items.filter((i) => i.prepped_qty > 0).map((i) => {
-                    const expected = i.prepped_qty - i.sold_qty - i.waste_qty;
-                    const counted = Number(counts[i.product_id] ?? 0) || 0;
-                    const variance = counted - expected;
-                    return (
-                      <tr key={i.id}>
-                        <td className="px-4 py-2">
-                          {i.product_name}
-                          {i.waste_reason && <span className="block text-xs text-faint">waste: {i.waste_reason}</span>}
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {closing.items.filter((i) => i.prepped_qty > 0).length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-6 text-center text-sm text-muted">
+                          No batches were recorded in {closing.session_number}, so it closes as an empty session.
                         </td>
-                        <td className="px-4 py-2 text-right">{i.prepped_qty}</td>
-                        <td className="px-4 py-2 text-right">{i.sold_qty}</td>
-                        <td className="px-4 py-2 text-right">{i.waste_qty}</td>
-                        <td className="px-4 py-2 text-right">{expected}</td>
-                        <td className="px-4 py-2 text-right">
-                          <input
-                            className="input w-20 text-right"
-                            type="number"
-                            min={0}
-                            aria-label={`Counted ${i.product_name}`}
-                            value={counts[i.product_id] ?? ""}
-                            onChange={(e) => setCounts((c) => ({ ...c, [i.product_id]: e.target.value }))}
-                          />
-                        </td>
-                        <td className={`px-4 py-2 text-right font-medium ${varianceTone(variance)}`}>{variance}</td>
                       </tr>
-                    );
-                  })
-                  )}
-                </tbody>
-              </table>
+                    ) : (
+                      closing.items.filter((i) => i.prepped_qty > 0).map((i) => {
+                      const expected = i.prepped_qty - i.sold_qty - i.waste_qty;
+                      const counted = Number(counts[i.product_id] ?? 0) || 0;
+                      const variance = counted - expected;
+                      return (
+                        <tr key={i.id}>
+                          <td className="px-4 py-2">
+                            {i.product_name}
+                            {i.waste_reason && <span className="block text-xs text-faint">waste: {i.waste_reason}</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right">{i.prepped_qty}</td>
+                          <td className="px-4 py-2 text-right">{i.sold_qty}</td>
+                          <td className="px-4 py-2 text-right">{i.waste_qty}</td>
+                          <td className="px-4 py-2 text-right">{expected}</td>
+                          <td className="px-4 py-2 text-right">
+                            <input
+                              className="input w-20 text-right"
+                              type="number"
+                              min={0}
+                              aria-label={`Counted ${i.product_name}`}
+                              value={counts[i.product_id] ?? ""}
+                              onChange={(e) => setCounts((c) => ({ ...c, [i.product_id]: e.target.value }))}
+                            />
+                          </td>
+                          <td className={`px-4 py-2 text-right font-medium ${varianceTone(variance)}`}>{variance}</td>
+                        </tr>
+                      );
+                    })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted mt-4">
+                A non-zero total is saved as-is and raises a manager alert. It cannot be edited afterwards.
+              </p>
+              </PanelSection>
+              <PanelFooter>
+                <button type="button" onClick={() => setClosing(null)} className="btn-secondary">Cancel</button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={closeSession.isPending}
+                  onClick={() => closeSession.mutate(closing)}
+                >
+                  {closeSession.isPending ? "Closing…" : "Close session"}
+                </button>
+              </PanelFooter>
             </div>
-            <p className="text-sm text-muted">
-              A non-zero total is saved as-is and raises a manager alert. It cannot be edited afterwards.
-            </p>
-            <button
-              className="btn-primary"
-              disabled={closeSession.isPending}
-              onClick={() => closeSession.mutate(closing)}
-            >
-              {closeSession.isPending ? "Closing…" : "Close session"}
-            </button>
-          </div>
+          </PanelCard>
         )}
-      </Modal>
+      </SlideOver>
 
-      <Modal open={levelsFor !== null} onClose={() => setLevelsFor(null)} title="Prep levels">
-        <div className="space-y-4">
-          <label className="block">
-            <span className="text-sm text-muted">Station</span>
-            <input
-              className="input mt-1"
-              value={levelStation}
-              maxLength={60}
-              onChange={(e) => setLevelStation(e.target.value)}
-              placeholder="Grill, Fry, Cold…"
-              aria-label="Prep station"
-            />
-          </label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-sm text-muted">Par level</span>
-              <input
-                className="input mt-1"
-                type="number"
-                min={0}
-                value={levelPar}
-                onChange={(e) => setLevelPar(e.target.value)}
-                aria-label="Par level"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm text-muted">Warn level</span>
-              <input
-                className="input mt-1"
-                type="number"
-                min={0}
-                value={levelWarn}
-                onChange={(e) => setLevelWarn(e.target.value)}
-                aria-label="Warn level"
-              />
-            </label>
-          </div>
-          <p className="text-sm text-muted">Clearing the station takes the dish off prep tracking.</p>
-          <button
-            className="btn-primary"
-            disabled={saveLevels.isPending || Number(levelWarn) > Number(levelPar)}
-            onClick={() => saveLevels.mutate()}
+      <SlideOver
+        open={levelsFor !== null}
+        onClose={() => setLevelsFor(null)}
+        title="Prep levels"
+      >
+        <PanelCard>
+          <PanelHeader eyebrow="Prep Levels" title={levelsDish || "Dish"} />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveLevels.mutate();
+            }}
+            className="space-y-0"
           >
-            {saveLevels.isPending ? "Saving…" : "Save levels"}
-          </button>
-        </div>
-      </Modal>
+            <PanelSection label="Station & Thresholds">
+              <PanelField label="Station" htmlFor="level-station">
+                <input
+                  id="level-station"
+                  className="input"
+                  value={levelStation}
+                  maxLength={60}
+                  onChange={(e) => setLevelStation(e.target.value)}
+                  placeholder="Grill, Fry, Cold…"
+                />
+              </PanelField>
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-4 mt-4">
+                <PanelField label="Par level" htmlFor="level-par">
+                  <input
+                    id="level-par"
+                    className="input"
+                    type="number"
+                    min={0}
+                    value={levelPar}
+                    onChange={(e) => setLevelPar(e.target.value)}
+                  />
+                </PanelField>
+                <PanelField label="Warn level" htmlFor="level-warn">
+                  <input
+                    id="level-warn"
+                    className="input"
+                    type="number"
+                    min={0}
+                    value={levelWarn}
+                    onChange={(e) => setLevelWarn(e.target.value)}
+                  />
+                </PanelField>
+              </div>
+              <p className="text-xs text-muted mt-4">Clearing the station takes the dish off prep tracking.</p>
+            </PanelSection>
+            <PanelFooter>
+              <button type="button" onClick={() => setLevelsFor(null)} className="btn-secondary">Cancel</button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={saveLevels.isPending || Number(levelWarn) > Number(levelPar)}
+              >
+                {saveLevels.isPending ? "Saving…" : "Save levels"}
+              </button>
+            </PanelFooter>
+          </form>
+        </PanelCard>
+      </SlideOver>
     </div>
   );
 }

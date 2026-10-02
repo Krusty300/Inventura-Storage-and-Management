@@ -17,7 +17,15 @@ import CustomerPicker from "../../components/CustomerPicker";
 import PaymentMethodPicker from "../../components/PaymentMethodPicker";
 import BarcodeScanner from "../../components/BarcodeScanner";
 import RestaurantMenuProductDetail from "../../components/restaurant/RestaurantMenuProductDetail";
-import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
+import SlideOver from "../../components/SlideOver";
+import {
+  PanelCard,
+  PanelFooter,
+  PanelField,
+  PanelHeader,
+  PanelSection,
+  panelLabel,
+} from "../../components/Panel";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
@@ -899,85 +907,86 @@ function ModifierSlideOver({ product, symbol, isPending, onClose, onAdd }: {
   };
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={product.display_name}
       breadcrumb={`Add ${product.display_name}`}
-      footer={
-        <>
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleAdd} disabled={isPending} className="btn-primary flex items-center gap-1.5">
-            <Plus size={16} /> {isPending ? "Adding…" : "Add to Order"}
-          </button>
-        </>
-      }
     >
-      <div className="space-y-5">
-        <div className="flex gap-4">
-          <img
-            src={product.image || product.image_url || getPlaceholder()}
-            alt=""
-            className="h-28 w-28 sm:h-32 sm:w-32 shrink-0 rounded-xl object-cover bg-app border border-border"
-            loading="lazy"
-            decoding="async"
-            onError={onImageError}
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div className="text-lg font-semibold text-ink">{product.display_name}</div>
-              <span className={`badge shrink-0 ${product.available ? "badge-success" : "badge-danger"}`}>
-                {product.available ? "Available" : "Out of stock"}
-              </span>
-            </div>
-            {product.sku && <div className="text-xs text-muted mt-1">SKU {product.sku}</div>}
-            <div className="text-sm text-ink font-semibold mt-1.5 tabular-nums">
-              {formatCurrency(product.unit_price, symbol)}{" "}
-              <span className="font-normal text-muted">per unit</span>
-            </div>
-            {product.description && (
-              <p className="text-sm text-muted mt-2 whitespace-pre-wrap line-clamp-4">{product.description}</p>
-            )}
-          </div>
-        </div>
-        {isLoading ? (
-          <div className="card p-4 animate-pulse h-16" />
-        ) : groupList.length === 0 ? (
-          <p className="text-sm text-muted">No modifiers for this item — add it straight away.</p>
-        ) : (
-          <>
-            <h3 className="text-sm font-semibold text-ink">Modifiers</h3>
-            {groupList.map((g) => (
-              <div key={g.id}>
-                <div className="flex items-baseline justify-between gap-2 mb-2">
-                  <span className="font-medium text-ink">
-                    {g.name}
-                    {g.is_required && <span className="text-xs text-red-600 dark:text-red-400 ml-1">required</span>}
-                  </span>
-                  <span className="text-xs text-muted">{chosen(g.id).length}/{g.max_select}{g.min_select > 0 && ` · min ${g.min_select}`}</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {g.options.filter((o) => o.is_active).map((o) => (
-                    <button
-                      key={o.id}
-                      type="button"
-                      onClick={() => toggle(g.id, o.id)}
-                      aria-pressed={chosen(g.id).includes(o.id)}
-                      className={`btn min-h-10 px-3 py-2 text-sm ${chosen(g.id).includes(o.id) ? "btn-primary" : "btn-secondary"}`}
-                    >
-                      {o.name} {o.price_delta !== 0 && (
-                        <span className="text-xs tabular-nums">
-                          ({o.price_delta > 0 ? "+" : "-"}{formatCurrency(Math.abs(o.price_delta), symbol)})
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Add Item"
+          title={product.display_name}
+          subtitle={product.sku ? `SKU ${product.sku}` : undefined}
+          actions={
+            <span className={`badge shrink-0 ${product.available ? "badge-success" : "badge-danger"}`}>
+              {product.available ? "Available" : "Out of stock"}
+            </span>
+          }
+        />
+
+        <PanelSection label="Item">
+          <div className="flex gap-4">
+            <img
+              src={product.image || product.image_url || getPlaceholder()}
+              alt=""
+              className="h-28 w-28 sm:h-32 sm:w-32 shrink-0 rounded-xl object-cover bg-app border border-border"
+              loading="lazy"
+              decoding="async"
+              onError={onImageError}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-ink tabular-nums">
+                {formatCurrency(product.unit_price, symbol)}{" "}
+                <span className="font-normal text-muted">per unit</span>
               </div>
-            ))}
-          </>
-        )}
-        <div className="card p-4 space-y-3">
+              {product.description && (
+                <p className="text-sm text-muted mt-2 whitespace-pre-wrap line-clamp-4">{product.description}</p>
+              )}
+            </div>
+          </div>
+        </PanelSection>
+
+        <PanelSection label="Modifiers">
+          {isLoading ? (
+            <div className="card p-4 animate-pulse h-16" />
+          ) : groupList.length === 0 ? (
+            <p className="text-sm text-muted">No modifiers for this item — add it straight away.</p>
+          ) : (
+            <div className="space-y-4">
+              {groupList.map((g) => (
+                <div key={g.id}>
+                  <div className="flex items-baseline justify-between gap-2 mb-2">
+                    <span className="font-medium text-ink">
+                      {g.name}
+                      {g.is_required && <span className="text-xs text-red-600 dark:text-red-400 ml-1">required</span>}
+                    </span>
+                    <span className="text-xs text-muted">{chosen(g.id).length}/{g.max_select}{g.min_select > 0 && ` · min ${g.min_select}`}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {g.options.filter((o) => o.is_active).map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => toggle(g.id, o.id)}
+                        aria-pressed={chosen(g.id).includes(o.id)}
+                        className={`btn min-h-10 px-3 py-2 text-sm ${chosen(g.id).includes(o.id) ? "btn-primary" : "btn-secondary"}`}
+                      >
+                        {o.name} {o.price_delta !== 0 && (
+                          <span className="text-xs tabular-nums">
+                            ({o.price_delta > 0 ? "+" : "-"}{formatCurrency(Math.abs(o.price_delta), symbol)})
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </PanelSection>
+
+        <PanelSection label="Quantity">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-ink">Qty</span>
@@ -1009,7 +1018,7 @@ function ModifierSlideOver({ product, symbol, isPending, onClose, onAdd }: {
             </div>
           </div>
           {extras !== 0 && (
-            <div className="text-xs text-muted border-t border-border pt-2 space-y-1">
+            <div className="text-xs text-muted border-t border-border mt-4 pt-3 space-y-1">
               <div className="flex justify-between gap-2">
                 <span>Base</span>
                 <span className="tabular-nums">{formatCurrency(product.unit_price, symbol)}</span>
@@ -1024,18 +1033,27 @@ function ModifierSlideOver({ product, symbol, isPending, onClose, onAdd }: {
               </div>
             </div>
           )}
-        </div>
-        <label className="block text-sm font-medium text-ink mb-1" htmlFor="mod-notes">Note to kitchen (optional)</label>
-        <TextArea
-          id="mod-notes"
-          className="min-h-[64px]"
-          value={notes}
-          onChange={setNotes}
-          placeholder="e.g. no onions, well done..."
-          maxLength={500}
-        />
-      </div>
-    </RestaurantSlideOver>
+        </PanelSection>
+
+        <PanelSection label="Kitchen Note">
+          <TextArea
+            id="mod-notes"
+            className="min-h-[64px]"
+            value={notes}
+            onChange={setNotes}
+            placeholder="e.g. no onions, well done..."
+            maxLength={500}
+          />
+        </PanelSection>
+
+        <PanelFooter>
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={handleAdd} disabled={isPending} className="btn-primary flex items-center gap-1.5">
+            <Plus size={16} /> {isPending ? "Adding…" : "Add to Order"}
+          </button>
+        </PanelFooter>
+      </PanelCard>
+    </SlideOver>
   );
 }
 
@@ -1070,50 +1088,60 @@ function EditTicketSlideOver({ open, ticket, onClose, onSave }: {
   };
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open={open}
       onClose={onClose}
       title={`Edit ${ticket.ticket_number}`}
       breadcrumb={`Edit ${ticket.ticket_number}`}
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" form="edit-ticket-form" className="btn-primary">Save Changes</button>
-        </>
-      }
     >
-      <form id="edit-ticket-form" onSubmit={submit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1">Customer</label>
-          <CustomerPicker
-            value={null}
-            onChange={() => {}}
-            onSelectCustomer={(c) => {
-              setCustomerName(c.name);
-              setCustomerPhone(c.phone || "");
-            }}
-            placeholder={customerName ? `Search to change — now ${customerName}` : "Search a customer to attach this bill..."}
-          />
-          <p className="text-xs text-muted mt-1">Picking a customer fills the booking name and contact phone.</p>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-customer">Customer / booking name</label>
-          <input id="edit-customer" className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in" maxLength={120} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-customer-phone">Contact phone</label>
-          <input id="edit-customer-phone" className="input" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="0712 345 678" inputMode="tel" maxLength={40} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-guests">Guest count</label>
-          <input id="edit-guests" className="input w-32" type="number" min={1} max={99} value={guestCount} onChange={(e) => setGuestCount(Math.max(1, parseInt(e.target.value) || 1))} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="edit-notes">Notes (allergies, requests)</label>
-          <TextArea id="edit-notes" className="min-h-[80px]" value={notes} onChange={setNotes} maxLength={2000} />
-        </div>
-      </form>
-    </RestaurantSlideOver>
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Edit Ticket"
+          title={ticket.ticket_number}
+          subtitle={customerName || "Walk-in"}
+        />
+        <form id="edit-ticket-form" onSubmit={submit} className="space-y-0">
+          <PanelSection label="Customer">
+            <span className={panelLabel}>Customer</span>
+            <CustomerPicker
+              value={null}
+              onChange={() => {}}
+              onSelectCustomer={(c) => {
+                setCustomerName(c.name);
+                setCustomerPhone(c.phone || "");
+              }}
+              placeholder={customerName ? `Search to change — now ${customerName}` : "Search a customer to attach this bill..."}
+            />
+            <p className="text-xs text-muted mt-1">Picking a customer fills the booking name and contact phone.</p>
+          </PanelSection>
+
+          <PanelSection label="Booking">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <PanelField label="Customer / booking name" htmlFor="edit-customer">
+                <input id="edit-customer" className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in" maxLength={120} />
+              </PanelField>
+              <PanelField label="Contact phone" htmlFor="edit-customer-phone">
+                <input id="edit-customer-phone" className="input" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="0712 345 678" inputMode="tel" maxLength={40} />
+              </PanelField>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <PanelField label="Guest count" htmlFor="edit-guests">
+                <input id="edit-guests" className="input w-32" type="number" min={1} max={99} value={guestCount} onChange={(e) => setGuestCount(Math.max(1, parseInt(e.target.value) || 1))} />
+              </PanelField>
+            </div>
+          </PanelSection>
+
+          <PanelSection label="Notes" last>
+            <TextArea id="edit-notes" className="min-h-[80px]" value={notes} onChange={setNotes} maxLength={2000} />
+          </PanelSection>
+
+          <PanelFooter>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" className="btn-primary">Save Changes</button>
+          </PanelFooter>
+        </form>
+      </PanelCard>
+    </SlideOver>
   );
 }
 
@@ -1248,25 +1276,22 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
   };
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open={open}
       onClose={onClose}
       title={`Settle ${ticket.ticket_number}`}
       breadcrumb={`Settle ${ticket.ticket_number}`}
       wide
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" form="settle-ticket-form" disabled={saving || (method === "mobile_money" && !phone.trim())} className="btn-primary">
-            {saving ? "Settling..." : method === "mobile_money" ? "Collect Payment" : "Settle Now"}
-          </button>
-        </>
-      }
     >
-      <form id="settle-ticket-form" onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-lg border border-border bg-app p-3 space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1">Customer</label>
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Settle Ticket"
+          title={ticket.ticket_number}
+          subtitle={ticket.customer_name || "Walk-in"}
+        />
+        <form id="settle-ticket-form" onSubmit={handleSubmit} className="space-y-0">
+          <PanelSection label="Customer">
+            <span className={panelLabel}>Customer</span>
             <CustomerPicker
               value={customerId}
               onChange={setCustomerId}
@@ -1277,147 +1302,163 @@ function SettleSlideOver({ open, ticket, onClose, onSettled }: {
               placeholder={customerPhone ? `Linked contact: ${customerPhone}` : "Search customer to attribute this sale..."}
             />
             <p className="text-xs text-muted mt-1">Attaching a customer records the sale on their account.</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-customer-phone">Contact phone</label>
-            <input
-              id="settle-customer-phone"
-              className="input"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="0712 345 678"
-              inputMode="tel"
-              maxLength={40}
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-method">Payment method</label>
-          <PaymentMethodPicker
-            method={method}
-            provider={provider}
-            onSelect={(m, p) => { setMethod(m); setProvider(p); }}
-            ariaLabel="Payment method"
-          />
-        </div>
-        {method === "mobile_money" && (
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-phone">Phone number *</label>
-            <input
-              id="settle-phone"
-              className="input"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="0712 345 678"
-              required
-              inputMode="tel"
-            />
-          </div>
-        )}
-        {canDiscount ? (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-discount">Discount ({symbol})</label>
-              <input
-                id="settle-discount"
-                className="input"
-                value={discount}
-                onChange={(e) => setDiscount(e.target.value)}
-                placeholder="0.00"
-                type="number"
-                min={0}
-                step="0.01"
-                inputMode="decimal"
-              />
-              <p className="text-xs text-muted mt-1">
-                Up to {MAX_DISCOUNT_PERCENT}% of the subtotal ({formatCurrency(maxDiscount, symbol)}). Discounts are logged and sent to a manager.
-              </p>
-            </div>
-            {cappedDiscount > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-discount-reason">
-                  Discount reason *
-                </label>
+            <div className="mt-3">
+              <PanelField label="Contact phone" htmlFor="settle-customer-phone">
                 <input
-                  id="settle-discount-reason"
+                  id="settle-customer-phone"
                   className="input"
-                  value={discountReason}
-                  onChange={(e) => setDiscountReason(e.target.value)}
-                  placeholder="e.g. kitchen error, manager comp, service recovery..."
-                  maxLength={200}
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="0712 345 678"
+                  inputMode="tel"
+                  maxLength={40}
                 />
+              </PanelField>
+            </div>
+          </PanelSection>
+
+          <PanelSection label="Payment">
+            <span className={panelLabel}>Payment method</span>
+            <PaymentMethodPicker
+              method={method}
+              provider={provider}
+              onSelect={(m, p) => { setMethod(m); setProvider(p); }}
+              ariaLabel="Payment method"
+            />
+            {method === "mobile_money" && (
+              <div className="mt-3">
+                <PanelField label="Phone number *" htmlFor="settle-phone">
+                  <input
+                    id="settle-phone"
+                    className="input"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="0712 345 678"
+                    required
+                    inputMode="tel"
+                  />
+                </PanelField>
               </div>
             )}
-          </div>
-        ) : (
-          <div>
-            <span className="block text-sm font-medium text-ink mb-1">Discount ({symbol})</span>
-            <p className="text-sm text-muted">
-              {ticket.discount_amount > 0
-                ? `${formatCurrency(ticket.discount_amount, symbol)} discount already applied to this ticket.`
-                : "Only a manager can apply a discount."}
-            </p>
-          </div>
-        )}
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-tip">Tip ({symbol})</label>
-          <input
-            id="settle-tip"
-            className="input"
-            value={tip}
-            onChange={(e) => setTip(e.target.value)}
-            placeholder="0.00"
-            type="number"
-            min={0}
-            step="0.01"
-            inputMode="decimal"
-          />
-        </div>
-        {isCash && (
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="settle-tendered">Cash tendered ({symbol})</label>
-            <input
-              id="settle-tendered"
-              className="input"
-              value={tendered}
-              onChange={(e) => setTendered(e.target.value)}
-              placeholder="0.00"
-              type="number"
-              min={0}
-              step="0.01"
-              inputMode="decimal"
-            />
-          </div>
-        )}
-        <div className="border-t border-border pt-3 space-y-1.5">
-          <div className="flex justify-between text-muted">
-            <span>{tipValue > 0 ? "Bill" : "Total to collect"}</span>
-            <span className="tabular-nums">{formatCurrency(total, symbol)}</span>
-          </div>
-          {tipValue > 0 && (
-            <div className="flex justify-between text-muted">
-              <span>Tip</span>
-              <span className="tabular-nums">{formatCurrency(tipValue, symbol)}</span>
+          </PanelSection>
+
+          <PanelSection label="Adjustments">
+            {canDiscount ? (
+              <>
+                <PanelField label={`Discount (${symbol})`} htmlFor="settle-discount">
+                  <input
+                    id="settle-discount"
+                    className="input"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    placeholder="0.00"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                  />
+                </PanelField>
+                <p className="text-xs text-muted mt-1">
+                  Up to {MAX_DISCOUNT_PERCENT}% of the subtotal ({formatCurrency(maxDiscount, symbol)}). Discounts are logged and sent to a manager.
+                </p>
+                {cappedDiscount > 0 && (
+                  <div className="mt-3">
+                    <PanelField label="Discount reason *" htmlFor="settle-discount-reason">
+                      <input
+                        id="settle-discount-reason"
+                        className="input"
+                        value={discountReason}
+                        onChange={(e) => setDiscountReason(e.target.value)}
+                        placeholder="e.g. kitchen error, manager comp, service recovery..."
+                        maxLength={200}
+                      />
+                    </PanelField>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <span className={panelLabel}>Discount ({symbol})</span>
+                <p className="text-sm text-muted">
+                  {ticket.discount_amount > 0
+                    ? `${formatCurrency(ticket.discount_amount, symbol)} discount already applied to this ticket.`
+                    : "Only a manager can apply a discount."}
+                </p>
+              </>
+            )}
+            <div className="mt-3">
+              <PanelField label={`Tip (${symbol})`} htmlFor="settle-tip">
+                <input
+                  id="settle-tip"
+                  className="input"
+                  value={tip}
+                  onChange={(e) => setTip(e.target.value)}
+                  placeholder="0.00"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                />
+              </PanelField>
             </div>
-          )}
-          {isCash && tenderValue > 0 && (
-            <div className={`flex justify-between font-medium ${short > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-              <span>{short > 0 ? "Short" : "Change due"}</span>
-              <span className="tabular-nums">{formatCurrency(short > 0 ? short : change, symbol)}</span>
+            {isCash && (
+              <div className="mt-3">
+                <PanelField label={`Cash tendered (${symbol})`} htmlFor="settle-tendered">
+                  <input
+                    id="settle-tendered"
+                    className="input"
+                    value={tendered}
+                    onChange={(e) => setTendered(e.target.value)}
+                    placeholder="0.00"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                  />
+                </PanelField>
+              </div>
+            )}
+          </PanelSection>
+
+          <PanelSection label="Summary" last>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-muted">
+                <span>{tipValue > 0 ? "Bill" : "Total to collect"}</span>
+                <span className="tabular-nums">{formatCurrency(total, symbol)}</span>
+              </div>
+              {tipValue > 0 && (
+                <div className="flex justify-between text-muted">
+                  <span>Tip</span>
+                  <span className="tabular-nums">{formatCurrency(tipValue, symbol)}</span>
+                </div>
+              )}
+              {isCash && tenderValue > 0 && (
+                <div className={`flex justify-between font-medium ${short > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                  <span>{short > 0 ? "Short" : "Change due"}</span>
+                  <span className="tabular-nums">{formatCurrency(short > 0 ? short : change, symbol)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold text-ink pt-1">
+                <span>{isCash ? "Cash to collect" : "M-Pesa prompt"}</span>
+                <span className="tabular-nums">{formatCurrency(isCash ? due : mpesaAmount, symbol)}</span>
+              </div>
+              {!isCash && mpesaAmount !== due && (
+                <p className="text-xs text-muted">
+                  M-Pesa charges whole units, so the prompt is rounded to {formatCurrency(mpesaAmount, symbol)}.
+                </p>
+              )}
             </div>
-          )}
-          <div className="flex justify-between font-semibold text-ink pt-1">
-            <span>{isCash ? "Cash to collect" : "M-Pesa prompt"}</span>
-            <span className="tabular-nums">{formatCurrency(isCash ? due : mpesaAmount, symbol)}</span>
-          </div>
-          {!isCash && mpesaAmount !== due && (
-            <p className="text-xs text-muted">
-              M-Pesa charges whole units, so the prompt is rounded to {formatCurrency(mpesaAmount, symbol)}.
-            </p>
-          )}
-        </div>
-      </form>
-    </RestaurantSlideOver>
+          </PanelSection>
+
+          <PanelFooter>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={saving || (method === "mobile_money" && !phone.trim())} className="btn-primary">
+              {saving ? "Settling..." : method === "mobile_money" ? "Collect Payment" : "Settle Now"}
+            </button>
+          </PanelFooter>
+        </form>
+      </PanelCard>
+    </SlideOver>
   );
 }
 
@@ -1445,50 +1486,43 @@ function VoidItemSlideOver({ open, item, onClose, onConfirm }: {
   };
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open={open}
       onClose={onClose}
       title="Void Item"
       breadcrumb="Void item"
-      footer={
-        item && (
-          <>
-            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-            <button type="submit" form="void-item-form" className="btn-danger flex items-center gap-1.5">
-              <Ban size={16} /> Void Item
-            </button>
-          </>
-        )
-      }
     >
       {item && (
-        <form id="void-item-form" onSubmit={submit} className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 shrink-0">
-              <Ban size={18} />
-            </div>
-            <div>
-              <div className="font-medium text-ink">{item.product_name}</div>
-              <div className="text-xs text-muted">×{item.quantity} · {item.status === "pending" ? "not yet sent" : `already sent to kitchen (${item.status})`}</div>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="void-reason">
-              Reason *
-            </label>
-            <TextArea
-              id="void-reason"
-              className="min-h-[80px]"
-              value={reason}
-              onChange={setReason}
-              placeholder="e.g. customer changed mind, overcooked, wrong table..."
-              maxLength={200}
-            />
-            <p className="text-xs text-muted mt-1">{item.status === "pending" ? "Pending items haven't used stock — no stock will be returned." : "Stock will be returned to the kitchen inventory."} Voids are recorded against your name and sent to a manager.</p>
-          </div>
-        </form>
+        <PanelCard>
+          <PanelHeader
+            eyebrow="Void Item"
+            title={item.product_name}
+            subtitle={`×${item.quantity} · ${item.status === "pending" ? "not yet sent" : `already sent to kitchen (${item.status})`}`}
+          />
+          <form id="void-item-form" onSubmit={submit} className="space-y-0">
+            <PanelSection label="Reason *">
+              <TextArea
+                id="void-reason"
+                className="min-h-[80px]"
+                value={reason}
+                onChange={setReason}
+                placeholder="e.g. customer changed mind, overcooked, wrong table..."
+                maxLength={200}
+              />
+              <p className="text-xs text-muted mt-1">
+                {item.status === "pending" ? "Pending items haven't used stock — no stock will be returned." : "Stock will be returned to the kitchen inventory."} Voids are recorded against your name and sent to a manager.
+              </p>
+            </PanelSection>
+            <PanelFooter>
+              <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+              <button type="submit" className="btn-danger flex items-center gap-1.5">
+                <Ban size={16} /> Void Item
+              </button>
+            </PanelFooter>
+          </form>
+        </PanelCard>
       )}
-    </RestaurantSlideOver>
+    </SlideOver>
   );
 }
 
@@ -1550,103 +1584,118 @@ function SplitBillSlideOver({ open, ticket, onClose, onSplit }: {
   };
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open={open}
       onClose={onClose}
       title={`Split ${ticket.ticket_number}`}
       breadcrumb={`Split ${ticket.ticket_number}`}
       wide
-      footer={
-        <>
-          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-          <button type="submit" form="split-ticket-form" disabled={active.length === 0 || selected.length === 0} className="btn-primary flex items-center gap-1.5">
-            <Scissors size={16} /> Split Bill
-          </button>
-        </>
-      }
     >
-      <form id="split-ticket-form" onSubmit={submit} className="space-y-4">
-        <p className="text-sm text-muted">Move selected items to a new bill. Stock already sent to the kitchen stays attributed to the original ticket.</p>
-        {active.length === 0 && (
-          <p className="text-sm text-red-600 dark:text-red-400">Nothing to split — this ticket has no active items.</p>
-        )}
-        {active.length > 1 && (
-          <div className="flex items-center justify-between gap-2">
-            <button type="button" onClick={toggleAll} className="btn-secondary text-xs px-3 py-1.5">
-              {allChecked ? "Clear all" : "Select all"}
-            </button>
-            <span className="text-xs text-muted">{selected.length} to move</span>
-          </div>
-        )}
-        <ul className="divide-y divide-border border border-border rounded-lg max-h-[280px] overflow-y-auto">
-          {active.map((item) => (
-            <li key={item.id}>
-              <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-app transition">
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Split Bill"
+          title={ticket.ticket_number}
+          subtitle={`${selected.length} of ${active.length} items selected`}
+        />
+        <form id="split-ticket-form" onSubmit={submit} className="space-y-0">
+          <PanelSection label="Items">
+            <p className="text-sm text-muted">Move selected items to a new bill. Stock already sent to the kitchen stays attributed to the original ticket.</p>
+            {active.length === 0 && (
+              <p className="text-sm text-red-600 dark:text-red-400 mt-3">Nothing to split — this ticket has no active items.</p>
+            )}
+            {active.length > 1 && (
+              <div className="flex items-center justify-between gap-2 mt-3">
+                <button type="button" onClick={toggleAll} className="btn-secondary text-xs px-3 py-1.5">
+                  {allChecked ? "Clear all" : "Select all"}
+                </button>
+                <span className="text-xs text-muted">{selected.length} to move</span>
+              </div>
+            )}
+            {active.length > 0 && (
+              <ul className="divide-y divide-border border border-border rounded-lg max-h-[280px] overflow-y-auto mt-3">
+                {active.map((item) => (
+                  <li key={item.id}>
+                    <label className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-app transition">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(item.id)}
+                        onChange={() => toggle(item.id)}
+                        className="accent-primary-strong"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-ink text-sm truncate">{item.product_name}</div>
+                        <div className="text-xs text-muted">×{item.quantity} · {formatCurrency(item.unit_price, symbol)}</div>
+                      </div>
+                      <span className="text-sm tabular-nums text-muted">
+                        {formatCurrency(item.line_total ?? item.unit_price * item.quantity, symbol)}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PanelSection>
+
+          <PanelSection label="New Bill">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <PanelField label="Guest count (optional)" htmlFor="split-guests">
                 <input
-                  type="checkbox"
-                  checked={selected.includes(item.id)}
-                  onChange={() => toggle(item.id)}
-                  className="accent-primary-strong"
+                  id="split-guests"
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={guestCount}
+                  onChange={(e) => setGuestCount(e.target.value)}
+                  placeholder={String(ticket.guest_count)}
                 />
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-ink text-sm truncate">{item.product_name}</div>
-                  <div className="text-xs text-muted">×{item.quantity} · {formatCurrency(item.unit_price, symbol)}</div>
-                </div>
-                <span className="text-sm tabular-nums text-muted">
-                  {formatCurrency(item.line_total ?? item.unit_price * item.quantity, symbol)}
-                </span>
-              </label>
-            </li>
-          ))}
-        </ul>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="split-guests">Guest count (optional)</label>
-            <input
-              id="split-guests"
-              className="input"
-              type="number"
-              min={1}
-              max={99}
-              value={guestCount}
-              onChange={(e) => setGuestCount(e.target.value)}
-              placeholder={String(ticket.guest_count)}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1" htmlFor="split-customer">Customer / booking name</label>
-            <input
-              id="split-customer"
-              className="input"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder={ticket.customer_name || "Walk-in"}
-              maxLength={120}
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-ink mb-1" htmlFor="split-notes">Notes (optional)</label>
-          <input
-            id="split-notes"
-            className="input"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="e.g. Split of [ticket]"
-            maxLength={2000}
-          />
-        </div>
-        <div className="border-t border-border pt-3 space-y-1.5 text-sm">
-          <div className="flex justify-between text-muted">
-            <span>Moving to new bill</span>
-            <span className="tabular-nums">{formatCurrency(toMoveAmount, symbol)}</span>
-          </div>
-          <div className="flex justify-between text-muted">
-            <span>Staying on this bill</span>
-            <span className="tabular-nums">{formatCurrency(keepAmount, symbol)}</span>
-          </div>
-        </div>
-      </form>
-    </RestaurantSlideOver>
+              </PanelField>
+              <PanelField label="Customer / booking name" htmlFor="split-customer">
+                <input
+                  id="split-customer"
+                  className="input"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder={ticket.customer_name || "Walk-in"}
+                  maxLength={120}
+                />
+              </PanelField>
+            </div>
+            <div className="mt-4">
+              <PanelField label="Notes (optional)" htmlFor="split-notes">
+                <input
+                  id="split-notes"
+                  className="input"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g. Split of [ticket]"
+                  maxLength={2000}
+                />
+              </PanelField>
+            </div>
+          </PanelSection>
+
+          <PanelSection label="Summary" last>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between text-muted">
+                <span>Moving to new bill</span>
+                <span className="tabular-nums">{formatCurrency(toMoveAmount, symbol)}</span>
+              </div>
+              <div className="flex justify-between text-muted">
+                <span>Staying on this bill</span>
+                <span className="tabular-nums">{formatCurrency(keepAmount, symbol)}</span>
+              </div>
+            </div>
+          </PanelSection>
+
+          <PanelFooter>
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={active.length === 0 || selected.length === 0} className="btn-primary flex items-center gap-1.5">
+              <Scissors size={16} /> Split Bill
+            </button>
+          </PanelFooter>
+        </form>
+      </PanelCard>
+    </SlideOver>
   );
 }

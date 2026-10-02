@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Clock, Pencil, Phone, StickyNote, Table2, Trash2, Users } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../../api/client";
 import type { RestaurantReservation, ReservationStatus } from "../../types";
-import RestaurantSlideOver from "./RestaurantSlideOver";
+import SlideOver from "../SlideOver";
+import { PanelCard, PanelFooter, PanelHeader, PanelSection, panelSectionLabel } from "../Panel";
 import ConfirmDialog from "../ConfirmDialog";
 import { RESERVATION_STATUS_BADGE, reservationActions, type ReservationAction } from "./reservationStatus";
 import { useToast } from "../../context/ToastContext";
@@ -51,16 +52,65 @@ export default function RestaurantReservationDetail({ reservation, canUpdate, ca
   const actions = reservationActions(r, canUpdate);
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={r.guest_name}
       breadcrumb={`Reservation ${r.reservation_number}`}
-      actions={
-        <span className={`badge ${RESERVATION_STATUS_BADGE[r.status]}`}>{r.status}</span>
-      }
-      footer={
-        <>
+    >
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Reservation"
+          title={r.guest_name}
+          subtitle={`${r.reservation_number} · Booked by ${r.username}`}
+          actions={<span className={`badge ${RESERVATION_STATUS_BADGE[r.status]}`}>{r.status}</span>}
+        />
+
+        <PanelSection label="Booking Details">
+          <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            {r.guest_phone && (
+              <div>
+                <dt className={panelSectionLabel}>Phone</dt>
+                <dd className="font-medium mt-1">
+                  <a href={`tel:${r.guest_phone}`} className="text-primary-strong dark:text-primary hover:underline">
+                    {r.guest_phone}
+                  </a>
+                </dd>
+              </div>
+            )}
+            <div>
+              <dt className={panelSectionLabel}>Party</dt>
+              <dd className="font-medium mt-1">{r.guest_count} guest{r.guest_count === 1 ? "" : "s"}</dd>
+            </div>
+            <div>
+              <dt className={panelSectionLabel}>Table</dt>
+              <dd className="font-medium mt-1">{r.table_number || "No table assigned"}</dd>
+            </div>
+            <div>
+              <dt className={panelSectionLabel}>When</dt>
+              <dd className="font-medium mt-1">{formatDateTime(r.reserved_at)} · {r.duration_minutes} min</dd>
+            </div>
+          </dl>
+        </PanelSection>
+
+        {r.notes && (
+          <PanelSection label="Notes">
+            <p className="text-sm text-ink whitespace-pre-wrap">{r.notes}</p>
+          </PanelSection>
+        )}
+
+        <PanelSection label="Record">
+          {r.ticket_id && (
+            <Link to={`/restaurant/tickets/${r.ticket_id}`} className="btn-primary w-full flex items-center justify-center gap-1.5">
+              View linked ticket
+            </Link>
+          )}
+          <p className="text-xs text-faint mt-3">
+            Created {formatDateTime(r.created_at)}{r.created_at !== r.updated_at && ` · Updated ${formatDateTime(r.updated_at)}`}
+          </p>
+        </PanelSection>
+
+        <PanelFooter>
           {actions.length > 0 && (
             <div className="flex flex-wrap items-center gap-4 mr-auto">
               {actions.map((a) => (
@@ -80,59 +130,8 @@ export default function RestaurantReservationDetail({ reservation, canUpdate, ca
               <Trash2 size={15} /> Delete
             </button>
           )}
-        </>
-      }
-    >
-      <div className="space-y-5">
-        <div>
-          <div className="text-sm font-medium text-ink">{r.reservation_number}</div>
-          <div className="text-xs text-muted mt-0.5">Booked by {r.username}</div>
-        </div>
-
-        <dl className="space-y-3 text-sm">
-          {r.guest_phone && (
-            <div className="flex items-center gap-3">
-              <dt className="w-8 text-faint"><Phone size={16} /></dt>
-              <dd>
-                <a href={`tel:${r.guest_phone}`} className="text-primary-strong dark:text-primary hover:underline">
-                  {r.guest_phone}
-                </a>
-              </dd>
-            </div>
-          )}
-          <div className="flex items-center gap-3">
-            <dt className="w-8 text-faint"><Users size={16} /></dt>
-            <dd className="text-ink">{r.guest_count} guest{r.guest_count === 1 ? "" : "s"}</dd>
-          </div>
-          <div className="flex items-center gap-3">
-            <dt className="w-8 text-faint"><Table2 size={16} /></dt>
-            <dd className="text-ink">{r.table_number || "No table assigned"}</dd>
-          </div>
-          <div className="flex items-center gap-3">
-            <dt className="w-8 text-faint"><Clock size={16} /></dt>
-            <dd className="text-ink">{formatDateTime(r.reserved_at)} · {r.duration_minutes} min</dd>
-          </div>
-        </dl>
-
-        {r.notes && (
-          <div className="card p-4">
-            <div className="flex items-center gap-2 text-xs font-medium text-muted uppercase tracking-wide mb-1.5">
-              <StickyNote size={13} /> Notes
-            </div>
-            <p className="text-sm text-ink whitespace-pre-wrap">{r.notes}</p>
-          </div>
-        )}
-
-        {r.ticket_id && (
-          <Link to={`/restaurant/tickets/${r.ticket_id}`} className="btn-primary w-full flex items-center justify-center gap-1.5">
-            View linked ticket
-          </Link>
-        )}
-
-        <div className="text-xs text-faint">
-          Created {formatDateTime(r.created_at)}{r.created_at !== r.updated_at && ` · Updated ${formatDateTime(r.updated_at)}`}
-        </div>
-      </div>
+        </PanelFooter>
+      </PanelCard>
 
       <ConfirmDialog
         open={!!flipping}
@@ -146,6 +145,6 @@ export default function RestaurantReservationDetail({ reservation, canUpdate, ca
         }}
         onCancel={() => setFlipping(null)}
       />
-    </RestaurantSlideOver>
+    </SlideOver>
   );
 }

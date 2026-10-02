@@ -9,7 +9,8 @@ import { entityImageUrl } from "../../utils/images";
 import { getPlaceholder, onImageError } from "../../utils/placeholders";
 import { useSettings } from "../../hooks/useSettings";
 import TextArea from "../../components/TextArea";
-import RestaurantSlideOver from "../../components/restaurant/RestaurantSlideOver";
+import SlideOver from "../../components/SlideOver";
+import { PanelCard, PanelFooter, PanelHeader, PanelSection, panelLabel } from "../../components/Panel";
 import type { MenuSectionWithItems, MenuItem, MenuModifierGroup, RestaurantTable, RestaurantTicketItem } from "../../types";
 
 export interface GuestOrderOut {
@@ -114,83 +115,91 @@ function ModifierSheet({ product, onClose, onAdd }: {
   };
 
   return (
-    <RestaurantSlideOver
+    <SlideOver
       open
       onClose={onClose}
       title={product.display_name}
       breadcrumb={`Add ${product.display_name}`}
-      footer={
-        <button onClick={handleAdd} className="btn-primary w-full">
-          Add {quantity} × {formatCurrency(unitPrice * quantity, symbol)}
-        </button>
-      }
     >
-      <div className="space-y-5">
-        <div className="text-sm text-muted">Each · {formatCurrency(unitPrice, symbol)}</div>
-
-        {isLoading ? (
-          <div className="card p-4 animate-pulse h-16" />
-        ) : groupList.length === 0 ? (
-          <p className="text-sm text-muted">No options for this item.</p>
-        ) : (
-          groupList.map((g) => (
-            <div key={g.id}>
-              <div className="flex items-baseline justify-between gap-2 mb-2">
-                <span className="font-medium text-ink">
-                  {g.name}
-                  {g.is_required && <span className="text-xs text-red-600 dark:text-red-400 ml-1">required</span>}
-                </span>
-                <span className="text-xs text-muted">{chosen(g.id).length}/{g.max_select}{g.min_select > 0 && ` · min ${g.min_select}`}</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {g.options.filter((o) => o.is_active).map((o) => {
-                  const on = chosen(g.id).includes(o.id);
-                  const disabled = !on && verifyMin(g, o.id) !== null && chosen(g.id).length >= g.max_select;
-                  return (
-                    <button
-                      key={o.id}
-                      onClick={() => toggle(g.id, o.id)}
-                      disabled={Boolean(disabled)}
-                      aria-pressed={on}
-                      className={`border rounded-lg px-3 py-1.5 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                        on ? "border-primary-strong bg-primary-soft text-primary-strong dark:text-primary" : "border-border text-ink hover:border-primary-soft"
-                      }`}
-                    >
-                      {o.name}{o.price_delta > 0 ? ` (+${formatCurrency(o.price_delta)})` : o.price_delta < 0 ? ` (−${formatCurrency(-o.price_delta)})` : ""}
-                    </button>
-                  );
-                })}
-              </div>
+      <PanelCard>
+        <PanelHeader
+          eyebrow="Add Item"
+          title={product.display_name}
+          subtitle={`Each · ${formatCurrency(unitPrice, symbol)}`}
+        />
+        <PanelSection label="Options">
+          {isLoading ? (
+            <div className="card p-4 animate-pulse h-16" />
+          ) : groupList.length === 0 ? (
+            <p className="text-sm text-muted">No options for this item.</p>
+          ) : (
+            <div className="space-y-4">
+              {groupList.map((g) => (
+                <div key={g.id}>
+                  <div className="flex items-baseline justify-between gap-2 mb-2">
+                    <span className="font-medium text-ink">
+                      {g.name}
+                      {g.is_required && <span className="text-xs text-red-600 dark:text-red-400 ml-1">required</span>}
+                    </span>
+                    <span className="text-xs text-muted">{chosen(g.id).length}/{g.max_select}{g.min_select > 0 && ` · min ${g.min_select}`}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {g.options.filter((o) => o.is_active).map((o) => {
+                      const on = chosen(g.id).includes(o.id);
+                      const disabled = !on && verifyMin(g, o.id) !== null && chosen(g.id).length >= g.max_select;
+                      return (
+                        <button
+                          key={o.id}
+                          onClick={() => toggle(g.id, o.id)}
+                          disabled={Boolean(disabled)}
+                          aria-pressed={on}
+                          className={`border rounded-lg px-3 py-1.5 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                            on ? "border-primary-strong bg-primary-soft text-primary-strong dark:text-primary" : "border-border text-ink hover:border-primary-soft"
+                          }`}
+                        >
+                          {o.name}{o.price_delta > 0 ? ` (+${formatCurrency(o.price_delta)})` : o.price_delta < 0 ? ` (−${formatCurrency(-o.price_delta)})` : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))
-        )}
+          )}
+        </PanelSection>
 
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-muted">Quantity</span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle" aria-label="Decrease quantity"><Minus size={18} /></button>
-            <span className="w-10 text-center text-sm font-medium text-ink">{quantity}</span>
-            <button onClick={() => setQuantity(Math.min(99, quantity + 1))} className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle" aria-label="Increase quantity"><Plus size={18} /></button>
+        <PanelSection label="Quantity & Notes">
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted">Quantity</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle" aria-label="Decrease quantity"><Minus size={18} /></button>
+              <span className="w-10 text-center text-sm font-medium text-ink">{quantity}</span>
+              <button onClick={() => setQuantity(Math.min(99, quantity + 1))} className="h-11 w-11 inline-flex items-center justify-center rounded-lg border border-border text-muted hover:text-ink hover:bg-subtle" aria-label="Increase quantity"><Plus size={18} /></button>
+            </div>
           </div>
-        </div>
+          <div className="mt-4">
+            <label className={panelLabel} htmlFor="guest-order-notes">Note to kitchen (optional)</label>
+            <TextArea
+              id="guest-order-notes"
+              rows={2}
+              value={notes}
+              maxLength={200}
+              onChange={setNotes}
+              placeholder="e.g. no onions, allergies..."
+            />
+          </div>
+          {error && (
+            <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-3 py-2 rounded-lg text-sm mt-4">{error}</div>
+          )}
+        </PanelSection>
 
-        <label className="block">
-          <span className="text-xs font-medium text-muted">Note to kitchen (optional)</span>
-          <TextArea
-            className="mt-1.5"
-            rows={2}
-            value={notes}
-            maxLength={200}
-            onChange={setNotes}
-            placeholder="e.g. no onions, allergies..."
-          />
-        </label>
-
-        {error && (
-          <div role="alert" className="bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 px-3 py-2 rounded-lg text-sm">{error}</div>
-        )}
-      </div>
-    </RestaurantSlideOver>
+        <PanelFooter>
+          <button onClick={handleAdd} className="btn-primary w-full">
+            Add {quantity} × {formatCurrency(unitPrice * quantity, symbol)}
+          </button>
+        </PanelFooter>
+      </PanelCard>
+    </SlideOver>
   );
 }
 

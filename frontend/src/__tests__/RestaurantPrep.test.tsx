@@ -156,7 +156,7 @@ describe("RestaurantPrep", () => {
     const dialog = await screen.findByRole("dialog", { name: "Record waste" });
     expect(within(dialog).getByRole("button", { name: "Record waste" })).toBeDisabled();
 
-    fireEvent.change(within(dialog).getByLabelText("Waste reason"), { target: { value: "burnt" } });
+    fireEvent.change(within(dialog).getByLabelText(/^Reason/), { target: { value: "burnt" } });
     expect(within(dialog).getByRole("button", { name: "Record waste" })).toBeEnabled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Record waste" }));
 
