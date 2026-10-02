@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 class BOMItemIn(BaseModel):
     product_id: int
-    quantity: int = Field(gt=0)
+    quantity: float = Field(gt=0)
     position: int = 0
 
 
@@ -28,7 +28,7 @@ class BOMItemOut(BaseModel):
     id: int
     bom_id: int
     product_id: int
-    quantity: int
+    quantity: float
     position: int
     product_name: str = ""
     unit_cost: float = 0.0

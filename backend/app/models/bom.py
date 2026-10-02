@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, String, Text, func
+from sqlalchemy import Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -41,7 +41,7 @@ class BOMItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     bom_id: Mapped[int] = mapped_column(ForeignKey("boms.id"), nullable=False, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False, index=True)
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False, default=1)
     position: Mapped[int] = mapped_column(Integer, default=0)
 
     bom = relationship("BOM", back_populates="items")

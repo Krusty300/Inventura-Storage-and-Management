@@ -57,6 +57,25 @@ def test_bom_create_and_cycle_detection_multi_level(auth_headers):
     assert "cycle" in resp.json()["detail"].lower()
 
 
+def test_bom_accepts_fractional_component_quantity(auth_headers):
+    # Restaurant recipes express components as fractions of a portion, so a BOM
+    # line must round-trip a decimal instead of failing integer validation.
+    fg = _make_product(auth_headers, "BOM-FRAC-FG")
+    comp = _make_product(auth_headers, "BOM-FRAC-COMP")
+    created = _create_bom(auth_headers, fg["id"], [(comp["id"], 0.5)])
+    assert created.status_code == 201, created.text
+    assert created.json()["items"][0]["quantity"] == 0.5
+
+    listing = client.get(
+        "/api/boms",
+        params={"skip": 0, "limit": 50, "is_active": True},
+        headers=auth_headers,
+    )
+    assert listing.status_code == 200, listing.text
+    quantities = [i["quantity"] for b in listing.json()["items"] for i in b["items"]]
+    assert 0.5 in quantities
+
+
 def test_bom_update_rejects_introduced_cycle(auth_headers):
     a = _make_product(auth_headers, "BOM-UA")
     b = _make_product(auth_headers, "BOM-UB")

@@ -45,7 +45,7 @@ function RecipeForm({ row, onClose, onSaved }: { row: RestaurantRecipeRow; onClo
     e.preventDefault();
     const items = rows
       .filter((r) => r.product_id)
-      .map((r) => ({ product_id: Number(r.product_id), quantity: parseInt(r.quantity) || 1 }));
+      .map((r) => ({ product_id: Number(r.product_id), quantity: parseFloat(r.quantity) || 1 }));
     if (items.length === 0) {
       addToast("Add at least one ingredient", "error");
       return;
@@ -116,7 +116,7 @@ function RecipeForm({ row, onClose, onSaved }: { row: RestaurantRecipeRow; onClo
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-muted mb-1">Qty</label>
-                  <input type="number" min={1} className="input" value={r.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
+                  <input type="number" min={0.01} step="any" className="input" value={r.quantity} onChange={(e) => setRow(idx, "quantity", e.target.value)} />
                 </div>
                 <div className="sm:col-span-2">
                   <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== idx))} className="p-2 text-faint hover:text-red-600 dark:text-red-400 transition-colors" aria-label="Remove ingredient">
