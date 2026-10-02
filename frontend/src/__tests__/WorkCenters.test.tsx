@@ -149,4 +149,54 @@ describe("Work Centers Page", () => {
       }),
     );
   });
+
+  it("opens a detail slide-over from the row and shows capacity", async () => {
+    mockApi();
+    renderWithProviders(<WorkCenters />);
+    const row = (await screen.findByText("CNC Mill 1")).closest("tr")!;
+    fireEvent.click(row);
+
+    const dialog = await screen.findByRole("dialog", { name: "CNC Mill 1" });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByText("Capacity & load")).toBeInTheDocument();
+    // The window is fully loaded: 2400 capacity minutes against 2400 booked,
+    // which leaves nothing free and flags the center as a bottleneck.
+    expect(screen.getByText("0m")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-label", "Utilization of CNC Mill 1");
+    expect(screen.getByText("1 overdue")).toBeInTheDocument();
+  });
+
+  it("hands off from the detail slide-over to the edit form", async () => {
+    mockApi();
+    putMock.mockResolvedValue({ data: CENTER });
+    renderWithProviders(<WorkCenters />);
+    fireEvent.click(await screen.findByLabelText("View CNC Mill 1"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit work center" }));
+    expect(await screen.findByRole("dialog", { name: "Edit CNC-1: CNC Mill 1" })).toBeInTheDocument();
+
+    const efficiency = screen.getByLabelText("Efficiency percent");
+    fireEvent.change(efficiency, { target: { value: "95" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update Work Center" }));
+
+    await waitFor(() => expect(putMock).toHaveBeenCalledWith("/work-centers/1", expect.objectContaining({ efficiency: 95 })));
+  });
+
+  it("toggles working days from the form slide-over", async () => {
+    mockApi();
+    putMock.mockResolvedValue({ data: CENTER });
+    renderWithProviders(<WorkCenters />);
+    fireEvent.click(await screen.findByLabelText("View CNC Mill 1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit work center" }));
+
+    const sunday = await screen.findByRole("button", { name: "Sunday" });
+    expect(sunday).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(sunday);
+    expect(sunday).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Update Work Center" }));
+    await waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith("/work-centers/1", expect.objectContaining({ working_days: [0, 1, 2, 3, 4, 6] })),
+    );
+  });
 });
