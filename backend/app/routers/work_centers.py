@@ -2,9 +2,10 @@ from datetime import date, timedelta
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.constants import MAX_PAGE_SIZE
+from app.constants import MAX_PAGE_SIZE_LOOKUP
 from app.database import get_db
 from app.models import Location, RoutingOperation, WorkCenter
 from app.models.work_center import WORK_CENTER_TYPES
@@ -34,9 +35,23 @@ def _load(db: Session, wc_id: int) -> WorkCenter:
     return get_or_404(WorkCenter, wc_id, db, options=[joinedload(WorkCenter.location)])
 
 
-def _out(db: Session, wc: WorkCenter) -> WorkCenterOut:
-    wc.operation_count = db.query(RoutingOperation).filter(RoutingOperation.work_center_id == wc.id).count()
+def _out(db: Session, wc: WorkCenter, operation_count: int | None = None) -> WorkCenterOut:
+    if operation_count is None:
+        operation_count = db.query(RoutingOperation).filter(RoutingOperation.work_center_id == wc.id).count()
+    wc.operation_count = operation_count
     return WorkCenterOut.model_validate(wc)
+
+
+def _operation_counts(db: Session, work_center_ids: list[int]) -> dict[int, int]:
+    if not work_center_ids:
+        return {}
+    rows = (
+        db.query(RoutingOperation.work_center_id, func.count(RoutingOperation.id))
+        .filter(RoutingOperation.work_center_id.in_(work_center_ids))
+        .group_by(RoutingOperation.work_center_id)
+        .all()
+    )
+    return {work_center_id: count for work_center_id, count in rows}
 
 
 def _window(from_date: date, to_date: date | None) -> tuple[date, date]:
@@ -60,7 +75,7 @@ def list_work_centers(
     is_active: bool | None = None,
     search: str = Query(""),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE),
+    limit: int = Query(100, ge=1, le=MAX_PAGE_SIZE_LOOKUP),
     db: Session = Depends(get_db),
 ):
     q = db.query(WorkCenter).options(joinedload(WorkCenter.location)).filter(WorkCenter.is_deleted == False)  # noqa: E712
@@ -73,7 +88,8 @@ def list_work_centers(
         q = q.filter(WorkCenter.name.ilike(like) | WorkCenter.code.ilike(like))
     total = q.count()
     items = q.order_by(WorkCenter.name).offset(skip).limit(limit).all()
-    return {"items": [_out(db, w) for w in items], "total": total,
+    counts = _operation_counts(db, [w.id for w in items])
+    return {"items": [_out(db, w, counts.get(w.id, 0)) for w in items], "total": total,
             "page": (skip // limit) + 1, "pages": max(ceil(total / limit), 1)}
 
 

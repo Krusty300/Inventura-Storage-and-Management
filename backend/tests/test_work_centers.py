@@ -162,6 +162,15 @@ def test_list_and_search_work_centers(auth_headers):
     assert [w["code"] for w in all_rows["items"]] == ["SAW-01", "WELD-01"]
 
 
+def test_list_accepts_lookup_page_size(auth_headers):
+    # The Work Centers page loads the whole list as a lookup (5000 rows), the
+    # same cap the other lookup endpoints allow, so the bound must not reject it.
+    _make_center(auth_headers, "LOOKUP-1")
+    resp = client.get("/api/work-centers?limit=5000", headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["total"] == 1
+
+
 def test_filter_by_type_and_active(auth_headers):
     _make_center(auth_headers, "MC-1", work_center_type="machine")
     _make_center(auth_headers, "TEAM-A", work_center_type="labor")
